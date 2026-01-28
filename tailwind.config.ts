@@ -76,6 +76,10 @@ export default {
           cell: "hsl(var(--client-cell))",
           "cell-border": "hsl(var(--client-cell-border))",
         },
+        progress: {
+          empty: "hsl(var(--progress-empty))",
+          filled: "hsl(var(--progress-filled))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
