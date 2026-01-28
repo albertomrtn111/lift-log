@@ -2,95 +2,132 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* FitTrack Design System - Clean, Mobile-First Fitness App */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core backgrounds */
+    --background: 210 20% 98%;
+    --foreground: 220 25% 10%;
 
+    /* Cards and surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 25% 10%;
 
+    /* Popovers */
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 220 25% 10%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary - Vibrant Teal */
+    --primary: 174 72% 40%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Soft blue-gray */
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 220 20% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted - For read-only coach cells */
+    --muted: 210 15% 92%;
+    --muted-foreground: 220 10% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent - Coral/Orange for highlights */
+    --accent: 16 85% 60%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Success - For saved states */
+    --success: 152 60% 42%;
+    --success-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Warning - For pending states */
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 25% 10%;
 
-    --radius: 0.5rem;
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --sidebar-background: 0 0% 98%;
+    /* Borders and inputs */
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 174 72% 40%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --radius: 0.75rem;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 25%;
+    --sidebar-primary: 174 72% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 96%;
+    --sidebar-accent-foreground: 220 20% 25%;
+    --sidebar-border: 214 20% 92%;
+    --sidebar-ring: 174 72% 40%;
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* Coach cell styling */
+    --coach-cell: 210 15% 95%;
+    --coach-cell-foreground: 220 10% 40%;
 
-    --sidebar-accent: 240 4.8% 95.9%;
+    /* Client editable cell */
+    --client-cell: 0 0% 100%;
+    --client-cell-border: 174 50% 70%;
 
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Progress colors */
+    --progress-empty: 210 15% 90%;
+    --progress-filled: 174 72% 40%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 220 25% 8%;
+    --foreground: 210 20% 96%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 20% 12%;
+    --card-foreground: 210 20% 96%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 20% 12%;
+    --popover-foreground: 210 20% 96%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 174 72% 50%;
+    --primary-foreground: 220 25% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 210 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 220 15% 20%;
+    --muted-foreground: 210 10% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 16 85% 55%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --success: 152 60% 45%;
+    --success-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 25% 10%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 22%;
+    --input: 220 15% 22%;
+    --ring: 174 72% 50%;
+
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 174 72% 50%;
+    --sidebar-primary-foreground: 220 25% 8%;
+    --sidebar-accent: 220 15% 16%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 174 72% 50%;
+
+    --coach-cell: 220 15% 16%;
+    --coach-cell-foreground: 210 10% 65%;
+
+    --client-cell: 220 20% 14%;
+    --client-cell-border: 174 50% 45%;
+
+    --progress-empty: 220 15% 18%;
+    --progress-filled: 174 72% 50%;
   }
 }
 
@@ -100,6 +137,135 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer components {
+  /* Week pill selector */
+  .week-pill {
+    @apply px-3 py-1.5 rounded-full text-sm font-medium transition-all;
+    @apply bg-secondary text-secondary-foreground;
+    @apply hover:bg-primary/10;
+  }
+
+  .week-pill-active {
+    @apply bg-primary text-primary-foreground shadow-md;
+    @apply hover:bg-primary;
+  }
+
+  /* Day tab */
+  .day-tab {
+    @apply px-4 py-2 text-sm font-medium whitespace-nowrap transition-all;
+    @apply text-muted-foreground border-b-2 border-transparent;
+    @apply hover:text-foreground;
+  }
+
+  .day-tab-active {
+    @apply text-primary border-primary;
+  }
+
+  /* Coach cell (read-only) */
+  .cell-coach {
+    @apply bg-coach-cell text-coach-cell-foreground;
+    @apply px-3 py-2 text-sm;
+  }
+
+  /* Client cell (editable) */
+  .cell-client {
+    @apply bg-client-cell border border-transparent;
+    @apply px-3 py-2 text-sm;
+    @apply focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20;
+    @apply rounded-md transition-all;
+  }
+
+  /* Save status indicator */
+  .save-indicator {
+    @apply inline-flex items-center gap-1 text-xs font-medium;
+  }
+
+  .save-indicator-saved {
+    @apply text-success;
+  }
+
+  .save-indicator-saving {
+    @apply text-warning;
+  }
+
+  .save-indicator-error {
+    @apply text-destructive;
+  }
+
+  /* Macro card */
+  .macro-card {
+    @apply bg-card rounded-xl p-4 shadow-sm border border-border;
+    @apply flex flex-col items-center justify-center text-center;
+  }
+
+  /* Navigation item */
+  .nav-item {
+    @apply flex flex-col items-center gap-1 p-2 rounded-lg transition-all;
+    @apply text-muted-foreground;
+    @apply hover:text-foreground hover:bg-secondary;
+  }
+
+  .nav-item-active {
+    @apply text-primary bg-primary/10;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-2 rounded-full bg-progress-empty overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-progress-filled rounded-full transition-all duration-500;
+  }
+}
+
+@layer utilities {
+  /* Sticky table header */
+  .sticky-col {
+    @apply sticky left-0 z-10 bg-card;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-background/80 backdrop-blur-md;
+  }
+
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-200;
+    @apply hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
   }
 }
