@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarDays, Scale, Footprints, Moon, Save, Check, CalendarIcon } from 'lucide-react';
+import { CalendarDays, Scale, Footprints, Moon, Save, Check, CalendarIcon, ListTodo } from 'lucide-react';
 import { mockDailyMetrics } from '@/data/mockData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { BackfillModal } from '@/components/backfill/BackfillModal';
+import { ProgressBackfillContent } from '@/components/backfill/ProgressBackfillContent';
 
 export default function ProgressPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -18,6 +20,7 @@ export default function ProgressPage() {
   const [sleep, setSleep] = useState('');
   const [notes, setNotes] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [backfillOpen, setBackfillOpen] = useState(false);
 
   const handleSave = () => {
     setSaveStatus('saving');
@@ -72,6 +75,16 @@ export default function ProgressPage() {
             />
           </PopoverContent>
         </Popover>
+
+        {/* Backfill button */}
+        <Button 
+          variant="outline" 
+          className="w-full gap-2"
+          onClick={() => setBackfillOpen(true)}
+        >
+          <ListTodo className="h-4 w-4" />
+          Rellenar días pendientes
+        </Button>
 
         {/* Metrics cards */}
         <div className="grid grid-cols-1 gap-3">
@@ -191,6 +204,15 @@ export default function ProgressPage() {
           </div>
         </Card>
       </div>
+
+      {/* Backfill Modal */}
+      <BackfillModal
+        open={backfillOpen}
+        onOpenChange={setBackfillOpen}
+        title="Rellenar métricas pendientes"
+      >
+        {({ days }) => <ProgressBackfillContent days={days} />}
+      </BackfillModal>
     </div>
   );
 }

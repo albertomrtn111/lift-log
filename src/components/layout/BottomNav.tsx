@@ -1,4 +1,4 @@
-import { ClipboardList, Utensils, CalendarDays, BarChart3, User } from 'lucide-react';
+import { ClipboardList, Utensils, CalendarDays, BarChart3, User, Timer } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -11,9 +11,9 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', icon: ClipboardList, label: 'Rutina' },
   { to: '/diet', icon: Utensils, label: 'Dieta' },
+  { to: '/running', icon: Timer, label: 'Running' },
   { to: '/progress', icon: CalendarDays, label: 'Progreso' },
   { to: '/summary', icon: BarChart3, label: 'Resumen' },
-  { to: '/profile', icon: User, label: 'Perfil' },
 ];
 
 export function BottomNav() {
