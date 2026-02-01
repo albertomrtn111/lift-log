@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import RoutinePage from "./pages/RoutinePage";
 import DietPage from "./pages/DietPage";
+import RunningPage from "./pages/RunningPage";
 import ProgressPage from "./pages/ProgressPage";
 import SummaryPage from "./pages/SummaryPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -23,6 +24,7 @@ const App = () => (
           <Route element={<AppLayout />}>
             <Route path="/" element={<RoutinePage />} />
             <Route path="/diet" element={<DietPage />} />
+            <Route path="/running" element={<RunningPage />} />
             <Route path="/progress" element={<ProgressPage />} />
             <Route path="/summary" element={<SummaryPage />} />
             <Route path="/profile" element={<ProfilePage />} />

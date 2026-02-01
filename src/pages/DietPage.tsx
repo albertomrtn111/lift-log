@@ -15,16 +15,19 @@ import {
   Heart,
   Check,
   ChevronDown,
-  ChevronUp,
-  MessageSquare
+  MessageSquare,
+  ListTodo
 } from 'lucide-react';
 import { mockMacroPlan, mockDietPlan, mockAdherence } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { BackfillModal } from '@/components/backfill/BackfillModal';
+import { DietBackfillContent } from '@/components/backfill/DietBackfillContent';
 
 export default function DietPage() {
+  const [backfillOpen, setBackfillOpen] = useState(false);
   const [adherence, setAdherence] = useState(85);
   const [notes, setNotes] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -149,6 +152,16 @@ export default function DietPage() {
             </Button>
           </Card>
 
+          {/* Backfill button */}
+          <Button 
+            variant="outline" 
+            className="w-full gap-2"
+            onClick={() => setBackfillOpen(true)}
+          >
+            <ListTodo className="h-4 w-4" />
+            Rellenar días pendientes
+          </Button>
+
           {/* History */}
           <Card className="p-4">
             <h3 className="font-semibold mb-3">Últimos 7 días</h3>
@@ -233,6 +246,15 @@ export default function DietPage() {
           ))}
         </TabsContent>
       </Tabs>
+
+      {/* Backfill Modal */}
+      <BackfillModal
+        open={backfillOpen}
+        onOpenChange={setBackfillOpen}
+        title="Rellenar adherencia pendiente"
+      >
+        {({ days }) => <DietBackfillContent days={days} />}
+      </BackfillModal>
     </div>
   );
 }
