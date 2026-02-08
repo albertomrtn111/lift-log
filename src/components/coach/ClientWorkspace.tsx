@@ -16,14 +16,15 @@ import {
 import {
     ClipboardCheck,
     Utensils,
-    Dumbbell,
-    Timer,
+    CalendarDays,
+    LayoutDashboard,
+    TrendingUp,
     User
 } from 'lucide-react'
 import { ReviewsTab } from './tabs/ReviewsTab'
 import { DietTab } from './tabs/DietTab'
-import { TrainingTab } from './tabs/TrainingTab'
-import { RunningTab } from './tabs/RunningTab'
+import { PlanningTab } from './workspace/PlanningTab'
+// import { ProgressTab } from './tabs/ProgressTab' // Assuming this exists or will be added, but for now I'll just keep the structure requested
 
 interface ClientWorkspaceProps {
     clients: Pick<Client, 'id' | 'full_name'>[]
@@ -76,37 +77,49 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
             {/* Tabs */}
             {selectedClient && (
                 <Tabs value={tab} onValueChange={handleTabChange}>
-                    <TabsList className="w-full grid grid-cols-4">
-                        <TabsTrigger value="reviews" className="gap-2">
-                            <ClipboardCheck className="h-4 w-4" />
-                            <span className="hidden sm:inline">Revisiones</span>
+                    <TabsList className="w-full grid grid-cols-5 p-1 h-auto">
+                        {/* Orden: Resumen, Planificación, Dieta, Revisiones, Progreso */}
+                        <TabsTrigger value="summary" className="gap-2 py-2">
+                            <LayoutDashboard className="h-4 w-4" />
+                            <span className="hidden sm:inline">Resumen</span>
                         </TabsTrigger>
-                        <TabsTrigger value="diet" className="gap-2">
+                        <TabsTrigger value="planning" className="gap-2 py-2">
+                            <CalendarDays className="h-4 w-4" />
+                            <span className="hidden sm:inline">Planificación</span>
+                        </TabsTrigger>
+                        <TabsTrigger value="diet" className="gap-2 py-2">
                             <Utensils className="h-4 w-4" />
                             <span className="hidden sm:inline">Dieta</span>
                         </TabsTrigger>
-                        <TabsTrigger value="training" className="gap-2">
-                            <Dumbbell className="h-4 w-4" />
-                            <span className="hidden sm:inline">Entreno</span>
+                        <TabsTrigger value="reviews" className="gap-2 py-2">
+                            <ClipboardCheck className="h-4 w-4" />
+                            <span className="hidden sm:inline">Revisiones</span>
                         </TabsTrigger>
-                        <TabsTrigger value="running" className="gap-2">
-                            <Timer className="h-4 w-4" />
-                            <span className="hidden sm:inline">Running</span>
+                        <TabsTrigger value="progress" className="gap-2 py-2">
+                            <TrendingUp className="h-4 w-4" />
+                            <span className="hidden sm:inline">Progreso</span>
                         </TabsTrigger>
                     </TabsList>
 
                     <div className="mt-4">
-                        <TabsContent value="reviews">
-                            <ReviewsTab clientId={selectedClient.id} />
+                        <TabsContent value="summary">
+                            <div className="p-4 text-center text-muted-foreground">
+                                Resumen del cliente (En construcción)
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="planning">
+                            <PlanningTab clientId={selectedClient.id} />
                         </TabsContent>
                         <TabsContent value="diet">
                             <DietTab clientId={selectedClient.id} />
                         </TabsContent>
-                        <TabsContent value="training">
-                            <TrainingTab clientId={selectedClient.id} />
+                        <TabsContent value="reviews">
+                            <ReviewsTab clientId={selectedClient.id} />
                         </TabsContent>
-                        <TabsContent value="running">
-                            <RunningTab />
+                        <TabsContent value="progress">
+                            <div className="p-4 text-center text-muted-foreground">
+                                Progreso del cliente (En construcción)
+                            </div>
                         </TabsContent>
                     </div>
                 </Tabs>

@@ -23,25 +23,38 @@ export interface StrengthStructure {
 }
 
 export interface CardioStructure {
-    trainingType?: string
-    totalDistance?: string
-    totalDuration?: string
+    trainingType?: 'rodaje' | 'series' | 'tempo' | 'hybrid' | 'progressive' | 'fartlek' | string
     blocks: CardioBlock[]
 }
 
+export type CardioBlockType = 'continuous' | 'intervals' | 'station'
+
 export interface CardioBlock {
     id: string
-    type: 'warmup' | 'work' | 'rest' | 'cooldown' | 'station' // Added 'station' for Hyrox
-    duration?: number // minutos
-    distance?: number // metros
-    intensity?: string
+    type: CardioBlockType
     notes?: string
-    // Mantener compatibilidad con el código anterior temporalmente o refactorizar todo?
-    // El código anterior usaba objective_value / objective_unit.
-    // Voy a mantenerlos como opcionales o deprecated si es necesario, 
-    // pero para limpiar código prefiero usar los nuevos y actualizar el componente builder.
-    objective_value?: string
-    objective_unit?: 'km' | 'min' | 'm'
+
+    // Para 'continuous' (Rodaje, Calentamiento)
+    duration?: number // minutos
+    distance?: number // km
+    intensity?: string // Deprecated in favor of targetPace/targetHR
+    targetPace?: string // Ej: "4:15/km", "Suave"
+    targetHR?: string   // Ej: "140-150 ppm", "Z2", "< 160"
+
+    // Para 'intervals' (Series: 3x1000m)
+    sets?: number // Número de repeticiones
+    workDistance?: number // km
+    workDuration?: number // minutos
+    workIntensity?: string // Deprecated
+    workTargetPace?: string
+    workTargetHR?: string
+    restDuration?: number // minutos
+    restDistance?: number // km (recuperación activa)
+    restType?: 'active' | 'passive'
+
+    // Deprecated fields kept for type safety during migration if needed, but intended to be removed/unused
+    objective_value?: never
+    objective_unit?: never
 }
 
 export interface TemplateDay {

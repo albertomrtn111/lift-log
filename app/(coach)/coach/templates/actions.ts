@@ -64,6 +64,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
             name: input.name,
             description: input.description || null,
             tags: input.tags || [],
+            type: input.type, // Explicitly save the type
             structure: input.type === 'cardio'
                 ? { blocks: [] }
                 : { days: [], weeks: 4 },
@@ -79,6 +80,48 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
 
     revalidatePath('/coach/templates')
     return { success: true, template: data as TrainingTemplate }
+}
+
+/**
+ * Create a new draft cardio template immediately
+ */
+export async function createDraftCardioTemplate(): Promise<{
+    success: boolean
+    id?: string
+    error?: string
+}> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { success: false, error: 'No autenticado' }
+    }
+
+    const coachId = await getCoachIdForUser(user.id)
+    if (!coachId) {
+        return { success: false, error: 'No tienes permisos de coach' }
+    }
+
+    const { data, error } = await supabase
+        .from('training_templates')
+        .insert({
+            coach_id: coachId,
+            name: 'Nueva Sesión',
+            description: '',
+            type: 'cardio',
+            structure: { blocks: [] },
+            is_public: false,
+        })
+        .select('id')
+        .single()
+
+    if (error) {
+        console.error('Error creating draft template:', error)
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/coach/templates')
+    return { success: true, id: data.id }
 }
 
 /**
