@@ -115,8 +115,8 @@ export interface CreateClientResult {
 }
 
 /**
- * Create a new client (user_id = NULL initially)
- * IMPORTANT: This only creates CLIENT records, never coaches
+ * Create a new client (or reactivate existing inactive) via RPC
+ * Uses SECURITY DEFINER RPC for atomic UPSERT
  */
 export async function createNewClient(input: CreateClientInput): Promise<CreateClientResult> {
     const supabase = await createClient()
@@ -129,25 +129,25 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
         }
     }
 
-    const startDate = new Date(input.start_date)
-    const nextCheckinDate = new Date(startDate)
-    nextCheckinDate.setDate(nextCheckinDate.getDate() + input.checkin_frequency_days)
+    // Call RPC for atomic UPSERT
+    const { data, error } = await supabase.rpc('activate_client_for_coach', {
+        p_coach_id: input.coach_id,
+        p_full_name: input.full_name,
+        p_email: input.email,
+        p_phone: input.phone || null,
+        p_start_date: input.start_date,
+        p_checkin_frequency_days: input.checkin_frequency_days
+    })
 
-    const { data, error } = await supabase
-        .from('clients')
-        .insert({
-            coach_id: input.coach_id,
-            user_id: null,
-            status: 'active',
-            full_name: input.full_name,
-            email: input.email,
-            phone: input.phone || null,
-            start_date: input.start_date,
-            checkin_frequency_days: input.checkin_frequency_days,
-            next_checkin_date: nextCheckinDate.toISOString().split('T')[0],
-        })
-        .select()
-        .single()
+    // DEV LOG: Confirm RPC result
+    if (process.env.NODE_ENV === 'development') {
+        console.log('--- [createNewClient] RPC RESULT ---')
+        console.log(`coach_id: ${input.coach_id}`)
+        console.log(`email: ${input.email}`)
+        console.log(`RPC data:`, data)
+        if (error) console.error(`RPC error:`, error)
+        console.log('------------------------------------')
+    }
 
     if (error) {
         console.error('Supabase error creating client:', error)
@@ -158,7 +158,17 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
         }
     }
 
-    return { success: true, client: data as Client }
+    // Parse the JSONB result
+    const clientData = data as Client | null
+    if (!clientData) {
+        return {
+            success: false,
+            error: 'No se pudo crear el cliente',
+            details: 'RPC returned null'
+        }
+    }
+
+    return { success: true, client: clientData }
 }
 
 export interface UpdateClientInput {
