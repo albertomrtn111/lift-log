@@ -37,9 +37,6 @@ export default async function TemplatesPage() {
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <CreateTemplateDialog />
-                        </div>
                     </div>
                 </div>
             </header>
@@ -59,12 +56,32 @@ export default async function TemplatesPage() {
                     </TabsList>
 
                     <TabsContent value="strength">
+                        <div className="mb-6 flex justify-end">
+                            <CreateTemplateDialog
+                                defaultType="strength"
+                                trigger={
+                                    <div className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
+                                        + Nueva Rutina de Fuerza
+                                    </div>
+                                }
+                            />
+                        </div>
                         <Suspense fallback={<TemplatesTableSkeleton />}>
                             <TemplatesTable templates={strengthTemplates} />
                         </Suspense>
                     </TabsContent>
 
                     <TabsContent value="cardio">
+                        <div className="mb-6 flex justify-end">
+                            <CreateTemplateDialog
+                                defaultType="cardio"
+                                trigger={
+                                    <div className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
+                                        + Nueva Sesión Cardio
+                                    </div>
+                                }
+                            />
+                        </div>
                         <Suspense fallback={<TemplatesTableSkeleton />}>
                             <TemplatesTable templates={cardioTemplates} />
                         </Suspense>

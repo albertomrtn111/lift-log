@@ -64,7 +64,9 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
             name: input.name,
             description: input.description || null,
             tags: input.tags || [],
-            structure: input.type === 'cardio' ? { blocks: [] } : { days: [] },
+            structure: input.type === 'cardio'
+                ? { blocks: [] }
+                : { days: [], weeks: 4 },
             is_public: false,
         })
         .select()

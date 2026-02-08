@@ -19,6 +19,7 @@ export type TemplateStructure = StrengthStructure | CardioStructure
 
 export interface StrengthStructure {
     days: TemplateDay[]
+    weeks?: number // Defaulting to 4 usually
 }
 
 export interface CardioStructure {
@@ -30,11 +31,17 @@ export interface CardioStructure {
 
 export interface CardioBlock {
     id: string
-    type: 'warmup' | 'work' | 'rest' | 'cooldown'
-    objective_value: string
-    objective_unit: 'km' | 'min' | 'm'
-    intensity: string
-    notes: string
+    type: 'warmup' | 'work' | 'rest' | 'cooldown' | 'station' // Added 'station' for Hyrox
+    duration?: number // minutos
+    distance?: number // metros
+    intensity?: string
+    notes?: string
+    // Mantener compatibilidad con el código anterior temporalmente o refactorizar todo?
+    // El código anterior usaba objective_value / objective_unit.
+    // Voy a mantenerlos como opcionales o deprecated si es necesario, 
+    // pero para limpiar código prefiero usar los nuevos y actualizar el componente builder.
+    objective_value?: string
+    objective_unit?: 'km' | 'min' | 'm'
 }
 
 export interface TemplateDay {

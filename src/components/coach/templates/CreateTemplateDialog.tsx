@@ -42,9 +42,11 @@ const formSchema = z.object({
 
 interface CreateTemplateDialogProps {
     children?: React.ReactNode
+    trigger?: React.ReactNode
+    defaultType?: 'strength' | 'cardio'
 }
 
-export function CreateTemplateDialog({ children }: CreateTemplateDialogProps) {
+export function CreateTemplateDialog({ children, trigger, defaultType }: CreateTemplateDialogProps) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
     const router = useRouter()
@@ -56,7 +58,7 @@ export function CreateTemplateDialog({ children }: CreateTemplateDialogProps) {
             name: '',
             description: '',
             tags: '',
-            type: 'strength',
+            type: defaultType || 'strength',
         },
     })
 
@@ -100,7 +102,7 @@ export function CreateTemplateDialog({ children }: CreateTemplateDialogProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                {children || (
+                {trigger || children || (
                     <Button>
                         <Plus className="mr-2 h-4 w-4" />
                         Nueva Plantilla
@@ -129,20 +131,22 @@ export function CreateTemplateDialog({ children }: CreateTemplateDialogProps) {
                                             className="grid grid-cols-2 gap-4"
                                         >
                                             <div>
-                                                <RadioGroupItem value="strength" id="strength" className="peer sr-only" />
+                                                <RadioGroupItem value="strength" id="strength" className="peer sr-only" disabled={!!defaultType} />
                                                 <FormLabel
                                                     htmlFor="strength"
-                                                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer ${defaultType === 'cardio' ? 'opacity-50 cursor-not-allowed' : ''
+                                                        }`}
                                                 >
                                                     <Dumbbell className="mb-2 h-6 w-6" />
                                                     <span className="font-semibold">Fuerza</span>
                                                 </FormLabel>
                                             </div>
                                             <div>
-                                                <RadioGroupItem value="cardio" id="cardio" className="peer sr-only" />
+                                                <RadioGroupItem value="cardio" id="cardio" className="peer sr-only" disabled={!!defaultType} />
                                                 <FormLabel
                                                     htmlFor="cardio"
-                                                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                                                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer ${defaultType === 'strength' ? 'opacity-50 cursor-not-allowed' : ''
+                                                        }`}
                                                 >
                                                     <Heart className="mb-2 h-6 w-6" />
                                                     <span className="font-semibold">Cardio</span>

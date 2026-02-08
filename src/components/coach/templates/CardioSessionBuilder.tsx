@@ -1,13 +1,34 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { TrainingTemplate, TemplateStructure, CardioStructure, CardioBlock } from '@/types/templates'
-import { updateTemplate } from '../../../../app/(coach)/coach/templates/actions'
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { useForm, useFieldArray } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import {
+    Dumbbell,
+    Heart,
+    Timer,
+    Plus,
+    Trash2,
+    Save,
+    MoreVertical,
+    Activity,
+    Pause,
+    Play
+} from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card } from '@/components/ui/card'
 import {
     Select,
     SelectContent,
@@ -16,410 +37,368 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import {
-    Plus,
-    Trash2,
-    Save,
-    Loader2,
-    Footprints,
-    Clock,
-    TrendingUp,
-    Zap,
-    Gauge,
-    Shuffle,
-    Heart,
-    Timer,
-    MapPin,
-    Activity,
-    StickyNote
-} from 'lucide-react'
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+
+import { updateTemplate } from '../../../../app/(coach)/coach/templates/actions'
+import { TrainingTemplate, CardioStructure, CardioBlock } from '@/types/templates'
 import { cn } from '@/lib/utils'
 
-// 1. Configuración de Tipos y Estilos (Running Types)
-const RUNNING_TYPES = {
-    'rodaje': {
-        label: 'Rodaje',
-        icon: Footprints,
-        color: 'text-green-500',
-        bgColor: 'bg-green-500/10',
-        borderColor: 'border-green-500/20'
-    },
-    'tirada_larga': {
-        label: 'Tirada Larga',
-        icon: Clock,
-        color: 'text-blue-500',
-        bgColor: 'bg-blue-500/10',
-        borderColor: 'border-blue-500/20'
-    },
-    'progresivos': {
-        label: 'Progresivos',
-        icon: TrendingUp,
-        color: 'text-indigo-500',
-        bgColor: 'bg-indigo-500/10',
-        borderColor: 'border-indigo-500/20'
-    },
-    'series': {
-        label: 'Series',
-        icon: Zap,
-        color: 'text-orange-500',
-        bgColor: 'bg-orange-500/10',
-        borderColor: 'border-orange-500/20'
-    },
-    'tempo': {
-        label: 'Tempo',
-        icon: Gauge,
-        color: 'text-purple-500',
-        bgColor: 'bg-purple-500/10',
-        borderColor: 'border-purple-500/20'
-    },
-    'fartlek': {
-        label: 'Fartlek',
-        icon: Shuffle,
-        color: 'text-pink-500',
-        bgColor: 'bg-pink-500/10',
-        borderColor: 'border-pink-500/20'
-    }
-} as const
+// Schema Definition
+const blockSchema = z.object({
+    type: z.enum(['warmup', 'work', 'rest', 'cooldown', 'station']),
+    distance: z.string().optional(), // Keeping as string for input flexible parsing, or coerce to number
+    duration: z.string().optional(), // Minutes as string for now to handle empty states better, or number
+    intensity: z.string().optional(),
+    notes: z.string().optional(),
+})
 
-type RunningTypeKey = keyof typeof RUNNING_TYPES
+const formSchema = z.object({
+    blocks: z.array(blockSchema),
+})
+
+type FormValues = z.infer<typeof formSchema>
 
 interface CardioSessionBuilderProps {
     template: TrainingTemplate
 }
 
-export function CardioSessionBuilder({ template: initialTemplate }: CardioSessionBuilderProps) {
+export function CardioSessionBuilder({ template }: CardioSessionBuilderProps) {
+    const router = useRouter()
     const { toast } = useToast()
-    const [template, setTemplate] = useState<TrainingTemplate>(initialTemplate)
-    const [isSaving, setIsSaving] = useState(false)
-    const [isDirty, setIsDirty] = useState(false)
+    const [isPending, startTransition] = useTransition()
 
-    // Initialize state from template structure or defaults
-    const [cardioData, setCardioData] = useState<CardioStructure>(() => {
-        const struct = initialTemplate.structure as unknown as CardioStructure
-        return {
-            trainingType: struct?.trainingType || 'rodaje',
-            totalDistance: struct?.totalDistance || '',
-            totalDuration: struct?.totalDuration || '',
-            blocks: struct?.blocks || []
-        }
+    // Parse initial blocks from template structure
+    const initialBlocks = (template.structure as CardioStructure)?.blocks || []
+
+    const form = useForm<FormValues>({
+        resolver: zodResolver(formSchema),
+        defaultValues: {
+            blocks: initialBlocks.map(block => ({
+                type: block.type,
+                distance: block.distance?.toString() || '',
+                duration: block.duration?.toString() || '',
+                intensity: block.intensity || '',
+                notes: block.notes || '',
+            })),
+        },
     })
 
-    const currentType = RUNNING_TYPES[(cardioData.trainingType as RunningTypeKey) || 'rodaje']
+    const { fields, append, remove, move } = useFieldArray({
+        control: form.control,
+        name: 'blocks',
+    })
 
-    const handleSave = async () => {
-        setIsSaving(true)
+    const onSubmit = (values: FormValues) => {
+        startTransition(async () => {
+            // Transform form values back to strictly typed CardioBlock[]
+            const cleanBlocks: CardioBlock[] = values.blocks.map((block) => ({
+                id: crypto.randomUUID(), // Generate new ID for consistency or keep existing if mapped
+                type: block.type as any,
+                distance: block.distance ? parseFloat(block.distance) : undefined,
+                duration: block.duration ? parseFloat(block.duration) : undefined,
+                intensity: block.intensity || undefined,
+                notes: block.notes || undefined,
+            }))
 
-        // Save cardio data into the structure JSON field
-        const updatedStructure: CardioStructure = {
-            ...cardioData
-        }
+            const result = await updateTemplate(template.id, {
+                structure: {
+                    blocks: cleanBlocks,
+                    // Preserve other CardioStructure fields if they existed, 
+                    // or add inputs for totalDistance/Duration if requested later.
+                    // For now, simple blocks update.
+                    trainingType: (template.structure as CardioStructure)?.trainingType,
+                }
+            })
 
-        const res = await updateTemplate(template.id, {
-            name: template.name,
-            description: template.description,
-            structure: updatedStructure as any // Casting strict for action compatibility if needed
+            if (result.success) {
+                toast({
+                    title: 'Sesión guardada',
+                    description: 'Los cambios se han guardado correctamente.',
+                    variant: 'default',
+                    className: 'bg-green-500 text-white border-none',
+                })
+                router.refresh()
+            } else {
+                toast({
+                    title: 'Error',
+                    description: result.error || 'No se pudo guardar la sesión.',
+                    variant: 'destructive',
+                })
+            }
         })
+    }
 
-        if (res.success) {
-            toast({
-                title: 'Cambios guardados',
-                description: 'La sesión de cardio se ha actualizado correctamente.',
-                className: 'bg-green-500 text-white border-none',
-            })
-            setIsDirty(false)
-        } else {
-            toast({
-                title: 'Error al guardar',
-                description: res.error || 'Ha ocurrido un error inesperado.',
-                variant: 'destructive',
-            })
+    const addBlock = (type: 'work' | 'station' | 'rest') => {
+        append({
+            type,
+            distance: '',
+            duration: '',
+            intensity: '',
+            notes: '',
+        })
+    }
+
+    // Helper to render block icon based on type
+    const getBlockIcon = (type: string) => {
+        switch (type) {
+            case 'work':
+            case 'warmup':
+            case 'cooldown':
+                return <Activity className="h-5 w-5" />
+            case 'station':
+                return <Dumbbell className="h-5 w-5" />
+            case 'rest':
+                return <Pause className="h-5 w-5" />
+            default:
+                return <Activity className="h-5 w-5" />
         }
-        setIsSaving(false)
     }
 
-    const updateCardioData = (updates: Partial<CardioStructure>) => {
-        setCardioData(prev => ({ ...prev, ...updates }))
-        setIsDirty(true)
-    }
-
-    const addBlock = () => {
-        const newBlock: CardioBlock = {
-            id: crypto.randomUUID(),
-            type: 'work',
-            objective_value: '',
-            objective_unit: 'min',
-            intensity: 'Z2',
-            notes: ''
+    // Helper for block styles
+    const getBlockStyle = (type: string) => {
+        switch (type) {
+            case 'work':
+            case 'warmup': // Treating warmup/cooldown similar to work/running for now visually
+            case 'cooldown':
+                return 'border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20'
+            case 'station':
+                return 'border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/20'
+            case 'rest':
+                return 'border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50'
+            default:
+                return 'border-border bg-card'
         }
-        updateCardioData({ blocks: [...cardioData.blocks, newBlock] })
     }
 
-    const updateBlock = (id: string, field: keyof CardioBlock, value: any) => {
-        const newBlocks = cardioData.blocks.map(b =>
-            b.id === id ? { ...b, [field]: value } : b
-        )
-        updateCardioData({ blocks: newBlocks })
-    }
-
-    const removeBlock = (id: string) => {
-        const newBlocks = cardioData.blocks.filter(b => b.id !== id)
-        updateCardioData({ blocks: newBlocks })
+    const getBlockLabel = (type: string) => {
+        switch (type) {
+            case 'work': return 'Carrera / Cardio'
+            case 'station': return 'Estación / Funcional'
+            case 'rest': return 'Descanso'
+            case 'warmup': return 'Calentamiento'
+            case 'cooldown': return 'Vuelta a la calma'
+            default: return 'Bloque'
+        }
     }
 
     return (
-        <div className="space-y-8 max-w-5xl mx-auto">
-            {/* Header / Main Info */}
-            <div className="flex flex-col md:flex-row gap-6 items-start justify-between">
+        <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Heart className="h-6 w-6 text-red-500" />
-                        Editor de Cardio
-                    </h1>
-                    <p className="text-muted-foreground">Diseña tu sesión de running o cardio.</p>
+                    <h2 className="text-2xl font-bold tracking-tight">Diseñador de Sesión</h2>
+                    <p className="text-muted-foreground">
+                        Construye tu sesión combinando carrera, estaciones y descansos.
+                    </p>
                 </div>
-                <Button
-                    onClick={handleSave}
-                    disabled={isSaving || !isDirty}
-                    className={cn("min-w-[140px]", isDirty ? "animate-pulse" : "")}
-                >
-                    {isSaving ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...
-                        </>
-                    ) : (
-                        <>
-                            <Save className="mr-2 h-4 w-4" /> Guardar Sesión
-                        </>
-                    )}
-                </Button>
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Añadir Bloque
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => addBlock('work')} className="cursor-pointer">
+                            <span className="mr-2">🏃</span> Carrera (Run)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => addBlock('station')} className="cursor-pointer">
+                            <span className="mr-2">🏋️</span> Estación (Hyrox)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => addBlock('rest')} className="cursor-pointer">
+                            <span className="mr-2">⏸️</span> Descanso
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
-            {/* Configuración Superior */}
-            <Card className="p-6 border-none shadow-md bg-card">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-                    {/* Basic Info */}
-                    <div className="md:col-span-8 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Nombre de la Sesión</Label>
-                                <Input
-                                    value={template.name}
-                                    onChange={(e) => {
-                                        setTemplate({ ...template, name: e.target.value })
-                                        setIsDirty(true)
-                                    }}
-                                    className="font-semibold"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Tipo de Sesión</Label>
-                                <Select
-                                    value={cardioData.trainingType}
-                                    onValueChange={(v) => updateCardioData({ trainingType: v as RunningTypeKey })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona el tipo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Object.entries(RUNNING_TYPES).map(([key, config]) => (
-                                            <SelectItem key={key} value={key}>
-                                                <div className="flex items-center gap-2">
-                                                    <config.icon className={cn("h-4 w-4", config.color)} />
-                                                    <span>{config.label}</span>
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <div className="space-y-3">
+                        {fields.map((field, index) => {
+                            const type = form.watch(`blocks.${index}.type`)
+
+                            return (
+                                <Card key={field.id} className={cn("transition-all", getBlockStyle(type))}>
+                                    <CardContent className="p-4">
+                                        <div className="flex gap-4 items-start">
+                                            {/* Left Icon/Index Column */}
+                                            <div className="flex flex-col items-center gap-2 pt-2">
+                                                <div className={cn(
+                                                    "h-8 w-8 rounded-full flex items-center justify-center border shadow-sm",
+                                                    "bg-background text-foreground"
+                                                )}>
+                                                    <span className="text-xs font-bold">{index + 1}</span>
                                                 </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                                <div className="text-muted-foreground">
+                                                    {getBlockIcon(type)}
+                                                </div>
+                                            </div>
+
+                                            {/* Main Content Form */}
+                                            <div className="flex-1 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <Badge variant="outline" className="bg-background/50 backdrop-blur-sm">
+                                                        {getBlockLabel(type)}
+                                                    </Badge>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                        onClick={() => remove(index)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+
+                                                <div className="grid gap-4 sm:grid-cols-12">
+                                                    {/* Fields for Running/Cardio */}
+                                                    {(type === 'work' || type === 'warmup' || type === 'cooldown') && (
+                                                        <>
+                                                            <div className="sm:col-span-4">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`blocks.${index}.distance`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormLabel className="text-xs">Distancia (metros)</FormLabel>
+                                                                            <FormControl>
+                                                                                <Input placeholder="Ej: 1000" type="number" {...field} className="bg-background/80" />
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-4">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`blocks.${index}.duration`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormLabel className="text-xs">Tiempo (min)</FormLabel>
+                                                                            <FormControl>
+                                                                                <Input placeholder="Ej: 5" type="number" {...field} className="bg-background/80" />
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-4">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`blocks.${index}.intensity`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormLabel className="text-xs">Ritmo / Zona</FormLabel>
+                                                                            <FormControl>
+                                                                                <Input placeholder="Ej: Z2 / 4:30" {...field} className="bg-background/80" />
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* Fields for Stations (Hyrox/Functional) */}
+                                                    {type === 'station' && (
+                                                        <>
+                                                            <div className="sm:col-span-3">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`blocks.${index}.duration`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormLabel className="text-xs">Tiempo Est. (min)</FormLabel>
+                                                                            <FormControl>
+                                                                                <Input placeholder="Opcional" type="number" {...field} className="bg-background/80" />
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-9">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`blocks.${index}.notes`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormLabel className="text-xs">Ejercicio / Descripción</FormLabel>
+                                                                            <FormControl>
+                                                                                <Textarea
+                                                                                    placeholder="Ej: 100 Wall Balls (6kg)"
+                                                                                    {...field}
+                                                                                    className="bg-background/80 min-h-[60px] resize-none text-base md:text-lg font-medium"
+                                                                                />
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    )}
+
+                                                    {/* Fields for Rest */}
+                                                    {type === 'rest' && (
+                                                        <div className="sm:col-span-4">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name={`blocks.${index}.duration`}
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel className="text-xs">Duración (min)</FormLabel>
+                                                                        <FormControl>
+                                                                            <Input placeholder="Ej: 2" type="number" {...field} className="bg-background/80" />
+                                                                        </FormControl>
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
+
+                        {fields.length === 0 && (
+                            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
+                                <div className="text-muted-foreground mb-4">No hay bloques en esta sesión</div>
+                                <Button variant="outline" onClick={() => addBlock('work')}>
+                                    Añadir primer bloque
+                                </Button>
                             </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Descripción</Label>
-                            <Textarea
-                                value={template.description || ''}
-                                onChange={(e) => {
-                                    setTemplate({ ...template, description: e.target.value })
-                                    setIsDirty(true)
-                                }}
-                                placeholder="Objetivo de la sesión, terreno recomendado, etc."
-                                rows={2}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Visual Card Preview */}
-                    <div className="md:col-span-4 flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed bg-muted/20"
-                        style={{ borderColor: isDirty ? undefined : 'transparent' }}>
-                        <div className={cn(
-                            "w-20 h-20 rounded-2xl flex items-center justify-center mb-4 transition-all duration-300",
-                            currentType.bgColor,
-                            currentType.color
-                        )}>
-                            <currentType.icon className="h-10 w-10" />
-                        </div>
-                        <h3 className={cn("text-xl font-bold mb-1", currentType.color)}>
-                            {currentType.label}
-                        </h3>
-                        <div className="flex gap-4 mt-4 w-full">
-                            <div className="flex-1 space-y-1">
-                                <Label className="text-xs text-muted-foreground uppercase">Distancia Est.</Label>
-                                <div className="relative">
-                                    <Input
-                                        value={cardioData.totalDistance}
-                                        onChange={(e) => updateCardioData({ totalDistance: e.target.value })}
-                                        className="h-8 text-sm pl-7"
-                                        placeholder="0"
-                                    />
-                                    <MapPin className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </div>
-                            <div className="flex-1 space-y-1">
-                                <Label className="text-xs text-muted-foreground uppercase">Duración Est.</Label>
-                                <div className="relative">
-                                    <Input
-                                        value={cardioData.totalDuration}
-                                        onChange={(e) => updateCardioData({ totalDuration: e.target.value })}
-                                        className="h-8 text-sm pl-7"
-                                        placeholder="0"
-                                    />
-                                    <Timer className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </Card>
-
-            {/* Constructor de Bloques */}
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-bold flex items-center gap-2">
-                        <Activity className="h-5 w-5 text-primary" />
-                        Bloques de Entrenamiento
-                    </h2>
-                    <Button onClick={addBlock} size="sm" className="gap-2">
-                        <Plus className="h-4 w-4" /> Añadir Bloque
-                    </Button>
-                </div>
-
-                <div className="bg-card rounded-xl shadow-sm border overflow-hidden">
-                    <div className="hidden md:grid grid-cols-12 gap-4 p-4 items-center bg-muted/50 border-b text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                        <div className="col-span-2">Tipo</div>
-                        <div className="col-span-3">Objetivo</div>
-                        <div className="col-span-2">Intensidad</div>
-                        <div className="col-span-4">Notas</div>
-                        <div className="col-span-1 text-center">Acción</div>
-                    </div>
-
-                    <div className="divide-y">
-                        {cardioData.blocks.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground italic flex flex-col items-center gap-2">
-                                <Footprints className="h-8 w-8 opacity-20" />
-                                No hay bloques definidos. Añade el primero.
-                            </div>
-                        ) : (
-                            cardioData.blocks.map((block, idx) => (
-                                <div key={block.id} className="p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-start md:items-center group hover:bg-muted/30 transition-colors">
-                                    {/* Mobile Label */}
-                                    <div className="md:hidden font-bold text-sm mb-2 col-span-full border-b pb-1">
-                                        Bloque {idx + 1}
-                                    </div>
-
-                                    {/* Type */}
-                                    <div className="col-span-12 md:col-span-2">
-                                        <Select
-                                            value={block.type}
-                                            onValueChange={(v) => updateBlock(block.id, 'type', v)}
-                                        >
-                                            <SelectTrigger className={cn(
-                                                "w-full font-medium h-9 border-0 focus:ring-0",
-                                                block.type === 'warmup' && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-                                                block.type === 'work' && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-                                                block.type === 'rest' && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-                                                block.type === 'cooldown' && "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400",
-                                            )}>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="warmup">Calentamiento</SelectItem>
-                                                <SelectItem value="work">Trabajo</SelectItem>
-                                                <SelectItem value="rest">Descanso</SelectItem>
-                                                <SelectItem value="cooldown">Vuelta Calma</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Objective */}
-                                    <div className="col-span-12 md:col-span-3 flex items-center gap-2">
-                                        <Input
-                                            value={block.objective_value}
-                                            onChange={(e) => updateBlock(block.id, 'objective_value', e.target.value)}
-                                            placeholder="0"
-                                            className="h-9"
-                                        />
-                                        <Select
-                                            value={block.objective_unit}
-                                            onValueChange={(v) => updateBlock(block.id, 'objective_unit', v)}
-                                        >
-                                            <SelectTrigger className="w-[80px] h-9">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="min">min</SelectItem>
-                                                <SelectItem value="km">km</SelectItem>
-                                                <SelectItem value="m">m</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Intensity */}
-                                    <div className="col-span-12 md:col-span-2">
-                                        <Select
-                                            value={block.intensity}
-                                            onValueChange={(v) => updateBlock(block.id, 'intensity', v)}
-                                        >
-                                            <SelectTrigger className="w-full h-9">
-                                                <SelectValue placeholder="Zona" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Z1">Z1 - Recuperación</SelectItem>
-                                                <SelectItem value="Z2">Z2 - Aeróbico</SelectItem>
-                                                <SelectItem value="Z3">Z3 - Ritmo</SelectItem>
-                                                <SelectItem value="Z4">Z4 - Umbral</SelectItem>
-                                                <SelectItem value="Z5">Z5 - VO2Max</SelectItem>
-                                                <SelectItem value="RPE">RPE (Subjetivo)</SelectItem>
-                                                <SelectItem value="Pace">Ritmo Específico</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Notes */}
-                                    <div className="col-span-12 md:col-span-4">
-                                        <Input
-                                            value={block.notes}
-                                            onChange={(e) => updateBlock(block.id, 'notes', e.target.value)}
-                                            placeholder="Detalles sobre el ritmo o sensación..."
-                                            className="h-9 border-transparent bg-muted/30 focus:bg-background focus:border-input transition-colors"
-                                        />
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="col-span-12 md:col-span-1 flex justify-end md:justify-center">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => removeBlock(block.id)}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))
                         )}
                     </div>
-                </div>
-            </div>
+
+                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur border-t z-50 flex justify-end gap-3 lg:static lg:bg-transparent lg:border-none lg:p-0">
+                        <Button
+                            type="submit"
+                            disabled={isPending || fields.length === 0}
+                            className="w-full lg:w-auto"
+                        >
+                            {isPending ? (
+                                <>Guardando...</>
+                            ) : (
+                                <>
+                                    <Save className="mr-2 h-4 w-4" />
+                                    Guardar Sesión
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </form>
+            </Form>
         </div>
     )
 }
