@@ -8,7 +8,7 @@ import type { TrainingTemplate, CreateTemplateInput } from '@/types/templates'
 /**
  * Get all templates for the authenticated coach
  */
-export async function getTemplates(): Promise<TrainingTemplate[]> {
+export async function getTemplates(type?: 'strength' | 'cardio'): Promise<TrainingTemplate[]> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -17,11 +17,17 @@ export async function getTemplates(): Promise<TrainingTemplate[]> {
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return []
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('training_templates')
         .select('*')
         .eq('coach_id', coachId)
         .order('created_at', { ascending: false })
+
+    if (type) {
+        query = query.eq('type', type)
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.error('Error fetching templates:', error)
@@ -58,7 +64,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
             name: input.name,
             description: input.description || null,
             tags: input.tags || [],
-            structure: { days: [] }, // Empty structure initially
+            structure: input.type === 'cardio' ? { blocks: [] } : { days: [] },
             is_public: false,
         })
         .select()
@@ -105,5 +111,81 @@ export async function deleteTemplate(templateId: string): Promise<{
     }
 
     revalidatePath('/coach/templates')
+    return { success: true }
+}
+
+/**
+ * Get a specific template by ID
+ */
+export async function getTemplateById(templateId: string): Promise<TrainingTemplate | null> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) return null
+
+    const coachId = await getCoachIdForUser(user.id)
+    if (!coachId) return null
+
+    const { data, error } = await supabase
+        .from('training_templates')
+        .select('*')
+        .eq('id', templateId)
+        .eq('coach_id', coachId)
+        .single()
+
+    if (error) {
+        console.error('Error fetching template:', error)
+        return null
+    }
+
+    return data as TrainingTemplate
+}
+
+/**
+ * Update a training template structure
+ */
+export async function updateTemplate(
+    templateId: string,
+    updates: Partial<TrainingTemplate>
+): Promise<{
+    success: boolean
+    error?: string
+}> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { success: false, error: 'No autenticado' }
+    }
+
+    const coachId = await getCoachIdForUser(user.id)
+    if (!coachId) {
+        return { success: false, error: 'No tienes permisos de coach' }
+    }
+
+    // Prepare update data - ensure updated_at is refreshed
+    const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString(),
+    }
+
+    // Remove immutable fields if present in updates
+    delete (updateData as any).id
+    delete (updateData as any).coach_id
+    delete (updateData as any).created_at
+
+    const { error } = await supabase
+        .from('training_templates')
+        .update(updateData)
+        .eq('id', templateId)
+        .eq('coach_id', coachId)
+
+    if (error) {
+        console.error('Error updating template:', error)
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath(`/coach/templates`)
+    revalidatePath(`/coach/templates/${templateId}`)
     return { success: true }
 }

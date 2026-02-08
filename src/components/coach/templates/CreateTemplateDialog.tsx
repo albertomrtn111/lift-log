@@ -77,13 +77,16 @@ export function CreateTemplateDialog({ children }: CreateTemplateDialogProps) {
             if (result.success) {
                 toast({
                     title: 'Plantilla creada',
-                    description: `La plantilla de ${values.type === 'strength' ? 'Fuerza' : 'Cardio'} "${values.name}" se ha creado correctamente.`,
+                    description: `La plantilla de ${values.type === 'strength' ? 'Fuerza' : 'Cardio'} "${values.name}" se ha creado correctamente. Redirigiendo...`,
                     variant: 'default',
-                    className: 'bg-green-500 text-white border-none', // Success style
+                    className: 'bg-green-500 text-white border-none',
                 })
                 setOpen(false)
                 form.reset()
                 router.refresh()
+                if (result.template?.id) {
+                    router.push(`/coach/templates/${result.template.id}`)
+                }
             } else {
                 toast({
                     title: 'Error',

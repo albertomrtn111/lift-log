@@ -14,23 +14,42 @@ export interface TrainingTemplate {
     updated_at: string
 }
 
-// Structure of a training template (days, columns, exercises)
-export interface TemplateStructure {
+// Structure of a training template (days for strength, blocks for cardio)
+export type TemplateStructure = StrengthStructure | CardioStructure
+
+export interface StrengthStructure {
     days: TemplateDay[]
+}
+
+export interface CardioStructure {
+    trainingType?: string
+    totalDistance?: string
+    totalDuration?: string
+    blocks: CardioBlock[]
+}
+
+export interface CardioBlock {
+    id: string
+    type: 'warmup' | 'work' | 'rest' | 'cooldown'
+    objective_value: string
+    objective_unit: 'km' | 'min' | 'm'
+    intensity: string
+    notes: string
 }
 
 export interface TemplateDay {
     id: string
     name: string
     order: number
-    columns: TemplateColumn[]
+    exercises: TemplateExercise[]
 }
 
+// Keeping TemplateColumn for backward compatibility if needed
 export interface TemplateColumn {
     id: string
     name: string
     order: number
-    exercises: TemplateExercise[]
+    type?: string
 }
 
 export interface TemplateExercise {

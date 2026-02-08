@@ -32,7 +32,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { MoreHorizontal, Edit, Trash2, FileText, Loader2, AlertCircle } from 'lucide-react'
+import { MoreHorizontal, Edit, Trash2, FileText, Loader2, AlertCircle, Dumbbell, Heart } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { deleteTemplate } from '../../../../app/(coach)/coach/templates/actions'
 import { cn } from '@/lib/utils'
@@ -147,11 +147,19 @@ function TemplateRow({
     return (
         <TableRow>
             <TableCell className="font-medium">
-                <div className="flex flex-col">
-                    <span>{template.name}</span>
-                    <span className="text-xs text-muted-foreground md:hidden truncate max-w-[200px]">
-                        {template.description}
-                    </span>
+                <div className="flex items-center gap-3">
+                    <div className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center bg-muted",
+                        template.type === 'cardio' ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10"
+                    )}>
+                        {template.type === 'cardio' ? <Heart className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
+                    </div>
+                    <div className="flex flex-col">
+                        <span>{template.name}</span>
+                        <span className="text-xs text-muted-foreground md:hidden truncate max-w-[200px]">
+                            {template.description}
+                        </span>
+                    </div>
                 </div>
             </TableCell>
             <TableCell>

@@ -12,7 +12,8 @@ import {
     ChevronRight,
     Dumbbell,
     User,
-    LogOut
+    LogOut,
+    FileText
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
     { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
     { href: '/coach/members', icon: Users, label: 'Miembros' },
     { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
     { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
