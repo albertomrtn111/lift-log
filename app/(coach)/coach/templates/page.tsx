@@ -2,7 +2,8 @@ import { Suspense } from 'react'
 import { getTemplates } from './actions'
 import { TemplatesTable } from '@/components/coach/templates/TemplatesTable'
 import { CreateTemplateDialog } from '@/components/coach/templates/CreateTemplateDialog'
-import { FileText, Dumbbell, Heart } from 'lucide-react'
+import { FileText, Dumbbell, Heart, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
@@ -60,9 +61,7 @@ export default async function TemplatesPage() {
                             <CreateTemplateDialog
                                 defaultType="strength"
                                 trigger={
-                                    <div className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
-                                        + Nueva Rutina de Fuerza
-                                    </div>
+                                    <Button>+ Nueva Rutina de Fuerza</Button>
                                 }
                             />
                         </div>
@@ -76,9 +75,7 @@ export default async function TemplatesPage() {
                             <CreateTemplateDialog
                                 defaultType="cardio"
                                 trigger={
-                                    <div className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer">
-                                        + Nueva Sesión Cardio
-                                    </div>
+                                    <Button>+ Nueva Sesión Cardio</Button>
                                 }
                             />
                         </div>
