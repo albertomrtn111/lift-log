@@ -3,13 +3,16 @@
 import { useState, useEffect } from 'react'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getWeeklySchedule } from '@/app/(coach)/coach/workspace/planning-actions'
 import { UnifiedCalendarItem } from '@/types/planning'
 import { useToast } from '@/hooks/use-toast'
+import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface PlanningTabProps {
     clientId: string
@@ -18,7 +21,7 @@ interface PlanningTabProps {
 export function PlanningTab({ clientId }: PlanningTabProps) {
     const { toast } = useToast()
     const [currentDate, setCurrentDate] = useState(new Date())
-    const [isLoading, setIsLoading] = useState(true)
+    const [loading, setLoading] = useState(true) // Renamed from isLoading
     const [schedule, setSchedule] = useState<UnifiedCalendarItem[]>([])
 
     // Calculate week range
@@ -30,24 +33,24 @@ export function PlanningTab({ clientId }: PlanningTabProps) {
 
     // Fetch data when week changes
     useEffect(() => {
-        const fetchSchedule = async () => {
-            setIsLoading(true)
-            const result = await getWeeklySchedule(clientId, startDate, endDate)
-
-            if (result.success && result.data) {
-                setSchedule(result.data)
-            } else {
-                toast({
-                    title: "Error",
-                    description: "No se pudo cargar la planificación.",
-                    variant: "destructive"
-                })
-            }
-            setIsLoading(false)
-        }
-
         fetchSchedule()
     }, [clientId, currentDate]) // Re-run when client or date changes
+
+    const fetchSchedule = async () => {
+        setLoading(true)
+        const result = await getWeeklySchedule(clientId, startDate, endDate)
+
+        if (result.success && result.data) {
+            setSchedule(result.data)
+        } else {
+            toast({
+                title: "Error",
+                description: "No se pudo cargar la planificación.",
+                variant: "destructive"
+            })
+        }
+        setLoading(false)
+    }
 
     const handlePreviousWeek = () => setCurrentDate(subWeeks(currentDate, 1))
     const handleNextWeek = () => setCurrentDate(addWeeks(currentDate, 1))
@@ -79,59 +82,65 @@ export function PlanningTab({ clientId }: PlanningTabProps) {
         return parts.join(' / ')
     }
 
-    return (
-        <div className="space-y-6">
-            {/* Header / Week Navigation */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-background/50 p-4 rounded-xl border shadow-sm backdrop-blur-sm sticky top-0 z-10">
-                <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold capitalize text-foreground">
-                        {format(startDate, 'MMMM yyyy', { locale: es })}
-                    </h2>
-                </div>
+    const isToday = (date: Date) => isSameDay(date, new Date());
 
+    return (
+        <div className="flex flex-col h-full space-y-4 p-4">
+            {/* Controls */}
+            <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePreviousWeek} className="h-8 w-8">
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <div className="text-sm font-medium w-36 text-center tabular-nums">
-                        {format(startDate, 'd MMM', { locale: es })} - {format(endDate, 'd MMM', { locale: es })}
+                    <h2 className="text-2xl font-bold capitalize">
+                        {format(currentDate, 'MMMM yyyy', { locale: es })}
+                    </h2>
+                    <div className="flex items-center rounded-md border bg-background shadow-sm ml-4">
+                        <Button variant="ghost" size="icon" onClick={handlePreviousWeek}>
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleToday} className="px-3 font-medium">
+                            Hoy
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={handleNextWeek}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
                     </div>
-                    <Button variant="outline" size="icon" onClick={handleNextWeek} className="h-8 w-8">
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={handleToday} className="ml-2 text-xs">
-                        Hoy
-                    </Button>
                 </div>
             </div>
 
             {/* Calendar Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+            <div className="grid grid-cols-7 gap-4 h-full min-h-[600px]">
                 {weekDays.map((day) => {
-                    const isToday = isSameDay(day, new Date())
                     const items = getItemsForDay(day)
+                    const isTodayDate = isToday(day)
 
                     return (
-                        <Card key={day.toISOString()} className={cn(
-                            "min-h-[150px] md:min-h-[300px] flex flex-col border-muted transition-colors",
-                            isToday ? "border-primary/50 bg-primary/5 shadow-md" : "hover:bg-muted/30"
+                        <div key={day.toISOString()} className={cn(
+                            "flex flex-col gap-2 rounded-xl border p-2 bg-muted/20",
+                            isTodayDate && "ring-2 ring-primary bg-primary/5"
                         )}>
-                            <CardHeader className="p-3 pb-2 border-b border-border/50">
-                                <CardTitle className="text-sm font-medium flex justify-between items-center text-muted-foreground">
-                                    <span className="capitalize">{format(day, 'EEEE', { locale: es })}</span>
-                                    <span className={cn(
-                                        "h-6 w-6 rounded-full flex items-center justify-center text-xs",
-                                        isToday ? "bg-primary text-primary-foreground font-bold" : "bg-muted text-foreground"
-                                    )}>
+                            {/* Day Header */}
+                            <div className="flex items-center justify-between pb-2 border-b mb-2">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-medium text-muted-foreground uppercase">
+                                        {format(day, 'EEE', { locale: es })}
+                                    </span>
+                                    <span className={cn("text-lg font-bold", isTodayDate && "text-primary")}>
                                         {format(day, 'd')}
                                     </span>
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-2 flex-1 flex flex-col gap-2 relative">
-                                {isLoading ? (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-background/50">
-                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                </div>
+
+                                {/* Add Session Button */}
+                                <PlanningAddSessionDialog
+                                    clientId={clientId}
+                                    date={day}
+                                    onSessionAdded={fetchSchedule}
+                                />
+                            </div>
+
+                            {/* Items List */}
+                            <div className="flex-1 space-y-2 overflow-y-auto custom-scrollbar">
+                                {loading ? (
+                                    <div className="flex justify-center items-center py-8">
+                                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                     </div>
                                 ) : (
                                     <>
@@ -140,50 +149,74 @@ export function PlanningTab({ clientId }: PlanningTabProps) {
                                                 Descanso
                                             </div>
                                         )}
-
                                         {items.map((item) => {
                                             if (item.type === 'strength') {
                                                 return (
-                                                    <div key={item.id} className="p-2.5 rounded-md bg-zinc-800 text-white text-xs shadow-sm border border-zinc-700 hover:border-zinc-500 transition-colors cursor-pointer group">
-                                                        <div className="flex items-center gap-1.5 mb-1 text-zinc-400 group-hover:text-zinc-300">
-                                                            <Dumbbell className="h-3.5 w-3.5" />
-                                                            <span className="font-semibold uppercase tracking-wider text-[10px]">Fuerza</span>
-                                                        </div>
-                                                        <div className="font-medium line-clamp-2 leading-relaxed">
-                                                            {item.training_days?.name || "Entrenamiento"}
-                                                        </div>
-                                                    </div>
+                                                    <Card key={item.id} className="bg-zinc-900 border-zinc-800 text-white shadow-md hover:bg-zinc-800 transition-colors cursor-pointer group relative overflow-hidden">
+                                                        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+                                                        <CardContent className="p-3">
+                                                            <div className="flex items-start justify-between mb-1">
+                                                                <Badge variant="outline" className="text-[10px] border-zinc-700 text-zinc-400 px-1 py-0 h-4">
+                                                                    Fuerza
+                                                                </Badge>
+                                                                {item.is_completed && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <Dumbbell className="h-4 w-4 text-blue-400" />
+                                                                <span className="font-bold text-sm line-clamp-1">{item.training_days?.name || 'Día sin nombre'}</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-zinc-500 line-clamp-1">
+                                                                {item.training_programs?.name}
+                                                            </p>
+                                                        </CardContent>
+                                                    </Card>
                                                 )
                                             } else {
                                                 // Cardio
-                                                const summary = getCardioSummary(item)
+                                                const summary = getCardioSummary(item as UnifiedCalendarItem & { type: 'cardio' })
+                                                const structure = item.structure as any;
+                                                const type = structure?.trainingType || 'rodaje';
 
                                                 return (
-                                                    <div key={item.id} className={cn(
-                                                        "p-2.5 rounded-md text-xs shadow-sm border transition-colors cursor-pointer group",
-                                                        "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800",
-                                                        "hover:border-blue-300 dark:hover:border-blue-700"
+                                                    <Card key={item.id} className={cn("border-none shadow-sm hover:opacity-80 transition-opacity cursor-pointer relative overflow-hidden",
+                                                        type === 'rodaje' ? "bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100" :
+                                                            type === 'series' ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-900 dark:text-yellow-100" :
+                                                                "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
                                                     )}>
-                                                        <div className="flex items-center gap-1.5 mb-1 text-blue-500 dark:text-blue-400">
-                                                            <Activity className="h-3.5 w-3.5" />
-                                                            <span className="font-semibold uppercase tracking-wider text-[10px]">Cardio</span>
-                                                        </div>
-                                                        <div className="font-medium text-foreground mb-0.5">
-                                                            {item.name}
-                                                        </div>
-                                                        {summary && (
-                                                            <div className="text-[10px] text-muted-foreground font-medium">
-                                                                {summary}
+                                                        <div className={cn("absolute top-0 left-0 w-1 h-full",
+                                                            type === 'rodaje' ? "bg-green-500" :
+                                                                type === 'series' ? "bg-yellow-500" : "bg-blue-500"
+                                                        )} />
+                                                        <CardContent className="p-3">
+                                                            <div className="flex items-start justify-between mb-1">
+                                                                <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-white/50 dark:bg-black/20 backdrop-blur-sm">
+                                                                    Cardio
+                                                                </Badge>
+                                                                {item.is_completed && <CheckCircle2 className="h-3 w-3" />}
                                                             </div>
-                                                        )}
-                                                    </div>
+
+                                                            <h4 className="font-bold text-sm mb-1 leading-snug">{item.name}</h4>
+
+                                                            <div className="flex flex-wrap gap-2 text-[10px] font-medium opacity-80">
+                                                                {/* Summary of blocks */}
+                                                                {(structure?.blocks || []).slice(0, 1).map((b: any, i: number) => (
+                                                                    <span key={i}>
+                                                                        {b.type === 'continuous' ? `${b.distance || '?'}km` :
+                                                                            b.type === 'intervals' ? `${b.sets}x${b.workDistance || b.workDuration}` :
+                                                                                'Mix'}
+                                                                    </span>
+                                                                ))}
+                                                                {(structure?.blocks || []).length > 1 && <span>+{(structure?.blocks || []).length - 1}</span>}
+                                                            </div>
+                                                        </CardContent>
+                                                    </Card>
                                                 )
                                             }
                                         })}
                                     </>
                                 )}
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     )
                 })}
             </div>

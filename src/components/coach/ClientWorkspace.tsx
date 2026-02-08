@@ -1,10 +1,9 @@
-'use client'
+"use client"
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Client } from '@/types/coach'
 import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     Select,
@@ -24,7 +23,6 @@ import {
 import { ReviewsTab } from './tabs/ReviewsTab'
 import { DietTab } from './tabs/DietTab'
 import { PlanningTab } from './workspace/PlanningTab'
-// import { ProgressTab } from './tabs/ProgressTab' // Assuming this exists or will be added, but for now I'll just keep the structure requested
 
 interface ClientWorkspaceProps {
     clients: Pick<Client, 'id' | 'full_name'>[]
@@ -78,8 +76,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
             {selectedClient && (
                 <Tabs value={tab} onValueChange={handleTabChange}>
                     <TabsList className="w-full grid grid-cols-5 p-1 h-auto">
-                        {/* Orden: Resumen, Planificación, Dieta, Revisiones, Progreso */}
-                        <TabsTrigger value="summary" className="gap-2 py-2">
+                        <TabsTrigger value="overview" className="gap-2 py-2">
                             <LayoutDashboard className="h-4 w-4" />
                             <span className="hidden sm:inline">Resumen</span>
                         </TabsTrigger>
@@ -91,7 +88,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
                             <Utensils className="h-4 w-4" />
                             <span className="hidden sm:inline">Dieta</span>
                         </TabsTrigger>
-                        <TabsTrigger value="reviews" className="gap-2 py-2">
+                        <TabsTrigger value="checkins" className="gap-2 py-2">
                             <ClipboardCheck className="h-4 w-4" />
                             <span className="hidden sm:inline">Revisiones</span>
                         </TabsTrigger>
@@ -102,7 +99,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
                     </TabsList>
 
                     <div className="mt-4">
-                        <TabsContent value="summary">
+                        <TabsContent value="overview">
                             <div className="p-4 text-center text-muted-foreground">
                                 Resumen del cliente (En construcción)
                             </div>
@@ -113,7 +110,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
                         <TabsContent value="diet">
                             <DietTab clientId={selectedClient.id} />
                         </TabsContent>
-                        <TabsContent value="reviews">
+                        <TabsContent value="checkins">
                             <ReviewsTab clientId={selectedClient.id} />
                         </TabsContent>
                         <TabsContent value="progress">
