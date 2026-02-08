@@ -1,8 +1,8 @@
-import { 
-  TrainingProgram, 
-  TrainingDay, 
-  TrainingColumn, 
-  TrainingExercise, 
+import {
+  TrainingProgram,
+  TrainingDay,
+  TrainingColumn,
+  TrainingExercise,
   TrainingCell,
   MacroPlan,
   DietPlan,
@@ -15,7 +15,7 @@ export const mockProgram: TrainingProgram = {
   id: '1',
   name: 'Hipertrofia Fase 1',
   totalWeeks: 6,
-  startDate: '2024-01-15',
+  effectiveFrom: '2024-01-15',
 };
 
 export const mockDays: TrainingDay[] = [
@@ -73,7 +73,7 @@ export const mockExercises: TrainingExercise[] = [
 // Generate mock cells with coach data
 export const generateMockCells = (): TrainingCell[] => {
   const cells: TrainingCell[] = [];
-  
+
   const coachData: Record<string, Record<string, string>> = {
     'e1': { c2: '4', c3: '8-10', c4: '2', c5: '2-3 min', c6: 'Controla la bajada' },
     'e2': { c2: '3', c3: '10-12', c4: '2', c5: '90 seg', c6: 'Retracción escapular' },

@@ -4,7 +4,8 @@ export interface TrainingProgram {
   id: string;
   name: string;
   totalWeeks: number;
-  startDate: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
 }
 
 export interface TrainingDay {
@@ -27,6 +28,11 @@ export interface TrainingExercise {
   dayId: string;
   name: string;
   order: number;
+  sets?: number;
+  reps?: string;
+  rir?: string;
+  restSeconds?: number;
+  notes?: string;
 }
 
 export interface TrainingCell {
@@ -34,7 +40,15 @@ export interface TrainingCell {
   exerciseId: string;
   columnId: string;
   weekNumber: number;
-  value: string;
+  value: any; // Allow objects or strings
+}
+
+export interface TrainingProgramFull {
+  program: TrainingProgram;
+  days: TrainingDay[];
+  columns: TrainingColumn[];
+  exercises: TrainingExercise[];
+  cells: TrainingCell[];
 }
 
 export interface CellSaveStatus {
