@@ -102,7 +102,7 @@ export function MembersPageClient({
             </Card>
 
             {/* Table */}
-            <MembersTable clients={clients} statusFilter={statusFilter} />
+            <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} />
         </div>
     )
 }

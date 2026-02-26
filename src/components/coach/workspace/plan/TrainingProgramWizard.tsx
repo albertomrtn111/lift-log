@@ -28,6 +28,14 @@ import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
 import { TemplateImportDialog } from './TemplateImportDialog'
 import { TrainingTemplate, StrengthStructure } from '@/types/templates'
+import { saveTrainingDays } from '../clientActions'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 
 interface TrainingProgramWizardProps {
     programId: string | null
@@ -194,6 +202,12 @@ export function TrainingProgramWizard({
             setIsStepping(false)
             if (success) setStep(2)
         } else if (step === 2) {
+            // Validate all days have a weekday assigned
+            const missingWeekday = days.some(d => !d.default_weekday)
+            if (missingWeekday) {
+                toast({ title: 'Asigna día de la semana', description: 'Cada día del programa debe tener un día predeterminado (L-D) antes de continuar.', variant: 'destructive' })
+                return
+            }
             setIsStepping(true)
             const success = await step2Ref.current?.handleSave()
             setIsStepping(false)
@@ -217,11 +231,11 @@ export function TrainingProgramWizard({
 
         const structure = template.structure as StrengthStructure
         if (!structure.days || structure.days.length === 0) {
-            toast({ title: 'Aviso', description: 'La plantilla está vacía.' }) // Removed unsupported 'warning' variant
+            toast({ title: 'Aviso', description: 'La plantilla está vacía.' })
             return
         }
 
-        // Regenerate IDs
+        // Build new days + exercises with explicit UUIDs
         const newDays: any[] = []
         const newExercises: any[] = []
 
@@ -231,144 +245,96 @@ export function TrainingProgramWizard({
                 id: newDayId,
                 name: day.name,
                 order_index: dIdx + 1,
-                day_name: day.name,
-                day_order: dIdx + 1
             })
 
             if (day.exercises) {
                 day.exercises.forEach((ex, eIdx) => {
-                    const newExId = crypto.randomUUID()
                     newExercises.push({
-                        ...ex,
-                        id: newExId,
+                        id: crypto.randomUUID(),
                         day_id: newDayId,
-                        program_id: currentProgramId
+                        exercise_name: ex.exercise_name || '',
+                        order_index: ex.order ?? eIdx + 1,
+                        sets: ex.sets ?? 3,
+                        reps: ex.reps ?? '10',
+                        rir: ex.rir != null ? Number(ex.rir) : null,
+                        rest_seconds: ex.rest_seconds ?? 60,
+                        notes: ex.notes || null,
                     })
                 })
             }
         })
 
-        // Update state
-        setDays(newDays)
-        setExercises(prev => [...prev.filter(e => !newDays.some(d => d.id === e.day_id)), ...newExercises]) // Replace or Append? User requested "Import", implies loading the template. Replacing seems safer for "Loading a template".
-
-        // Actually, if we are on Step 2, we haven't saved days to DB yet in the context of "importing into memory".
-        // BUT, if we want to preview it in Step 3, we usually save Step 2 first. 
-        // The wizard saves days to DB on Step 2 exit. 
-        // So updating local state here is correct. 
-        // We should explicitly set 'weeks' if the template implies it? Template structure has weeks optional.
+        // Update weeks if template provides them
         if (structure.weeks) {
             setProgram((prev: any) => ({ ...prev, weeks: structure.weeks }))
         }
 
-        toast({
-            title: 'Plantilla Importada',
-            description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios.`,
-        })
-
-        // Auto advance to step 3 to see results?
-        // Maybe let user stay on Step 2 to see the days list first.
-        // User request: "Después de importar, avanza automáticamente al Paso 3".
-        // To do that, we need to save the days to the DB? 
-        // Step 2 handleSave does delete/insert. 
-        // So if we update state and then trigger save/next, it works.
-        // But handleNext saves from refs.
-        // Let's just update state and let user click Next, or trigger next. 
-        // The user prompt says: "avanza automáticamente al Paso 3".
-        // I will attempt to save via the ref if possible, or just Move to step 3 and let Step 3's init load data?
-        // Wait, Step 3 loads data from DB. 
-        // So we MUST save to DB first.
-
-        // We can't easily invoke step2Ref.current.handleSave() immediately because state updates (setDays) are async.
-        // Better approach: Update state, display toast, and let user click next OR
-        // Use a useEffect to trigger save when import happens? Too complex.
-
-        // Compromise: Update local state. The user sees the days in Step 2. They click Next -> Saves to DB -> Step 3.
-        // IF I must auto-advance: I need to save to DB manually here.
-        // But `days` state isn't updated instantly.
-        // I will stick to updating state and optional auto-advance if I can simply call next.
-        // Re-reading: "avanza automáticamente al Paso 3 ... para que el usuario vea el resultado cargado".
-        // If I update the `days` state, Step 2 UI updates. 
-        // If I want to go to Step 3, I should save. 
-
-        // Let's implement robustly: Update state. Show success. User can review Days in Step 2 then click Next.
-        // IF I force Step 3, I might skip the specific "Save Days" logic of Step 2 if not careful.
-        // However, Step 2 component has `handleSave` exposed via Ref.
-        // But I cannot call it *after* setDays(newDays) reliably in the same tick.
-
-        // Recommendation: Stay on Step 2 so they see the days imported.
-        // BUT user asked: "avanza automáticamente al Paso 3".
-        // I will try to satisfy this by saving the *imported data directly to DB* if programId exists, then reloading and moving to Step 3.
-
+        // If program already saved to DB (Step 1 done), persist directly and advance
         if (currentProgramId) {
-            // We can save directly here!
             const supabase = createClient()
-            // 1. Update weeks if needed
+
+            // 1. Update weeks if template provides them
             if (structure.weeks) {
                 await supabase.from('training_programs').update({ weeks: structure.weeks }).eq('id', currentProgramId)
             }
 
-            // 2. Delete old days
+            // 2. Delete existing days (cascades exercises via FK)
+            await supabase.from('training_exercises').delete().eq('program_id', currentProgramId)
             await supabase.from('training_days').delete().eq('program_id', currentProgramId)
 
-            // 3. Insert new days
+            // 3. Insert new days (single insert, explicit IDs)
             const daysToInsert = newDays.map(d => ({
+                id: d.id,
                 program_id: currentProgramId,
                 coach_id: program.coach_id,
                 name: d.name,
                 order_index: d.order_index,
                 day_name: d.name,
-                day_order: d.order_index
+                day_order: d.order_index,
             }))
-            await supabase.from('training_days').insert(daysToInsert).select() // We assume success
-
-            // 4. Insert exercises 
-            // We need real day IDs from insertion?
-            // Actually, Supabase IDs are generated on insert usually, unless we provide them.
-            // If we provided UUIDs in `newDays` (we did), we can use them!
-            // So we should insert with the IDs we generated.
-
-            // Let's ensure `newDays` has the IDs we want to insert.
-            const daysWithIds = newDays.map(d => ({
-                id: d.id, // Explicit ID
-                program_id: currentProgramId,
-                coach_id: program.coach_id,
-                name: d.name,
-                order_index: d.order_index,
-                day_name: d.name,
-                day_order: d.order_index
-            }))
-
-            await supabase.from('training_days').upsert(daysWithIds)
-
-            // Now exercises
-            // need to strip extra fields?
-            const exsToInsert = newExercises.map(e => ({
-                id: e.id,
-                program_id: currentProgramId,
-                coach_id: program.coach_id,
-                day_id: e.day_id,
-                exercise_name: e.exercise_name,
-                order_index: e.order_index,
-                sets: e.sets,
-                reps: e.reps,
-                rir: e.rir,
-                rest_seconds: e.rest_seconds,
-                notes: e.notes
-            }))
-
-            if (exsToInsert.length > 0) {
-                await supabase.from('training_exercises').insert(exsToInsert)
+            const { error: daysError } = await supabase.from('training_days').insert(daysToInsert)
+            if (daysError) {
+                toast({ title: 'Error al importar días', description: daysError.message, variant: 'destructive' })
+                return
             }
 
-            // Now reload and advance
+            // 4. Insert exercises (explicit IDs, referencing new day IDs)
+            if (newExercises.length > 0) {
+                const exsToInsert = newExercises.map(e => ({
+                    id: e.id,
+                    program_id: currentProgramId,
+                    coach_id: program.coach_id,
+                    day_id: e.day_id,
+                    exercise_name: e.exercise_name,
+                    order_index: e.order_index,
+                    sets: e.sets,
+                    reps: e.reps,
+                    rir: e.rir,
+                    rest_seconds: e.rest_seconds,
+                    notes: e.notes,
+                }))
+                const { error: exError } = await supabase.from('training_exercises').insert(exsToInsert)
+                if (exError) {
+                    toast({ title: 'Error al importar ejercicios', description: exError.message, variant: 'destructive' })
+                    return
+                }
+            }
+
+            toast({
+                title: 'Plantilla Importada',
+                description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios. Asigna el día de la semana a cada uno.`,
+            })
+
+            // Reload data and stay on Step 2 so user can assign weekdays
             await loadAllData(currentProgramId)
-            setStep(3)
         } else {
-            // No programId yet (Step 1 not stored? Unlikely if we are on Step 2)
-            // If we are on Step 2, programId should exist because Step 1 saves it.
-            setDays(newDays) // Fallback
+            // Fallback: just update local state (unlikely — Step 1 should create the program first)
+            setDays(newDays)
             setExercises(newExercises)
+            toast({
+                title: 'Plantilla Importada',
+                description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios.`,
+            })
         }
     }
 
@@ -550,16 +516,34 @@ const StepInfo = React.forwardRef(({
             }
 
             if (!programId) {
-                // INSERT
-                const { data, error } = await supabase
-                    .from('training_programs')
-                    .insert(payload)
-                    .select()
-                    .single()
+                // INSERT using RPC to ensure archiving of old active programs
+
+                // Default columns matching clientActions.ts
+                const defaultColumns = [
+                    { label: 'Ejercicio', data_type: 'text', scope: 'exercise', editable_by: 'coach', col_order: 1 },
+                    { label: 'Series', data_type: 'number', scope: 'cell', editable_by: 'coach', col_order: 2 },
+                    { label: 'Reps', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 3 },
+                    { label: 'RIR', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 4 },
+                    { label: 'Descanso', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 5 },
+                    { label: 'Tips', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 6 },
+                    { label: 'Peso', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 7 },
+                    { label: 'Reps hechas', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 8 },
+                    { label: 'Notas', data_type: 'text', scope: 'cell', editable_by: 'both', col_order: 9 },
+                ]
+
+                const { data: newProgramId, error } = await supabase.rpc('create_program_and_archive_old', {
+                    p_coach_id: coachId || localProgram.coach_id,
+                    p_client_id: clientId || localProgram.client_id,
+                    p_name: localProgram.name,
+                    p_weeks: localProgram.weeks,
+                    p_effective_from: localProgram.effective_from,
+                    p_days: [], // Days added in Step 2
+                    p_columns: defaultColumns
+                })
 
                 if (error) throw error
                 toast({ title: 'Programa creado', description: 'Ahora puedes gestionar los días.' })
-                if (onCreated) onCreated(data.id)
+                if (onCreated && newProgramId) onCreated(newProgramId)
                 return true
             } else {
                 // UPDATE
@@ -639,58 +623,32 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
     const [localDays, setLocalDays] = useState([...days])
     const [isSaving, setIsSaving] = useState(false)
 
+    // Sync localDays when parent days change (e.g. after template import reload)
+    useEffect(() => {
+        setLocalDays([...days])
+    }, [days])
+
+    // Helper: update localDays AND sync to parent in one go
+    const updateDays = (updated: any[]) => {
+        setLocalDays(updated)
+        setDays(updated)
+    }
+
     useImperativeHandle(ref, () => ({
-        handleSave
+        handleSave,
     }))
 
     async function handleSave() {
-        const supabase = createClient()
         setIsSaving(true)
 
         try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) {
-                toast({ title: 'Sesión expirada', variant: 'destructive' })
-                return false
+            const result = await saveTrainingDays(programId, localDays)
+
+            if (!result.success) {
+                throw new Error(result.error || 'Error al guardar los días')
             }
 
-            // Sync days (delete all and re-insert)
-            await supabase.from('training_days').delete().eq('program_id', programId)
-
-            const daysToInsert = localDays.map((day, idx) => ({
-                program_id: programId,
-                coach_id: coachId,
-                name: day.name,
-                order_index: idx + 1,
-                day_name: day.name,
-                day_order: idx + 1
-            }))
-
-            if (daysToInsert.length > 0) {
-                const { error: insError } = await supabase
-                    .from('training_days')
-                    .insert(daysToInsert)
-                if (insError) throw insError
-            }
-
-            // Fetch fresh
-            const { data: freshData, error: refreshError } = await supabase
-                .from('training_days')
-                .select('*')
-                .eq('program_id', programId)
-                .order('order_index', { ascending: true })
-
-            if (refreshError) throw refreshError
-
-            const mappedFresh = (freshData || []).map(d => ({
-                ...d,
-                name: d.name || d.day_name,
-                order_index: d.order_index ?? d.day_order
-            }))
-
-            setDays(mappedFresh)
-            setLocalDays(mappedFresh)
-            toast({ title: 'Días sincronizados', description: 'La estructura ha sido actualizada.' })
+            toast({ title: 'Días sincronizados', description: 'La estructura y el calendario han sido actualizados.' })
             return true
         } catch (error: any) {
             toast({ title: 'Error al actualizar días', description: error.message, variant: 'destructive' })
@@ -700,8 +658,18 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
         }
     }
 
-    const addDay = () => setLocalDays([...localDays, { id: `new-${Date.now()}`, name: 'Nuevo Día' }])
-    const removeDay = (id: string) => setLocalDays(localDays.filter(d => d.id !== id))
+    const addDay = () => updateDays([...localDays, { id: `new-${Date.now()}`, name: 'Nuevo Día', default_weekday: undefined }])
+    const removeDay = (id: string) => updateDays(localDays.filter(d => d.id !== id))
+
+    const weekdays = [
+        { value: 1, label: 'Lunes' },
+        { value: 2, label: 'Martes' },
+        { value: 3, label: 'Miércoles' },
+        { value: 4, label: 'Jueves' },
+        { value: 5, label: 'Viernes' },
+        { value: 6, label: 'Sábado' },
+        { value: 7, label: 'Domingo' },
+    ]
 
     return (
         <Card className="p-8 max-w-2xl mx-auto shadow-md border-primary/10">
@@ -722,15 +690,38 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
                         <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold shrink-0">
                             {idx + 1}
                         </div>
-                        <Input
-                            value={day.name}
-                            onChange={e => {
-                                const updated = [...localDays]
-                                updated[idx].name = e.target.value
-                                setLocalDays(updated)
-                            }}
-                            className="bg-background/50 border-0 focus-visible:ring-1 focus-visible:ring-primary h-12 text-md"
-                        />
+                        <div className="flex-1 space-y-2 sm:space-y-0 sm:flex sm:gap-2">
+                            <Input
+                                value={day.name}
+                                onChange={e => {
+                                    const updated = [...localDays]
+                                    updated[idx].name = e.target.value
+                                    updateDays(updated)
+                                }}
+                                className="bg-background/50 border-0 focus-visible:ring-1 focus-visible:ring-primary h-10 flex-1"
+                                placeholder="Nombre del día (ej: Torso)"
+                            />
+                            <Select
+                                value={day.default_weekday?.toString() || "0"}
+                                onValueChange={(val) => {
+                                    const updated = [...localDays]
+                                    updated[idx].default_weekday = val === "0" ? undefined : parseInt(val)
+                                    updateDays(updated)
+                                }}
+                            >
+                                <SelectTrigger className="w-[140px] h-10 bg-background/50 border-0">
+                                    <SelectValue placeholder="Día habitual" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Sin día fijo</SelectItem>
+                                    {weekdays.map(wd => (
+                                        <SelectItem key={wd.value} value={wd.value.toString()}>
+                                            {wd.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                         <Button
                             variant="ghost"
                             size="icon"
@@ -745,7 +736,7 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
             {isSaving && (
                 <div className="flex items-center gap-2 text-primary animate-pulse mt-6">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm font-medium">Sincronizando estructura de días...</span>
+                    <span className="text-sm font-medium">Auto-agendando sesiones...</span>
                 </div>
             )}
         </Card>

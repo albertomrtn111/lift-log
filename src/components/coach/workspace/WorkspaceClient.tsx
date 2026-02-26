@@ -54,7 +54,6 @@ interface WorkspaceClientProps {
     dietPlans: DietPlan[]
     activeProgram: TrainingProgram | null
     programs: TrainingProgram[]
-    metrics: MetricData[]
     coachId: string
 }
 
@@ -70,7 +69,6 @@ export function WorkspaceClient({
     dietPlans,
     activeProgram,
     programs,
-    metrics,
     coachId,
 }: WorkspaceClientProps) {
     const router = useRouter()
@@ -109,6 +107,7 @@ export function WorkspaceClient({
                     <WorkspaceHeader
                         client={selectedClient}
                         clientStatus={clientStatus}
+                        coachId={coachId}
                         onClientUpdated={handleRefresh}
                     />
 
@@ -159,10 +158,6 @@ export function WorkspaceClient({
                             <PlanTab
                                 coachId={coachId}
                                 clientId={selectedClient.id}
-                                activeMacroPlan={activeMacroPlan}
-                                macroPlans={macroPlans}
-                                activeDietPlan={activeDietPlan}
-                                dietPlans={dietPlans}
                                 activeProgram={activeProgram}
                                 programs={programs}
                                 onRefresh={handleRefresh}
@@ -170,7 +165,7 @@ export function WorkspaceClient({
                         </TabsContent>
 
                         <TabsContent value="progreso">
-                            <ProgresoTab metrics={metrics} />
+                            <ProgresoTab clientId={selectedClient.id} coachId={coachId} />
                         </TabsContent>
                     </Tabs>
                 </>

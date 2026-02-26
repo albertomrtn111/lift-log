@@ -46,7 +46,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 border-2 border-red-500 p-2 rounded-xl">
             {/* Client selector */}
             <Card className="p-4">
                 <div className="flex items-center gap-4">
@@ -73,7 +73,7 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
             </Card>
 
             {/* Tabs */}
-            {selectedClient && (
+            {selectedClient ? (
                 <Tabs value={tab} onValueChange={handleTabChange}>
                     <TabsList className="w-full grid grid-cols-5 p-1 h-auto">
                         <TabsTrigger value="overview" className="gap-2 py-2">
@@ -105,10 +105,10 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
                             </div>
                         </TabsContent>
                         <TabsContent value="planning">
-                            <PlanningTab clientId={selectedClient.id} />
+                            <PlanningTab clientId={selectedClient.id} coachId={selectedClient.coach_id} />
                         </TabsContent>
                         <TabsContent value="diet">
-                            <DietTab clientId={selectedClient.id} />
+                            <DietTab clientId={selectedClient.id} coachId={selectedClient.coach_id} />
                         </TabsContent>
                         <TabsContent value="checkins">
                             <ReviewsTab clientId={selectedClient.id} />
@@ -120,6 +120,10 @@ export function ClientWorkspace({ clients, selectedClient, activeTab }: ClientWo
                         </TabsContent>
                     </div>
                 </Tabs>
+            ) : (
+                <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-xl">
+                    Selecciona un cliente para ver su información
+                </div>
             )}
         </div>
     )

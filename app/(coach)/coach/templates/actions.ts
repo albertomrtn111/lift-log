@@ -65,9 +65,11 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
             description: input.description || null,
             tags: input.tags || [],
             type: input.type, // Explicitly save the type
-            structure: input.type === 'cardio'
-                ? { blocks: [] }
-                : { days: [], weeks: 4 },
+            structure: input.structure
+                ? input.structure
+                : input.type === 'cardio'
+                    ? { blocks: [], description: '', trainingType: 'rodaje', notes: '' }
+                    : { days: [], weeks: 4 },
             is_public: false,
         })
         .select()
@@ -109,7 +111,7 @@ export async function createDraftCardioTemplate(): Promise<{
             name: 'Nueva Sesión',
             description: '',
             type: 'cardio',
-            structure: { blocks: [] },
+            structure: { blocks: [], description: '', trainingType: 'rodaje', notes: '' },
             is_public: false,
         })
         .select('id')

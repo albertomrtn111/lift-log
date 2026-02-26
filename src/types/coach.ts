@@ -21,6 +21,7 @@ export interface Client {
     id: string
     coach_id: string
     user_id: string | null // NULL until client registers
+    auth_user_id: string | null // NULL until client signs up — canonical linkage field
     status: 'active' | 'inactive' | 'pending'
     full_name: string
     email: string
@@ -28,6 +29,9 @@ export interface Client {
     start_date: string
     checkin_frequency_days: number
     next_checkin_date: string
+    onboarding_status: 'pending' | 'active' | 'completed'
+    invite_status: 'pending' | 'sent'
+    invited_at: string | null
     created_at: string
 }
 

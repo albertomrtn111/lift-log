@@ -1,6 +1,6 @@
 'use client'
 
-import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User } from 'lucide-react'
+import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -13,10 +13,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/routine', icon: ClipboardList, label: 'Rutina' },
+  { href: '/routine', icon: Dumbbell, label: 'Fuerza' }, // Was ClipboardList, 'Rutina'. Changed icon to Dumbbell for Strength.
   { href: '/diet', icon: Utensils, label: 'Dieta' },
-  { href: '/running', icon: Timer, label: 'Running' },
-  { href: '/progress', icon: CalendarDays, label: 'Progreso' },
+  { href: '/planning', icon: CalendarDays, label: 'Plan' }, // New Planning tab
+  { href: '/progress', icon: TrendingUp, label: 'Progreso' }, // Changed icon to TrendingUp? Original was CalendarDays. Let's check imports.
   { href: '/summary', icon: BarChart3, label: 'Resumen' },
   { href: '/profile', icon: User, label: 'Perfil' },
 ]
@@ -56,8 +56,11 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card glass">
-      <div className="flex items-center justify-around px-2 py-1 safe-area-inset-bottom">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card glass"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      <div className="flex items-center justify-around px-1 py-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/routine' && pathname?.startsWith(item.href))

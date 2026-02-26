@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Card } from '@/components/ui/card'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
     LineChart as ReLineChart,
@@ -10,194 +10,305 @@ import {
     YAxis,
     Tooltip,
     ResponsiveContainer,
-    CartesianGrid
+    CartesianGrid,
+    Area,
+    AreaChart,
 } from 'recharts'
 import {
-    TrendingUp,
     Scale,
     Footprints,
     Moon,
     Dumbbell,
     Apple,
-    Activity
+    Activity,
+    TrendingDown,
+    TrendingUp,
+    Minus,
+    Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getProgressData, ProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
 
-interface MetricData {
-    metric_date: string
-    weight_kg: number | null
-    steps: number | null
-    sleep_h: number | null
-    training_adherence: number | null
-    nutrition_adherence: number | null
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type RangeKey = '7d' | '15d' | '30d' | '3m' | '6m' | '12m'
+
+const RANGE_OPTIONS: { key: RangeKey; label: string; days: number }[] = [
+    { key: '7d', label: '7 días', days: 7 },
+    { key: '15d', label: '15 días', days: 15 },
+    { key: '30d', label: '30 días', days: 30 },
+    { key: '3m', label: '3 meses', days: 90 },
+    { key: '6m', label: '6 meses', days: 180 },
+    { key: '12m', label: '12 meses', days: 365 },
+]
 
 interface ProgresoTabProps {
-    metrics: MetricData[]
+    clientId: string
+    coachId: string
 }
 
-type RangeOption = 7 | 14 | 30 | 90
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
-export function ProgresoTab({ metrics }: ProgresoTabProps) {
-    const [range, setRange] = useState<RangeOption>(30)
+export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
+    const [range, setRange] = useState<RangeKey>('30d')
+    const [loading, setLoading] = useState(true)
+    const [data, setData] = useState<ProgressData | null>(null)
 
-    const filteredMetrics = useMemo(() => {
-        const cutoff = new Date()
-        cutoff.setDate(cutoff.getDate() - range)
-        return metrics.filter(m => new Date(m.metric_date) >= cutoff)
-    }, [metrics, range])
+    const rangeDays = RANGE_OPTIONS.find(r => r.key === range)!.days
 
-    const chartData = useMemo(() => {
-        return filteredMetrics.map(m => ({
-            date: new Date(m.metric_date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-            weight: m.weight_kg,
-            steps: m.steps,
-            sleep: m.sleep_h,
-            training: m.training_adherence,
-            nutrition: m.nutrition_adherence,
-        }))
-    }, [filteredMetrics])
+    const fetchData = useCallback(async () => {
+        setLoading(true)
+        const dateTo = new Date()
+        const dateFrom = new Date()
+        dateFrom.setDate(dateFrom.getDate() - rangeDays)
 
-    if (metrics.length === 0) {
-        return (
-            <Card className="p-8 text-center">
-                <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-30" />
-                <h3 className="font-semibold text-lg">Sin datos de progreso</h3>
-                <p className="text-muted-foreground mt-2">
-                    Los datos aparecerán cuando el cliente envíe check-ins
-                </p>
-            </Card>
+        const result = await getProgressData(
+            clientId,
+            dateFrom.toISOString().split('T')[0],
+            dateTo.toISOString().split('T')[0]
         )
-    }
+
+        if (result.success && result.data) {
+            setData(result.data)
+        } else {
+            setData({ metrics: [], dietAdherence: [], workoutLogs: [] })
+        }
+        setLoading(false)
+    }, [clientId, rangeDays])
+
+    useEffect(() => {
+        fetchData()
+    }, [fetchData])
+
+    // -----------------------------------------------------------------------
+    // Computed KPIs
+    // -----------------------------------------------------------------------
+
+    const kpis = useMemo(() => {
+        if (!data) return null
+
+        // Weight
+        const weights = data.metrics.filter(m => m.weight_kg !== null).map(m => m.weight_kg!)
+        const avgWeight = weights.length > 0
+            ? (weights.reduce((a, b) => a + b, 0) / weights.length)
+            : null
+        const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null
+        const firstWeight = weights.length > 1 ? weights[0] : null
+        const weightDelta = lastWeight && firstWeight ? lastWeight - firstWeight : null
+
+        // Training adherence
+        const totalWorkouts = data.workoutLogs.length
+        const completedWorkouts = data.workoutLogs.filter(w => w.completed).length
+        const trainingAdherence = totalWorkouts > 0
+            ? Math.round((completedWorkouts / totalWorkouts) * 100)
+            : null
+
+        // Diet adherence
+        const dietValues = data.dietAdherence.map(d => d.adherence_pct)
+        const avgDietAdherence = dietValues.length > 0
+            ? Math.round(dietValues.reduce((a, b) => a + b, 0) / dietValues.length)
+            : null
+
+        // Steps
+        const stepsValues = data.metrics.filter(m => m.steps !== null).map(m => m.steps!)
+        const avgSteps = stepsValues.length > 0
+            ? Math.round(stepsValues.reduce((a, b) => a + b, 0) / stepsValues.length)
+            : null
+
+        // Sleep
+        const sleepValues = data.metrics.filter(m => m.sleep_h !== null).map(m => m.sleep_h!)
+        const avgSleep = sleepValues.length > 0
+            ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
+            : null
+
+        return {
+            avgWeight,
+            lastWeight,
+            weightDelta,
+            trainingAdherence,
+            completedWorkouts,
+            totalWorkouts,
+            avgDietAdherence,
+            avgSteps,
+            avgSleep,
+        }
+    }, [data])
+
+    // -----------------------------------------------------------------------
+    // Chart data
+    // -----------------------------------------------------------------------
+
+    const weightChartData = useMemo(() => {
+        if (!data) return []
+        return data.metrics
+            .filter(m => m.weight_kg !== null)
+            .map(m => ({
+                date: new Date(m.metric_date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+                rawDate: m.metric_date,
+                weight: m.weight_kg,
+            }))
+    }, [data])
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
 
     return (
         <div className="space-y-6">
             {/* Range Selector */}
-            <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Rango:</span>
-                {([7, 14, 30, 90] as RangeOption[]).map(r => (
-                    <Button
-                        key={r}
-                        variant={range === r ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setRange(r)}
+            <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+                {RANGE_OPTIONS.map(opt => (
+                    <button
+                        key={opt.key}
+                        onClick={() => setRange(opt.key)}
+                        className={cn(
+                            "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                            range === opt.key
+                                ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                        )}
                     >
-                        {r}d
-                    </Button>
+                        {opt.label}
+                    </button>
                 ))}
             </div>
 
-            {/* Charts Grid */}
-            <div className="grid lg:grid-cols-2 gap-6">
-                <MetricChart
-                    title="Peso"
-                    icon={Scale}
-                    data={chartData}
-                    dataKey="weight"
-                    unit="kg"
-                    color="#10b981"
-                />
-                <MetricChart
-                    title="Pasos diarios"
-                    icon={Footprints}
-                    data={chartData}
-                    dataKey="steps"
-                    color="#6366f1"
-                />
-                <MetricChart
-                    title="Sueño"
-                    icon={Moon}
-                    data={chartData}
-                    dataKey="sleep"
-                    unit="h"
-                    color="#8b5cf6"
-                />
-                <MetricChart
-                    title="Adherencia"
-                    icon={TrendingUp}
-                    data={chartData}
-                    dataKey="training"
-                    secondaryDataKey="nutrition"
-                    unit="%"
-                    color="#f59e0b"
-                    secondaryColor="#22c55e"
-                    legend={['Entreno', 'Nutrición']}
-                />
-            </div>
-
-            {/* Recent Data Table */}
-            <Card className="p-4">
-                <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-primary" />
-                    Últimos registros
-                </h3>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="text-left text-muted-foreground border-b">
-                                <th className="py-2 px-3">Fecha</th>
-                                <th className="py-2 px-3">Peso</th>
-                                <th className="py-2 px-3">Pasos</th>
-                                <th className="py-2 px-3">Sueño</th>
-                                <th className="py-2 px-3">Adherencia E</th>
-                                <th className="py-2 px-3">Adherencia N</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredMetrics.slice(0, 10).map((m, i) => (
-                                <tr key={i} className="border-b last:border-0">
-                                    <td className="py-2 px-3">{m.metric_date}</td>
-                                    <td className="py-2 px-3">{m.weight_kg ? `${m.weight_kg} kg` : '—'}</td>
-                                    <td className="py-2 px-3">{m.steps?.toLocaleString() || '—'}</td>
-                                    <td className="py-2 px-3">{m.sleep_h ? `${m.sleep_h}h` : '—'}</td>
-                                    <td className={cn('py-2 px-3', m.training_adherence && m.training_adherence < 60 && 'text-destructive')}>
-                                        {m.training_adherence ? `${m.training_adherence}%` : '—'}
-                                    </td>
-                                    <td className={cn('py-2 px-3', m.nutrition_adherence && m.nutrition_adherence < 60 && 'text-destructive')}>
-                                        {m.nutrition_adherence ? `${m.nutrition_adherence}%` : '—'}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {loading ? (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-            </Card>
+            ) : (
+                <>
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <KpiCard
+                            icon={Scale}
+                            label="Peso medio"
+                            value={kpis?.avgWeight != null ? `${kpis.avgWeight.toFixed(1)} kg` : null}
+                            subValue={kpis?.lastWeight != null ? `Último: ${kpis.lastWeight.toFixed(1)} kg` : undefined}
+                            delta={kpis?.weightDelta}
+                            deltaUnit="kg"
+                            color="blue"
+                        />
+                        <KpiCard
+                            icon={Dumbbell}
+                            label="Adherencia entreno"
+                            value={kpis?.trainingAdherence != null ? `${kpis.trainingAdherence}%` : null}
+                            subValue={kpis?.totalWorkouts
+                                ? `${kpis.completedWorkouts}/${kpis.totalWorkouts} sesiones`
+                                : undefined
+                            }
+                            color="blue"
+                        />
+                        <KpiCard
+                            icon={Apple}
+                            label="Adherencia dieta"
+                            value={kpis?.avgDietAdherence != null ? `${kpis.avgDietAdherence}%` : null}
+                            color="green"
+                        />
+                        <KpiCard
+                            icon={Footprints}
+                            label="Pasos / día"
+                            value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
+                            subValue={kpis?.avgSleep != null ? `Sueño: ${kpis.avgSleep}h` : undefined}
+                            color="violet"
+                        />
+                    </div>
+
+                    {/* Weight Evolution Chart */}
+                    <WeightChart data={weightChartData} />
+                </>
+            )}
         </div>
     )
 }
 
-function MetricChart({
-    title,
-    icon: Icon,
-    data,
-    dataKey,
-    secondaryDataKey,
-    unit = '',
-    color,
-    secondaryColor,
-    legend,
-}: {
-    title: string
-    icon: React.ElementType
-    data: Record<string, unknown>[]
-    dataKey: string
-    secondaryDataKey?: string
-    unit?: string
-    color: string
-    secondaryColor?: string
-    legend?: string[]
-}) {
-    const hasData = data.some(d => d[dataKey] !== null && d[dataKey] !== undefined)
+// ---------------------------------------------------------------------------
+// KPI Card
+// ---------------------------------------------------------------------------
 
-    if (!hasData) {
-        return (
-            <Card className="p-4">
-                <div className="flex items-center gap-2 mb-4">
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                    <h3 className="font-medium">{title}</h3>
+const COLOR_MAP: Record<string, { bg: string; icon: string; ring: string }> = {
+    blue: { bg: 'bg-blue-500/10', icon: 'text-blue-500', ring: 'ring-blue-500/20' },
+    green: { bg: 'bg-green-500/10', icon: 'text-green-500', ring: 'ring-green-500/20' },
+    violet: { bg: 'bg-violet-500/10', icon: 'text-violet-500', ring: 'ring-violet-500/20' },
+}
+
+function KpiCard({
+    icon: Icon,
+    label,
+    value,
+    subValue,
+    delta,
+    deltaUnit,
+    color,
+}: {
+    icon: React.ElementType
+    label: string
+    value: string | null
+    subValue?: string
+    delta?: number | null
+    deltaUnit?: string
+    color: string
+}) {
+    const c = COLOR_MAP[color] || COLOR_MAP.blue
+
+    return (
+        <Card className="relative overflow-hidden">
+            <CardContent className="p-4">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className={cn("p-2 rounded-lg ring-1", c.bg, c.ring)}>
+                        <Icon className={cn("h-4 w-4", c.icon)} />
+                    </div>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        {label}
+                    </span>
                 </div>
-                <div className="h-[200px] flex items-center justify-center text-muted-foreground">
-                    Sin datos
+                <div className="flex items-end justify-between">
+                    <div>
+                        <p className="text-2xl font-bold tracking-tight">
+                            {value ?? '—'}
+                        </p>
+                        {subValue && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{subValue}</p>
+                        )}
+                    </div>
+                    {delta != null && (
+                        <div className={cn(
+                            "flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full",
+                            delta < 0
+                                ? "text-blue-600 bg-blue-500/10"
+                                : delta > 0
+                                    ? "text-red-500 bg-red-500/10"
+                                    : "text-muted-foreground bg-muted"
+                        )}>
+                            {delta < 0 ? <TrendingDown className="h-3 w-3" /> : delta > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                            {delta > 0 ? '+' : ''}{delta.toFixed(1)}{deltaUnit ? ` ${deltaUnit}` : ''}
+                        </div>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Weight Chart
+// ---------------------------------------------------------------------------
+
+function WeightChart({ data }: { data: { date: string; weight: number | null }[] }) {
+    if (data.length === 0) {
+        return (
+            <Card className="p-8">
+                <div className="flex flex-col items-center justify-center text-center py-8">
+                    <Scale className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                    <h3 className="font-semibold text-lg">Sin datos de peso</h3>
+                    <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+                        Cuando el cliente registre su peso, la evolución aparecerá aquí.
+                    </p>
                 </div>
             </Card>
         )
@@ -205,65 +316,55 @@ function MetricChart({
 
     return (
         <Card className="p-4">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <Icon className="h-5 w-5" style={{ color }} />
-                    <h3 className="font-medium">{title}</h3>
-                </div>
-                {legend && (
-                    <div className="flex items-center gap-3 text-xs">
-                        {legend.map((l, i) => (
-                            <span key={l} className="flex items-center gap-1">
-                                <span
-                                    className="w-2 h-2 rounded-full"
-                                    style={{ backgroundColor: i === 0 ? color : secondaryColor }}
-                                />
-                                {l}
-                            </span>
-                        ))}
-                    </div>
-                )}
+            <div className="flex items-center gap-2 mb-4">
+                <Scale className="h-5 w-5 text-blue-500" />
+                <h3 className="font-semibold">Evolución de peso</h3>
+                <span className="text-xs text-muted-foreground ml-auto">
+                    {data.length} registros
+                </span>
             </div>
-            <div className="h-[200px]">
+            <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ReLineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <defs>
+                            <linearGradient id="weightGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
                         <XAxis
                             dataKey="date"
-                            tick={{ fontSize: 10 }}
+                            tick={{ fontSize: 11 }}
                             className="text-muted-foreground"
+                            interval="preserveStartEnd"
                         />
                         <YAxis
-                            tick={{ fontSize: 10 }}
+                            tick={{ fontSize: 11 }}
                             className="text-muted-foreground"
-                            unit={unit}
+                            domain={['dataMin - 1', 'dataMax + 1']}
+                            unit=" kg"
                         />
                         <Tooltip
                             contentStyle={{
                                 backgroundColor: 'hsl(var(--card))',
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: '8px',
+                                fontSize: '13px',
                             }}
+                            formatter={(value: number) => [`${value} kg`, 'Peso']}
                         />
-                        <Line
+                        <Area
                             type="monotone"
-                            dataKey={dataKey}
-                            stroke={color}
-                            strokeWidth={2}
-                            dot={{ r: 3 }}
+                            dataKey="weight"
+                            stroke="#3b82f6"
+                            strokeWidth={2.5}
+                            fill="url(#weightGradient)"
+                            dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}
+                            activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
                             connectNulls
                         />
-                        {secondaryDataKey && (
-                            <Line
-                                type="monotone"
-                                dataKey={secondaryDataKey}
-                                stroke={secondaryColor}
-                                strokeWidth={2}
-                                dot={{ r: 3 }}
-                                connectNulls
-                            />
-                        )}
-                    </ReLineChart>
+                    </AreaChart>
                 </ResponsiveContainer>
             </div>
         </Card>

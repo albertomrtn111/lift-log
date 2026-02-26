@@ -1,72 +1,78 @@
-import { RunningSession, SessionType } from '@/types/running';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { 
-  Footprints, 
-  Zap, 
-  TrendingUp, 
-  Route, 
-  Moon, 
-  Check, 
+import { CalendarItem, CalendarItemKind } from '@/data/client-schedule'
+import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+  Footprints,
+  Zap,
+  TrendingUp,
+  Route,
+  Moon,
+  Check,
   ChevronRight,
-  Minus 
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Minus,
+  Dumbbell
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface RunningDayCardProps {
-  session: RunningSession;
-  onClick: () => void;
+  item: CalendarItem
+  onClick: () => void
 }
 
-const typeConfig: Record<SessionType, { 
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  bgColor: string;
+const kindConfig: Record<CalendarItemKind, {
+  icon: React.ComponentType<{ className?: string }>
+  color: string
+  bgColor: string
 }> = {
-  easy: { 
-    icon: Footprints, 
-    color: 'text-success',
-    bgColor: 'bg-success/10'
-  },
-  recovery: { 
-    icon: Footprints, 
-    color: 'text-success',
-    bgColor: 'bg-success/10'
-  },
-  intervals: { 
-    icon: Zap, 
-    color: 'text-warning',
-    bgColor: 'bg-warning/10'
-  },
-  tempo: { 
-    icon: TrendingUp, 
-    color: 'text-accent',
-    bgColor: 'bg-accent/10'
-  },
-  long: { 
-    icon: Route, 
+  cardio: {
+    icon: Footprints,
     color: 'text-primary',
     bgColor: 'bg-primary/10'
   },
-  rest: { 
-    icon: Moon, 
+  strength: {
+    icon: Dumbbell,
+    color: 'text-warning',
+    bgColor: 'bg-warning/10'
+  },
+  rest: {
+    icon: Moon,
     color: 'text-muted-foreground',
     bgColor: 'bg-muted'
   },
-};
+}
 
-export function RunningDayCard({ session, onClick }: RunningDayCardProps) {
-  const config = typeConfig[session.type];
-  const Icon = config.icon;
-  const isRest = session.type === 'rest';
+// Map training types to more specific icons
+function getCardioIcon(trainingType?: string) {
+  switch (trainingType?.toLowerCase()) {
+    case 'series':
+    case 'intervals':
+    case 'hiit':
+      return { icon: Zap, color: 'text-warning', bgColor: 'bg-warning/10' }
+    case 'tempo':
+    case 'umbral':
+      return { icon: TrendingUp, color: 'text-accent', bgColor: 'bg-accent/10' }
+    case 'tirada_larga':
+    case 'long':
+      return { icon: Route, color: 'text-primary', bgColor: 'bg-primary/10' }
+    default:
+      return { icon: Footprints, color: 'text-success', bgColor: 'bg-success/10' }
+  }
+}
+
+export function RunningDayCard({ item, onClick }: RunningDayCardProps) {
+  const config = item.kind === 'cardio'
+    ? getCardioIcon(item.trainingType)
+    : kindConfig[item.kind]
+  const Icon = config.icon
+  const isRest = item.kind === 'rest'
 
   return (
-    <Card 
+    <Card
       className={cn(
         "p-3 cursor-pointer card-hover transition-all",
-        session.isCompleted && "border-success/30 bg-success/5"
+        item.isCompleted && "border-success/30 bg-success/5"
       )}
       onClick={onClick}
     >
@@ -74,10 +80,10 @@ export function RunningDayCard({ session, onClick }: RunningDayCardProps) {
         {/* Date */}
         <div className="text-center w-12">
           <span className="text-xs text-muted-foreground uppercase block">
-            {format(new Date(session.date), 'EEE', { locale: es })}
+            {format(new Date(item.date + 'T12:00:00'), 'EEE', { locale: es })}
           </span>
           <span className="text-lg font-bold">
-            {format(new Date(session.date), 'd')}
+            {format(new Date(item.date + 'T12:00:00'), 'd')}
           </span>
         </div>
 
@@ -91,18 +97,10 @@ export function RunningDayCard({ session, onClick }: RunningDayCardProps) {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-sm truncate">{session.name}</h4>
+          <h4 className="font-medium text-sm truncate">{item.title}</h4>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {!isRest && session.targetDistance && (
-              <span>{session.targetDistance} km</span>
-            )}
-            {!isRest && session.targetDuration && (
-              <span>{session.targetDuration} min</span>
-            )}
-            {session.targetZone && (
-              <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                {session.targetZone}
-              </Badge>
+            {!isRest && item.subtitle && (
+              <span className="truncate">{item.subtitle}</span>
             )}
             {isRest && <span>Descanso</span>}
           </div>
@@ -110,7 +108,7 @@ export function RunningDayCard({ session, onClick }: RunningDayCardProps) {
 
         {/* Status */}
         <div className="flex items-center gap-1">
-          {session.isCompleted ? (
+          {item.isCompleted ? (
             <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
               <Check className="h-4 w-4 text-success" />
             </div>
@@ -124,5 +122,5 @@ export function RunningDayCard({ session, onClick }: RunningDayCardProps) {
         </div>
       </div>
     </Card>
-  );
+  )
 }

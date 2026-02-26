@@ -9,7 +9,7 @@ interface DayTabsProps {
 
 export function DayTabs({ days, selectedDayId, onSelectDay }: DayTabsProps) {
   return (
-    <div className="flex overflow-x-auto border-b border-border scrollbar-hide">
+    <div className="flex overflow-x-auto border-b border-border scrollbar-hide px-4">
       {days.map((day) => (
         <button
           key={day.id}

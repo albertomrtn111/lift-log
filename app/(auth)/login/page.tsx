@@ -50,7 +50,7 @@ export default function LoginPage() {
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                     <Dumbbell className="h-8 w-8 text-primary" />
                 </div>
-                <h1 className="text-2xl font-bold">LiftLog</h1>
+                <h1 className="text-2xl font-bold">NextTrain</h1>
                 <p className="text-muted-foreground text-sm mt-1">Inicia sesión para continuar</p>
             </div>
 

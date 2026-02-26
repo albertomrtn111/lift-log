@@ -12,12 +12,12 @@ interface MobileExerciseCardsProps {
   onCellChange: (exerciseId: string, columnId: string, value: string) => void;
 }
 
-export function MobileExerciseCards({ 
-  exercises, 
-  columns, 
-  cells, 
+export function MobileExerciseCards({
+  exercises,
+  columns,
+  cells,
   weekNumber,
-  onCellChange 
+  onCellChange
 }: MobileExerciseCardsProps) {
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
@@ -25,21 +25,44 @@ export function MobileExerciseCards({
   const getCellValue = useCallback((exerciseId: string, columnId: string): string => {
     const column = columns.find(c => c.id === columnId);
     const weekToCheck = column?.scope === 'exercise' ? 0 : weekNumber;
-    
+
     const cell = cells.find(
       c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekToCheck
     );
-    return cell?.value || '';
-  }, [cells, columns, weekNumber]);
+    if (cell?.value) return cell.value;
+
+    // Carryover for client columns (scope 'week')
+    // Carryover from immediate previous week only
+    if (column?.scope === 'week' && weekNumber > 1) {
+      const prevWeek = weekNumber - 1;
+      const prev = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === prevWeek);
+      if (prev?.value) return prev.value;
+    }
+
+    // Fallback to exercise properties for coach columns
+    const exercise = exercises.find(e => e.id === exerciseId);
+    if (exercise && column?.key) {
+      switch (column.key) {
+        case 'c2': return exercise.sets?.toString() || '';
+        case 'c3': return exercise.reps || '';
+        case 'c4': return exercise.rir?.toString() || '';
+        case 'c5': return exercise.restSeconds?.toString() || '';
+        case 'c6': return exercise.notes || '';
+      }
+    }
+    return '';
+  }, [cells, columns, weekNumber, exercises]);
+
+  const getColumnId = (key: string) => columns.find(c => c.key === key)?.id || key;
 
   const handleCellChange = useCallback((exerciseId: string, columnId: string, value: string) => {
     const cellKey = `${exerciseId}-${columnId}`;
     setSaveStatus(prev => ({ ...prev, [cellKey]: 'saving' }));
-    
+
     setTimeout(() => {
       onCellChange(exerciseId, columnId, value);
       setSaveStatus(prev => ({ ...prev, [cellKey]: 'saved' }));
-      
+
       setTimeout(() => {
         setSaveStatus(prev => ({ ...prev, [cellKey]: 'idle' }));
       }, 2000);
@@ -50,18 +73,18 @@ export function MobileExerciseCards({
   const clientColumns = columns.filter(c => c.editable);
 
   const completedCount = exercises.filter(ex => {
-    const weightValue = getCellValue(ex.id, 'c7');
-    const repsValue = getCellValue(ex.id, 'c8');
+    const weightValue = getCellValue(ex.id, getColumnId('c7'));
+    const repsValue = getCellValue(ex.id, getColumnId('c8'));
     return weightValue || repsValue;
   }).length;
 
   return (
-    <div className="space-y-4 px-4">
+    <div className="space-y-3 px-4">
       {/* Progress indicator */}
       <div className="flex items-center gap-3">
         <div className="progress-bar flex-1">
-          <div 
-            className="progress-bar-fill" 
+          <div
+            className="progress-bar-fill"
             style={{ width: `${(completedCount / exercises.length) * 100}%` }}
           />
         </div>
@@ -73,11 +96,11 @@ export function MobileExerciseCards({
       {/* Exercise cards */}
       {exercises.map((exercise) => {
         const isExpanded = expandedExercise === exercise.id;
-        const hasData = getCellValue(exercise.id, 'c7') || getCellValue(exercise.id, 'c8');
+        const hasData = getCellValue(exercise.id, getColumnId('c7')) || getCellValue(exercise.id, getColumnId('c8'));
 
         return (
-          <Card 
-            key={exercise.id} 
+          <Card
+            key={exercise.id}
             className={cn(
               'overflow-hidden transition-all animate-fade-in',
               hasData && 'border-primary/30'
@@ -91,10 +114,10 @@ export function MobileExerciseCards({
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground">{exercise.name}</h3>
                 <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                  <span>{getCellValue(exercise.id, 'c2')} series</span>
+                  <span>{getCellValue(exercise.id, getColumnId('c2'))} series</span>
                   <span>×</span>
-                  <span>{getCellValue(exercise.id, 'c3')} reps</span>
-                  <span className="text-xs">RIR {getCellValue(exercise.id, 'c4')}</span>
+                  <span>{getCellValue(exercise.id, getColumnId('c3'))} reps</span>
+                  <span className="text-xs">RIR {getCellValue(exercise.id, getColumnId('c4'))}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -141,7 +164,7 @@ export function MobileExerciseCards({
                     const status = saveStatus[cellKey] || 'idle';
 
                     return (
-                      <div key={col.id} className="space-y-1">
+                      <div key={`${col.id}-${weekNumber}`} className="space-y-1">
                         <label className="text-xs text-muted-foreground">{col.label}</label>
                         <div className="relative">
                           {col.type === 'textarea' ? (

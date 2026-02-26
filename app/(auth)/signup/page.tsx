@@ -73,7 +73,7 @@ export default function SignupPage() {
                     <Dumbbell className="h-8 w-8 text-primary" />
                 </div>
                 <h1 className="text-2xl font-bold">Crear cuenta</h1>
-                <p className="text-muted-foreground text-sm mt-1">Únete a LiftLog</p>
+                <p className="text-muted-foreground text-sm mt-1">Únete a NextTrain</p>
             </div>
 
             <form onSubmit={handleSignup} className="space-y-4">

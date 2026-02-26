@@ -9,7 +9,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-    title: 'LiftLog - Tu entrenamiento personal',
+    title: 'NextTrain - Tu entrenamiento personal',
     description: 'Aplicación de seguimiento de entrenamiento y nutrición',
 }
 
@@ -18,6 +18,7 @@ export const viewport: Viewport = {
     initialScale: 1,
     maximumScale: 1,
     userScalable: false,
+    viewportFit: 'cover',
     themeColor: [
         { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
         { media: '(prefers-color-scheme: dark)', color: '#0f172a' },

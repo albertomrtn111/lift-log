@@ -13,7 +13,8 @@ import {
     Dumbbell,
     User,
     LogOut,
-    FileText
+    FileText,
+    ClipboardList
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -30,11 +31,13 @@ interface NavItem {
 const navItems: NavItem[] = [
     { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
+    { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
     { href: '/coach/members', icon: Users, label: 'Miembros' },
     { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
     { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
     { href: '/coach/profile', icon: User, label: 'Perfil' },
 ]
+
 
 export function CoachSidebar() {
     const pathname = usePathname()
@@ -79,11 +82,11 @@ export function CoachSidebar() {
                         collapsed && 'justify-center'
                     )}>
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                            <Dumbbell className="h-5 w-5 text-primary" />
+                            <span className="font-black text-sm text-primary tracking-tight">NT</span>
                         </div>
                         {!collapsed && (
                             <div>
-                                <h1 className="font-bold text-lg">LiftLog</h1>
+                                <h1 className="font-bold text-lg">NextTrain</h1>
                                 <p className="text-xs text-muted-foreground">Coach Portal</p>
                             </div>
                         )}

@@ -14,8 +14,10 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, Send, Save } from 'lucide-react'
 import { createClientAction } from './actions'
+import { sendInviteAction } from './invite-actions'
+import { useToast } from '@/hooks/use-toast'
 
 interface AddClientButtonProps {
     coachId: string
@@ -26,6 +28,7 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
     const [isPending, startTransition] = useTransition()
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
+    const { toast } = useToast()
 
     const [formData, setFormData] = useState({
         full_name: '',
@@ -35,61 +38,88 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
         checkin_frequency_days: 14,
     })
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
+    const resetForm = () => {
+        setFormData({
+            full_name: '',
+            email: '',
+            phone: '',
+            start_date: new Date().toISOString().split('T')[0],
+            checkin_frequency_days: 14,
+        })
+        setError(null)
+    }
+
+    const handleSubmit = (sendInvite: boolean) => {
         setError(null)
 
         startTransition(async () => {
+            // 1. Create client
             const result = await createClientAction({
                 coach_id: coachId,
                 ...formData,
                 phone: formData.phone || undefined,
             })
 
-            if (result.success) {
-                setOpen(false)
-                setFormData({
-                    full_name: '',
-                    email: '',
-                    phone: '',
-                    start_date: new Date().toISOString().split('T')[0],
-                    checkin_frequency_days: 14,
-                })
-                router.refresh()
-            } else {
-                // Log detailed error to console
+            if (!result.success || !result.client) {
                 console.error('Error creating client:', {
                     error: result.error,
                     details: result.details,
                 })
-                // Show error with details if available
                 const errorMessage = result.details
                     ? `${result.error}\n${result.details}`
                     : result.error || 'Error al crear el cliente'
                 setError(errorMessage)
+                return
             }
+
+            // 2. Send invite if requested
+            if (sendInvite) {
+                const inviteResult = await sendInviteAction(result.client.id, coachId)
+
+                if (inviteResult.success) {
+                    toast({
+                        title: 'Invite sent ✓',
+                        description: `Invitation sent to ${result.client.email}`,
+                    })
+                } else {
+                    toast({
+                        title: 'Client created, but invite failed',
+                        description: inviteResult.error || 'Could not send invitation email',
+                        variant: 'destructive',
+                    })
+                }
+            } else {
+                toast({
+                    title: 'Client created',
+                    description: `${result.client.full_name} saved without invitation`,
+                })
+            }
+
+            setOpen(false)
+            resetForm()
+            router.refresh()
         })
     }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
             <DialogTrigger asChild>
                 <Button className="gap-2">
                     <Plus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Añadir cliente</span>
+                    <span className="hidden sm:inline">Add Client</span>
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Añadir nuevo cliente</DialogTitle>
+                    <DialogTitle>Add new client</DialogTitle>
                     <DialogDescription>
-                        Crea un nuevo cliente. Podrás invitarle a registrarse más adelante.
+                        Create a client and send them an invitation to sign up.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4 py-4">
+                <form onSubmit={(e) => { e.preventDefault(); handleSubmit(true) }} className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label htmlFor="full_name">Nombre completo *</Label>
+                        <Label htmlFor="full_name">Full name *</Label>
                         <Input
                             id="full_name"
                             value={formData.full_name}
@@ -114,7 +144,7 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="phone">Teléfono</Label>
+                        <Label htmlFor="phone">Phone</Label>
                         <Input
                             id="phone"
                             type="tel"
@@ -127,7 +157,7 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label htmlFor="start_date">Fecha inicio</Label>
+                            <Label htmlFor="start_date">Start date</Label>
                             <Input
                                 id="start_date"
                                 type="date"
@@ -139,7 +169,7 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="frequency">Check-in (Periodicidad)</Label>
+                            <Label htmlFor="frequency">Check-in (days)</Label>
                             <Input
                                 id="frequency"
                                 type="number"
@@ -159,18 +189,28 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                         </div>
                     )}
 
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-                            Cancelar
+                    <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => handleSubmit(false)}
+                            disabled={isPending}
+                            className="gap-2"
+                        >
+                            <Save className="h-4 w-4" />
+                            Save without invite
                         </Button>
-                        <Button type="submit" disabled={isPending}>
+                        <Button type="submit" disabled={isPending} className="gap-2">
                             {isPending ? (
                                 <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Creando...
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Creating...
                                 </>
                             ) : (
-                                'Crear cliente'
+                                <>
+                                    <Send className="h-4 w-4" />
+                                    Save & Send Invite
+                                </>
                             )}
                         </Button>
                     </DialogFooter>

@@ -12,10 +12,12 @@ export interface TrainingDay {
   id: string;
   name: string;
   order: number;
+  default_weekday?: number; // 1=Mon, 7=Sun
 }
 
 export interface TrainingColumn {
   id: string;
+  key?: string; // Add key for frontend logic
   label: string;
   type: 'text' | 'number' | 'time' | 'textarea';
   scope: 'exercise' | 'week'; // exercise = same for all weeks, week = per week

@@ -22,19 +22,49 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MoreHorizontal, UserX, UserCheck, Edit, ExternalLink, AlertCircle, Loader2 } from 'lucide-react'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from '@/components/ui/dialog'
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+    MoreHorizontal,
+    UserX,
+    UserCheck,
+    Edit,
+    ExternalLink,
+    AlertCircle,
+    Loader2,
+    Send,
+    ClipboardList,
+    Copy,
+    Check,
+} from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { deactivateClientAction, reactivateClientAction } from './actions'
+import { resendInviteAction } from './invite-actions'
+import { sendOnboardingAction } from './onboarding-actions'
 import { useState } from 'react'
 import { EditClientModal } from './EditClientModal'
+import { useToast } from '@/hooks/use-toast'
+import { Input } from '@/components/ui/input'
 
 interface MembersTableProps {
     clients: ClientWithMeta[]
     statusFilter: StatusFilter
+    coachId: string
 }
 
-export function MembersTable({ clients, statusFilter }: MembersTableProps) {
+export function MembersTable({ clients, statusFilter, coachId }: MembersTableProps) {
     const router = useRouter()
 
     if (clients.length === 0) {
@@ -66,6 +96,7 @@ export function MembersTable({ clients, statusFilter }: MembersTableProps) {
                     <TableRow>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Estado</TableHead>
+                        <TableHead>Signup</TableHead>
                         <TableHead>Próximo check-in</TableHead>
                         <TableHead className="hidden lg:table-cell">Frecuencia</TableHead>
                         <TableHead className="hidden lg:table-cell">Inicio</TableHead>
@@ -74,7 +105,7 @@ export function MembersTable({ clients, statusFilter }: MembersTableProps) {
                 </TableHeader>
                 <TableBody>
                     {clients.map((client) => (
-                        <ClientRow key={client.id} client={client} onUpdate={() => router.refresh()} />
+                        <ClientRow key={client.id} client={client} coachId={coachId} onUpdate={() => router.refresh()} />
                     ))}
                 </TableBody>
             </Table>
@@ -82,9 +113,19 @@ export function MembersTable({ clients, statusFilter }: MembersTableProps) {
     )
 }
 
-function ClientRow({ client, onUpdate }: { client: ClientWithMeta; onUpdate: () => void }) {
+function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coachId: string; onUpdate: () => void }) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
+    const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string; reused: boolean } | null>(null)
+    const [copied, setCopied] = useState(false)
+    const { toast } = useToast()
+
+    // DEV: Warn if status is null/unexpected
+    if (process.env.NODE_ENV === 'development' && !client.status) {
+        console.warn(`[MembersTable] Client "${client.full_name}" (${client.id}) has NULL/undefined status — showing as 'Desconocido'`)
+    }
+
+    const isPendingSignup = !client.auth_user_id
 
     const handleDeactivate = () => {
         startTransition(async () => {
@@ -98,6 +139,63 @@ function ClientRow({ client, onUpdate }: { client: ClientWithMeta; onUpdate: () 
             await reactivateClientAction(client.id)
             onUpdate()
         })
+    }
+
+    const handleResendInvite = () => {
+        startTransition(async () => {
+            const result = await resendInviteAction(client.id, coachId)
+            if (result.success) {
+                toast({
+                    title: 'Invite resent ✓',
+                    description: `Invitation resent to ${client.email}`,
+                })
+            } else {
+                toast({
+                    title: 'Failed to resend invite',
+                    description: result.error || 'Unknown error',
+                    variant: 'destructive',
+                })
+            }
+            onUpdate()
+        })
+    }
+
+    const handleSendOnboarding = () => {
+        startTransition(async () => {
+            const result = await sendOnboardingAction(client.id, coachId)
+            if (result.success && result.form_url) {
+                toast({
+                    title: result.reused
+                        ? 'Onboarding ya existente'
+                        : 'Onboarding enviado ✓',
+                    description: result.reused
+                        ? `Se reutilizó el onboarding pendiente para ${client.full_name}`
+                        : `Onboarding creado para ${client.full_name}`,
+                })
+                setOnboardingLinkModal({ url: result.form_url, reused: result.reused ?? false })
+            } else {
+                toast({
+                    title: 'Error al enviar onboarding',
+                    description: result.error || 'Error desconocido',
+                    variant: 'destructive',
+                })
+            }
+        })
+    }
+
+    const handleCopyLink = async () => {
+        if (!onboardingLinkModal) return
+        try {
+            await navigator.clipboard.writeText(onboardingLinkModal.url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch {
+            toast({
+                title: 'Error al copiar',
+                description: 'No se pudo copiar el enlace',
+                variant: 'destructive',
+            })
+        }
     }
 
     const getCheckinBadge = () => {
@@ -127,11 +225,25 @@ function ClientRow({ client, onUpdate }: { client: ClientWithMeta; onUpdate: () 
                         variant={client.status === 'active' ? 'default' : 'secondary'}
                         className={cn(
                             client.status === 'active' && 'bg-success/10 text-success border-0',
-                            client.status === 'inactive' && 'bg-muted text-muted-foreground'
+                            client.status === 'inactive' && 'bg-muted text-muted-foreground',
+                            !client.status && 'bg-warning/10 text-warning border-0'
                         )}
                     >
-                        {client.status === 'active' ? 'Activo' : 'Inactivo'}
+                        {client.status === 'active' ? 'Activo' : client.status === 'inactive' ? 'Inactivo' : !client.status ? 'Desconocido' : client.status}
                     </Badge>
+                </TableCell>
+                <TableCell>
+                    {isPendingSignup ? (
+                        <div className="flex items-center gap-2">
+                            <Badge className="bg-amber-500/10 text-amber-500 border-0">
+                                Pending signup
+                            </Badge>
+                        </div>
+                    ) : (
+                        <Badge className="bg-success/10 text-success border-0">
+                            Active
+                        </Badge>
+                    )}
                 </TableCell>
                 <TableCell>
                     {client.status === 'active' ? (
@@ -169,6 +281,41 @@ function ClientRow({ client, onUpdate }: { client: ClientWithMeta; onUpdate: () 
                                     Abrir workspace
                                 </Link>
                             </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Send Onboarding */}
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span>
+                                            <DropdownMenuItem
+                                                onClick={handleSendOnboarding}
+                                                disabled={isPendingSignup}
+                                                className={isPendingSignup ? 'opacity-50' : ''}
+                                            >
+                                                <ClipboardList className="h-4 w-4 mr-2" />
+                                                Enviar onboarding
+                                            </DropdownMenuItem>
+                                        </span>
+                                    </TooltipTrigger>
+                                    {isPendingSignup && (
+                                        <TooltipContent side="left">
+                                            <p className="text-xs">El cliente debe registrarse para recibir formularios</p>
+                                        </TooltipContent>
+                                    )}
+                                </Tooltip>
+                            </TooltipProvider>
+
+                            {isPendingSignup && (
+                                <>
+                                    <DropdownMenuItem onClick={handleResendInvite}>
+                                        <Send className="h-4 w-4 mr-2" />
+                                        Resend invite
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+
                             <DropdownMenuSeparator />
                             {client.status === 'active' ? (
                                 <DropdownMenuItem
@@ -198,6 +345,49 @@ function ClientRow({ client, onUpdate }: { client: ClientWithMeta; onUpdate: () 
                 onOpenChange={setEditModalOpen}
                 onSuccess={onUpdate}
             />
+
+            {/* Onboarding Link Modal */}
+            <Dialog open={!!onboardingLinkModal} onOpenChange={(v) => { if (!v) setOnboardingLinkModal(null) }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {onboardingLinkModal?.reused ? 'Onboarding pendiente' : 'Onboarding creado'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            {onboardingLinkModal?.reused
+                                ? 'Ya existía un onboarding pendiente. Comparte este enlace con el cliente:'
+                                : 'Comparte este enlace con el cliente para que complete su onboarding:'}
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                readOnly
+                                value={onboardingLinkModal?.url ?? ''}
+                                className="text-xs font-mono"
+                            />
+                            <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                onClick={handleCopyLink}
+                                className="shrink-0"
+                            >
+                                {copied ? (
+                                    <Check className="h-4 w-4 text-success" />
+                                ) : (
+                                    <Copy className="h-4 w-4" />
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setOnboardingLinkModal(null)}>
+                            Cerrar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     )
 }

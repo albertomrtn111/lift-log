@@ -16,6 +16,7 @@ export async function middleware(req: NextRequest) {
         request: req,
     })
 
+    // Official @supabase/ssr pattern: NEVER mutate req.cookies in setAll
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -25,10 +26,7 @@ export async function middleware(req: NextRequest) {
                     return req.cookies.getAll()
                 },
                 setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
-                    cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
-                    res = NextResponse.next({
-                        request: req,
-                    })
+                    // Only write to res.cookies — never req.cookies
                     cookiesToSet.forEach(({ name, value, options }) =>
                         res.cookies.set(name, value, options)
                     )
@@ -37,18 +35,37 @@ export async function middleware(req: NextRequest) {
         }
     )
 
-    // 1. Get User Session
-    const { data: { user } } = await supabase.auth.getUser()
+    // 1. Get Session first (lightweight, reads from cookie)
+    const { data: { session } } = await supabase.auth.getSession()
 
-    // 2. Unauthenticated Redirect
-    if (!user) {
-        if (isDev) console.log(`[Middleware] No user found at ${pathname}, redirecting to /login`)
+    if (isDev) {
+        console.log("--- [Middleware] SESSION_DEBUG ---")
+        console.log(`Path: ${pathname}`)
+        console.log(`Session User ID: ${session?.user?.id ?? 'NONE'}`)
+        console.log(`Has access_token: ${!!session?.access_token}`)
+        console.log(`access_token length: ${session?.access_token?.length ?? 0}`)
+        console.log("---------------------------------")
+    }
+
+    // 2. No session → redirect to /login
+    if (!session) {
+        if (isDev) console.log(`[Middleware] No session at ${pathname}, redirecting to /login`)
         const url = req.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
     }
 
-    // 3. Deterministic Role Detection via RPC (Security Definer) with Fallback
+    // 3. Validate user via getUser() (server-side verification against Supabase Auth)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        if (isDev) console.log(`[Middleware] getUser() returned null despite session, redirecting to /login`)
+        const url = req.nextUrl.clone()
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
+    }
+
+    // 4. Deterministic Role Detection via RPC (only if session exists)
     let isCoach = false
     let isClient = false
     let resolutionSource = 'RPC'
@@ -60,7 +77,7 @@ export async function middleware(req: NextRequest) {
         resolutionSource = 'FALLBACK'
     }
 
-    // Robust parsing (Handle Array or Single Object)
+    // Robust parsing: handle Array or Single Object
     const rolesRow = Array.isArray(rolesData) ? rolesData[0] : rolesData
 
     if (rolesRow) {
@@ -94,12 +111,13 @@ export async function middleware(req: NextRequest) {
         console.log(`User ID: ${user.id}`)
         console.log(`Source: ${resolutionSource}`)
         console.log(`Raw RPC Data:`, rolesData)
+        console.log(`Parsed rolesRow:`, rolesRow)
         if (rpcError) console.log(`RPC Error:`, rpcError.message)
         console.log(`Resolved: { isClient: ${isClient}, isCoach: ${isCoach} } -> Mode: ${resolvedMode}`)
         console.log("------------------------------------------")
     }
 
-    // 4. Redirection & Protection Logic
+    // 5. Redirection & Protection Logic
     const isNoAccessPage = pathname === '/no-access'
     const isProfilePage = pathname === '/profile'
     const isModeSelectionPage = pathname === '/mode'
@@ -174,7 +192,7 @@ export const config = {
          * - signup
          * - mode
          * - no-access
-         * - assets / public files (svg, png, etc)
+         * - assets / public files (svg, png, jpg, etc)
          */
         "/((?!_next/static|_next/image|favicon.ico|robots.txt|api|login|signup|mode|no-access|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     ],

@@ -15,7 +15,7 @@ import {
     listTrainingPrograms,
     getClientMetrics,
 } from '@/data/workspace'
-import { WorkspaceClient } from '@/components/coach/workspace/WorkspaceClient'
+import { NewClientWorkspace } from '@/components/coach/NewClientWorkspace'
 
 interface PageProps {
     searchParams: Promise<{ client?: string }>
@@ -97,7 +97,6 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         programs = programsData
         metrics = metricsData
     }
-
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
             {/* Header */}
@@ -116,7 +115,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             </header>
 
             <div className="px-4 lg:px-8 pt-6">
-                <WorkspaceClient
+                <NewClientWorkspace
                     clients={clients}
                     selectedClient={selectedClient}
                     clientStatus={clientStatus}
@@ -128,7 +127,6 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     dietPlans={dietPlans}
                     activeProgram={activeProgram}
                     programs={programs}
-                    metrics={metrics}
                     coachId={coachId}
                 />
             </div>

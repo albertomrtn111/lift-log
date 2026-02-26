@@ -129,17 +129,31 @@ export async function getClientForWorkspace(coachId: string, clientId: string): 
     return data as Client
 }
 
-export async function getClientsForSelector(coachId: string): Promise<Pick<Client, 'id' | 'full_name' | 'email' | 'status'>[]> {
+export async function getClientsForSelector(coachId: string): Promise<Pick<Client, 'id' | 'full_name' | 'email' | 'status' | 'auth_user_id'>[]> {
     const supabase = await createClient()
 
     const { data, error } = await supabase
         .from('clients')
-        .select('id, full_name, email, status')
+        .select('id, full_name, email, status, auth_user_id')
         .eq('coach_id', coachId)
         .order('status', { ascending: true })
         .order('full_name', { ascending: true })
 
     if (error || !data) return []
+
+    // DEV: Log status from DB to catch source-of-truth issues
+    if (process.env.NODE_ENV === 'development') {
+        console.log('--- [getClientsForSelector] DB STATUS ---')
+        data.forEach((c: any) => {
+            if (!c.status) {
+                console.warn(`  ⚠️ Client "${c.full_name}" (${c.id}) has NULL/undefined status!`)
+            } else {
+                console.log(`  - ${c.full_name}: status="${c.status}"`)
+            }
+        })
+        console.log('-----------------------------------------')
+    }
+
     return data
 }
 

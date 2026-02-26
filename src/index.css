@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* FitTrack Design System - Clean, Mobile-First Fitness App */
+/* NextTrain Design System - Clean, Mobile-First Fitness App */
 
 @layer base {
   :root {
@@ -18,8 +18,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 25% 10%;
 
-    /* Primary - Vibrant Teal */
-    --primary: 174 72% 40%;
+    /* Primary - Vibrant Blue */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary - Soft blue-gray */
@@ -49,19 +49,19 @@
     /* Borders and inputs */
     --border: 214 20% 88%;
     --input: 214 20% 88%;
-    --ring: 174 72% 40%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 20% 25%;
-    --sidebar-primary: 174 72% 40%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 20% 96%;
     --sidebar-accent-foreground: 220 20% 25%;
     --sidebar-border: 214 20% 92%;
-    --sidebar-ring: 174 72% 40%;
+    --sidebar-ring: 217 91% 60%;
 
     /* Coach cell styling */
     --coach-cell: 210 15% 95%;
@@ -69,11 +69,11 @@
 
     /* Client editable cell */
     --client-cell: 0 0% 100%;
-    --client-cell-border: 174 50% 70%;
+    --client-cell-border: 217 60% 70%;
 
     /* Progress colors */
     --progress-empty: 210 15% 90%;
-    --progress-filled: 174 72% 40%;
+    --progress-filled: 217 91% 60%;
   }
 
   .dark {
@@ -86,7 +86,7 @@
     --popover: 220 20% 12%;
     --popover-foreground: 210 20% 96%;
 
-    --primary: 174 72% 50%;
+    --primary: 217 91% 65%;
     --primary-foreground: 220 25% 8%;
 
     --secondary: 220 15% 18%;
@@ -109,25 +109,25 @@
 
     --border: 220 15% 22%;
     --input: 220 15% 22%;
-    --ring: 174 72% 50%;
+    --ring: 217 91% 65%;
 
     --sidebar-background: 220 20% 10%;
     --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 174 72% 50%;
+    --sidebar-primary: 217 91% 65%;
     --sidebar-primary-foreground: 220 25% 8%;
     --sidebar-accent: 220 15% 16%;
     --sidebar-accent-foreground: 210 20% 90%;
     --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 174 72% 50%;
+    --sidebar-ring: 217 91% 65%;
 
     --coach-cell: 220 15% 16%;
     --coach-cell-foreground: 210 10% 65%;
 
     --client-cell: 220 20% 14%;
-    --client-cell-border: 174 50% 45%;
+    --client-cell-border: 217 60% 50%;
 
     --progress-empty: 220 15% 18%;
-    --progress-filled: 174 72% 50%;
+    --progress-filled: 217 91% 65%;
   }
 }
 
@@ -166,6 +166,7 @@
 }
 
 @layer components {
+
   /* Week pill selector */
   .week-pill {
     @apply px-3 py-1.5 rounded-full text-sm font-medium transition-all;
@@ -248,6 +249,7 @@
 }
 
 @layer utilities {
+
   /* Sticky table header */
   .sticky-col {
     @apply sticky left-0 z-10 bg-card;
@@ -267,5 +269,20 @@
   /* Gradient text */
   .gradient-text {
     @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+
+  /* Hide scrollbar — used in horizontal scrollers like WeekSelector, DayTabs */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe area inset bottom — for iOS home bar / Android gesture nav */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }

@@ -5,11 +5,11 @@ export interface DBMacroPlan {
     id: string
     client_id: string
     kcal: number
-    protein: number
-    carbs: number
-    fat: number
-    steps_goal?: number
-    cardio_goal?: string
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    steps?: number
+    cardio_target?: any
     effective_from: string
     effective_to?: string
     created_at: string
@@ -19,7 +19,7 @@ export interface DBDietPlan {
     id: string
     client_id: string
     name: string
-    content: string // JSON content
+    meals: any // JSON content
     effective_from: string
     effective_to?: string
     created_at: string
@@ -31,7 +31,6 @@ export interface DBDietPlan {
 export async function getActiveMacroPlan(clientId: string): Promise<DBMacroPlan | null> {
     const supabase = await createClient()
     const today = new Date().toISOString().split('T')[0]
-
     const { data, error } = await supabase
         .from('macro_plans')
         .select('*')
@@ -65,11 +64,11 @@ export async function getMacroPlanHistory(clientId: string): Promise<DBMacroPlan
 export interface CreateMacroPlanInput {
     client_id: string
     kcal: number
-    protein: number
-    carbs: number
-    fat: number
-    steps_goal?: number
-    cardio_goal?: string
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    steps?: number
+    cardio_target?: any
     effective_from: string
 }
 
@@ -132,11 +131,11 @@ export function toFrontendMacroPlan(db: DBMacroPlan): MacroPlan {
     return {
         id: db.id,
         kcal: db.kcal,
-        protein: db.protein,
-        carbs: db.carbs,
-        fat: db.fat,
-        stepsGoal: db.steps_goal,
-        cardioGoal: db.cardio_goal,
+        protein: db.protein_g,
+        carbs: db.carbs_g,
+        fat: db.fat_g,
+        stepsGoal: db.steps,
+        cardioGoal: typeof db.cardio_target === 'string' ? db.cardio_target : JSON.stringify(db.cardio_target),
         effectiveFrom: db.effective_from,
         effectiveTo: db.effective_to,
     }

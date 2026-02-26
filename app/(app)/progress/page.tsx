@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,11 +8,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CalendarDays, Scale, Footprints, Moon, Save, Check, CalendarIcon, ListTodo } from 'lucide-react'
-import { mockDailyMetrics } from '@/data/mockData'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { BackfillModal } from '@/components/backfill/BackfillModal'
 import { ProgressBackfillContent } from '@/components/backfill/ProgressBackfillContent'
+import {
+    getClientMetrics,
+    saveClientMetrics,
+    getRecentClientMetrics,
+    type ClientMetric
+} from '@/data/progress'
+import { toast } from 'sonner' // Assuming sonner is used elsewhere
 
 export default function ProgressPage() {
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
@@ -22,17 +28,72 @@ export default function ProgressPage() {
     const [notes, setNotes] = useState('')
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
     const [backfillOpen, setBackfillOpen] = useState(false)
+    const [recentMetrics, setRecentMetrics] = useState<ClientMetric[]>([])
+    const [isLoading, setIsLoading] = useState(false)
 
-    const handleSave = () => {
-        setSaveStatus('saving')
-        setTimeout(() => {
-            setSaveStatus('saved')
-            setTimeout(() => setSaveStatus('idle'), 2000)
-        }, 500)
+    // Load Metrics for selected date
+    useEffect(() => {
+        let isMounted = true;
+        const loadMetrics = async () => {
+            setIsLoading(true)
+            try {
+                const data = await getClientMetrics(selectedDate)
+                if (!isMounted) return
+
+                if (data) {
+                    setWeight(data.weight_kg?.toString() ?? '')
+                    setSteps(data.steps?.toString() ?? '')
+                    setSleep(data.sleep_h?.toString() ?? '')
+                    setNotes(data.notes ?? '')
+                } else {
+                    // Reset to empty if no data
+                    setWeight('')
+                    setSteps('')
+                    setSleep('')
+                    setNotes('')
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error)
+            } finally {
+                if (isMounted) setIsLoading(false)
+            }
+        }
+        loadMetrics()
+        return () => { isMounted = false }
+    }, [selectedDate])
+
+    // Load Recent Metrics on mount
+    const loadRecent = async () => {
+        const data = await getRecentClientMetrics(10)
+        setRecentMetrics(data)
     }
 
-    // Get dates with data for calendar highlighting
-    const datesWithData = mockDailyMetrics.map(m => new Date(m.date))
+    useEffect(() => {
+        loadRecent()
+    }, [])
+
+    const handleSave = async () => {
+        setSaveStatus('saving')
+
+        const payload = {
+            metric_date: format(selectedDate, 'yyyy-MM-dd'),
+            weight_kg: weight ? parseFloat(weight) : undefined,
+            steps: steps ? parseInt(steps) : undefined,
+            sleep_h: sleep ? parseFloat(sleep) : undefined,
+            notes: notes || undefined
+        }
+
+        const result = await saveClientMetrics(payload)
+
+        if (result.success) {
+            setSaveStatus('saved')
+            loadRecent() // Refresh recent list
+            setTimeout(() => setSaveStatus('idle'), 2000)
+        } else {
+            setSaveStatus('idle')
+            toast.error('Error al guardar: ' + result.error)
+        }
+    }
 
     return (
         <div className="min-h-screen pb-4">
@@ -67,12 +128,7 @@ export default function ProgressPage() {
                             onSelect={(date) => date && setSelectedDate(date)}
                             locale={es}
                             className="pointer-events-auto"
-                            modifiers={{
-                                hasData: datesWithData
-                            }}
-                            modifiersStyles={{
-                                hasData: { backgroundColor: 'hsl(var(--primary) / 0.1)' }
-                            }}
+                        // Removed mock highlighting
                         />
                     </PopoverContent>
                 </Popover>
@@ -161,7 +217,7 @@ export default function ProgressPage() {
                     </Card>
                 </div>
 
-                <Button onClick={handleSave} className="w-full" size="lg">
+                <Button onClick={handleSave} className="w-full" size="lg" disabled={saveStatus === 'saving' || isLoading}>
                     {saveStatus === 'saving' ? (
                         <>Guardando...</>
                     ) : saveStatus === 'saved' ? (
@@ -175,33 +231,37 @@ export default function ProgressPage() {
                 <Card className="p-4">
                     <h3 className="font-semibold mb-3">Últimos registros</h3>
                     <div className="space-y-3">
-                        {mockDailyMetrics.slice(0, 5).map((entry) => (
-                            <div key={entry.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                                <span className="text-sm text-muted-foreground w-16">
-                                    {format(new Date(entry.date), 'EEE dd', { locale: es })}
-                                </span>
-                                <div className="flex-1 flex items-center gap-4 text-sm">
-                                    {entry.weight && (
-                                        <span className="flex items-center gap-1">
-                                            <Scale className="h-3 w-3 text-primary" />
-                                            {entry.weight} kg
-                                        </span>
-                                    )}
-                                    {entry.steps && (
-                                        <span className="flex items-center gap-1">
-                                            <Footprints className="h-3 w-3 text-success" />
-                                            {entry.steps.toLocaleString()}
-                                        </span>
-                                    )}
-                                    {entry.sleepHours && (
-                                        <span className="flex items-center gap-1">
-                                            <Moon className="h-3 w-3 text-primary" />
-                                            {entry.sleepHours}h
-                                        </span>
-                                    )}
+                        {recentMetrics.length === 0 ? (
+                            <p className="text-sm text-muted-foreground italic">No hay registros recientes.</p>
+                        ) : (
+                            recentMetrics.map((entry) => (
+                                <div key={entry.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                                    <span className="text-sm text-muted-foreground w-16">
+                                        {format(new Date(entry.metric_date), 'EEE dd', { locale: es })}
+                                    </span>
+                                    <div className="flex-1 flex items-center gap-3 sm:gap-4 text-sm flex-wrap">
+                                        {entry.weight_kg && (
+                                            <span className="flex items-center gap-1">
+                                                <Scale className="h-3 w-3 text-primary" />
+                                                {entry.weight_kg} kg
+                                            </span>
+                                        )}
+                                        {entry.steps && (
+                                            <span className="flex items-center gap-1">
+                                                <Footprints className="h-3 w-3 text-success" />
+                                                {entry.steps.toLocaleString()}
+                                            </span>
+                                        )}
+                                        {entry.sleep_h && (
+                                            <span className="flex items-center gap-1">
+                                                <Moon className="h-3 w-3 text-primary" />
+                                                {entry.sleep_h}h
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </Card>
             </div>

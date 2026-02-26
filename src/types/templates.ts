@@ -24,7 +24,9 @@ export interface StrengthStructure {
 
 export interface CardioStructure {
     trainingType?: 'rodaje' | 'series' | 'tempo' | 'hybrid' | 'progressive' | 'fartlek' | string
-    blocks: CardioBlock[]
+    description?: string  // Simple-mode: free-text training details
+    blocks?: CardioBlock[]
+    notes?: string
 }
 
 export type CardioBlockType = 'continuous' | 'intervals' | 'station'
@@ -78,6 +80,7 @@ export interface TemplateExercise {
     order: number
     sets: number
     reps: string
+    rir?: string
     rest_seconds: number
     notes: string | null
 }
@@ -87,7 +90,8 @@ export interface CreateTemplateInput {
     name: string
     description?: string
     tags?: string[]
-    type: 'strength' | 'cardio' // Added type field
+    type: 'strength' | 'cardio'
+    structure?: TemplateStructure // Allow passing structure at creation time
 }
 
 export interface UpdateTemplateInput {

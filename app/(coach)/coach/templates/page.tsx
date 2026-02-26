@@ -2,20 +2,19 @@ import { Suspense } from 'react'
 import { getTemplates } from './actions'
 import { TemplatesTable } from '@/components/coach/templates/TemplatesTable'
 import { CreateTemplateDialog } from '@/components/coach/templates/CreateTemplateDialog'
-import { FileText, Dumbbell, Heart, Plus } from 'lucide-react'
+import { CardioTemplateDialog } from '@/components/coach/templates/CardioTemplateDialog'
+import { ImportTemplateDialog } from '@/components/coach/templates/ImportTemplateDialog'
+import { FileText, Dumbbell, Heart, Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export const metadata = {
-    title: 'Plantillas de Entrenamiento | LiftLog Coach',
+    title: 'Plantillas de Entrenamiento | NextTrain Coach',
     description: 'Gestiona tus plantillas de entrenamiento reutilizables.',
 }
 
 export default async function TemplatesPage() {
-    // Fetch both types in parallel or simple filter if list is small. 
-    // Since we are server side, we can just fetch all and filter, or fetch twice.
-    // Let's fetch separately to keep logic clean and scalable.
     const [strengthTemplates, cardioTemplates] = await Promise.all([
         getTemplates('strength'),
         getTemplates('cardio')
@@ -57,7 +56,15 @@ export default async function TemplatesPage() {
                     </TabsList>
 
                     <TabsContent value="strength">
-                        <div className="mb-6 flex justify-end">
+                        <div className="mb-6 flex justify-end gap-2">
+                            <ImportTemplateDialog
+                                trigger={
+                                    <Button variant="outline" className="gap-2">
+                                        <Upload className="h-4 w-4" />
+                                        Importar CSV
+                                    </Button>
+                                }
+                            />
                             <CreateTemplateDialog
                                 defaultType="strength"
                                 trigger={
@@ -72,8 +79,7 @@ export default async function TemplatesPage() {
 
                     <TabsContent value="cardio">
                         <div className="mb-6 flex justify-end">
-                            <CreateTemplateDialog
-                                defaultType="cardio"
+                            <CardioTemplateDialog
                                 trigger={
                                     <Button>+ Nueva Sesión Cardio</Button>
                                 }

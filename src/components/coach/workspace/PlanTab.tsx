@@ -5,50 +5,47 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { MacroPlan, TrainingProgram, DietPlan } from '@/data/workspace'
-import { MacroPlanPanel } from './plan/MacroPlanPanel'
-import { DietPlanPanel } from './plan/DietPlanPanel'
+import { TrainingProgram } from '@/data/workspace'
 import { TrainingProgramsHistory } from './plan/TrainingProgramsHistory'
 import {
-    Apple,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
     Dumbbell,
-    PersonStanding,
     Plus,
-    Edit,
-    Save,
-    X,
     Calendar,
-    Loader2,
     Utensils,
-    ChevronDown,
-    Settings2
+    Settings2,
+    CalendarDays,
+    MoreVertical,
+    Archive,
+    Loader2 as Loader2Icon,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { saveMacroPlanAction, activateTrainingProgramAction } from './actions'
+import { activateTrainingProgramAction, archiveTrainingProgramAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
 import { TrainingProgramWizard } from './plan/TrainingProgramWizard'
 import { createClient } from '@/lib/supabase/client'
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
+import { PlanningTab } from './PlanningTab'
+import { DietTab } from '../tabs/DietTab'
 
 interface PlanTabProps {
     coachId: string
     clientId: string
-    activeMacroPlan: MacroPlan | null
-    macroPlans: MacroPlan[]
-    activeDietPlan: DietPlan | null
-    dietPlans: DietPlan[]
     activeProgram: TrainingProgram | null
     programs: TrainingProgram[]
     onRefresh: () => void
@@ -57,36 +54,47 @@ interface PlanTabProps {
 export function PlanTab({
     coachId,
     clientId,
-    activeMacroPlan,
-    macroPlans,
-    activeDietPlan,
-    dietPlans,
     activeProgram,
     programs,
     onRefresh
 }: PlanTabProps) {
+    const [activeSubTab, setActiveSubTab] = useState('schedule')
+
     return (
-        <Tabs defaultValue="dieta" className="w-full">
-            <TabsList className="mb-4">
-                <TabsTrigger value="dieta" className="gap-2">
-                    <Apple className="h-4 w-4" />
-                    Dieta
+        <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
+            <TabsList className="flex w-full justify-start gap-8 mb-6 bg-transparent p-0 border-b border-zinc-800 overflow-x-auto pb-px">
+                <TabsTrigger
+                    value="schedule"
+                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                >
+                    <CalendarDays className="h-4 w-4" />
+                    Planificación
                 </TabsTrigger>
-                <TabsTrigger value="entreno" className="gap-2">
+                <TabsTrigger
+                    value="training"
+                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                >
                     <Dumbbell className="h-4 w-4" />
-                    Entreno
+                    Fuerza
                 </TabsTrigger>
-                <TabsTrigger value="running" className="gap-2">
-                    <PersonStanding className="h-4 w-4" />
-                    Running
+                <TabsTrigger
+                    value="diet"
+                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                >
+                    <Utensils className="h-4 w-4" />
+                    Nutrición
                 </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="dieta">
-                <DietaSubtab coachId={coachId} clientId={clientId} />
+            <TabsContent value="schedule" className="mt-0">
+                <PlanningTab
+                    clientId={clientId}
+                    coachId={coachId}
+                    onEditProgram={() => setActiveSubTab('training')}
+                />
             </TabsContent>
 
-            <TabsContent value="entreno">
+            <TabsContent value="training" className="mt-0">
                 <EntrenoSubtab
                     coachId={coachId}
                     clientId={clientId}
@@ -96,34 +104,15 @@ export function PlanTab({
                 />
             </TabsContent>
 
-            <TabsContent value="running">
-                <RunningSubtab />
+            <TabsContent value="diet" className="mt-0">
+                <DietTab clientId={clientId} coachId={coachId} />
             </TabsContent>
         </Tabs>
     )
 }
 
 // ============================================================================
-// DIETA SUBTAB
-// ============================================================================
-
-function DietaSubtab({
-    coachId,
-    clientId,
-}: {
-    coachId: string
-    clientId: string
-}) {
-    return (
-        <div className="space-y-6">
-            <MacroPlanPanel coachId={coachId} clientId={clientId} />
-            <DietPlanPanel coachId={coachId} clientId={clientId} />
-        </div>
-    )
-}
-
-// ============================================================================
-// ENTRENO SUBTAB
+// ENTRENO SUBTAB (Logic reused from previous PlanTab)
 // ============================================================================
 
 function EntrenoSubtab({
@@ -158,145 +147,65 @@ function EntrenoSubtab({
         weeks: 4,
         daysInput: 'Día 1, Día 2, Día 3, Día 4',
     })
+    const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+    const [isArchiving, setIsArchiving] = useState(false)
 
     const handleCreate = async () => {
         setLastError(null)
-        console.log('[handleCreate] Iniciando creación de programa (CLIENT-SIDE)...')
 
-        // 1. Validaciones previas
         if (!coachId) {
-            console.error('[handleCreate] Error: coachId no encontrado')
-            toast({
-                title: 'Error de sesión',
-                description: 'No se ha detectado la sesión del entrenador. Recarga la página.',
-                variant: 'destructive',
-            })
+            toast({ title: 'Error', description: 'No se detectó la sesión.', variant: 'destructive' })
             return
         }
+        if (!newProgram.name.trim()) return
 
-        if (!newProgram.name.trim()) {
-            console.warn('[handleCreate] Validación fallida: Nombre vacío')
-            toast({
-                title: 'Nombre requerido',
-                description: 'El nombre del programa no puede estar vacío.',
-                variant: 'destructive',
-            })
-            return
-        }
-
-        if (newProgram.weeks < 1) {
-            console.warn('[handleCreate] Validación fallida: Semanas < 1')
-            toast({
-                title: 'Semanas inválidas',
-                description: 'El programa debe tener al menos 1 semana.',
-                variant: 'destructive',
-            })
-            return
-        }
-
-        const validDays = newProgram.daysInput
-            .split(',')
-            .map(d => d.trim())
-            .filter(Boolean)
-
-        console.log('[handleCreate] Días parseados:', validDays)
-
-        // 2. Verificar sesión de Supabase (Cliente)
-        const supabase = createClient()
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError || !session) {
-            console.error('[handleCreate] Error de sesión:', sessionError)
-            toast({
-                title: 'No autenticado',
-                description: 'No se ha encontrado una sesión activa. Por favor, inicia sesión de nuevo.',
-                variant: 'destructive',
-            })
-            return
-        }
-
-        console.log('[handleCreate] Sesión verificada:', session.user.id)
-
-        const payload = {
-            coach_id: coachId,
-            client_id: clientId,
-            name: newProgram.name,
-            total_weeks: newProgram.weeks,
-            days: validDays,
-        }
-
-        console.log('[handleCreate] Payload preparado:', payload)
+        const validDays = newProgram.daysInput.split(',').map(d => d.trim()).filter(Boolean)
+        const payload = { coach_id: coachId, client_id: clientId, name: newProgram.name, total_weeks: newProgram.weeks, days: validDays }
 
         startTransition(async () => {
             try {
-                console.log('[handleCreate] Llamando a createTrainingProgramClient...')
                 const result = await createTrainingProgramClient(payload)
-
                 if (!result.success) {
-                    // Si el error viene con detalles, los mostramos
-                    const errorMsg = result.error || 'Error desconocido'
-                    const detailMsg = result.details ? `\nDetalles: ${result.details}` : ''
-                    const codeMsg = result.code ? ` [${result.code}]` : ''
-
-                    toast({
-                        title: 'Error al crear' + codeMsg,
-                        description: errorMsg + detailMsg,
-                        variant: 'destructive',
-                    })
-                    setLastError(`${errorMsg}${codeMsg}${detailMsg}`)
+                    toast({ title: 'Error', description: result.error || 'Error al crear', variant: 'destructive' })
                     return
                 }
 
-                console.log('[handleCreate] Acción completada con éxito. IDs:', result.programId)
-
-                // Invalidar tanto la lista histórica como el programa activo
                 await Promise.all([
                     queryClient.invalidateQueries({ queryKey: ["trainingPrograms", clientId] }),
                     queryClient.invalidateQueries({ queryKey: ["activeTrainingProgram", clientId] })
                 ])
 
-                toast({
-                    title: 'Programa creado correctamente',
-                    description: `${result.daysCreated} días configurados.`,
-                })
-
-                // Cerrar modal de creación y abrir automáticament el Wizard en Paso 3
+                toast({ title: 'Programa creado correctamente' })
                 setShowCreate(false)
-                setWizardConfig({
-                    isOpen: true,
-                    programId: result.programId,
-                    step: 3
-                })
+                setWizardConfig({ isOpen: true, programId: result.programId ?? null, step: 3 })
                 onRefresh()
             } catch (error: any) {
-                console.error('[handleCreate] Exception capturada:', error)
-                toast({
-                    title: 'Error crítico',
-                    description: error?.message || 'Ha ocurrido un error inesperado al procesar la solicitud.',
-                    variant: 'destructive',
-                })
+                toast({ title: 'Error', description: error?.message, variant: 'destructive' })
             }
         })
     }
 
-    const handleActivate = (programId: string) => {
-        startTransition(async () => {
-            try {
-                await activateTrainingProgramAction(programId, clientId)
-                // Invalidate query to ensure fresh data
-                queryClient.invalidateQueries({ queryKey: ["activeTrainingProgram", clientId] })
-                queryClient.invalidateQueries({ queryKey: ["trainingPrograms", clientId] })
+    const handleArchive = async () => {
+        if (!activeProgram) return
+        setIsArchiving(true)
+        try {
+            const result = await archiveTrainingProgramAction(activeProgram.id)
+            if (result.success) {
+                await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ["trainingPrograms", clientId] }),
+                    queryClient.invalidateQueries({ queryKey: ["activeTrainingProgram", clientId] })
+                ])
+                toast({ title: 'Programa archivado' })
                 onRefresh()
-                toast({ title: 'Programa activado' })
-            } catch (error) {
-                console.error(error)
-                toast({
-                    title: 'Error al activar',
-                    description: 'No se pudo activar el programa.',
-                    variant: 'destructive',
-                })
+            } else {
+                toast({ title: 'Error al archivar', description: result.error, variant: 'destructive' })
             }
-        })
+        } catch (error: any) {
+            toast({ title: 'Error', description: error?.message || 'Error inesperado', variant: 'destructive' })
+        } finally {
+            setIsArchiving(false)
+            setArchiveDialogOpen(false)
+        }
     }
 
     return (
@@ -331,7 +240,31 @@ function EntrenoSubtab({
                                     </p>
                                 )}
                             </div>
-                            <Badge className="bg-success/10 text-success border-0">Activo</Badge>
+                            <div className="flex items-center gap-2">
+                                <Badge className="bg-success/10 text-success border-0">Activo</Badge>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                            onClick={() => setWizardConfig({ isOpen: true, programId: activeProgram.id, step: 3 })}
+                                        >
+                                            <Settings2 className="h-4 w-4 mr-2" />
+                                            Configurar plan
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            onClick={() => setArchiveDialogOpen(true)}
+                                            className="text-destructive focus:text-destructive"
+                                        >
+                                            <Archive className="h-4 w-4 mr-2" />
+                                            Archivar
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                         </div>
 
                         <Button
@@ -376,25 +309,36 @@ function EntrenoSubtab({
                     }}
                 />
             )}
+
+            {/* Archive Confirmation */}
+            <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Archivar programa?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            El programa &quot;{activeProgram?.name}&quot; se archivará y dejará de estar activo.
+                            Podrás reactivarlo desde el historial en cualquier momento.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isArchiving}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleArchive}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            disabled={isArchiving}
+                        >
+                            {isArchiving ? (
+                                <>
+                                    <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                                    Archivando...
+                                </>
+                            ) : (
+                                'Archivar'
+                            )}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div >
-    )
-}
-
-// ============================================================================
-// RUNNING SUBTAB (PLACEHOLDER)
-// ============================================================================
-
-function RunningSubtab() {
-    return (
-        <Card className="p-8 text-center">
-            <PersonStanding className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-30" />
-            <h3 className="font-semibold text-lg mb-2">Running aún no está integrado</h3>
-            <p className="text-muted-foreground mb-4">
-                La planificación de running estará disponible próximamente
-            </p>
-            <Button variant="outline" disabled>
-                Activar running (próximamente)
-            </Button>
-        </Card>
     )
 }

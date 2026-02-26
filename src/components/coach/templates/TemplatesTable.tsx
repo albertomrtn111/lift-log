@@ -32,10 +32,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { MoreHorizontal, Edit, Trash2, FileText, Loader2, AlertCircle, Dumbbell, Heart } from 'lucide-react'
+import { MoreHorizontal, Edit, Trash2, FileText, Loader2, Dumbbell, Heart } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { deleteTemplate } from '../../../../app/(coach)/coach/templates/actions'
 import { cn } from '@/lib/utils'
+import { CardioTemplateDialog } from './CardioTemplateDialog'
 
 interface TemplatesTableProps {
     templates: TrainingTemplate[]
@@ -80,7 +81,6 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
                 <p className="text-muted-foreground max-w-sm mb-6">
                     Crea tu primera plantilla para empezar a organizar tus entrenamientos y reutilizarlos con múltiples clientes.
                 </p>
-                {/* Create button logic is in page header, but we could add one here too if needed */}
             </Card>
         )
     }
@@ -114,7 +114,7 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Eliminar plantilla?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Esto eliminará permanentemente la plantilla "{templateToDelete?.name}".
+                            Esta acción no se puede deshacer. Esto eliminará permanentemente la plantilla &quot;{templateToDelete?.name}&quot;.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -194,12 +194,24 @@ function TemplateRow({
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                            <Link href={`/coach/templates/${template.id}`} className="cursor-pointer">
-                                <Edit className="mr-2 h-4 w-4" />
-                                Editar
-                            </Link>
-                        </DropdownMenuItem>
+                        {template.type === 'cardio' ? (
+                            <CardioTemplateDialog
+                                template={template}
+                                trigger={
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
+                                        <Edit className="mr-2 h-4 w-4" />
+                                        Editar
+                                    </DropdownMenuItem>
+                                }
+                            />
+                        ) : (
+                            <DropdownMenuItem asChild>
+                                <Link href={`/coach/templates/${template.id}`} className="cursor-pointer">
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Editar
+                                </Link>
+                            </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                             className="text-destructive focus:text-destructive cursor-pointer"

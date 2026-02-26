@@ -13,6 +13,7 @@ export interface ScheduledStrengthSession {
     // Relations (joined)
     training_days?: {
         name: string;
+        order_index?: number;
     } | null;
     training_programs?: {
         name: string;

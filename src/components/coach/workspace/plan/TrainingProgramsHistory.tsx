@@ -22,13 +22,20 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { History, ChevronDown, ChevronUp, Trash2, Loader2, Calendar, Settings2, Play, Copy } from 'lucide-react'
+import { History, ChevronDown, ChevronUp, Trash2, Loader2, Calendar, Settings2, Play, Copy, Dumbbell } from 'lucide-react'
 import { TrainingProgram } from '@/data/workspace'
 import { deleteTrainingProgramClient } from '../clientActions'
 import { activateTrainingProgramAction } from '../actions'
 import { TrainingProgramWizard } from './TrainingProgramWizard'
 import { useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/hooks/use-toast'
+
+const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+    active: { label: 'Activo', variant: 'default' },
+    draft: { label: 'Borrador', variant: 'secondary' },
+    completed: { label: 'Completado', variant: 'outline' },
+    archived: { label: 'Archivado', variant: 'outline' },
+}
 
 interface TrainingProgramsHistoryProps {
     clientId: string
@@ -56,7 +63,8 @@ export function TrainingProgramsHistory({
     const queryClient = useQueryClient()
     const { toast } = useToast()
 
-    const archivedPrograms = programs.filter(p => p.status === 'archived')
+    // Show all non-active programs (archived, draft, completed)
+    const historyPrograms = programs.filter(p => p.status !== 'active')
 
     const handleActivate = async () => {
         if (!activatingId) return
@@ -151,8 +159,6 @@ export function TrainingProgramsHistory({
         }
     }
 
-    if (archivedPrograms.length === 0) return null
-
     return (
         <Card className="p-4">
             <button
@@ -161,9 +167,9 @@ export function TrainingProgramsHistory({
             >
                 <h3 className="font-medium flex items-center gap-2">
                     <History className="h-4 w-4 text-muted-foreground" />
-                    Historial de programas archivados
+                    Historial de programas
                     <Badge variant="secondary" className="ml-2">
-                        {archivedPrograms.length}
+                        {historyPrograms.length}
                     </Badge>
                 </h3>
                 {isExpanded ? (
@@ -175,73 +181,88 @@ export function TrainingProgramsHistory({
 
             {isExpanded && (
                 <div className="mt-4">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Nombre</TableHead>
-                                <TableHead>Semanas</TableHead>
-                                <TableHead>Inicio</TableHead>
-                                <TableHead className="text-right">Acciones</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {archivedPrograms.map(program => (
-                                <TableRow key={program.id}>
-                                    <TableCell className="font-medium">{program.name}</TableCell>
-                                    <TableCell>{program.total_weeks} sem</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {program.effective_from || '---'}
-                                    </TableCell>
-                                    <TableCell className="text-right flex items-center justify-end gap-1">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setActivatingId(program.id)}
-                                            className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
-                                            title="Activar este programa"
-                                            disabled={isActivating || isDeleting || isDuplicating}
-                                        >
-                                            <Play className="h-4 w-4 fill-current" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDuplicate(program.id)}
-                                            className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
-                                            title="Duplicar programa"
-                                            disabled={isActivating || isDeleting || isDuplicating}
-                                        >
-                                            {duplicatingId === program.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Copy className="h-4 w-4" />
-                                            )}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setWizardConfig({ isOpen: true, programId: program.id, step: 3 })}
-                                            className="h-8 w-8 p-0"
-                                            title="Configurar"
-                                            disabled={isActivating || isDeleting || isDuplicating}
-                                        >
-                                            <Settings2 className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setDeletingId(program.id)}
-                                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            title="Eliminar permanentemente"
-                                            disabled={isActivating || isDeleting || isDuplicating}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </TableCell>
+                    {historyPrograms.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                            <Dumbbell className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                            <p className="text-sm">No hay programas anteriores</p>
+                            <p className="text-xs mt-1">Cuando archives o crees nuevos programas aparecerán aquí</p>
+                        </div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Nombre</TableHead>
+                                    <TableHead>Estado</TableHead>
+                                    <TableHead>Semanas</TableHead>
+                                    <TableHead>Inicio</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {historyPrograms.map(program => {
+                                    const statusCfg = STATUS_CONFIG[program.status] || STATUS_CONFIG.archived
+                                    return (
+                                        <TableRow key={program.id}>
+                                            <TableCell className="font-medium">{program.name}</TableCell>
+                                            <TableCell>
+                                                <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                                            </TableCell>
+                                            <TableCell>{program.total_weeks} sem</TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {program.effective_from || '---'}
+                                            </TableCell>
+                                            <TableCell className="text-right flex items-center justify-end gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setActivatingId(program.id)}
+                                                    className="h-8 w-8 p-0 text-success hover:text-success hover:bg-success/10"
+                                                    title="Activar este programa"
+                                                    disabled={isActivating || isDeleting || isDuplicating}
+                                                >
+                                                    <Play className="h-4 w-4 fill-current" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleDuplicate(program.id)}
+                                                    className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
+                                                    title="Duplicar programa"
+                                                    disabled={isActivating || isDeleting || isDuplicating}
+                                                >
+                                                    {duplicatingId === program.id ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <Copy className="h-4 w-4" />
+                                                    )}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setWizardConfig({ isOpen: true, programId: program.id, step: 3 })}
+                                                    className="h-8 w-8 p-0"
+                                                    title="Editar programa"
+                                                    disabled={isActivating || isDeleting || isDuplicating}
+                                                >
+                                                    <Settings2 className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setDeletingId(program.id)}
+                                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    title="Eliminar permanentemente"
+                                                    disabled={isActivating || isDeleting || isDuplicating}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    )}
                 </div>
             )}
 

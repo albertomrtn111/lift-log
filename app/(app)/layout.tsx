@@ -12,7 +12,7 @@ export default function AppLayout({
     return (
         <ClientAppProvider>
             <div className="min-h-screen bg-background">
-                <main className="pb-20">
+                <main className="pb-24">
                     {children}
                 </main>
                 <BottomNav />

@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
     Utensils,
     Flame,
@@ -18,15 +20,17 @@ import {
     ChevronDown,
     MessageSquare,
     ListTodo,
-    AlertCircle
+    AlertCircle,
+    CalendarIcon
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { BackfillModal } from '@/components/backfill/BackfillModal'
-import { DietBackfillContent } from '@/components/backfill/DietBackfillContent'
+import { DietBackfillModal } from '@/components/backfill/DietBackfillModal'
 import type { MacroPlan } from '@/types/training'
+import { getDietAdherenceLog, saveDietAdherenceLog } from '@/data/diet-adherence'
+import { toast } from 'sonner'
 
 interface DietPlanMealItem {
     quantity: string
@@ -62,16 +66,60 @@ interface DietPageClientProps {
 
 export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
     const [backfillOpen, setBackfillOpen] = useState(false)
-    const [adherence, setAdherence] = useState(85)
+    const [date, setDate] = useState<Date>(new Date())
+    const [adherence, setAdherence] = useState(0) // Default 0 instead of 85
     const [notes, setNotes] = useState('')
+    const [loading, setLoading] = useState(false)
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
-    const handleSave = () => {
+    // Load data when date changes
+    useEffect(() => {
+        let isMounted = true
+        async function load() {
+            setLoading(true)
+            try {
+                const log = await getDietAdherenceLog(date)
+                if (isMounted) {
+                    if (log) {
+                        setAdherence(log.adherence_pct ?? 0)
+                        setNotes(log.notes || '')
+                    } else {
+                        // Reset if no log exists
+                        setAdherence(0)
+                        setNotes('')
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load diet log', error)
+            } finally {
+                if (isMounted) setLoading(false)
+            }
+        }
+        load()
+        return () => { isMounted = false }
+    }, [date])
+
+    const handleSave = async () => {
         setSaveStatus('saving')
-        setTimeout(() => {
-            setSaveStatus('saved')
-            setTimeout(() => setSaveStatus('idle'), 2000)
-        }, 500)
+        try {
+            const res = await saveDietAdherenceLog({
+                date,
+                adherence_pct: adherence,
+                notes
+            })
+
+            if (res.success) {
+                setSaveStatus('saved')
+                toast.success('Adherencia guardada correctamente')
+                setTimeout(() => setSaveStatus('idle'), 2000)
+            } else {
+                setSaveStatus('idle')
+                toast.error('Error al guardar: ' + res.error)
+            }
+        } catch (e) {
+            setSaveStatus('idle')
+            toast.error('Error inesperado al guardar')
+        }
     }
 
     const hasMacros = !!macroPlan
@@ -106,33 +154,57 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
                 <TabsContent value="macros" className="space-y-4 animate-fade-in">
                     {hasMacros ? (
                         <>
-                            {/* Active badge */}
-                            <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="bg-success/10 text-success border-0">
+                            {/* Active badge & Date Picker */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <Badge variant="secondary" className="bg-success/10 text-success border-0 w-fit">
                                     Activo desde: {format(new Date(macroPlan.effectiveFrom), 'dd MMM', { locale: es })}
                                 </Badge>
+
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-full sm:w-[240px] justify-start text-left font-normal",
+                                                !date && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {date ? format(date, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="end">
+                                        <Calendar
+                                            mode="single"
+                                            selected={date}
+                                            onSelect={(d) => d && setDate(d)}
+                                            initialFocus
+                                            disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
+                                        />
+                                    </PopoverContent>
+                                </Popover>
                             </div>
 
                             {/* Macro cards */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
                                 <Card className="macro-card card-hover">
                                     <Flame className="h-6 w-6 text-accent mb-2" />
-                                    <span className="text-2xl font-bold">{macroPlan.kcal}</span>
+                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.kcal}</span>
                                     <span className="text-xs text-muted-foreground">kcal</span>
                                 </Card>
                                 <Card className="macro-card card-hover">
                                     <Beef className="h-6 w-6 text-destructive mb-2" />
-                                    <span className="text-2xl font-bold">{macroPlan.protein}g</span>
+                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.protein}g</span>
                                     <span className="text-xs text-muted-foreground">Proteína</span>
                                 </Card>
                                 <Card className="macro-card card-hover">
                                     <Wheat className="h-6 w-6 text-warning mb-2" />
-                                    <span className="text-2xl font-bold">{macroPlan.carbs}g</span>
+                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.carbs}g</span>
                                     <span className="text-xs text-muted-foreground">Carbohidratos</span>
                                 </Card>
                                 <Card className="macro-card card-hover">
                                     <Droplet className="h-6 w-6 text-warning/80 mb-2" />
-                                    <span className="text-2xl font-bold">{macroPlan.fat}g</span>
+                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.fat}g</span>
                                     <span className="text-xs text-muted-foreground">Grasa</span>
                                 </Card>
                             </div>
@@ -152,10 +224,19 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
 
                             {/* Daily adherence input */}
                             <Card className="p-4 space-y-4">
-                                <h3 className="font-semibold flex items-center gap-2">
-                                    <Check className="h-4 w-4 text-primary" />
-                                    Adherencia de hoy
-                                </h3>
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-semibold flex items-center gap-2">
+                                        <Check className="h-4 w-4 text-primary" />
+                                        Adherencia del día
+                                    </h3>
+                                    {loading ? (
+                                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground">
+                                            {format(date, "d 'de' MMMM", { locale: es })}
+                                        </span>
+                                    )}
+                                </div>
 
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-sm">
@@ -168,6 +249,7 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
                                         max={100}
                                         step={5}
                                         className="w-full"
+                                        disabled={loading}
                                     />
                                 </div>
 
@@ -178,10 +260,15 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
                                         onChange={(e) => setNotes(e.target.value)}
                                         placeholder="¿Alguna observación?"
                                         className="min-h-[60px] resize-none"
+                                        disabled={loading}
                                     />
                                 </div>
 
-                                <Button onClick={handleSave} className="w-full">
+                                <Button
+                                    onClick={handleSave}
+                                    className="w-full"
+                                    disabled={loading || saveStatus === 'saving'}
+                                >
                                     {saveStatus === 'saving' ? 'Guardando...' : saveStatus === 'saved' ? '✓ Guardado' : 'Guardar'}
                                 </Button>
                             </Card>
@@ -279,13 +366,10 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
             </Tabs>
 
             {/* Backfill Modal */}
-            <BackfillModal
+            <DietBackfillModal
                 open={backfillOpen}
                 onOpenChange={setBackfillOpen}
-                title="Rellenar adherencia pendiente"
-            >
-                {({ days }) => <DietBackfillContent days={days} />}
-            </BackfillModal>
+            />
         </div>
     )
 }

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { DietPlanMeals } from '@/data/workspace'
+import { assertClientLinked } from '@/lib/guards'
 
 export async function saveDietPlanAction(data: {
     id?: string
@@ -13,6 +14,12 @@ export async function saveDietPlanAction(data: {
     effective_from: string
     effective_to?: string
 }) {
+    try {
+        await assertClientLinked(data.client_id)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
     const supabase = await createClient()
 
     if (data.id) {

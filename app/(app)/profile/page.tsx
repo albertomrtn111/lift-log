@@ -231,7 +231,7 @@ export default function ProfilePage() {
 
                 {/* Version */}
                 <p className="text-center text-xs text-muted-foreground">
-                    LiftLog v1.0.0
+                    NextTrain v1.0.0
                 </p>
             </div>
         </div>

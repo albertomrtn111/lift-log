@@ -1,100 +1,74 @@
-'use client'
-
-import { useState, useCallback } from 'react'
-import { mockProgram, mockDays, mockColumns, mockExercises, generateMockCells } from '@/data/mockData'
-import { WeekSelector } from '@/components/routine/WeekSelector'
-import { DayTabs } from '@/components/routine/DayTabs'
-import { ExerciseTable } from '@/components/routine/ExerciseTable'
-import { MobileExerciseCards } from '@/components/routine/MobileExerciseCards'
-import { TrainingCell } from '@/types/training'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { createClient } from '@/lib/supabase/server'
+import { getClientId, getActiveClientProgram } from '@/data/client-schedule'
+import RoutinePageClient from './RoutinePageClient'
 import { Dumbbell } from 'lucide-react'
 
-export default function RoutinePage() {
-    const [selectedWeek, setSelectedWeek] = useState(1)
-    const [selectedDayId, setSelectedDayId] = useState(mockDays[0].id)
-    const [cells, setCells] = useState<TrainingCell[]>(generateMockCells())
-    const isMobile = useIsMobile()
+export default async function RoutinePage(
+    props: {
+        searchParams: Promise<{ week?: string; dayId?: string }>
+    }
+) {
+    const searchParams = await props.searchParams
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const dayExercises = mockExercises.filter(e => e.dayId === selectedDayId)
+    if (!user) return null
 
-    const handleCellChange = useCallback((exerciseId: string, columnId: string, value: string) => {
-        setCells(prev => {
-            const existingIndex = prev.findIndex(
-                c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
-            )
+    const clientId = await getClientId(user.id)
 
-            if (existingIndex >= 0) {
-                const updated = [...prev]
-                updated[existingIndex] = { ...updated[existingIndex], value }
-                return updated
-            } else {
-                return [...prev, {
-                    id: `${exerciseId}-${columnId}-${selectedWeek}`,
-                    exerciseId,
-                    columnId,
-                    weekNumber: selectedWeek,
-                    value
-                }]
-            }
-        })
-    }, [selectedWeek])
+    if (!clientId) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+                <h2 className="text-lg font-semibold mb-2">No hay perfil de cliente</h2>
+                <p className="text-sm text-muted-foreground">
+                    Tu cuenta no tiene un perfil de cliente asociado.
+                    Contacta con tu entrenador.
+                </p>
+            </div>
+        )
+    }
 
-    return (
-        <div className="min-h-screen">
-            {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 mb-1">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <Dumbbell className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-bold text-foreground">{mockProgram.name}</h1>
-                            <p className="text-sm text-muted-foreground">
-                                Programa de {mockProgram.totalWeeks} semanas
-                            </p>
+    const data = await getActiveClientProgram(clientId)
+
+    if (!data) {
+        return (
+            <div className="min-h-screen">
+                <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+                    <div className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                                <Dumbbell className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-foreground">Rutina</h1>
+                                <p className="text-sm text-muted-foreground">Sin programa asignado</p>
+                            </div>
                         </div>
                     </div>
+                </header>
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                    <Dumbbell className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                    <h3 className="font-semibold text-lg mb-1">Sin programa de entrenamiento</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs">
+                        Tu entrenador aún no te ha asignado un programa de entrenamiento.
+                    </p>
                 </div>
-
-                {/* Week selector */}
-                <div className="px-4 pb-3">
-                    <WeekSelector
-                        totalWeeks={mockProgram.totalWeeks}
-                        selectedWeek={selectedWeek}
-                        onSelectWeek={setSelectedWeek}
-                    />
-                </div>
-
-                {/* Day tabs */}
-                <DayTabs
-                    days={mockDays}
-                    selectedDayId={selectedDayId}
-                    onSelectDay={setSelectedDayId}
-                />
-            </header>
-
-            {/* Content */}
-            <div className="py-4">
-                {isMobile ? (
-                    <MobileExerciseCards
-                        exercises={dayExercises}
-                        columns={mockColumns}
-                        cells={cells}
-                        weekNumber={selectedWeek}
-                        onCellChange={handleCellChange}
-                    />
-                ) : (
-                    <ExerciseTable
-                        exercises={dayExercises}
-                        columns={mockColumns}
-                        cells={cells}
-                        weekNumber={selectedWeek}
-                        onCellChange={handleCellChange}
-                    />
-                )}
             </div>
-        </div>
+        )
+    }
+
+    const initialWeek = searchParams.week ? parseInt(searchParams.week) : 1
+    const initialDayId = searchParams.dayId
+
+    return (
+        <RoutinePageClient
+            program={data.program}
+            days={data.days}
+            columns={data.columns}
+            exercises={data.exercises}
+            initialCells={data.cells}
+            initialWeek={initialWeek}
+            initialDayId={initialDayId}
+        />
     )
 }

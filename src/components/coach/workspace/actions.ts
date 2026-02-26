@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { createReviewForCheckin, updateReview } from '@/data/workspace'
+import { assertClientLinked } from '@/lib/guards'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -64,6 +65,12 @@ export async function createReviewAction(
     clientId: string,
     checkinId: string
 ) {
+    try {
+        await assertClientLinked(clientId)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -153,6 +160,12 @@ export async function saveMacroPlanAction(plan: {
     effective_from: string
     effective_to?: string
 }) {
+    try {
+        await assertClientLinked(plan.client_id)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
     const supabase = await createClient()
 
     if (plan.id) {
@@ -213,6 +226,12 @@ export async function createTrainingProgramAction(data: {
     total_weeks: number
     days: string[]
 }) {
+    try {
+        await assertClientLinked(data.client_id)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
     const supabase = await createClient()
 
     // Create program
@@ -283,6 +302,12 @@ export async function createTrainingProgramAction(data: {
 }
 
 export async function activateTrainingProgramAction(programId: string, clientId: string) {
+    try {
+        await assertClientLinked(clientId)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
     const supabase = await createClient()
 
     // Deactivate other programs
@@ -297,6 +322,23 @@ export async function activateTrainingProgramAction(programId: string, clientId:
         .from('training_programs')
         .update({ status: 'active', effective_from: new Date().toISOString().split('T')[0] })
         .eq('id', programId)
+
+    if (error) {
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/coach/clients')
+    return { success: true }
+}
+
+export async function archiveTrainingProgramAction(programId: string) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('training_programs')
+        .update({ status: 'archived' })
+        .eq('id', programId)
+        .eq('status', 'active')
 
     if (error) {
         return { success: false, error: error.message }

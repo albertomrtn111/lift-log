@@ -1,0 +1,391 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { FormTemplate, FormField } from '@/types/forms'
+import { FormBuilderModal } from './FormBuilderModal'
+import {
+    createFormTemplate,
+    updateFormTemplate,
+    duplicateFormTemplate,
+    setFormTemplateDefault,
+    toggleFormTemplateActive,
+    deleteFormTemplate,
+} from '@/data/form-templates'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useToast } from '@/hooks/use-toast'
+import {
+    Plus,
+    MoreHorizontal,
+    Pencil,
+    Copy,
+    Star,
+    Power,
+    Trash2,
+    FileText,
+} from 'lucide-react'
+
+type TabType = 'onboarding' | 'checkin' | 'general'
+
+const TAB_CONFIG: { value: TabType; label: string }[] = [
+    { value: 'onboarding', label: 'Onboarding' },
+    { value: 'checkin', label: 'Check-in' },
+    { value: 'general', label: 'General' },
+]
+
+interface FormsPageClientProps {
+    templates: FormTemplate[]
+}
+
+export function FormsPageClient({ templates }: FormsPageClientProps) {
+    const router = useRouter()
+    const { toast } = useToast()
+    const [isPending, startTransition] = useTransition()
+    const [activeTab, setActiveTab] = useState<TabType>('onboarding')
+    const [builderOpen, setBuilderOpen] = useState(false)
+    const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<FormTemplate | null>(null)
+
+    const filteredTemplates = templates.filter((t) => t.type === activeTab)
+
+    // -----------------------------------------------------------------------
+    // Actions
+    // -----------------------------------------------------------------------
+
+    const handleCreate = () => {
+        setEditingTemplate(null)
+        setBuilderOpen(true)
+    }
+
+    const handleEdit = (template: FormTemplate) => {
+        setEditingTemplate(template)
+        setBuilderOpen(true)
+    }
+
+    const handleSave = async (data: { title: string; schema: FormField[] }) => {
+        if (editingTemplate) {
+            const result = await updateFormTemplate(editingTemplate.id, {
+                title: data.title,
+                schema: data.schema,
+            })
+            if (result.success) {
+                toast({ title: 'Plantilla actualizada' })
+                setBuilderOpen(false)
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        } else {
+            const result = await createFormTemplate({
+                title: data.title,
+                type: activeTab,
+                schema: data.schema,
+            })
+            if (result.success) {
+                toast({ title: 'Plantilla creada' })
+                setBuilderOpen(false)
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        }
+    }
+
+    const handleDuplicate = (template: FormTemplate) => {
+        startTransition(async () => {
+            const result = await duplicateFormTemplate(template.id)
+            if (result.success) {
+                toast({ title: 'Plantilla duplicada' })
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        })
+    }
+
+    const handleSetDefault = (template: FormTemplate) => {
+        startTransition(async () => {
+            const result = await setFormTemplateDefault(template.id)
+            if (result.success) {
+                toast({ title: 'Plantilla predeterminada actualizada' })
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        })
+    }
+
+    const handleToggleActive = (template: FormTemplate) => {
+        startTransition(async () => {
+            const result = await toggleFormTemplateActive(template.id)
+            if (result.success) {
+                toast({
+                    title: template.is_active ? 'Plantilla desactivada' : 'Plantilla activada',
+                })
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        })
+    }
+
+    const handleDelete = (template: FormTemplate) => {
+        if (template.is_default) {
+            toast({
+                title: 'No se puede eliminar',
+                description: 'Quita el estado predeterminado antes de eliminar.',
+                variant: 'destructive',
+            })
+            return
+        }
+        setDeleteTarget(template)
+    }
+
+    const confirmDelete = () => {
+        if (!deleteTarget) return
+        startTransition(async () => {
+            const result = await deleteFormTemplate(deleteTarget.id)
+            if (result.success) {
+                toast({ title: 'Plantilla eliminada' })
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+            setDeleteTarget(null)
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
+
+    return (
+        <>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabType)}>
+                <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                    <TabsList>
+                        {TAB_CONFIG.map((tab) => {
+                            const count = templates.filter((t) => t.type === tab.value).length
+                            return (
+                                <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+                                    {tab.label}
+                                    {count > 0 && (
+                                        <Badge
+                                            variant="secondary"
+                                            className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px]"
+                                        >
+                                            {count}
+                                        </Badge>
+                                    )}
+                                </TabsTrigger>
+                            )
+                        })}
+                    </TabsList>
+                    <Button onClick={handleCreate} className="gap-1.5 shrink-0">
+                        <Plus className="h-4 w-4" />
+                        Crear Plantilla
+                    </Button>
+                </div>
+
+                {TAB_CONFIG.map((tab) => (
+                    <TabsContent key={tab.value} value={tab.value}>
+                        <TemplateTable
+                            templates={templates.filter((t) => t.type === tab.value)}
+                            isPending={isPending}
+                            onEdit={handleEdit}
+                            onDuplicate={handleDuplicate}
+                            onSetDefault={handleSetDefault}
+                            onToggleActive={handleToggleActive}
+                            onDelete={handleDelete}
+                        />
+                    </TabsContent>
+                ))}
+            </Tabs>
+
+            {/* Builder Modal */}
+            <FormBuilderModal
+                open={builderOpen}
+                onOpenChange={setBuilderOpen}
+                templateType={activeTab}
+                editingTemplate={editingTemplate}
+                onSave={handleSave}
+            />
+
+            {/* Delete Confirmation */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminar Plantilla</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            ¿Estás seguro de que quieres eliminar &quot;{deleteTarget?.title}&quot;? Esta
+                            acción no se puede deshacer.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmDelete}
+                            className="bg-destructive hover:bg-destructive/90"
+                        >
+                            Eliminar
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Template Table
+// ---------------------------------------------------------------------------
+
+function TemplateTable({
+    templates,
+    isPending,
+    onEdit,
+    onDuplicate,
+    onSetDefault,
+    onToggleActive,
+    onDelete,
+}: {
+    templates: FormTemplate[]
+    isPending: boolean
+    onEdit: (t: FormTemplate) => void
+    onDuplicate: (t: FormTemplate) => void
+    onSetDefault: (t: FormTemplate) => void
+    onToggleActive: (t: FormTemplate) => void
+    onDelete: (t: FormTemplate) => void
+}) {
+    if (templates.length === 0) {
+        return (
+            <Card className="p-12 text-center">
+                <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                <h3 className="font-semibold">Aún no hay plantillas</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                    Crea una para empezar.
+                </p>
+            </Card>
+        )
+    }
+
+    return (
+        <Card>
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Título</TableHead>
+                        <TableHead>Campos</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="hidden sm:table-cell">Creado</TableHead>
+                        <TableHead className="w-12" />
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {templates.map((t) => (
+                        <TableRow
+                            key={t.id}
+                            className={isPending ? 'opacity-60 pointer-events-none' : ''}
+                        >
+                            <TableCell>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium">{t.title}</span>
+                                    {t.is_default && (
+                                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20 text-[10px] px-1.5">
+                                            <Star className="h-3 w-3 mr-0.5 fill-current" />
+                                            Predeterminado
+                                        </Badge>
+                                    )}
+                                </div>
+                            </TableCell>
+                            <TableCell>
+                                <span className="text-muted-foreground text-sm">
+                                    {t.schema?.length ?? 0} campos
+                                </span>
+                            </TableCell>
+                            <TableCell>
+                                {t.is_active ? (
+                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                                        Activo
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20">
+                                        Inactivo
+                                    </Badge>
+                                )}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                                {new Date(t.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={() => onEdit(t)}>
+                                            <Pencil className="mr-2 h-4 w-4" />
+                                            Editar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onDuplicate(t)}>
+                                            <Copy className="mr-2 h-4 w-4" />
+                                            Duplicar
+                                        </DropdownMenuItem>
+                                        {!t.is_default && (
+                                            <DropdownMenuItem onClick={() => onSetDefault(t)}>
+                                                <Star className="mr-2 h-4 w-4" />
+                                                Predeterminar
+                                            </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuItem onClick={() => onToggleActive(t)}>
+                                            <Power className="mr-2 h-4 w-4" />
+                                            {t.is_active ? 'Desactivar' : 'Activar'}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            onClick={() => onDelete(t)}
+                                            className="text-destructive focus:text-destructive"
+                                        >
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Eliminar
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </Card>
+    )
+}

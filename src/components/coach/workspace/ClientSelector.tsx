@@ -27,7 +27,7 @@ interface ClientOption {
     id: string
     full_name?: string | null
     email: string
-    status: 'active' | 'inactive' | 'pending'
+    status: string | null // Accept any status value, don't assume typed
 }
 
 interface ClientSelectorProps {
@@ -56,7 +56,16 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
     }, [clients, search])
 
     const activeClients = filteredClients.filter(c => c.status === 'active')
-    const inactiveClients = filteredClients.filter(c => c.status === 'inactive')
+    const inactiveClients = filteredClients.filter(c => c.status !== 'active')
+
+    // DEV: Warn about clients with null/unexpected status
+    if (process.env.NODE_ENV === 'development') {
+        filteredClients.forEach(c => {
+            if (!c.status || !['active', 'inactive', 'pending'].includes(c.status)) {
+                console.warn(`[ClientSelector] Client "${c.full_name}" (${c.id}) has unexpected status: "${c.status}"`)
+            }
+        })
+    }
 
     const handleSelect = (clientId: string) => {
         router.push(`/coach/clients?client=${clientId}`)
@@ -98,7 +107,7 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                                     selectedClient.status === 'inactive' && 'bg-muted'
                                 )}
                             >
-                                {selectedClient.status === 'active' ? 'Activo' : 'Inactivo'}
+                                {selectedClient.status === 'active' ? 'Activo' : selectedClient.status === 'inactive' ? 'Inactivo' : selectedClient.status || 'Desconocido'}
                             </Badge>
                         </div>
                     ) : (
@@ -145,7 +154,7 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                             </CommandGroup>
                         )}
                         {inactiveClients.length > 0 && (
-                            <CommandGroup heading="Inactivos">
+                            <CommandGroup heading="Inactivos / Otros">
                                 {inactiveClients.map(client => (
                                     <CommandItem
                                         key={client.id}

@@ -350,6 +350,7 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
             order: exercises.length + 1,
             sets: 3,
             reps: '10-12',
+            rir: '',
             rest_seconds: 60,
             notes: ''
         }
@@ -392,10 +393,11 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-muted/50 border-b">
-                            <th className="p-3 text-left font-medium w-[40%]">Ejercicio</th>
+                            <th className="p-3 text-left font-medium w-[30%]">Ejercicio</th>
                             <th className="p-3 text-center font-medium w-[10%]">Series</th>
-                            <th className="p-3 text-center font-medium w-[15%]">Reps</th>
-                            <th className="p-3 text-center font-medium w-[15%]">Descanso (s)</th>
+                            <th className="p-3 text-center font-medium w-[12%]">Reps</th>
+                            <th className="p-3 text-center font-medium w-[8%]">RIR</th>
+                            <th className="p-3 text-center font-medium w-[12%]">Descanso (s)</th>
                             <th className="p-3 text-center font-medium w-[15%]">Notas</th>
                             <th className="p-3 w-[5%]"></th>
                         </tr>
@@ -427,6 +429,14 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
                                         value={ex.reps}
                                         onChange={(e) => updateExercise(ex.id, 'reps', e.target.value)}
                                         className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                    />
+                                </td>
+                                <td className="p-2">
+                                    <Input
+                                        value={ex.rir || ''}
+                                        onChange={(e) => updateExercise(ex.id, 'rir', e.target.value)}
+                                        className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                        placeholder="-"
                                     />
                                 </td>
                                 <td className="p-2">

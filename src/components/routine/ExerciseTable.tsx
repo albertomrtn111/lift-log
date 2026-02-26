@@ -12,12 +12,12 @@ interface ExerciseTableProps {
   onCellChange: (exerciseId: string, columnId: string, value: string) => void;
 }
 
-export function ExerciseTable({ 
-  exercises, 
-  columns, 
-  cells, 
+export function ExerciseTable({
+  exercises,
+  columns,
+  cells,
   weekNumber,
-  onCellChange 
+  onCellChange
 }: ExerciseTableProps) {
   const [saveStatus, setSaveStatus] = useState<Record<string, CellSaveStatus>>({});
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -25,25 +25,47 @@ export function ExerciseTable({
   const getCellValue = useCallback((exerciseId: string, columnId: string): string => {
     const column = columns.find(c => c.id === columnId);
     const weekToCheck = column?.scope === 'exercise' ? 0 : weekNumber;
-    
+
     const cell = cells.find(
       c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekToCheck
     );
-    return cell?.value || '';
-  }, [cells, columns, weekNumber]);
+    if (cell?.value) return cell.value;
+
+    // Carryover for client columns (scope 'week')
+    if (column?.scope === 'week' && weekNumber > 1) {
+      const prevWeek = weekNumber - 1;
+      const prev = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === prevWeek);
+      if (prev?.value) return prev.value;
+    }
+
+    // Fallback to exercise properties for coach columns
+    const exercise = exercises.find(e => e.id === exerciseId);
+    if (exercise && column?.key) {
+      switch (column.key) {
+        case 'c2': return exercise.sets?.toString() || '';
+        case 'c3': return exercise.reps || '';
+        case 'c4': return exercise.rir?.toString() || '';
+        case 'c5': return exercise.restSeconds?.toString() || '';
+        case 'c6': return exercise.notes || '';
+      }
+    }
+    return '';
+  }, [cells, columns, weekNumber, exercises]);
+
+  const getColumnId = (key: string) => columns.find(c => c.key === key)?.id || key;
 
   const handleCellChange = useCallback((exerciseId: string, columnId: string, value: string) => {
     const cellKey = `${exerciseId}-${columnId}`;
     setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'saving' } }));
-    
+
     // Simulate save with debounce
     setTimeout(() => {
       onCellChange(exerciseId, columnId, value);
-      setSaveStatus(prev => ({ 
-        ...prev, 
-        [cellKey]: { status: 'saved', lastSaved: new Date() } 
+      setSaveStatus(prev => ({
+        ...prev,
+        [cellKey]: { status: 'saved', lastSaved: new Date() }
       }));
-      
+
       // Clear saved status after 2 seconds
       setTimeout(() => {
         setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'idle' } }));
@@ -72,8 +94,8 @@ export function ExerciseTable({
   };
 
   const completedCount = exercises.filter(ex => {
-    const weightValue = getCellValue(ex.id, 'c7');
-    const repsValue = getCellValue(ex.id, 'c8');
+    const weightValue = getCellValue(ex.id, getColumnId('c7'));
+    const repsValue = getCellValue(ex.id, getColumnId('c8'));
     return weightValue || repsValue;
   }).length;
 
@@ -82,8 +104,8 @@ export function ExerciseTable({
       {/* Progress indicator */}
       <div className="flex items-center gap-3 px-4">
         <div className="progress-bar flex-1">
-          <div 
-            className="progress-bar-fill" 
+          <div
+            className="progress-bar-fill"
             style={{ width: `${(completedCount / exercises.length) * 100}%` }}
           />
         </div>
@@ -124,8 +146,8 @@ export function ExerciseTable({
           </thead>
           <tbody>
             {exercises.map((exercise, rowIndex) => (
-              <tr 
-                key={exercise.id} 
+              <tr
+                key={exercise.id}
                 className={cn(
                   'border-b border-border transition-colors',
                   rowIndex % 2 === 0 ? 'bg-card' : 'bg-card/50'
@@ -135,7 +157,7 @@ export function ExerciseTable({
                   const value = col.id === 'c1' ? exercise.name : getCellValue(exercise.id, col.id);
                   const cellKey = `${exercise.id}-${col.id}`;
                   const isEditing = editingCell === cellKey;
-                  
+
                   return (
                     <td
                       key={col.id}
@@ -148,7 +170,8 @@ export function ExerciseTable({
                         <div className="cell-client">
                           {col.type === 'textarea' ? (
                             <textarea
-                              value={value}
+                              key={`${col.id}-${weekNumber}`}
+                              defaultValue={value}
                               placeholder="..."
                               className="w-full min-w-[100px] resize-none bg-transparent text-sm outline-none"
                               rows={1}
@@ -159,14 +182,12 @@ export function ExerciseTable({
                                   handleCellChange(exercise.id, col.id, e.target.value);
                                 }
                               }}
-                              onChange={(e) => {
-                                // Local state update would go here
-                              }}
                             />
                           ) : (
                             <input
+                              key={`${col.id}-${weekNumber}`}
                               type={col.type}
-                              value={value}
+                              defaultValue={value}
                               placeholder="..."
                               className="w-full min-w-[60px] bg-transparent text-sm outline-none"
                               onFocus={() => setEditingCell(cellKey)}
