@@ -1,14 +1,13 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { sendOnboardingEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const N8N_WEBHOOK_URL = 'https://n8n.ascenttech.cloud/webhook/send-onboarding'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 // ---------------------------------------------------------------------------
@@ -24,10 +23,6 @@ interface SendOnboardingResult {
 }
 
 // ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Action
 // ---------------------------------------------------------------------------
 
@@ -35,7 +30,7 @@ export async function sendOnboardingAction(
     clientId: string,
     coachId: string
 ): Promise<SendOnboardingResult> {
-    // Validate coach_id against membership
+    // 1. Validate coach membership
     let supabase, validatedCoachId: string
     try {
         ({ supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId))
@@ -123,26 +118,22 @@ export async function sendOnboardingAction(
     }
 
     // 6. Build form URL
-    const formUrl = `${BASE_URL}/forms/onboarding?checkin_id=${checkinId}`
+    const formUrl = `${BASE_URL}/forms/${checkinId}`
 
-    // 7. Fire-and-forget n8n webhook (best-effort)
-    try {
-        await fetch(N8N_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                client_id: client.id,
-                client_email: client.email,
-                client_name: client.full_name,
-                coach_id: validatedCoachId,
-                checkin_id: checkinId,
-                form_template_id: template.id,
-                form_url: formUrl,
-            }),
-        })
-    } catch (err) {
-        // Webhook failure is non-blocking — coach can still share the link manually
-        console.warn('[sendOnboardingAction] Webhook call failed (non-blocking):', err)
+    // 7. Call n8n webhook with Basic Auth
+    const webhookResult = await sendOnboardingEmail({
+        clientId: client.id,
+        coachId: validatedCoachId,
+        clientEmail: client.email,
+        clientName: client.full_name,
+        checkinId,
+        formTemplateId: template.id,
+        formUrl,
+    })
+
+    if (!webhookResult.ok) {
+        console.warn('[sendOnboardingAction] n8n webhook failed (non-blocking):', webhookResult.error)
+        // Non-blocking — the checkin was created, coach can share the link manually
     }
 
     revalidatePath('/coach/members')

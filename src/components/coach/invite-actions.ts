@@ -1,10 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-
-const N8N_WEBHOOK_URL = 'https://n8n.ascenttech.cloud/webhook/invite-client'
+import { sendInviteEmail } from '@/lib/n8n'
 
 interface InviteResult {
     success: boolean
@@ -37,33 +35,23 @@ export async function sendInviteAction(
     const { data: coach, error: coachError } = await supabase
         .from('coaches')
         .select('name')
-        .eq('id', coachId)
+        .eq('id', validatedCoachId)
         .single()
 
     if (coachError || !coach) {
         return { success: false, error: 'Coach not found' }
     }
 
-    // Call n8n webhook
-    try {
-        const response = await fetch(N8N_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                client_id: client.id,
-                email: client.email,
-                full_name: client.full_name,
-                coach_name: coach.name,
-            }),
-        })
+    // Call n8n webhook with Basic Auth
+    const result = await sendInviteEmail({
+        clientId: client.id,
+        email: client.email,
+        fullName: client.full_name,
+        coachName: coach.name,
+    })
 
-        if (!response.ok) {
-            console.error('[sendInviteAction] Webhook failed:', response.status, await response.text())
-            return { success: false, error: `Webhook error (${response.status})` }
-        }
-    } catch (err: any) {
-        console.error('[sendInviteAction] Webhook exception:', err)
-        return { success: false, error: 'Failed to contact invitation service' }
+    if (!result.ok) {
+        return { success: false, error: result.error || 'Failed to send invitation' }
     }
 
     // Update invite fields in DB
