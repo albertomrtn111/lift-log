@@ -17,7 +17,6 @@ export async function sendInviteAction(
     clientId: string,
     coachId: string
 ): Promise<InviteResult> {
-    // Validate coach_id against membership
     const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
 
     // Fetch client data
@@ -31,23 +30,12 @@ export async function sendInviteAction(
         return { success: false, error: 'Client not found' }
     }
 
-    // Fetch coach name
-    const { data: coach, error: coachError } = await supabase
-        .from('coaches')
-        .select('name')
-        .eq('id', validatedCoachId)
-        .single()
-
-    if (coachError || !coach) {
-        return { success: false, error: 'Coach not found' }
-    }
-
     // Call n8n webhook with Basic Auth
     const result = await sendInviteEmail({
         clientId: client.id,
-        email: client.email,
-        fullName: client.full_name,
-        coachName: coach.name,
+        coachId: validatedCoachId,
+        clientEmail: client.email,
+        clientName: client.full_name ?? '',
     })
 
     if (!result.ok) {
@@ -66,7 +54,6 @@ export async function sendInviteAction(
 
     if (updateError) {
         console.error('[sendInviteAction] DB update error:', updateError)
-        // Webhook succeeded but DB update failed — not critical, invite was still sent
     }
 
     revalidatePath('/coach/members')
@@ -75,9 +62,6 @@ export async function sendInviteAction(
     return { success: true }
 }
 
-/**
- * Resend invite — same logic as sendInviteAction, reusable from client list or workspace.
- */
 export async function resendInviteAction(
     clientId: string,
     coachId: string

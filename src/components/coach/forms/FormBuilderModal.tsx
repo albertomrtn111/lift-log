@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { FormField, FormTemplate, FormFieldType } from '@/types/forms'
+import { FormField, FormTemplate, FormFieldType, PROGRESS_PHOTOS_FIELD } from '@/types/forms'
 import { FormFieldEditor } from './FormFieldEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 import {
     Dialog,
     DialogContent,
@@ -14,7 +15,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/components/ui/dialog'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, Camera, Lock } from 'lucide-react'
 
 // -------------------------------------------------------------------------
 // Legacy type migration — map old types to new MVP types
@@ -96,7 +97,12 @@ export function FormBuilderModal({
 }: FormBuilderModalProps) {
     const getInitialFields = useCallback(() => {
         if (!editingTemplate?.schema?.length) return []
-        return migrateSchema(editingTemplate.schema as unknown[])
+        // Filter out the fixed photo field — we manage it separately
+        return migrateSchema(
+            (editingTemplate.schema as unknown[]).filter(
+                (f: any) => !(f.id === 'progress_photos' || (f.type === 'photo_upload' && f.isFixed))
+            )
+        )
     }, [editingTemplate])
 
     const [title, setTitle] = useState(editingTemplate?.title ?? '')
@@ -132,6 +138,7 @@ export function FormBuilderModal({
             required: false,
             helpText: null,
         }
+        // Insert at end of editable fields (before the fixed photo block)
         setFields((prev) => [...prev, newField])
     }
 
@@ -248,6 +255,8 @@ export function FormBuilderModal({
             })
 
             await onSave({ title: title.trim(), schema: cleanedFields })
+            // Note: The fixed photo field is NOT included here.
+            // The server-side CRUD (form-templates.ts) auto-injects it via ensurePhotoField().
         } finally {
             setSaving(false)
         }
@@ -320,6 +329,34 @@ export function FormBuilderModal({
                                 error={errors[i]}
                             />
                         ))}
+
+                        {/* Fixed photo upload block — always last, not editable */}
+                        <Card className="p-4 border border-dashed border-blue-500/30 bg-blue-500/5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                                        <Camera className="h-4 w-4 text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium">
+                                                {PROGRESS_PHOTOS_FIELD.label}
+                                            </span>
+                                            <Badge variant="outline" className="text-[10px] px-1.5 border-blue-500/30 text-blue-400">
+                                                <Lock className="h-2.5 w-2.5 mr-0.5" />
+                                                Fijo
+                                            </Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            {PROGRESS_PHOTOS_FIELD.helpText}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                    {PROGRESS_PHOTOS_FIELD.id}
+                                </span>
+                            </div>
+                        </Card>
                     </div>
                 </div>
 

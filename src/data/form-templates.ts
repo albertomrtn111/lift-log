@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import type { FormTemplate, CreateFormTemplateInput } from '@/types/forms'
+import { ensurePhotoField } from '@/types/forms'
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -38,13 +39,16 @@ export async function createFormTemplate(
 ): Promise<{ success: boolean; template?: FormTemplate; error?: string }> {
     const { supabase, coachId } = await requireActiveCoachId()
 
+    const finalSchema = ensurePhotoField(input.schema)
+    console.log(`[createFormTemplate] Injected photo field. Fields: ${finalSchema.length} (last: ${finalSchema[finalSchema.length - 1]?.id})`)
+
     const { data, error } = await supabase
         .from('form_templates')
         .insert({
             coach_id: coachId,
             title: input.title,
             type: input.type,
-            schema: input.schema,
+            schema: finalSchema,
             is_active: true,
             is_default: false,
         })
@@ -66,9 +70,16 @@ export async function updateFormTemplate(
 ): Promise<{ success: boolean; error?: string }> {
     const { supabase, coachId } = await requireActiveCoachId()
 
+    // Ensure photo field when schema is being updated
+    const safeUpdates = { ...updates }
+    if (safeUpdates.schema) {
+        safeUpdates.schema = ensurePhotoField(safeUpdates.schema as any)
+        console.log(`[updateFormTemplate] Ensured photo field. Fields: ${safeUpdates.schema.length}`)
+    }
+
     const { error } = await supabase
         .from('form_templates')
-        .update(updates)
+        .update(safeUpdates)
         .eq('id', templateId)
         .eq('coach_id', coachId)
 
@@ -98,13 +109,15 @@ export async function duplicateFormTemplate(
         return { success: false, error: 'Template not found' }
     }
 
+    const duplicatedSchema = ensurePhotoField(original.schema as any[])
+
     const { error } = await supabase
         .from('form_templates')
         .insert({
             coach_id: coachId,
             title: `${original.title} (copy)`,
             type: original.type,
-            schema: original.schema,
+            schema: duplicatedSchema,
             is_active: original.is_active,
             is_default: false,
         })

@@ -24,6 +24,7 @@ export default async function FormPage({ params }: PageProps) {
         .from('checkins')
         .select(`
             id,
+            coach_id,
             client_id,
             type,
             status,
@@ -135,6 +136,8 @@ export default async function FormPage({ params }: PageProps) {
                     templateTitle={template.title}
                     templateType={template.type}
                     schema={template.schema}
+                    coachId={checkin.coach_id}
+                    clientId={checkin.client_id}
                 />
             </div>
         </div>

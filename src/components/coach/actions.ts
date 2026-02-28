@@ -3,6 +3,7 @@
 import { createNewClient, setClientStatus, updateClientDetails, UpdateClientInput } from '@/data/members'
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { sendInviteEmail } from '@/lib/n8n'
 
 export async function deactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'inactive')
@@ -68,6 +69,16 @@ export async function createClientAction(data: {
     const result = await createNewClient({ ...data, coach_id: coachId })
 
     if (result.success && result.client) {
+        // Fire n8n invite webhook (non-blocking)
+        sendInviteEmail({
+            clientId: result.client.id,
+            coachId,
+            clientEmail: result.client.email,
+            clientName: result.client.full_name ?? '',
+        }).catch((err) => {
+            console.warn('[createClientAction] n8n invite webhook failed (non-blocking):', err)
+        })
+
         revalidatePath('/coach/members')
         revalidatePath('/coach/clients')
         return { success: true, client: result.client }
@@ -79,3 +90,4 @@ export async function createClientAction(data: {
         details: result.details
     }
 }
+

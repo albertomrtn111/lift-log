@@ -37,7 +37,16 @@ export default function SignupPage() {
             })
 
             if (error) {
-                setError(error.message)
+                // Handle "User already registered" specifically
+                if (
+                    error.message.toLowerCase().includes('already registered') ||
+                    error.message.toLowerCase().includes('already been registered') ||
+                    error.message.toLowerCase().includes('user already exists')
+                ) {
+                    setError('ALREADY_REGISTERED')
+                } else {
+                    setError(error.message)
+                }
                 return
             }
 
@@ -117,11 +126,25 @@ export default function SignupPage() {
                     />
                 </div>
 
-                {error && (
+                {error === 'ALREADY_REGISTERED' ? (
+                    <div className="text-sm bg-amber-500/10 border border-amber-500/30 p-4 rounded-md space-y-2">
+                        <p className="font-medium text-amber-600 dark:text-amber-400">
+                            Ya tienes una cuenta (o has sido invitado)
+                        </p>
+                        <p className="text-muted-foreground">
+                            Este email ya está registrado. Inicia sesión con tu contraseña o solicita un enlace de recuperación.
+                        </p>
+                        <div className="flex gap-2 pt-1">
+                            <Button asChild variant="outline" size="sm">
+                                <Link href="/login">Iniciar sesión</Link>
+                            </Button>
+                        </div>
+                    </div>
+                ) : error ? (
                     <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                         {error}
                     </div>
-                )}
+                ) : null}
 
                 <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? (

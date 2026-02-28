@@ -104,16 +104,16 @@ export async function sendOnboardingEmail(params: {
 
 export async function sendInviteEmail(params: {
     clientId: string
-    email: string
-    fullName: string
-    coachName: string
+    coachId: string
+    clientEmail: string
+    clientName: string
 }): Promise<N8nResult> {
-    console.log(`[n8n] Sending invite for client=${params.clientId}`)
+    console.log(`[n8n] Sending invite for client=${params.clientId} coach=${params.coachId}`)
 
     return callN8n(N8N_INVITE_URL, {
         client_id: params.clientId,
-        email: params.email,
-        full_name: params.fullName,
-        coach_name: params.coachName,
+        coach_id: params.coachId,
+        client_email: params.clientEmail,
+        client_name: params.clientName,
     })
 }

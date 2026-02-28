@@ -194,6 +194,6 @@ export const config = {
          * - no-access
          * - assets / public files (svg, png, jpg, etc)
          */
-        "/((?!_next/static|_next/image|favicon.ico|robots.txt|api|login|signup|mode|no-access|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+        "/((?!_next/static|_next/image|favicon.ico|robots.txt|api|auth|login|signup|set-password|mode|no-access|forms|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     ],
 }

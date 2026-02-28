@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { CheckCircle2, Loader2 } from 'lucide-react'
 import { submitFormAction } from '@/data/form-submit'
+import { PhotoUploadBlock } from './PhotoUploadBlock'
 
 // -------------------------------------------------------------------------
 // Legacy type migration (for templates created before the new type system)
@@ -47,9 +48,11 @@ interface DynamicFormProps {
     templateTitle: string
     templateType: string
     schema: FormField[]
+    coachId: string
+    clientId: string
 }
 
-export function DynamicForm({ checkinId, templateTitle, templateType, schema }: DynamicFormProps) {
+export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId }: DynamicFormProps) {
     const router = useRouter()
     const [values, setValues] = useState<Record<string, unknown>>({})
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -82,6 +85,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema }: 
         const newErrors: Record<string, string> = {}
 
         for (const field of schema) {
+            if (field.type === 'photo_upload') continue // photos handled separately
             const type = migrateFieldType(field.type)
             const val = values[field.id]
 
@@ -133,6 +137,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema }: 
         // Clean values: convert number strings to actual numbers
         const cleanedPayload: Record<string, unknown> = {}
         for (const field of schema) {
+            if (field.type === 'photo_upload') continue // photos handled separately
             const type = migrateFieldType(field.type)
             const val = values[field.id]
             if (type === 'number' || type === 'scale') {
@@ -204,17 +209,29 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema }: 
             </div>
 
             <div className="space-y-4">
-                {schema.map((field) => (
-                    <FieldRenderer
-                        key={field.id}
-                        field={field}
-                        value={values[field.id]}
-                        error={errors[field.id]}
-                        onChange={(val) => setValue(field.id, val)}
-                        onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
-                    />
-                ))}
+                {schema
+                    .filter((field) => field.type !== 'photo_upload')
+                    .map((field) => (
+                        <FieldRenderer
+                            key={field.id}
+                            field={field}
+                            value={values[field.id]}
+                            error={errors[field.id]}
+                            onChange={(val) => setValue(field.id, val)}
+                            onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
+                        />
+                    ))}
             </div>
+
+            {/* Photo upload block — renders independently of form submit */}
+            {schema.some((f) => f.type === 'photo_upload') && (
+                <PhotoUploadBlock
+                    checkinId={checkinId}
+                    coachId={coachId}
+                    clientId={clientId}
+                    maxItems={schema.find((f) => f.type === 'photo_upload')?.maxItems ?? 6}
+                />
+            )}
 
             {submitError && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
