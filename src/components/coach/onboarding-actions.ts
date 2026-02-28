@@ -4,15 +4,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendOnboardingEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface SendOnboardingResult {
     success: boolean
@@ -22,26 +14,22 @@ interface SendOnboardingResult {
     error?: string
 }
 
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
-
 export async function sendOnboardingAction(
     clientId: string,
     coachId: string
 ): Promise<SendOnboardingResult> {
-    // 1. Validate coach membership
+    // 1) Validate coach membership
     let supabase, validatedCoachId: string
     try {
-        ({ supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId))
+        ; ({ supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId))
     } catch {
         return { success: false, error: 'No autorizado' }
     }
 
-    // 2. Verify coach owns this client & client has account
+    // 2) Fetch client (must belong to this coach)
     const { data: client, error: clientErr } = await supabase
         .from('clients')
-        .select('id, email, full_name, auth_user_id')
+        .select('id, email, full_name')
         .eq('id', clientId)
         .eq('coach_id', validatedCoachId)
         .single()
@@ -50,11 +38,12 @@ export async function sendOnboardingAction(
         return { success: false, error: 'Cliente no encontrado' }
     }
 
-    if (!client.auth_user_id) {
-        return { success: false, error: 'El cliente debe registrarse antes de recibir formularios' }
+    // ✅ NEW: require email to send
+    if (!client.email) {
+        return { success: false, error: 'El cliente no tiene email configurado' }
     }
 
-    // 3. Find default onboarding template
+    // 3) Find default onboarding template
     const { data: template, error: tplErr } = await supabase
         .from('form_templates')
         .select('id')
@@ -68,11 +57,12 @@ export async function sendOnboardingAction(
     if (tplErr || !template) {
         return {
             success: false,
-            error: 'No tienes una plantilla default de onboarding. Crea una en Formularios y márcala como default.',
+            error:
+                'No tienes una plantilla default de onboarding. Crea una en Formularios y márcala como default.',
         }
     }
 
-    // 4. Check for existing pending onboarding (last 14 days)
+    // 4) Reuse pending onboarding (last 14 days)
     const fourteenDaysAgo = new Date()
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
 
@@ -94,7 +84,7 @@ export async function sendOnboardingAction(
         checkinId = existing[0].id
         reused = true
     } else {
-        // 5. Insert new onboarding checkin
+        // 5) Create onboarding checkin
         const { data: newCheckin, error: insertErr } = await supabase
             .from('checkins')
             .insert({
@@ -117,15 +107,15 @@ export async function sendOnboardingAction(
         checkinId = newCheckin.id
     }
 
-    // 6. Build form URL
+    // 6) Build URL
     const formUrl = `${BASE_URL}/forms/${checkinId}`
 
-    // 7. Call n8n webhook with Basic Auth
+    // 7) Call n8n (non-blocking)
     const webhookResult = await sendOnboardingEmail({
         clientId: client.id,
         coachId: validatedCoachId,
         clientEmail: client.email,
-        clientName: client.full_name,
+        clientName: client.full_name ?? '',
         checkinId,
         formTemplateId: template.id,
         formUrl,
@@ -133,7 +123,6 @@ export async function sendOnboardingAction(
 
     if (!webhookResult.ok) {
         console.warn('[sendOnboardingAction] n8n webhook failed (non-blocking):', webhookResult.error)
-        // Non-blocking — the checkin was created, coach can share the link manually
     }
 
     revalidatePath('/coach/members')
