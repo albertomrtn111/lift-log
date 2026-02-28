@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { DietPlanMeals } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 
 export async function saveDietPlanAction(data: {
     id?: string
@@ -20,7 +21,8 @@ export async function saveDietPlanAction(data: {
         return { success: false, error: e.message }
     }
 
-    const supabase = await createClient()
+    // Validate coach_id against membership
+    const { supabase, coachId } = await requireActiveCoachId(data.coach_id)
 
     if (data.id) {
         // Update existing
@@ -42,7 +44,7 @@ export async function saveDietPlanAction(data: {
         const { error } = await supabase
             .from('diet_plans')
             .insert({
-                coach_id: data.coach_id,
+                coach_id: coachId,
                 client_id: data.client_id,
                 name: data.name,
                 meals: data.meals,

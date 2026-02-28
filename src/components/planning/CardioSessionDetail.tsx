@@ -15,7 +15,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { CalendarItem } from '@/data/client-schedule'
 import {
-  Target,
   Activity,
   MessageSquare,
   Save,
@@ -114,35 +113,42 @@ export function CardioSessionDetail({
         </SheetHeader>
 
         <div className="space-y-6 py-6">
-          {/* Prescribed training (read-only) */}
-          <Card className="p-4 space-y-4 bg-muted/30">
-            <h3 className="font-semibold flex items-center gap-2 text-sm">
+          {/* ── Prescribed Training (read-only) ── */}
+          <Card className="overflow-hidden border-0 shadow-sm bg-muted/20">
+            {/* Header */}
+            <div className="flex items-center gap-2 px-4 pt-4 pb-2">
               {isStrength ? (
-                <Dumbbell className="h-4 w-4 text-warning" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/40">
+                  <Dumbbell className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                </div>
               ) : (
-                <Target className="h-4 w-4 text-primary" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                </div>
               )}
-              {isStrength ? 'Entrenamiento de fuerza' : 'Entrenamiento prescrito'}
-            </h3>
+              <h3 className="font-semibold text-sm">
+                {isStrength ? 'Entrenamiento de fuerza' : 'Entrenamiento prescrito'}
+              </h3>
+            </div>
 
-            {/* Goals (cardio only) */}
-            {item.kind === 'cardio' && (
-              <div className="flex flex-wrap gap-2">
+            {/* Target chips (cardio only, conditional) */}
+            {item.kind === 'cardio' && (item.targetDistanceKm || item.targetDurationMin || item.targetPace) && (
+              <div className="flex flex-wrap gap-1.5 px-4 pb-2">
                 {item.targetDistanceKm && (
-                  <Badge variant="secondary" className="gap-1">
+                  <Badge variant="secondary" className="gap-1 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
                     <RouteIcon className="h-3 w-3" />
                     {item.targetDistanceKm} km
                   </Badge>
                 )}
                 {item.targetDurationMin && (
-                  <Badge variant="secondary" className="gap-1">
+                  <Badge variant="secondary" className="gap-1 text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-0">
                     <Clock className="h-3 w-3" />
                     {item.targetDurationMin} min
                   </Badge>
                 )}
                 {item.targetPace && (
-                  <Badge variant="secondary">
-                    {item.targetPace}
+                  <Badge variant="secondary" className="gap-1 text-xs font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 border-0">
+                    {item.targetPace} /km
                   </Badge>
                 )}
               </div>
@@ -150,45 +156,44 @@ export function CardioSessionDetail({
 
             {/* Strength info */}
             {isStrength && item.subtitle && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground px-4 pb-2">
                 Programa: {item.programName || item.subtitle}
               </p>
             )}
 
-            {/* Description (cardio) */}
-            {item.description && (
-              <p className="text-sm text-muted-foreground">
-                {item.description}
-              </p>
-            )}
+            {/* Body: description + structure */}
+            <div className="px-4 pb-4 space-y-3">
+              {/* Description (main text block) */}
+              {item.description && (
+                <p className="text-sm leading-relaxed whitespace-pre-line">
+                  {item.description}
+                </p>
+              )}
 
-            {/* Structure (from planned_structure jsonb) */}
-            {item.plannedStructure ? (
-              <div className="space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase">
-                  Estructura
-                </h4>
+              {/* Structure rendered as clean bullet list — no "ESTRUCTURA" label */}
+              {item.plannedStructure && (
                 <div className="space-y-1.5">
                   {renderStructure(item.plannedStructure)}
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic py-2">
-                No hay detalles estructurados.
-              </p>
-            )}
+              )}
+            </div>
 
-            {/* Coach notes */}
+            {/* Coach notes — visually separated block */}
             {item.coachNotes && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1">
-                  <MessageSquare className="h-3 w-3" />
-                  Notas del entrenador
-                </h4>
-                <p className="text-sm text-muted-foreground bg-background/50 p-2 rounded">
-                  {item.coachNotes}
-                </p>
-              </div>
+              <>
+                <div className="border-t border-border/40" />
+                <div className="px-4 py-3 bg-blue-50/50 dark:bg-blue-950/20">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                      Notas del entrenador
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                    {item.coachNotes}
+                  </p>
+                </div>
+              </>
             )}
           </Card>
 
@@ -290,34 +295,46 @@ export function CardioSessionDetail({
 }
 
 // Render the planned_structure JSONB — supports both array of blocks and object formats
-function renderStructure(structure: any) {
+function renderStructure(structure: any): any {
   // Array of blocks: [{ name, description }, ...]
   if (Array.isArray(structure)) {
-    return structure.map((block: any, idx: number) => (
-      <div
-        key={block.id || idx}
-        className="flex items-start gap-2 text-sm bg-background/50 p-2 rounded"
-      >
-        <span className="text-primary">•</span>
-        <div>
-          {block.name && <span className="font-medium">{block.name}: </span>}
-          <span className="text-muted-foreground">
-            {block.description || block.duration || block.distance || ''}
-          </span>
+    if (structure.length === 0) return null
+    return structure.map((block: any, idx: number) => {
+      const detail = block.description || block.duration || block.distance || ''
+      if (!block.name && !detail) return null
+      return (
+        <div
+          key={block.id || idx}
+          className="flex items-start gap-2.5 text-sm py-1"
+        >
+          <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0" />
+          <div className="leading-relaxed">
+            {block.name && <span className="font-medium">{block.name}: </span>}
+            <span className="text-muted-foreground">{detail}</span>
+          </div>
         </div>
-      </div>
-    ))
+      )
+    })
   }
 
   // Object with blocks array: { blocks: [...] }
-  if (structure?.blocks && Array.isArray(structure.blocks)) {
+  if (structure?.blocks && Array.isArray(structure.blocks) && structure.blocks.length > 0) {
     return renderStructure(structure.blocks)
+  }
+
+  // Object with description field (simple mode from CardioSessionForm)
+  if (structure?.description && typeof structure.description === 'string') {
+    return (
+      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+        {structure.description}
+      </p>
+    )
   }
 
   // Simple text description
   if (typeof structure === 'string') {
     return (
-      <p className="text-sm text-muted-foreground bg-background/50 p-2 rounded">
+      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
         {structure}
       </p>
     )

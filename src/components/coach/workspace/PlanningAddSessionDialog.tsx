@@ -261,7 +261,7 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
     };
 
     // SUBMIT CARDIO
-    const handleCardioSubmit = async (data: { name: string; description?: string; structure: CardioStructure }) => {
+    const handleCardioSubmit = async (data: { name: string; description?: string; structure: CardioStructure; targetDistanceKm?: number; targetDurationMin?: number; targetPace?: string }) => {
         startTransition(async () => {
             const result = await scheduleCardioSession({
                 clientId,
@@ -269,7 +269,10 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                 date,
                 name: data.name,
                 description: data.description,
-                structure: data.structure
+                structure: data.structure,
+                targetDistanceKm: data.targetDistanceKm,
+                targetDurationMin: data.targetDurationMin,
+                targetPace: data.targetPace,
             });
 
             if (result.success) {

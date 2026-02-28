@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 
 const N8N_WEBHOOK_URL = 'https://n8n.ascenttech.cloud/webhook/invite-client'
 
@@ -18,7 +19,8 @@ export async function sendInviteAction(
     clientId: string,
     coachId: string
 ): Promise<InviteResult> {
-    const supabase = await createClient()
+    // Validate coach_id against membership
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
 
     // Fetch client data
     const { data: client, error: clientError } = await supabase

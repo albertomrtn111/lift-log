@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { FormField, FormFieldType } from '@/types/forms'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,11 +50,13 @@ interface DynamicFormProps {
 }
 
 export function DynamicForm({ checkinId, templateTitle, templateType, schema }: DynamicFormProps) {
+    const router = useRouter()
     const [values, setValues] = useState<Record<string, unknown>>({})
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [submitting, setSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
+    const [isOnboarding, setIsOnboarding] = useState(false)
 
     const setValue = useCallback((fieldId: string, value: unknown) => {
         setValues(prev => ({ ...prev, [fieldId]: value }))
@@ -143,6 +146,14 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema }: 
             const result = await submitFormAction(checkinId, cleanedPayload)
             if (result.success) {
                 setSubmitted(true)
+                setIsOnboarding(!!result.isOnboarding)
+
+                // Redirect to client dashboard after onboarding
+                if (result.isOnboarding) {
+                    setTimeout(() => {
+                        router.push('/routine')
+                    }, 2000)
+                }
             } else {
                 setSubmitError(result.error || 'Error al enviar')
             }
@@ -159,10 +170,21 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema }: 
                 <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
                     <CheckCircle2 className="h-8 w-8 text-success" />
                 </div>
-                <h2 className="text-xl font-semibold">¡Formulario enviado!</h2>
+                <h2 className="text-xl font-semibold">
+                    {isOnboarding ? '¡Onboarding completado!' : '¡Formulario enviado!'}
+                </h2>
                 <p className="text-muted-foreground">
-                    Tus respuestas han sido guardadas correctamente. Tu entrenador las revisará pronto.
+                    {isOnboarding
+                        ? 'Tu onboarding ha sido completado correctamente. Redirigiendo a tu panel...'
+                        : 'Tus respuestas han sido guardadas correctamente. Tu entrenador las revisará pronto.'
+                    }
                 </p>
+                {isOnboarding && (
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Redirigiendo...
+                    </div>
+                )}
             </Card>
         )
     }

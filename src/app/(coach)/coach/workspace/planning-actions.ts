@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { UnifiedCalendarItem, ScheduledStrengthSession, CardioSession } from "@/types/planning";
 import { CardioStructure } from "@/types/templates";
+import { requireActiveCoachId } from "@/lib/auth/require-coach";
 
 // ----------------------------------------------------------------------
 // GET SCHEDULE
@@ -208,7 +209,10 @@ export async function getWeeklySchedule(
                 notes,
                 structure,
                 is_completed,
-                created_at
+                created_at,
+                target_distance_km,
+                target_duration_min,
+                target_pace
             `)
             .eq('client_id', clientId)
             .gte('scheduled_date', startStr)
@@ -228,6 +232,9 @@ export async function getWeeklySchedule(
             structure: c.structure,
             is_completed: c.is_completed,
             created_at: c.created_at,
+            target_distance_km: c.target_distance_km ? Number(c.target_distance_km) : undefined,
+            target_duration_min: c.target_duration_min ? Number(c.target_duration_min) : undefined,
+            target_pace: c.target_pace || undefined,
         }));
 
         // 5. Combine and sort by date
@@ -255,7 +262,8 @@ type ScheduleStrengthInput = {
 }
 
 export async function scheduleStrengthSession({ clientId, programId, dayId, date }: ScheduleStrengthInput) {
-    const supabase = await createClient();
+    // Validate coach has active membership
+    const { supabase } = await requireActiveCoachId();
 
     try {
         const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -313,10 +321,14 @@ type ScheduleCardioInput = {
     description?: string;
     notes?: string;
     structure: CardioStructure;
+    targetDistanceKm?: number;
+    targetDurationMin?: number;
+    targetPace?: string;
 }
 
-export async function scheduleCardioSession({ clientId, coachId, date, name, description, notes, structure }: ScheduleCardioInput) {
-    const supabase = await createClient();
+export async function scheduleCardioSession({ clientId, coachId, date, name, description, notes, structure, targetDistanceKm, targetDurationMin, targetPace }: ScheduleCardioInput) {
+    // Validate coach has active membership
+    const { supabase } = await requireActiveCoachId(coachId);
 
     try {
         const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -352,7 +364,10 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
                 description: description || '',
                 notes: finalNotes,
                 structure: finalStructure,
-                is_completed: false
+                is_completed: false,
+                target_distance_km: targetDistanceKm ?? null,
+                target_duration_min: targetDurationMin ?? null,
+                target_pace: targetPace || null,
             });
 
         if (error) throw new Error(error.message);
@@ -444,12 +459,18 @@ export async function updateCardioSession({
     id,
     name,
     description,
-    structure
+    structure,
+    targetDistanceKm,
+    targetDurationMin,
+    targetPace,
 }: {
     id: string;
     name: string;
     description?: string;
-    structure: CardioStructure
+    structure: CardioStructure;
+    targetDistanceKm?: number;
+    targetDurationMin?: number;
+    targetPace?: string;
 }) {
     const supabase = await createClient();
 
@@ -458,7 +479,10 @@ export async function updateCardioSession({
             name,
             description,
             structure,
-            notes: structure.notes || null
+            notes: structure.notes || null,
+            target_distance_km: targetDistanceKm ?? null,
+            target_duration_min: targetDurationMin ?? null,
+            target_pace: targetPace || null,
         };
 
         const { error } = await supabase
@@ -545,7 +569,8 @@ export async function materializeVirtualSession(
     dayId: string,
     scheduledDate: string // YYYY-MM-DD
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient();
+    // Validate coach has active membership
+    const { supabase } = await requireActiveCoachId();
 
     try {
         // Resolve coach_id from clients table

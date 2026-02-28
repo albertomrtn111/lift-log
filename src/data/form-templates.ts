@@ -1,20 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import type { FormTemplate, CreateFormTemplateInput } from '@/types/forms'
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function getAuthCoachId() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { supabase, coachId: null as string | null }
-    // Use user.id directly — RLS policy checks coach_id = auth.uid()
-    return { supabase, coachId: user.id }
-}
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -23,8 +11,7 @@ async function getAuthCoachId() {
 export async function getFormTemplates(
     type?: 'checkin' | 'onboarding' | 'general'
 ): Promise<FormTemplate[]> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return []
+    const { supabase, coachId } = await requireActiveCoachId()
 
     let query = supabase
         .from('form_templates')
@@ -36,18 +23,20 @@ export async function getFormTemplates(
     if (type) query = query.eq('type', type)
 
     const { data, error } = await query
+
     if (error) {
-        console.error('Error fetching form templates:', error)
+        console.error('[getFormTemplates] Error:', error)
         return []
     }
+
+    console.log(`[getFormTemplates] Fetched ${data.length} templates for coach ${coachId}`)
     return data as FormTemplate[]
 }
 
 export async function createFormTemplate(
     input: CreateFormTemplateInput
 ): Promise<{ success: boolean; template?: FormTemplate; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     const { data, error } = await supabase
         .from('form_templates')
@@ -56,12 +45,14 @@ export async function createFormTemplate(
             title: input.title,
             type: input.type,
             schema: input.schema,
+            is_active: true,
+            is_default: false,
         })
         .select()
         .single()
 
     if (error) {
-        console.error('Error creating form template:', error)
+        console.error('[createFormTemplate] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -73,8 +64,7 @@ export async function updateFormTemplate(
     templateId: string,
     updates: { title?: string; schema?: any[]; is_active?: boolean }
 ): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     const { error } = await supabase
         .from('form_templates')
@@ -83,7 +73,7 @@ export async function updateFormTemplate(
         .eq('coach_id', coachId)
 
     if (error) {
-        console.error('Error updating form template:', error)
+        console.error('[updateFormTemplate] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -94,8 +84,7 @@ export async function updateFormTemplate(
 export async function duplicateFormTemplate(
     templateId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     // Fetch original
     const { data: original, error: fetchErr } = await supabase
@@ -121,7 +110,7 @@ export async function duplicateFormTemplate(
         })
 
     if (error) {
-        console.error('Error duplicating form template:', error)
+        console.error('[duplicateFormTemplate] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -132,8 +121,7 @@ export async function duplicateFormTemplate(
 export async function setFormTemplateDefault(
     templateId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     // Get the template to know its type
     const { data: template, error: fetchErr } = await supabase
@@ -167,7 +155,7 @@ export async function setFormTemplateDefault(
         .eq('coach_id', coachId)
 
     if (error) {
-        console.error('Error setting default:', error)
+        console.error('[setFormTemplateDefault] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -178,8 +166,7 @@ export async function setFormTemplateDefault(
 export async function toggleFormTemplateActive(
     templateId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     const { data: template, error: fetchErr } = await supabase
         .from('form_templates')
@@ -204,7 +191,7 @@ export async function toggleFormTemplateActive(
         .eq('coach_id', coachId)
 
     if (error) {
-        console.error('Error toggling active:', error)
+        console.error('[toggleFormTemplateActive] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -215,8 +202,7 @@ export async function toggleFormTemplateActive(
 export async function deleteFormTemplate(
     templateId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await getAuthCoachId()
-    if (!coachId) return { success: false, error: 'Not authenticated' }
+    const { supabase, coachId } = await requireActiveCoachId()
 
     // Check if it's default
     const { data: template, error: fetchErr } = await supabase
@@ -241,7 +227,7 @@ export async function deleteFormTemplate(
         .eq('coach_id', coachId)
 
     if (error) {
-        console.error('Error deleting form template:', error)
+        console.error('[deleteFormTemplate] Error:', error)
         return { success: false, error: error.message }
     }
 

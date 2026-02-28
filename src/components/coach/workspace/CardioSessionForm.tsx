@@ -21,6 +21,7 @@ import {
     FormLabel,
     FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -29,8 +30,16 @@ import { CardioStructure } from '@/types/templates'
 import { cn } from '@/lib/utils'
 
 // Simplified Schema
+const numericOptional = z.preprocess(
+    (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
+    z.number().min(0, "No puede ser negativo").optional()
+)
+
 const formSchema = z.object({
     trainingType: z.string().optional(),
+    targetDistanceKm: numericOptional,
+    targetDurationMin: numericOptional,
+    targetPace: z.string().optional(),
     description: z.string().min(1, "El detalle del entrenamiento es obligatorio"),
     notes: z.string().optional(),
 })
@@ -42,8 +51,18 @@ interface CardioSessionFormProps {
         name?: string;
         description?: string;
         structure?: CardioStructure;
+        targetDistanceKm?: number;
+        targetDurationMin?: number;
+        targetPace?: string;
     };
-    onSubmit: (data: { name: string; description?: string; structure: CardioStructure }) => Promise<void>;
+    onSubmit: (data: {
+        name: string;
+        description?: string;
+        structure: CardioStructure;
+        targetDistanceKm?: number;
+        targetDurationMin?: number;
+        targetPace?: string;
+    }) => Promise<void>;
     isSubmitting?: boolean;
     onCancel?: () => void;
 }
@@ -63,22 +82,25 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         resolver: zodResolver(formSchema),
         defaultValues: {
             trainingType: initialData?.structure?.trainingType || 'rodaje',
+            targetDistanceKm: initialData?.targetDistanceKm ?? undefined,
+            targetDurationMin: initialData?.targetDurationMin ?? undefined,
+            targetPace: initialData?.targetPace || '',
             description: initialData?.description || initialData?.structure?.description || '',
             notes: initialData?.structure?.notes || '',
         },
     })
 
     const handleSubmit = async (values: FormValues) => {
-        // We defer to the parent action to construct the final object.
-        // We map 'description' to the session's main text.
-        // We map 'notes' to the structure's notes.
         await onSubmit({
-            name: SESSION_TYPES.find(t => t.id === values.trainingType)?.label || 'Cardio', // Default name based on type
+            name: SESSION_TYPES.find(t => t.id === values.trainingType)?.label || 'Cardio',
             description: values.description,
+            targetDistanceKm: typeof values.targetDistanceKm === 'number' ? values.targetDistanceKm : undefined,
+            targetDurationMin: typeof values.targetDurationMin === 'number' ? values.targetDurationMin : undefined,
+            targetPace: values.targetPace || undefined,
             structure: {
                 trainingType: values.trainingType,
                 notes: values.notes,
-                blocks: [] // Empty blocks as requested
+                blocks: []
             }
         })
     }
@@ -133,6 +155,68 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         />
                     </CardContent>
                 </Card>
+
+                {/* Target Objectives Row */}
+                <div className="grid grid-cols-3 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="targetDistanceKm"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Distancia objetivo (km)</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        placeholder="Ej: 8"
+                                        {...field}
+                                        value={field.value ?? ''}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="targetDurationMin"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Duración objetivo (min)</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        placeholder="Ej: 45"
+                                        {...field}
+                                        value={field.value ?? ''}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="targetPace"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Ritmo objetivo (min/km)</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="text"
+                                        placeholder="Ej: 5:30"
+                                        {...field}
+                                        value={field.value ?? ''}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
 
                 {/* Details */}
                 <div className="space-y-4">

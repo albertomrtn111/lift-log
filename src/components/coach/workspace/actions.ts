@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { createReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -71,14 +72,10 @@ export async function createReviewAction(
         return { success: false, error: e.message }
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Validate coach_id against membership
+    const { coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId)
 
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
-
-    const review = await createReviewForCheckin(coachId, clientId, checkinId, user.id)
+    const review = await createReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
 
     if (!review) {
         return { success: false, error: 'Error al crear review' }
@@ -166,7 +163,8 @@ export async function saveMacroPlanAction(plan: {
         return { success: false, error: e.message }
     }
 
-    const supabase = await createClient()
+    // Validate coach_id against membership
+    const { supabase, coachId } = await requireActiveCoachId(plan.coach_id)
 
     if (plan.id) {
         // Update
@@ -193,7 +191,7 @@ export async function saveMacroPlanAction(plan: {
         const { error } = await supabase
             .from('macro_plans')
             .insert({
-                coach_id: plan.coach_id,
+                coach_id: coachId,
                 client_id: plan.client_id,
                 kcal: plan.kcal,
                 protein_g: plan.protein_g,
@@ -232,13 +230,14 @@ export async function createTrainingProgramAction(data: {
         return { success: false, error: e.message }
     }
 
-    const supabase = await createClient()
+    // Validate coach_id against membership
+    const { supabase, coachId } = await requireActiveCoachId(data.coach_id)
 
     // Create program
     const { data: program, error: programError } = await supabase
         .from('training_programs')
         .insert({
-            coach_id: data.coach_id,
+            coach_id: coachId,
             client_id: data.client_id,
             name: data.name,
             total_weeks: data.total_weeks,
@@ -254,7 +253,7 @@ export async function createTrainingProgramAction(data: {
     // Create days
     const daysToInsert = data.days.map((name, index) => ({
         program_id: program.id,
-        coach_id: data.coach_id, // Añadir coach_id
+        coach_id: coachId,
         day_name: name,
         day_order: index + 1,
         order_index: index + 1, // Añadir order_index que es NOT NULL
@@ -284,7 +283,7 @@ export async function createTrainingProgramAction(data: {
     const columnsToInsert = defaultColumns.map(col => ({
         ...col,
         program_id: program.id,
-        coach_id: data.coach_id, // Añadir coach_id
+        coach_id: coachId,
         required: false,
         options: {},
     }))

@@ -17,7 +17,8 @@ import {
     FileText,
     TrendingUp,
     CalendarDays,
-    Lock
+    Lock,
+    ClipboardList
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
@@ -29,6 +30,7 @@ import { ProgresoTab } from './workspace/ProgresoTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { ReviewsTab } from './tabs/ReviewsTab'
 import { PlanTab } from './workspace/PlanTab'
+import { OnboardingTab } from './workspace/OnboardingTab'
 
 interface ClientOption {
     id: string
@@ -79,8 +81,8 @@ export function NewClientWorkspace({
     const router = useRouter()
     const searchParams = useSearchParams()
 
-    // Default to 'planning' if no tab is selected, or use the query param
-    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'planning')
+    // Default to 'resumen' if no tab is selected, or use the query param
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'resumen')
 
     const handleRefresh = useCallback(() => {
         router.refresh()
@@ -137,7 +139,14 @@ export function NewClientWorkspace({
 
                     {/* NEW TAB STRUCTURE */}
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 mb-8 bg-transparent p-0 border-b border-zinc-800">
+                        <TabsList className="grid w-full grid-cols-5 mb-8 bg-transparent p-0 border-b border-zinc-800">
+                            <TabsTrigger
+                                value="onboarding"
+                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                            >
+                                <ClipboardList className="h-4 w-4" />
+                                <span className="hidden sm:inline">Onboarding</span>
+                            </TabsTrigger>
                             <TabsTrigger
                                 value="resumen"
                                 className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
@@ -175,6 +184,13 @@ export function NewClientWorkspace({
                         </TabsList>
 
                         <div className="mt-4 min-h-[500px]">
+                            <TabsContent value="onboarding">
+                                <OnboardingTab
+                                    clientId={selectedClient.id}
+                                    coachId={coachId}
+                                />
+                            </TabsContent>
+
                             <TabsContent value="resumen">
                                 <ResumenTab
                                     coachId={coachId}

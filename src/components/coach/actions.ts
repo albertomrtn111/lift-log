@@ -2,6 +2,7 @@
 
 import { createNewClient, setClientStatus, updateClientDetails, UpdateClientInput } from '@/data/members'
 import { revalidatePath } from 'next/cache'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 
 export async function deactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'inactive')
@@ -44,11 +45,15 @@ export async function createClientAction(data: {
     start_date: string
     checkin_frequency_days: number
 }) {
-    if (!data.coach_id) {
+    // Validate coach_id against membership
+    let coachId: string
+    try {
+        ({ coachId } = await requireActiveCoachId(data.coach_id))
+    } catch (e: any) {
         return {
             success: false,
-            error: 'No autorizado: coach_id no encontrado',
-            details: 'El usuario no tiene permisos de coach'
+            error: 'No autorizado: ' + e.message,
+            details: 'El usuario no tiene permisos de coach para este workspace'
         }
     }
 
@@ -60,7 +65,7 @@ export async function createClientAction(data: {
         }
     }
 
-    const result = await createNewClient(data)
+    const result = await createNewClient({ ...data, coach_id: coachId })
 
     if (result.success && result.client) {
         revalidatePath('/coach/members')

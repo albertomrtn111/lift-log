@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { revalidatePath } from 'next/cache'
 
 // ---------------------------------------------------------------------------
@@ -27,14 +27,6 @@ interface SendOnboardingResult {
 // Helper
 // ---------------------------------------------------------------------------
 
-async function getAuthCoachId() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { supabase, coachId: null as string | null }
-    const coachId = await getCoachIdForUser(user.id)
-    return { supabase, coachId }
-}
-
 // ---------------------------------------------------------------------------
 // Action
 // ---------------------------------------------------------------------------
@@ -43,10 +35,11 @@ export async function sendOnboardingAction(
     clientId: string,
     coachId: string
 ): Promise<SendOnboardingResult> {
-    const { supabase, coachId: authCoachId } = await getAuthCoachId()
-
-    // 1. Auth check
-    if (!authCoachId || authCoachId !== coachId) {
+    // Validate coach_id against membership
+    let supabase, validatedCoachId: string
+    try {
+        ({ supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId))
+    } catch {
         return { success: false, error: 'No autorizado' }
     }
 
@@ -55,7 +48,7 @@ export async function sendOnboardingAction(
         .from('clients')
         .select('id, email, full_name, auth_user_id')
         .eq('id', clientId)
-        .eq('coach_id', coachId)
+        .eq('coach_id', validatedCoachId)
         .single()
 
     if (clientErr || !client) {
@@ -70,7 +63,7 @@ export async function sendOnboardingAction(
     const { data: template, error: tplErr } = await supabase
         .from('form_templates')
         .select('id')
-        .eq('coach_id', coachId)
+        .eq('coach_id', validatedCoachId)
         .eq('type', 'onboarding')
         .eq('is_default', true)
         .eq('is_active', true)
@@ -91,7 +84,7 @@ export async function sendOnboardingAction(
     const { data: existing } = await supabase
         .from('checkins')
         .select('id')
-        .eq('coach_id', coachId)
+        .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('type', 'onboarding')
         .eq('status', 'pending')
@@ -110,7 +103,7 @@ export async function sendOnboardingAction(
         const { data: newCheckin, error: insertErr } = await supabase
             .from('checkins')
             .insert({
-                coach_id: coachId,
+                coach_id: validatedCoachId,
                 client_id: clientId,
                 type: 'onboarding',
                 status: 'pending',
@@ -141,7 +134,7 @@ export async function sendOnboardingAction(
                 client_id: client.id,
                 client_email: client.email,
                 client_name: client.full_name,
-                coach_id: coachId,
+                coach_id: validatedCoachId,
                 checkin_id: checkinId,
                 form_template_id: template.id,
                 form_url: formUrl,

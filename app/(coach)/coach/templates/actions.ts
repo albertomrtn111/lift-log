@@ -1,7 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { revalidatePath } from 'next/cache'
 import type { TrainingTemplate, CreateTemplateInput } from '@/types/templates'
 
@@ -9,13 +8,12 @@ import type { TrainingTemplate, CreateTemplateInput } from '@/types/templates'
  * Get all templates for the authenticated coach
  */
 export async function getTemplates(type?: 'strength' | 'cardio'): Promise<TrainingTemplate[]> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) return []
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return []
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch {
+        return []
+    }
 
     let query = supabase
         .from('training_templates')
@@ -45,16 +43,11 @@ export async function createTemplate(input: CreateTemplateInput): Promise<{
     template?: TrainingTemplate
     error?: string
 }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
-        return { success: false, error: 'No tienes permisos de coach' }
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: e.message }
     }
 
     const { data, error } = await supabase
@@ -92,16 +85,11 @@ export async function createDraftCardioTemplate(): Promise<{
     id?: string
     error?: string
 }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
-        return { success: false, error: 'No tienes permisos de coach' }
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: e.message }
     }
 
     const { data, error } = await supabase
@@ -133,16 +121,11 @@ export async function deleteTemplate(templateId: string): Promise<{
     success: boolean
     error?: string
 }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
-        return { success: false, error: 'No tienes permisos de coach' }
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: e.message }
     }
 
     // Delete only if owned by this coach
@@ -165,13 +148,12 @@ export async function deleteTemplate(templateId: string): Promise<{
  * Get a specific template by ID
  */
 export async function getTemplateById(templateId: string): Promise<TrainingTemplate | null> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) return null
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return null
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch {
+        return null
+    }
 
     const { data, error } = await supabase
         .from('training_templates')
@@ -198,16 +180,11 @@ export async function updateTemplate(
     success: boolean
     error?: string
 }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
-        return { success: false, error: 'No tienes permisos de coach' }
+    let supabase, coachId: string
+    try {
+        ({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: e.message }
     }
 
     // Prepare update data - ensure updated_at is refreshed

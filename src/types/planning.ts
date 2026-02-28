@@ -33,6 +33,9 @@ export interface CardioSession {
     duration_minutes?: number;
     distance_km?: number;
     notes?: string;
+    target_distance_km?: number;
+    target_duration_min?: number;
+    target_pace?: string;
 }
 
 export type UnifiedCalendarItem =

@@ -5,7 +5,7 @@ import { Timer, CalendarOff } from 'lucide-react'
 import { WeekNavigation } from '@/components/running/WeekNavigation'
 import { WeeklySummaryCard } from '@/components/running/WeeklySummaryCard'
 import { RunningDayCard } from '@/components/running/RunningDayCard'
-import { RunningSessionDetail } from '@/components/running/RunningSessionDetail'
+import { CardioSessionDetail } from '@/components/planning/CardioSessionDetail'
 import { CalendarItem, getClientWeeklySchedule, saveCardioSessionLog } from '@/data/client-schedule'
 import { cn } from '@/lib/utils'
 import { startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns'
@@ -168,7 +168,7 @@ export default function RunningPageClient({
             </div>
 
             {/* Session detail sheet */}
-            <RunningSessionDetail
+            <CardioSessionDetail
                 item={selectedItem}
                 open={!!selectedItem}
                 onOpenChange={(open) => !open && setSelectedItem(null)}

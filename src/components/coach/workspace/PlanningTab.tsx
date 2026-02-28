@@ -259,14 +259,17 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
     // Other handlers
     // -----------------------------------------------------------------------
 
-    const handleUpdateCardio = async (data: { name: string; description?: string; structure: CardioStructure }) => {
+    const handleUpdateCardio = async (data: { name: string; description?: string; structure: CardioStructure; targetDistanceKm?: number; targetDurationMin?: number; targetPace?: string }) => {
         if (!editingSession || editingSession.type !== 'cardio') return
         try {
             const res = await updateCardioSession({
                 id: editingSession.id,
                 name: data.name,
                 description: data.description,
-                structure: data.structure
+                structure: data.structure,
+                targetDistanceKm: data.targetDistanceKm,
+                targetDurationMin: data.targetDurationMin,
+                targetPace: data.targetPace,
             })
             if (res.success) {
                 toast({ title: "Sesión actualizada", description: "Los cambios se han guardado correctamente." })
@@ -455,7 +458,10 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                 initialData={{
                                     name: editingSession.name,
                                     description: editingSession.description,
-                                    structure: editingSession.structure
+                                    structure: editingSession.structure,
+                                    targetDistanceKm: editingSession.target_distance_km,
+                                    targetDurationMin: editingSession.target_duration_min,
+                                    targetPace: editingSession.target_pace,
                                 }}
                                 onSubmit={handleUpdateCardio}
                                 onCancel={() => setEditingSession(null)}
