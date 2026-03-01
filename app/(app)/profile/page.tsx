@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -203,11 +204,11 @@ export default function ProfilePage() {
 
                 {/* Menu items */}
                 <Card className="divide-y divide-border">
-                    <button className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors">
+                    <Link href="/profile/settings" className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors">
                         <Settings className="h-5 w-5 text-muted-foreground" />
                         <span className="flex-1 text-left font-medium">Configuración</span>
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </button>
+                    </Link>
                     <button className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors">
                         <HelpCircle className="h-5 w-5 text-muted-foreground" />
                         <span className="flex-1 text-left font-medium">Ayuda</span>
