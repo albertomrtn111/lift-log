@@ -107,6 +107,7 @@ export async function sendInviteEmail(params: {
     coachId: string
     clientEmail: string
     clientName: string
+    tempPassword?: string
 }): Promise<N8nResult> {
     console.log(`[n8n] Sending invite for client=${params.clientId} coach=${params.coachId}`)
 
@@ -115,5 +116,6 @@ export async function sendInviteEmail(params: {
         coach_id: params.coachId,
         client_email: params.clientEmail,
         client_name: params.clientName,
+        temp_password: params.tempPassword ?? null,
     })
 }
