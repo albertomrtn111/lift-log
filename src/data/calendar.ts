@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { CalendarEvent, Checkin } from '@/types/coach'
+import { toLocalDateStr, parseLocalDate } from '@/lib/date-utils'
 
 /**
  * Get upcoming check-ins for next N days
@@ -10,8 +11,8 @@ export async function getUpcomingCheckins(
 ): Promise<CalendarEvent[]> {
     const supabase = await createClient()
 
-    const today = new Date().toISOString().split('T')[0]
-    const endDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const today = toLocalDateStr(new Date())
+    const endDate = toLocalDateStr(new Date(Date.now() + days * 24 * 60 * 60 * 1000))
 
     const { data, error } = await supabase
         .from('clients')
@@ -32,8 +33,7 @@ export async function getUpcomingCheckins(
         clientName: client.full_name,
         date: client.next_checkin_date,
         type: 'checkin' as const,
-        // Mark as urgent if within 2 days
-        isUrgent: Math.ceil((new Date(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
+        isUrgent: Math.ceil((parseLocalDate(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
     }))
 }
 
@@ -67,9 +67,9 @@ export async function getCalendarEvents(
 ): Promise<CalendarEvent[]> {
     const supabase = await createClient()
 
-    // Get first and last day of month
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0]
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0]
+    // Get first and last day of month — use local dates, not UTC
+    const startDate = toLocalDateStr(new Date(year, month, 1))
+    const endDate = toLocalDateStr(new Date(year, month + 1, 0))
 
     const { data, error } = await supabase
         .from('clients')
@@ -89,6 +89,6 @@ export async function getCalendarEvents(
         clientName: client.full_name,
         date: client.next_checkin_date,
         type: 'checkin' as const,
-        isUrgent: Math.ceil((new Date(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
+        isUrgent: Math.ceil((parseLocalDate(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
     }))
 }

@@ -45,12 +45,26 @@ export interface TrainingCell {
   value: any; // Allow objects or strings
 }
 
+export interface ExerciseSet {
+  id: string;
+  exerciseId: string;
+  weekNumber: number;
+  setIndex: number;
+  weightKg: number | null;
+  reps: number | null;
+  rir: number | null;
+  completed: boolean;
+  isOverride: boolean;
+  notes: string | null;
+}
+
 export interface TrainingProgramFull {
   program: TrainingProgram;
   days: TrainingDay[];
   columns: TrainingColumn[];
   exercises: TrainingExercise[];
   cells: TrainingCell[];
+  sets: ExerciseSet[];
 }
 
 export interface CellSaveStatus {

@@ -67,6 +67,7 @@ export default async function RoutinePage(
             columns={data.columns}
             exercises={data.exercises}
             initialCells={data.cells}
+            initialSets={data.sets || []}
             initialWeek={initialWeek}
             initialDayId={initialDayId}
         />

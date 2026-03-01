@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, TrainingCell, TrainingProgramFull } from '@/types/training'
+import type { TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, TrainingCell, TrainingProgramFull, ExerciseSet } from '@/types/training'
 
 export interface DBTrainingProgram {
     id: string
@@ -277,6 +277,18 @@ export async function getTrainingProgramFull(programId: string): Promise<Trainin
         supabase.from('training_cells').select('*').eq('program_id', programId)
     ])
 
+    // 1b. Fetch exercise sets (needs exercise IDs)
+    const exerciseIds = (exercises || []).map((e: any) => e.id)
+    let setsData: any[] = []
+    if (exerciseIds.length > 0) {
+        const { data } = await supabase
+            .from('training_exercise_sets')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('set_index', { ascending: true })
+        setsData = data || []
+    }
+
     if (pError || !program) return null
 
     // 2. Map to frontend types
@@ -313,6 +325,18 @@ export async function getTrainingProgramFull(programId: string): Promise<Trainin
             columnId: c.column_id,
             weekNumber: c.week_index,
             value: c.value
+        })),
+        sets: setsData.map((s: any) => ({
+            id: s.id,
+            exerciseId: s.exercise_id,
+            weekNumber: s.week_index,
+            setIndex: s.set_index,
+            weightKg: s.weight_kg,
+            reps: s.reps,
+            rir: s.rir,
+            completed: s.completed,
+            isOverride: s.is_override ?? false,
+            notes: s.notes,
         }))
     }
 }

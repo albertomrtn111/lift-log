@@ -5,10 +5,11 @@ import { WeekSelector } from '@/components/routine/WeekSelector'
 import { DayTabs } from '@/components/routine/DayTabs'
 import { ExerciseTable } from '@/components/routine/ExerciseTable'
 import { MobileExerciseCards } from '@/components/routine/MobileExerciseCards'
-import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise } from '@/types/training'
+import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, ExerciseSet } from '@/types/training'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Dumbbell } from 'lucide-react'
 import { saveTrainingCell } from '@/data/client-schedule'
+import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet } from '@/data/exercise-sets'
 
 interface RoutinePageClientProps {
     program: TrainingProgram
@@ -16,6 +17,7 @@ interface RoutinePageClientProps {
     columns: TrainingColumn[]
     exercises: TrainingExercise[]
     initialCells: TrainingCell[]
+    initialSets: ExerciseSet[]
     initialWeek?: number
     initialDayId?: string
 }
@@ -26,56 +28,129 @@ export default function RoutinePageClient({
     columns,
     exercises,
     initialCells,
+    initialSets,
     initialWeek = 1,
     initialDayId,
 }: RoutinePageClientProps) {
     const [selectedWeek, setSelectedWeek] = useState(initialWeek)
     const [selectedDayId, setSelectedDayId] = useState(initialDayId || days[0]?.id || '')
     const [cells, setCells] = useState<TrainingCell[]>(initialCells)
+    const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
     const isMobile = useIsMobile()
 
     const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
 
+    // ─── Cell handlers (legacy) ─────────────────────────────────
     const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string) => {
-        // Find existing cell
         const existing = cells.find(
             c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
         )
 
-        // Optimistic update
         setCells(prev => {
-            const existingIndex = prev.findIndex(
+            const idx = prev.findIndex(
                 c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
             )
-
-            if (existingIndex >= 0) {
+            if (idx >= 0) {
                 const updated = [...prev]
-                updated[existingIndex] = { ...updated[existingIndex], value }
+                updated[idx] = { ...updated[idx], value }
                 return updated
-            } else {
-                return [...prev, {
-                    id: `temp-${exerciseId}-${columnId}-${selectedWeek}`,
-                    exerciseId,
-                    columnId,
-                    weekNumber: selectedWeek,
-                    value
-                }]
             }
+            return [...prev, { id: `temp-${exerciseId}-${columnId}-${selectedWeek}`, exerciseId, columnId, weekNumber: selectedWeek, value }]
         })
 
-        // Save to DB
-        await saveTrainingCell(
-            exerciseId,
-            columnId,
-            selectedWeek,
-            value,
-            existing?.id?.startsWith('temp-') ? undefined : existing?.id
-        )
+        await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
     }, [selectedWeek, cells])
+
+    // ─── Base Block: Generate / Apply ───────────────────────────
+    const handleGenerateSets = useCallback(async (
+        exerciseId: string,
+        baseSeries: number,
+        baseWeight: number | null,
+        baseReps: number | null,
+        baseRir: number | null
+    ) => {
+        const result = await generateOrApplySets(exerciseId, selectedWeek, baseSeries, baseWeight, baseReps, baseRir)
+        if (result.success && result.sets) {
+            setSets(prev => [
+                ...prev.filter(s => !(s.exerciseId === exerciseId && s.weekNumber === selectedWeek)),
+                ...result.sets!
+            ])
+        }
+        return result
+    }, [selectedWeek])
+
+    // ─── Single set update (marks override) ─────────────────────
+    const handleSetUpdate = useCallback(async (
+        setId: string,
+        payload: { weightKg?: number | null; reps?: number | null; rir?: number | null }
+    ) => {
+        // Optimistic
+        setSets(prev => prev.map(s => {
+            if (s.id !== setId) return s
+            return {
+                ...s,
+                ...(payload.weightKg !== undefined ? { weightKg: payload.weightKg } : {}),
+                ...(payload.reps !== undefined ? { reps: payload.reps } : {}),
+                ...(payload.rir !== undefined ? { rir: payload.rir } : {}),
+                isOverride: true,
+            }
+        }))
+
+        await updateSingleSet(setId, payload)
+    }, [])
+
+    // ─── Revert override ────────────────────────────────────────
+    const handleRevertSet = useCallback(async (
+        setId: string,
+        baseWeight: number | null,
+        baseReps: number | null,
+        baseRir: number | null
+    ) => {
+        // Optimistic
+        setSets(prev => prev.map(s => {
+            if (s.id !== setId) return s
+            return { ...s, weightKg: baseWeight, reps: baseReps, rir: baseRir, isOverride: false }
+        }))
+
+        await revertSetToBase(setId, baseWeight, baseReps, baseRir)
+    }, [])
+
+    // ─── Add one more set from base ─────────────────────────────
+    const handleAddSet = useCallback(async (
+        exerciseId: string,
+        baseWeight: number | null,
+        baseReps: number | null,
+        baseRir: number | null
+    ) => {
+        const result = await addSetFromBase(exerciseId, selectedWeek, baseWeight, baseReps, baseRir)
+        if (result.success && result.set) {
+            setSets(prev => [...prev, result.set!])
+        }
+        return result
+    }, [selectedWeek])
+
+    // ─── Delete set ─────────────────────────────────────────────
+    const handleDeleteSet = useCallback(async (setId: string) => {
+        setSets(prev => prev.filter(s => s.id !== setId))
+        await deleteExerciseSet(setId)
+    }, [])
+
+    const sharedProps = {
+        exercises: dayExercises,
+        columns,
+        cells,
+        sets,
+        weekNumber: selectedWeek,
+        onCellChange: handleCellChange,
+        onGenerateSets: handleGenerateSets,
+        onSetUpdate: handleSetUpdate,
+        onRevertSet: handleRevertSet,
+        onAddSet: handleAddSet,
+        onDeleteSet: handleDeleteSet,
+    }
 
     return (
         <div className="min-h-screen">
-            {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3 mb-1">
@@ -90,49 +165,18 @@ export default function RoutinePageClient({
                         </div>
                     </div>
                 </div>
-
-                {/* Week selector */}
                 <div className="px-4 pb-3">
-                    <WeekSelector
-                        totalWeeks={program.totalWeeks}
-                        selectedWeek={selectedWeek}
-                        onSelectWeek={setSelectedWeek}
-                    />
+                    <WeekSelector totalWeeks={program.totalWeeks} selectedWeek={selectedWeek} onSelectWeek={setSelectedWeek} />
                 </div>
-
-                {/* Day tabs */}
-                <DayTabs
-                    days={days}
-                    selectedDayId={selectedDayId}
-                    onSelectDay={setSelectedDayId}
-                />
+                <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={setSelectedDayId} />
             </header>
 
-            {/* Content */}
             <div className="py-4">
                 {dayExercises.length > 0 ? (
-                    isMobile ? (
-                        <MobileExerciseCards
-                            exercises={dayExercises}
-                            columns={columns}
-                            cells={cells}
-                            weekNumber={selectedWeek}
-                            onCellChange={handleCellChange}
-                        />
-                    ) : (
-                        <ExerciseTable
-                            exercises={dayExercises}
-                            columns={columns}
-                            cells={cells}
-                            weekNumber={selectedWeek}
-                            onCellChange={handleCellChange}
-                        />
-                    )
+                    isMobile ? <MobileExerciseCards {...sharedProps} /> : <ExerciseTable {...sharedProps} />
                 ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                        <p className="text-sm text-muted-foreground">
-                            No hay ejercicios para este día.
-                        </p>
+                        <p className="text-sm text-muted-foreground">No hay ejercicios para este día.</p>
                     </div>
                 )}
             </div>

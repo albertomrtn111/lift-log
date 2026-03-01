@@ -229,7 +229,7 @@ export async function getClientWeeklySchedule(
 
     // ----- 4. Combine, sort by date -----
     const allItems = [...allStrength, ...cardioItems].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        (a, b) => a.date.localeCompare(b.date)
     )
 
     // ----- 5. Fill rest days -----
@@ -401,6 +401,17 @@ export async function getActiveClientProgram(clientId: string) {
     const exerciseIds = exercises.map((e: any) => e.id)
     let logs: any[] = []
 
+    // Fetch exercise sets (new per-set tracking)
+    let exerciseSets: any[] = []
+    if (exerciseIds.length > 0) {
+        const { data: setsData } = await supabase
+            .from('training_exercise_sets')
+            .select('*')
+            .in('exercise_id', exerciseIds)
+            .order('set_index', { ascending: true })
+        exerciseSets = setsData || []
+    }
+
     if (exerciseIds.length > 0) {
         const user = await supabase.auth.getUser();
         const authUserId = user.data.user?.id;
@@ -533,6 +544,18 @@ export async function getActiveClientProgram(clientId: string) {
             columnId: c.column_id,
             weekNumber: c.week_index,
             value: c.value,
+        })),
+        sets: exerciseSets.map((s: any) => ({
+            id: s.id,
+            exerciseId: s.exercise_id,
+            weekNumber: s.week_index,
+            setIndex: s.set_index,
+            weightKg: s.weight_kg,
+            reps: s.reps,
+            rir: s.rir,
+            completed: s.completed,
+            isOverride: s.is_override ?? false,
+            notes: s.notes,
         })),
     }
 }

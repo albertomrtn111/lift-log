@@ -239,7 +239,7 @@ export async function getWeeklySchedule(
 
         // 5. Combine and sort by date
         const allItems = [...allStrengthItems, ...cardioItems].sort((a, b) =>
-            new Date(a.date).getTime() - new Date(b.date).getTime()
+            a.date.localeCompare(b.date)
         );
 
         return { success: true, data: allItems };
@@ -554,6 +554,103 @@ export async function deleteStrengthSession(
         }
 
         return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+// ----------------------------------------------------------------------
+// DUPLICATE STRENGTH SESSION
+// ----------------------------------------------------------------------
+
+export async function duplicateStrengthSession(
+    sessionId: string
+): Promise<{ success: boolean; newId?: string; error?: string }> {
+    const supabase = await createClient();
+
+    try {
+        // 1. Read original
+        const { data: original, error: readError } = await supabase
+            .from('scheduled_strength_sessions')
+            .select('*')
+            .eq('id', sessionId)
+            .single();
+
+        if (readError || !original) {
+            throw new Error('Sesión de fuerza no encontrada');
+        }
+
+        // 2. Insert clone (same date, same program/day, not completed)
+        const { data: clone, error: insertError } = await supabase
+            .from('scheduled_strength_sessions')
+            .insert({
+                client_id: original.client_id,
+                coach_id: original.coach_id,
+                program_id: original.program_id,
+                day_id: original.day_id,
+                scheduled_date: original.scheduled_date, // keep exact date string
+                is_completed: false,
+            })
+            .select('id')
+            .single();
+
+        if (insertError) {
+            console.error('[duplicateStrengthSession] Error:', insertError.message);
+            throw new Error(insertError.message);
+        }
+
+        return { success: true, newId: clone?.id };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+// ----------------------------------------------------------------------
+// DUPLICATE CARDIO SESSION
+// ----------------------------------------------------------------------
+
+export async function duplicateCardioSession(
+    sessionId: string
+): Promise<{ success: boolean; newId?: string; error?: string }> {
+    const supabase = await createClient();
+
+    try {
+        // 1. Read original
+        const { data: original, error: readError } = await supabase
+            .from('cardio_sessions')
+            .select('*')
+            .eq('id', sessionId)
+            .single();
+
+        if (readError || !original) {
+            throw new Error('Sesión de cardio no encontrada');
+        }
+
+        // 2. Insert clone with "(copia)" suffix
+        const { data: clone, error: insertError } = await supabase
+            .from('cardio_sessions')
+            .insert({
+                client_id: original.client_id,
+                coach_id: original.coach_id,
+                scheduled_date: original.scheduled_date, // keep exact date string
+                name: `${original.name || 'Cardio'} (copia)`,
+                description: original.description,
+                notes: original.notes,
+                structure: original.structure,
+                is_completed: false,
+                target_distance_km: original.target_distance_km,
+                target_duration_min: original.target_duration_min,
+                target_pace: original.target_pace,
+            })
+            .select('id')
+            .single();
+
+        if (insertError) {
+            console.error('[duplicateCardioSession] Error:', insertError.message);
+            throw new Error(insertError.message);
+        }
+
+        return { success: true, newId: clone?.id };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

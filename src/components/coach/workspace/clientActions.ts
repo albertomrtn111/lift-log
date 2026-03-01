@@ -39,7 +39,8 @@ export async function createTrainingProgramClient(data: {
     console.log('[createTrainingProgramClient] Resolved Coach ID:', resolvedCoachId)
 
     // 2. Prepare Data for RPC
-    const effectiveFrom = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const effectiveFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
     // Prepare Days JSON
     const daysPayload = data.days.map((day: any, index: number) => {

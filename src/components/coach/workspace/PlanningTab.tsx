@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay } from 'date-fns'
+import { parseLocalDate } from '@/lib/date-utils'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { getWeeklySchedule, deleteCardioSession, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession } from '@/app/(coach)/coach/workspace/planning-actions'
+import { getWeeklySchedule, deleteCardioSession, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession, duplicateStrengthSession, duplicateCardioSession } from '@/app/(coach)/coach/workspace/planning-actions'
 import { UnifiedCalendarItem } from '@/types/planning'
 import { CardioStructure } from '@/types/templates'
 import { useToast } from '@/hooks/use-toast'
@@ -320,12 +321,42 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         }
     }
 
+    const handleDuplicateStrength = async (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation()
+        try {
+            const res = await duplicateStrengthSession(sessionId)
+            if (res.success) {
+                toast({ title: "Sesión duplicada", description: "Se ha creado una copia de la sesión de fuerza." })
+                fetchSchedule()
+            } else {
+                toast({ title: "Error", description: res.error || "No se pudo duplicar", variant: "destructive" })
+            }
+        } catch {
+            toast({ title: "Error", description: "Ocurrió un error inesperado", variant: "destructive" })
+        }
+    }
+
+    const handleDuplicateCardio = async (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation()
+        try {
+            const res = await duplicateCardioSession(sessionId)
+            if (res.success) {
+                toast({ title: "Sesión duplicada", description: "Se ha creado una copia de la sesión de cardio." })
+                fetchSchedule()
+            } else {
+                toast({ title: "Error", description: res.error || "No se pudo duplicar", variant: "destructive" })
+            }
+        } catch {
+            toast({ title: "Error", description: "Ocurrió un error inesperado", variant: "destructive" })
+        }
+    }
+
     const handlePreviousWeek = () => setCurrentDate(subWeeks(currentDate, 1))
     const handleNextWeek = () => setCurrentDate(addWeeks(currentDate, 1))
     const handleToday = () => setCurrentDate(new Date())
 
     const getItemsForDay = (date: Date) => {
-        return schedule.filter(item => isSameDay(new Date(item.date), date))
+        return schedule.filter(item => isSameDay(parseLocalDate(item.date), date))
     }
 
     const getCardioSummary = (item: UnifiedCalendarItem & { type: 'cardio' }) => {
@@ -427,6 +458,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         <StrengthCard
                                                             item={item}
                                                             onEdit={(programId) => onEditProgram?.(programId)}
+                                                            onDuplicate={(e) => handleDuplicateStrength(e, item.id)}
                                                             onDelete={(e) => handleDeleteStrength(e, item.id)}
                                                         />
                                                     ) : (
@@ -434,6 +466,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                             item={item}
                                                             getCardioSummary={getCardioSummary}
                                                             onEdit={() => setEditingSession(item)}
+                                                            onDuplicate={(e) => handleDuplicateCardio(e, item.id)}
                                                             onDelete={(e) => handleDeleteCardio(e, item.id)}
                                                         />
                                                     )}
@@ -483,9 +516,10 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
 // Sub-components (extracted for readability)
 // ---------------------------------------------------------------------------
 
-function StrengthCard({ item, onEdit, onDelete }: {
+function StrengthCard({ item, onEdit, onDuplicate, onDelete }: {
     item: UnifiedCalendarItem
     onEdit?: (programId: string) => void
+    onDuplicate?: (e: React.MouseEvent) => void
     onDelete?: (e: React.MouseEvent) => void
 }) {
     const isVirtual = item.id.startsWith('virtual-')
@@ -530,6 +564,11 @@ function StrengthCard({ item, onEdit, onDelete }: {
                                     <Pencil className="mr-2 h-4 w-4" /> Editar programa
                                 </DropdownMenuItem>
                                 {canDelete && (
+                                    <DropdownMenuItem onClick={(e) => onDuplicate?.(e)}>
+                                        <Copy className="mr-2 h-4 w-4" /> Duplicar
+                                    </DropdownMenuItem>
+                                )}
+                                {canDelete && (
                                     <DropdownMenuItem
                                         onClick={(e) => onDelete?.(e)}
                                         className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
@@ -561,11 +600,13 @@ function CardioCard({
     item,
     getCardioSummary,
     onEdit,
+    onDuplicate,
     onDelete
 }: {
     item: UnifiedCalendarItem & { type: 'cardio' }
     getCardioSummary: (item: UnifiedCalendarItem & { type: 'cardio' }) => string
     onEdit: () => void
+    onDuplicate: (e: React.MouseEvent) => void
     onDelete: (e: React.MouseEvent) => void
 }) {
     const structure = item.structure as any
@@ -605,6 +646,9 @@ function CardioCard({
                                     onEdit()
                                 }}>
                                     <Pencil className="mr-2 h-4 w-4" /> Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => onDuplicate(e)}>
+                                    <Copy className="mr-2 h-4 w-4" /> Duplicar
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                     onClick={(e) => onDelete(e)}

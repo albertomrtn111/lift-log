@@ -69,7 +69,7 @@ export function CalendarView({ events, initialYear, initialMonth }: CalendarView
     if (startDay < 0) startDay = 6
 
     const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
     // Create calendar grid
     const calendarDays: (number | null)[] = []
