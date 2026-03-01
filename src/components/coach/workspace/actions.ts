@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { revalidatePath } from 'next/cache'
 import { createReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
@@ -268,17 +269,7 @@ export async function createTrainingProgramAction(data: {
     }
 
     // Create default columns
-    const defaultColumns = [
-        { label: 'Ejercicio', data_type: 'text', scope: 'exercise', editable_by: 'coach', col_order: 1, order_index: 1, key: 'exercise' },
-        { label: 'Series', data_type: 'number', scope: 'cell', editable_by: 'coach', col_order: 2, order_index: 2, key: 'sets' },
-        { label: 'Reps', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 3, order_index: 3, key: 'reps' },
-        { label: 'RIR', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 4, order_index: 4, key: 'rir' },
-        { label: 'Descanso', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 5, order_index: 5, key: 'rest' },
-        { label: 'Tips', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 6, order_index: 6, key: 'tips' },
-        { label: 'Peso', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 7, order_index: 7, key: 'weight' },
-        { label: 'Reps hechas', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 8, order_index: 8, key: 'reps_done' },
-        { label: 'Notas', data_type: 'text', scope: 'cell', editable_by: 'both', col_order: 9, order_index: 9, key: 'notes' },
-    ]
+    const defaultColumns = getDefaultTrainingColumns()
 
     const columnsToInsert = defaultColumns.map(col => ({
         ...col,

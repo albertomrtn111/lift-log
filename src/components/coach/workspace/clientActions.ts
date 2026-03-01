@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { addWeeks, setDay, format, startOfWeek, addDays, isBefore, isAfter, parseISO } from 'date-fns'
+import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 
 /**
  * @deprecated Use TrainingProgramWizard Step 1 for program creation.
@@ -54,17 +55,7 @@ export async function createTrainingProgramClient(data: {
     })
 
     // Prepare Default Columns JSON
-    const defaultColumns = [
-        { label: 'Ejercicio', data_type: 'text', scope: 'exercise', editable_by: 'coach', col_order: 1 },
-        { label: 'Series', data_type: 'number', scope: 'cell', editable_by: 'coach', col_order: 2 },
-        { label: 'Reps', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 3 },
-        { label: 'RIR', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 4 },
-        { label: 'Descanso', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 5 },
-        { label: 'Tips', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 6 },
-        { label: 'Peso', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 7 },
-        { label: 'Reps hechas', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 8 },
-        { label: 'Notas', data_type: 'text', scope: 'cell', editable_by: 'both', col_order: 9 },
-    ]
+    const defaultColumns = getDefaultTrainingColumns()
 
     // 3. Call RPC Transaction
     const { data: programId, error: rpcError } = await supabase.rpc('create_program_and_archive_old', {
@@ -227,7 +218,6 @@ export async function duplicateTrainingProgramClient(programId: string) {
                 data_type: c.data_type,
                 scope: c.scope,
                 editable_by: c.editable_by,
-                col_order: c.col_order,
                 options: c.options,
                 key: c.key,
                 required: c.required,

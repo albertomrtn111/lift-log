@@ -485,7 +485,7 @@ export async function getTrainingColumns(programId: string) {
         .from('training_columns')
         .select('*')
         .eq('program_id', programId)
-        .order('col_order', { ascending: true })
+        .order('order_index', { ascending: true })
 
     if (error || !data) return []
     return data

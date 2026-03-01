@@ -47,6 +47,8 @@ interface TrainingProgramWizardProps {
     onClose: () => void
 }
 
+import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
+
 export function TrainingProgramWizard({
     programId,
     coachId,
@@ -127,13 +129,11 @@ export function TrainingProgramWizard({
 
             let finalCols = cData || []
             if (finalCols.length === 0) {
-                const defaults = [
-                    { program_id: idToLoad, coach_id: prog.coach_id, key: 'sets', label: 'Series', order_index: 1, data_type: 'text', editable_by: 'coach' },
-                    { program_id: idToLoad, coach_id: prog.coach_id, key: 'reps', label: 'Reps', order_index: 2, data_type: 'text', editable_by: 'coach' },
-                    { program_id: idToLoad, coach_id: prog.coach_id, key: 'rir', label: 'RIR', order_index: 3, data_type: 'text', editable_by: 'coach' },
-                    { program_id: idToLoad, coach_id: prog.coach_id, key: 'rest', label: 'Descanso', order_index: 4, data_type: 'text', editable_by: 'coach' },
-                    { program_id: idToLoad, coach_id: prog.coach_id, key: 'notes', label: 'Notas', order_index: 5, data_type: 'text', editable_by: 'coach' },
-                ]
+                const defaults = getDefaultTrainingColumns().map(col => ({
+                    ...col,
+                    program_id: idToLoad,
+                    coach_id: prog.coach_id
+                }))
                 const { data: insertedCols } = await supabase.from('training_columns').insert(defaults).select()
                 if (insertedCols) finalCols = insertedCols
             }
@@ -519,17 +519,7 @@ const StepInfo = React.forwardRef(({
                 // INSERT using RPC to ensure archiving of old active programs
 
                 // Default columns matching clientActions.ts
-                const defaultColumns = [
-                    { label: 'Ejercicio', data_type: 'text', scope: 'exercise', editable_by: 'coach', col_order: 1 },
-                    { label: 'Series', data_type: 'number', scope: 'cell', editable_by: 'coach', col_order: 2 },
-                    { label: 'Reps', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 3 },
-                    { label: 'RIR', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 4 },
-                    { label: 'Descanso', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 5 },
-                    { label: 'Tips', data_type: 'text', scope: 'cell', editable_by: 'coach', col_order: 6 },
-                    { label: 'Peso', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 7 },
-                    { label: 'Reps hechas', data_type: 'number', scope: 'cell', editable_by: 'client', col_order: 8 },
-                    { label: 'Notas', data_type: 'text', scope: 'cell', editable_by: 'both', col_order: 9 },
-                ]
+                const defaultColumns = getDefaultTrainingColumns()
 
                 const { data: newProgramId, error } = await supabase.rpc('create_program_and_archive_old', {
                     p_coach_id: coachId || localProgram.coach_id,
