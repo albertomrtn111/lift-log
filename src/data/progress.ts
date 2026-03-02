@@ -92,6 +92,46 @@ export async function saveClientMetrics(input: ClientMetricInput) {
     return { success: true }
 }
 
+export async function saveClientMetricsBulk(inputs: ClientMetricInput[]) {
+    const supabase = await createClient()
+    const client = await getClientContext()
+
+    if (!client) return { success: false, error: 'Client not found' }
+
+    // Use only valid days that have at least one field filled
+    const validInputs = inputs.filter(i =>
+        i.weight_kg !== undefined ||
+        i.steps !== undefined ||
+        i.sleep_h !== undefined ||
+        i.notes !== undefined
+    )
+
+    if (validInputs.length === 0) return { success: true, count: 0 }
+
+    const rowsToUpsert = validInputs.map(input => ({
+        client_id: client.id,
+        coach_id: client.coach_id,
+        metric_date: input.metric_date,
+        weight_kg: input.weight_kg,
+        steps: input.steps,
+        sleep_h: input.sleep_h,
+        notes: input.notes
+    }))
+
+    const { error } = await supabase
+        .from('client_metrics')
+        .upsert(rowsToUpsert, {
+            onConflict: 'client_id, metric_date'
+        })
+
+    if (error) {
+        console.error('Error in bulk metrics upsert:', error)
+        return { success: false, error: error.message }
+    }
+
+    return { success: true, count: rowsToUpsert.length }
+}
+
 export async function getRecentClientMetrics(limit = 10) {
     const supabase = await createClient()
     const client = await getClientContext()

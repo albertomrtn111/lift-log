@@ -272,7 +272,13 @@ export default function ProgressPage() {
                 onOpenChange={setBackfillOpen}
                 title="Rellenar métricas pendientes"
             >
-                {({ days }) => <ProgressBackfillContent days={days} />}
+                {({ days, onClose }) => (
+                    <ProgressBackfillContent
+                        days={days}
+                        onClose={onClose}
+                        onSuccess={loadRecent}
+                    />
+                )}
             </BackfillModal>
         </div>
     )

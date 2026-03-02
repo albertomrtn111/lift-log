@@ -19,28 +19,15 @@ interface BackfillModalProps {
   title: string;
   children: (props: {
     days: Date[];
-    onSaveAll: () => void;
-    saveStatus: 'idle' | 'saving' | 'saved';
+    onClose: () => void;
   }) => React.ReactNode;
 }
 
 export function BackfillModal({ open, onOpenChange, title, children }: BackfillModalProps) {
   const [range, setRange] = useState<RangeOption>(7);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const today = new Date();
   const days = Array.from({ length: range }, (_, i) => subDays(today, range - 1 - i));
-
-  const handleSaveAll = () => {
-    setSaveStatus('saving');
-    setTimeout(() => {
-      setSaveStatus('saved');
-      setTimeout(() => {
-        setSaveStatus('idle');
-        onOpenChange(false);
-      }, 1000);
-    }, 500);
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -68,26 +55,8 @@ export function BackfillModal({ open, onOpenChange, title, children }: BackfillM
         </div>
 
         {/* Content area with scroll */}
-        <div className="flex-1 overflow-y-auto -mx-6 px-6">
-          {children({ days, onSaveAll: handleSaveAll, saveStatus })}
-        </div>
-
-        {/* Footer */}
-        <div className="pt-4 border-t border-border">
-          <Button 
-            onClick={handleSaveAll} 
-            className="w-full" 
-            size="lg"
-            disabled={saveStatus === 'saving'}
-          >
-            {saveStatus === 'saving' ? (
-              <>Guardando...</>
-            ) : saveStatus === 'saved' ? (
-              <><Check className="h-4 w-4 mr-2" /> Guardado</>
-            ) : (
-              <><Save className="h-4 w-4 mr-2" /> Guardar todo</>
-            )}
-          </Button>
+        <div className="flex-1 overflow-y-auto -mx-6 px-6 pb-2">
+          {children({ days, onClose: () => onOpenChange(false) })}
         </div>
       </DialogContent>
     </Dialog>
@@ -95,11 +64,11 @@ export function BackfillModal({ open, onOpenChange, title, children }: BackfillM
 }
 
 // Status indicator component
-export function DayStatusIndicator({ 
-  isComplete, 
-  isPartial 
-}: { 
-  isComplete: boolean; 
+export function DayStatusIndicator({
+  isComplete,
+  isPartial
+}: {
+  isComplete: boolean;
   isPartial: boolean;
 }) {
   if (isComplete) {

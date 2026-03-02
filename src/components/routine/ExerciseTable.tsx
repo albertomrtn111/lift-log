@@ -52,11 +52,11 @@ export function ExerciseTable({
     const exercise = exercises.find(e => e.id === exerciseId);
     if (exercise && column?.key) {
       switch (column.key) {
-        case 'c2': return exercise.sets?.toString() || '';
-        case 'c3': return exercise.reps || '';
-        case 'c4': return exercise.rir?.toString() || '';
-        case 'c5': return exercise.restSeconds?.toString() || '';
-        case 'c6': return exercise.notes || '';
+        case 'sets': return exercise.sets?.toString() || '';
+        case 'reps': return exercise.reps || '';
+        case 'rir': return exercise.rir?.toString() || '';
+        case 'rest': return exercise.restSeconds?.toString() || '';
+        case 'notes': return exercise.notes || '';
       }
     }
     return '';
@@ -91,10 +91,10 @@ export function ExerciseTable({
       };
     }
     return {
-      series: parseInt(getCellValue(exerciseId, getColumnId('c2'))) || 4,
+      series: parseInt(getCellValue(exerciseId, getColumnId('sets'))) || 4,
       weight: '',
-      reps: getCellValue(exerciseId, getColumnId('c3')) || '',
-      rir: getCellValue(exerciseId, getColumnId('c4')) || '',
+      reps: getCellValue(exerciseId, getColumnId('reps')) || '',
+      rir: getCellValue(exerciseId, getColumnId('rir')) || '',
     };
   }, [baseBlocks, getExerciseSets, getCellValue, getColumnId]);
 
@@ -140,8 +140,8 @@ export function ExerciseTable({
     );
   };
 
-  const isSetColumn = (col: TrainingColumn) => ['c7', 'c8', 'c9'].includes(col.key || '');
-  const isNotesColumn = (col: TrainingColumn) => col.key === 'c10';
+  const isSetColumn = (col: TrainingColumn) => ['weight', 'reps_done', 'notes'].includes(col.key || '');
+  const isNotesColumn = (col: TrainingColumn) => col.key === 'notes';
   const tableColumns = columns.filter(c => !isSetColumn(c) && !isNotesColumn(c));
   const notesCol = columns.find(c => isNotesColumn(c));
 

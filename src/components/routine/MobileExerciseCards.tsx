@@ -53,19 +53,19 @@ export function MobileExerciseCards({
     const exercise = exercises.find(e => e.id === exerciseId);
     if (exercise && column?.key) {
       switch (column.key) {
-        case 'c2': return exercise.sets?.toString() || '';
-        case 'c3': return exercise.reps || '';
-        case 'c4': return exercise.rir?.toString() || '';
-        case 'c5': return exercise.restSeconds?.toString() || '';
-        case 'c6': return exercise.notes || '';
+        case 'sets': return exercise.sets?.toString() || '';
+        case 'reps': return exercise.reps || '';
+        case 'rir': return exercise.rir?.toString() || '';
+        case 'rest': return exercise.restSeconds?.toString() || '';
+        case 'notes': return exercise.notes || '';
       }
     }
     return '';
   }, [cells, columns, weekNumber, exercises]);
 
   const getColumnId = (key: string) => columns.find(c => c.key === key)?.id || key;
-  const coachColumns = columns.filter(c => !c.editable && c.id !== 'c1');
-  const notesColumn = columns.find(c => c.key === 'c10' && c.editable);
+  const coachColumns = columns.filter(c => !c.editable && c.key !== 'exercise');
+  const notesColumn = columns.find(c => c.key === 'notes' && c.editable);
 
   const getExerciseSets = useCallback((exerciseId: string): ExerciseSet[] => {
     return sets
@@ -92,10 +92,10 @@ export function MobileExerciseCards({
 
     // Fallback to coach prescription
     return {
-      series: parseInt(getCellValue(exerciseId, getColumnId('c2'))) || 4,
+      series: parseInt(getCellValue(exerciseId, getColumnId('sets'))) || 4,
       weight: '',
-      reps: getCellValue(exerciseId, getColumnId('c3')) || '',
-      rir: getCellValue(exerciseId, getColumnId('c4')) || '',
+      reps: getCellValue(exerciseId, getColumnId('reps')) || '',
+      rir: getCellValue(exerciseId, getColumnId('rir')) || '',
     };
   }, [baseBlocks, getExerciseSets, getCellValue, getColumnId]);
 

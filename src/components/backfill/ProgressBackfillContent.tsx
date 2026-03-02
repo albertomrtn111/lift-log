@@ -3,15 +3,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { formatBackfillDate, DayStatusIndicator } from './BackfillModal';
-import { Copy, Scale, Footprints, Moon } from 'lucide-react';
+import { Copy, Scale, Footprints, Moon, Save, Check } from 'lucide-react';
 import { ProgressBackfillData } from '@/types/running';
 import { format } from 'date-fns';
+import { saveClientMetricsBulk, type ClientMetricInput } from '@/data/progress';
+import { toast } from 'sonner';
 
 interface ProgressBackfillContentProps {
   days: Date[];
+  onClose?: () => void;
+  onSuccess?: () => void;
 }
 
-export function ProgressBackfillContent({ days }: ProgressBackfillContentProps) {
+export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBackfillContentProps) {
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [data, setData] = useState<Record<string, ProgressBackfillData>>(() => {
     const initial: Record<string, ProgressBackfillData> = {};
     days.forEach(day => {
@@ -47,7 +52,7 @@ export function ProgressBackfillContent({ days }: ProgressBackfillContentProps) 
     const hasWeight = entry.weight !== undefined;
     const hasSteps = entry.steps !== undefined;
     const hasSleep = entry.sleepHours !== undefined;
-    
+
     if (hasWeight && hasSteps && hasSleep) {
       return { isComplete: true, isPartial: false };
     }
@@ -62,6 +67,38 @@ export function ProgressBackfillContent({ days }: ProgressBackfillContentProps) 
     return status.isComplete || status.isPartial;
   }).length;
 
+  const handleSaveAll = async () => {
+    setSaveStatus('saving');
+
+    const inputs: ClientMetricInput[] = Object.values(data).map(d => ({
+      metric_date: d.date,
+      weight_kg: d.weight,
+      steps: d.steps,
+      sleep_h: d.sleepHours,
+      notes: d.notes
+    }));
+
+    const result = await saveClientMetricsBulk(inputs);
+
+    if (result.success) {
+      if (result.count === 0) {
+        toast.info('No hay cambios introducidos para guardar.');
+        setSaveStatus('idle');
+      } else {
+        setSaveStatus('saved');
+        toast.success(`Se han guardado ${result.count} registros correctamente.`);
+        setTimeout(() => {
+          setSaveStatus('idle');
+          if (onSuccess) onSuccess();
+          if (onClose) onClose();
+        }, 1000);
+      }
+    } else {
+      setSaveStatus('idle');
+      toast.error('Error al guardar: ' + result.error);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
@@ -75,8 +112,8 @@ export function ProgressBackfillContent({ days }: ProgressBackfillContentProps) 
         const status = getStatus(entry);
 
         return (
-          <div 
-            key={dateKey} 
+          <div
+            key={dateKey}
             className="p-3 rounded-lg border border-border bg-card space-y-3"
           >
             <div className="flex items-center justify-between">
@@ -150,6 +187,24 @@ export function ProgressBackfillContent({ days }: ProgressBackfillContentProps) 
           </div>
         );
       })}
+
+      {/* Footer */}
+      <div className="pt-4 border-t border-border mt-4">
+        <Button
+          onClick={handleSaveAll}
+          className="w-full"
+          size="lg"
+          disabled={saveStatus === 'saving'}
+        >
+          {saveStatus === 'saving' ? (
+            <>Guardando...</>
+          ) : saveStatus === 'saved' ? (
+            <><Check className="h-4 w-4 mr-2" /> Guardado</>
+          ) : (
+            <><Save className="h-4 w-4 mr-2" /> Guardar todo</>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
