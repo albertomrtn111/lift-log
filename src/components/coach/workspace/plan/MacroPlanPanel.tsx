@@ -65,7 +65,7 @@ interface FormData {
     training: MacroValues
     rest: MacroValues
     // Common fields
-    steps_goal: number | undefined
+    steps: number | undefined
     notes: string
     effective_from: string
     effective_to: string
@@ -100,7 +100,7 @@ function planToFormData(plan: MacroPlan): { mode: MacroMode; formData: FormData 
                     carbs: cfg.rest.carbs_g,
                     fat: cfg.rest.fat_g,
                 },
-                steps_goal: plan.steps_goal,
+                steps: plan.steps ?? undefined,
                 notes: plan.notes || '',
                 effective_from: plan.effective_from,
                 effective_to: plan.effective_to || '',
@@ -119,7 +119,7 @@ function planToFormData(plan: MacroPlan): { mode: MacroMode; formData: FormData 
             },
             training: DEFAULT_VALUES,
             rest: { ...DEFAULT_VALUES, kcal: 1800, carbs: 150 },
-            steps_goal: plan.steps_goal,
+            steps: plan.steps ?? undefined,
             notes: plan.notes || '',
             effective_from: plan.effective_from,
             effective_to: plan.effective_to || '',
@@ -132,7 +132,7 @@ function freshFormData(): FormData {
         simple: { ...DEFAULT_VALUES },
         training: { ...DEFAULT_VALUES, kcal: 2500, carbs: 250 },
         rest: { ...DEFAULT_VALUES, kcal: 1800, carbs: 150 },
-        steps_goal: undefined,
+        steps: undefined,
         notes: '',
         effective_from: new Date().toISOString().split('T')[0],
         effective_to: '',
@@ -214,7 +214,7 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
             carbs_g,
             fat_g,
             day_type_config: dayTypeConfig,
-            steps_goal: formData.steps_goal || undefined,
+            steps: formData.steps || undefined,
             notes: formData.notes || undefined,
             effective_from: formData.effective_from,
             effective_to: formData.effective_to || null,
@@ -468,10 +468,10 @@ function MacroFormStep({
                 <Input
                     type="number"
                     placeholder="ej: 10000"
-                    value={formData.steps_goal || ''}
+                    value={formData.steps || ''}
                     onChange={(e) => onFormDataChange({
                         ...formData,
-                        steps_goal: e.target.value ? Number(e.target.value) : undefined
+                        steps: e.target.value ? Number(e.target.value) : undefined
                     })}
                 />
             </div>
@@ -629,11 +629,11 @@ function ActivePlanView({ plan }: { plan: MacroPlan }) {
                 </div>
             )}
 
-            {plan.steps_goal && (
+            {plan.steps && (
                 <div className="mt-3">
                     <Card className="flex items-center gap-3 p-4 bg-muted/30">
                         <Footprints className="h-5 w-5 text-primary" />
-                        <span className="font-semibold">{plan.steps_goal.toLocaleString()}</span>
+                        <span className="font-semibold">{plan.steps.toLocaleString()}</span>
                         <span className="text-sm text-muted-foreground">pasos/día</span>
                     </Card>
                 </div>

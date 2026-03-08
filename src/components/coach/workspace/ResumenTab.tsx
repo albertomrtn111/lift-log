@@ -72,8 +72,8 @@ export function ResumenTab({
                                 <p className="text-sm text-muted-foreground">
                                     P{activeMacroPlan.protein_g}g · C{activeMacroPlan.carbs_g}g · G{activeMacroPlan.fat_g}g
                                 </p>
-                                {activeMacroPlan.steps_goal && (
-                                    <p className="text-xs text-muted-foreground">{activeMacroPlan.steps_goal.toLocaleString()} pasos/día</p>
+                                {activeMacroPlan.steps && (
+                                    <p className="text-xs text-muted-foreground">{activeMacroPlan.steps.toLocaleString()} pasos/día</p>
                                 )}
                             </div>
                         ) : null

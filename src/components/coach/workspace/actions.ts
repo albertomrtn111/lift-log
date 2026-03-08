@@ -152,9 +152,9 @@ export async function saveMacroPlanAction(plan: {
     protein_g: number
     carbs_g: number
     fat_g: number
-    steps_goal?: number
-    cardio_goal?: string
+    steps?: number
     notes?: string
+    day_type_config?: string | null
     effective_from: string
     effective_to?: string
 }) {
@@ -176,9 +176,9 @@ export async function saveMacroPlanAction(plan: {
                 protein_g: plan.protein_g,
                 carbs_g: plan.carbs_g,
                 fat_g: plan.fat_g,
-                steps_goal: plan.steps_goal,
-                cardio_goal: plan.cardio_goal,
+                steps: plan.steps ?? null,
                 notes: plan.notes,
+                day_type_config: plan.day_type_config ?? null,
                 effective_from: plan.effective_from,
                 effective_to: plan.effective_to,
             })
@@ -198,9 +198,9 @@ export async function saveMacroPlanAction(plan: {
                 protein_g: plan.protein_g,
                 carbs_g: plan.carbs_g,
                 fat_g: plan.fat_g,
-                steps_goal: plan.steps_goal,
-                cardio_goal: plan.cardio_goal,
+                steps: plan.steps ?? null,
                 notes: plan.notes,
+                day_type_config: plan.day_type_config ?? null,
                 effective_from: plan.effective_from,
                 effective_to: plan.effective_to,
             })

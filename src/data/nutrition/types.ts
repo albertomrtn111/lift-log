@@ -26,8 +26,8 @@ export interface MacroPlan {
     protein_g: number
     carbs_g: number
     fat_g: number
-    steps_goal?: number
-    cardio_goal?: string
+    steps?: number | null
+    cardio_target?: unknown
     notes?: string
     day_type_config?: MacroDayTypeConfig | null
     effective_from: string
@@ -42,7 +42,7 @@ export interface MacroPlanInput {
     protein_g: number
     carbs_g: number
     fat_g: number
-    steps_goal?: number
+    steps?: number | null
     notes?: string
     day_type_config?: MacroDayTypeConfig | null
     effective_from: string

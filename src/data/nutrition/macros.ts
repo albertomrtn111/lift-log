@@ -29,7 +29,10 @@ export async function getActiveMacroPlan(
         throw error
     }
 
-    return data as MacroPlan | null
+    if (!data) return null
+
+    // Parse day_type_config from text column
+    return parseMacroPlan(data)
 }
 
 /**
@@ -53,7 +56,7 @@ export async function listMacroPlans(
         throw error
     }
 
-    return (data || []) as MacroPlan[]
+    return (data || []).map(parseMacroPlan) as MacroPlan[]
 }
 
 /**
@@ -81,9 +84,9 @@ export async function upsertMacroPlan(
                 protein_g: input.protein_g,
                 carbs_g: input.carbs_g,
                 fat_g: input.fat_g,
-                steps_goal: input.steps_goal,
+                steps: input.steps ?? null,
                 notes: input.notes,
-                day_type_config: input.day_type_config ?? null,
+                day_type_config: input.day_type_config ? JSON.stringify(input.day_type_config) : null,
                 effective_from: input.effective_from,
                 effective_to: input.effective_to || null,
             })
@@ -101,7 +104,7 @@ export async function upsertMacroPlan(
             throw error
         }
         console.log('[upsertMacroPlan] Update success:', data.id)
-        return data as MacroPlan
+        return parseMacroPlan(data)
     } else {
         // Insert new
         const { data, error } = await supabase
@@ -113,9 +116,9 @@ export async function upsertMacroPlan(
                 protein_g: input.protein_g,
                 carbs_g: input.carbs_g,
                 fat_g: input.fat_g,
-                steps_goal: input.steps_goal,
+                steps: input.steps ?? null,
                 notes: input.notes,
-                day_type_config: input.day_type_config ?? null,
+                day_type_config: input.day_type_config ? JSON.stringify(input.day_type_config) : null,
                 effective_from: input.effective_from,
                 effective_to: input.effective_to || null,
             })
@@ -137,8 +140,24 @@ export async function upsertMacroPlan(
             throw error
         }
         console.log('[upsertMacroPlan] Insert success:', data.id)
-        return data as MacroPlan
+        return parseMacroPlan(data)
     }
+}
+
+/**
+ * Parse a raw DB row into MacroPlan, handling day_type_config text→object.
+ */
+function parseMacroPlan(row: Record<string, unknown>): MacroPlan {
+    const plan = row as unknown as MacroPlan
+    // day_type_config is stored as text in DB
+    if (typeof plan.day_type_config === 'string') {
+        try {
+            plan.day_type_config = JSON.parse(plan.day_type_config)
+        } catch {
+            plan.day_type_config = null
+        }
+    }
+    return plan
 }
 
 

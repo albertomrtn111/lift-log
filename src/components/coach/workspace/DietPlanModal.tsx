@@ -58,7 +58,7 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
         protein: 150,
         carbs: 200,
         fat: 70,
-        steps_goal: 10000,
+        steps: 10000,
         notes: '',
         effective_from: new Date().toISOString().split('T')[0],
     })
@@ -74,7 +74,7 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
         setStep('type')
         setMacroData({
             kcal: 2000, protein: 150, carbs: 200, fat: 70,
-            steps_goal: 10000, notes: '',
+            steps: 10000, notes: '',
             effective_from: new Date().toISOString().split('T')[0],
         })
         setDietName('')
@@ -106,7 +106,7 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
                 protein_g: macroData.protein,
                 carbs_g: macroData.carbs,
                 fat_g: macroData.fat,
-                steps_goal: macroData.steps_goal,
+                steps: macroData.steps,
                 notes: macroData.notes,
                 effective_from: macroData.effective_from,
             })
@@ -377,8 +377,8 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
                             <Input
                                 id="steps"
                                 type="number"
-                                value={macroData.steps_goal}
-                                onChange={e => setMacroData({ ...macroData, steps_goal: parseInt(e.target.value) || 0 })}
+                                value={macroData.steps}
+                                onChange={e => setMacroData({ ...macroData, steps: parseInt(e.target.value) || 0 })}
                             />
                         </div>
                         <div>

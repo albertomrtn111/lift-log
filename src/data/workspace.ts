@@ -59,9 +59,10 @@ export interface MacroPlan {
     protein_g: number
     carbs_g: number
     fat_g: number
-    steps_goal: number | null
-    cardio_goal: string | null
+    steps: number | null
+    cardio_target: unknown | null
     notes: string | null
+    day_type_config: string | null
     effective_from: string
     effective_to: string | null
     created_at: string
