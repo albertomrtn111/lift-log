@@ -33,6 +33,7 @@ import {
     AlertCircle,
     Play,
     Utensils,
+    Upload,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -46,6 +47,7 @@ import {
 } from '@/hooks/useDietOptions'
 import type { DayType, DietPlan, DietPlanWithStructure } from '@/data/nutrition/types'
 import { DietOptionsWizard } from './DietOptionsWizard'
+import { DietCsvImportWizard } from './DietCsvImportWizard'
 import { DietPlansHistory } from './DietPlansHistory'
 
 interface DietPlanPanelProps {
@@ -85,6 +87,7 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
 
     const [wizardOpen, setWizardOpen] = useState(false)
     const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
+    const [csvImportOpen, setCsvImportOpen] = useState(false)
     const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
     const [planToArchive, setPlanToArchive] = useState<DietPlan | null>(null)
 
@@ -93,6 +96,10 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
     const handleCreate = () => {
         setEditingPlanId(null)
         setWizardOpen(true)
+    }
+
+    const handleImportCsv = () => {
+        setCsvImportOpen(true)
     }
 
     const handleEdit = () => {
@@ -178,17 +185,33 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}
-                        <Button size="sm" onClick={handleCreate}>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Nueva dieta
-                        </Button>
+                        {/* Nueva dieta dropdown: manual or CSV import */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="sm">
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Nueva dieta
+                                    <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={handleCreate}>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Crear manualmente
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleImportCsv}>
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Importar CSV
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 
                 {activePlan && structure ? (
                     <ActivePlanView plan={activePlan} structure={structure} />
                 ) : (
-                    <EmptyState onCreateClick={handleCreate} />
+                    <EmptyState onCreateClick={handleCreate} onImportClick={handleImportCsv} />
                 )}
 
                 {/* Drafts Section */}
@@ -246,13 +269,22 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
                 </Card>
             )}
 
-            {/* Wizard Modal */}
+            {/* Manual creation wizard */}
             <DietOptionsWizard
                 open={wizardOpen}
                 onOpenChange={setWizardOpen}
                 coachId={coachId}
                 clientId={clientId}
                 editingPlanId={editingPlanId}
+            />
+
+            {/* CSV Import wizard */}
+            <DietCsvImportWizard
+                open={csvImportOpen}
+                onOpenChange={setCsvImportOpen}
+                coachId={coachId}
+                clientId={clientId}
+                hasActivePlan={!!activePlan}
             />
 
             {/* Archive Confirmation */}
@@ -376,15 +408,27 @@ function MealsList({ meals }: { meals: DietPlanWithStructure['meals'] }) {
     )
 }
 
-function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
+function EmptyState({
+    onCreateClick,
+    onImportClick,
+}: {
+    onCreateClick: () => void
+    onImportClick: () => void
+}) {
     return (
-        <div className="text-center py-8">
+        <div className="text-center py-8 space-y-2">
             <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-30" />
             <p className="text-muted-foreground">Sin dieta por opciones activa</p>
-            <Button variant="outline" className="mt-4" onClick={onCreateClick}>
-                <Plus className="h-4 w-4 mr-1" />
-                Crear dieta por opciones
-            </Button>
+            <div className="flex items-center justify-center gap-2 mt-4">
+                <Button variant="outline" onClick={onCreateClick}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Crear manualmente
+                </Button>
+                <Button variant="ghost" onClick={onImportClick}>
+                    <Upload className="h-4 w-4 mr-1" />
+                    Importar CSV
+                </Button>
+            </div>
         </div>
     )
 }

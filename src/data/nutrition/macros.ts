@@ -83,6 +83,7 @@ export async function upsertMacroPlan(
                 fat_g: input.fat_g,
                 steps_goal: input.steps_goal,
                 notes: input.notes,
+                day_type_config: input.day_type_config ?? null,
                 effective_from: input.effective_from,
                 effective_to: input.effective_to || null,
             })
@@ -114,6 +115,7 @@ export async function upsertMacroPlan(
                 fat_g: input.fat_g,
                 steps_goal: input.steps_goal,
                 notes: input.notes,
+                day_type_config: input.day_type_config ?? null,
                 effective_from: input.effective_from,
                 effective_to: input.effective_to || null,
             })

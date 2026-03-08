@@ -4,6 +4,20 @@
 // MACRO PLANS (existing macro_plans table)
 // ============================================================================
 
+/** Macro values for a specific day type (training or rest) */
+export interface MacroDayTypeValues {
+    kcal: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+}
+
+/** When not null, the plan has separate macros per day type */
+export interface MacroDayTypeConfig {
+    training: MacroDayTypeValues
+    rest: MacroDayTypeValues
+}
+
 export interface MacroPlan {
     id: string
     coach_id: string
@@ -15,6 +29,7 @@ export interface MacroPlan {
     steps_goal?: number
     cardio_goal?: string
     notes?: string
+    day_type_config?: MacroDayTypeConfig | null
     effective_from: string
     effective_to?: string | null
     created_at: string
@@ -29,6 +44,7 @@ export interface MacroPlanInput {
     fat_g: number
     steps_goal?: number
     notes?: string
+    day_type_config?: MacroDayTypeConfig | null
     effective_from: string
     effective_to?: string | null
 }
