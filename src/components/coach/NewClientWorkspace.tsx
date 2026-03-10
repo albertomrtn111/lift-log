@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Client } from '@/types/coach'
 import {
@@ -8,17 +8,21 @@ import {
     CheckinWithReview,
     MacroPlan,
     TrainingProgram,
-    DietPlan
+    DietPlan,
+    ClientSelectorOption
 } from '@/data/workspace'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import {
     LayoutDashboard,
     FileText,
     TrendingUp,
     CalendarDays,
     Lock,
-    ClipboardList
+    ClipboardList,
+    ChevronLeft,
+    ChevronRight,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
@@ -32,25 +36,8 @@ import { ReviewsTab } from './tabs/ReviewsTab'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
 
-interface ClientOption {
-    id: string
-    full_name: string
-    email: string
-    status: 'active' | 'inactive' | 'pending'
-    auth_user_id: string | null
-}
-
-interface MetricData {
-    metric_date: string
-    weight_kg: number | null
-    steps: number | null
-    sleep_h: number | null
-    training_adherence: number | null
-    nutrition_adherence: number | null
-}
-
 interface NewClientWorkspaceProps {
-    clients: ClientOption[]
+    clients: ClientSelectorOption[]
     selectedClient: Client | null
     clientStatus: ClientStatus | null
     latestCheckin: CheckinWithReview | null
@@ -81,7 +68,6 @@ export function NewClientWorkspace({
     const router = useRouter()
     const searchParams = useSearchParams()
 
-    // Default to 'resumen' if no tab is selected, or use the query param
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'resumen')
 
     const handleRefresh = useCallback(() => {
@@ -94,32 +80,90 @@ export function NewClientWorkspace({
 
     const selectedClientId = selectedClient?.id || searchParams.get('client')
 
-    // Handle client selection via URL
     const handleClientChange = (clientId: string) => {
         router.push(`/coach/clients?client=${clientId}&tab=${activeTab}`)
     }
 
     const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
 
+    // Mejora 10: Prev/next navigation
+    const activeClients = useMemo(() =>
+        clients.filter(c => c.status === 'active'),
+        [clients]
+    )
+    const currentIndex = activeClients.findIndex(c => c.id === selectedClientId)
+    const canGoPrev = currentIndex > 0
+    const canGoNext = currentIndex < activeClients.length - 1
+
+    const handlePrevClient = useCallback(() => {
+        if (canGoPrev) {
+            router.push(`/coach/clients?client=${activeClients[currentIndex - 1].id}&tab=${activeTab}`)
+        }
+    }, [canGoPrev, activeClients, currentIndex, activeTab, router])
+
+    const handleNextClient = useCallback(() => {
+        if (canGoNext) {
+            router.push(`/coach/clients?client=${activeClients[currentIndex + 1].id}&tab=${activeTab}`)
+        }
+    }, [canGoNext, activeClients, currentIndex, activeTab, router])
+
+    // Keyboard shortcuts: Alt+← / Alt+→
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); handlePrevClient() }
+            if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); handleNextClient() }
+        }
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [handlePrevClient, handleNextClient])
+
     // Blocked tab content for pending signup clients
     const BlockedTabContent = () => (
         <Card className="p-12 text-center">
             <Lock className="h-12 w-12 text-amber-500/50 mx-auto mb-4" />
-            <h3 className="font-semibold text-lg mb-2">Feature locked</h3>
+            <h3 className="font-semibold text-lg mb-2">Función bloqueada</h3>
             <p className="text-muted-foreground max-w-md mx-auto">
-                This client hasn&apos;t signed up yet. Planning features will be unlocked once they create their account through the invitation link.
+                Este cliente aún no se ha registrado. Las funciones de planificación se desbloquearán cuando cree su cuenta a través del enlace de invitación.
             </p>
         </Card>
     )
 
     return (
         <div className="space-y-4">
-            {/* Client Selector & Header */}
-            <div className="flex items-center gap-4">
+            {/* Client Selector + Prev/Next Navigation */}
+            <div className="flex items-center gap-2">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handlePrevClient}
+                    disabled={!canGoPrev}
+                    title="Cliente anterior (Alt+←)"
+                    className="h-8 w-8 shrink-0"
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+
                 <ClientSelector
                     clients={clients}
                     selectedClientId={selectedClientId}
                 />
+
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleNextClient}
+                    disabled={!canGoNext}
+                    title="Siguiente cliente (Alt+→)"
+                    className="h-8 w-8 shrink-0"
+                >
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                {currentIndex >= 0 && (
+                    <span className="text-xs text-muted-foreground hidden sm:inline shrink-0">
+                        {currentIndex + 1}/{activeClients.length}
+                    </span>
+                )}
             </div>
 
             {/* Debug Panel (dev only) */}

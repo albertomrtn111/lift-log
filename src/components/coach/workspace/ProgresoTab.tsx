@@ -28,12 +28,14 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProgressData, ProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
+import { TrainingProgressView } from './progress/TrainingProgressView'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type RangeKey = '7d' | '15d' | '30d' | '3m' | '6m' | '12m'
+type SubTab = 'general' | 'training'
 
 const RANGE_OPTIONS: { key: RangeKey; label: string; days: number }[] = [
     { key: '7d', label: '7 días', days: 7 },
@@ -54,6 +56,7 @@ interface ProgresoTabProps {
 // ---------------------------------------------------------------------------
 
 export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
+    const [subTab, setSubTab] = useState<SubTab>('general')
     const [range, setRange] = useState<RangeKey>('30d')
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<ProgressData | null>(null)
@@ -159,68 +162,95 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
 
     return (
         <div className="space-y-6">
-            {/* Range Selector */}
+            {/* Sub-tab toggle */}
             <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
-                {RANGE_OPTIONS.map(opt => (
+                {[
+                    { key: 'general' as SubTab, label: 'General' },
+                    { key: 'training' as SubTab, label: 'Entrenamiento' },
+                ].map(tab => (
                     <button
-                        key={opt.key}
-                        onClick={() => setRange(opt.key)}
+                        key={tab.key}
+                        onClick={() => setSubTab(tab.key)}
                         className={cn(
-                            "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                            range === opt.key
+                            "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                            subTab === tab.key
                                 ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
                                 : "text-muted-foreground hover:text-foreground"
                         )}
                     >
-                        {opt.label}
+                        {tab.label}
                     </button>
                 ))}
             </div>
 
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
+            {subTab === 'training' ? (
+                <TrainingProgressView clientId={clientId} coachId={coachId} />
             ) : (
                 <>
-                    {/* KPI Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <KpiCard
-                            icon={Scale}
-                            label="Peso medio"
-                            value={kpis?.avgWeight != null ? `${kpis.avgWeight.toFixed(1)} kg` : null}
-                            subValue={kpis?.lastWeight != null ? `Último: ${kpis.lastWeight.toFixed(1)} kg` : undefined}
-                            delta={kpis?.weightDelta}
-                            deltaUnit="kg"
-                            color="blue"
-                        />
-                        <KpiCard
-                            icon={Dumbbell}
-                            label="Adherencia entreno"
-                            value={kpis?.trainingAdherence != null ? `${kpis.trainingAdherence}%` : null}
-                            subValue={kpis?.totalWorkouts
-                                ? `${kpis.completedWorkouts}/${kpis.totalWorkouts} sesiones`
-                                : undefined
-                            }
-                            color="blue"
-                        />
-                        <KpiCard
-                            icon={Apple}
-                            label="Adherencia dieta"
-                            value={kpis?.avgDietAdherence != null ? `${kpis.avgDietAdherence}%` : null}
-                            color="green"
-                        />
-                        <KpiCard
-                            icon={Footprints}
-                            label="Pasos / día"
-                            value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
-                            subValue={kpis?.avgSleep != null ? `Sueño: ${kpis.avgSleep}h` : undefined}
-                            color="violet"
-                        />
+                    {/* Range Selector */}
+                    <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+                        {RANGE_OPTIONS.map(opt => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setRange(opt.key)}
+                                className={cn(
+                                    "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    range === opt.key
+                                        ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
                     </div>
 
-                    {/* Weight Evolution Chart */}
-                    <WeightChart data={weightChartData} />
+                    {loading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : (
+                        <>
+                            {/* KPI Cards */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                <KpiCard
+                                    icon={Scale}
+                                    label="Peso medio"
+                                    value={kpis?.avgWeight != null ? `${kpis.avgWeight.toFixed(1)} kg` : null}
+                                    subValue={kpis?.lastWeight != null ? `Último: ${kpis.lastWeight.toFixed(1)} kg` : undefined}
+                                    delta={kpis?.weightDelta}
+                                    deltaUnit="kg"
+                                    color="blue"
+                                />
+                                <KpiCard
+                                    icon={Dumbbell}
+                                    label="Adherencia entreno"
+                                    value={kpis?.trainingAdherence != null ? `${kpis.trainingAdherence}%` : null}
+                                    subValue={kpis?.totalWorkouts
+                                        ? `${kpis.completedWorkouts}/${kpis.totalWorkouts} sesiones`
+                                        : undefined
+                                    }
+                                    color="blue"
+                                />
+                                <KpiCard
+                                    icon={Apple}
+                                    label="Adherencia dieta"
+                                    value={kpis?.avgDietAdherence != null ? `${kpis.avgDietAdherence}%` : null}
+                                    color="green"
+                                />
+                                <KpiCard
+                                    icon={Footprints}
+                                    label="Pasos / día"
+                                    value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
+                                    subValue={kpis?.avgSleep != null ? `Sueño: ${kpis.avgSleep}h` : undefined}
+                                    color="violet"
+                                />
+                            </div>
+
+                            {/* Weight Evolution Chart */}
+                            <WeightChart data={weightChartData} />
+                        </>
+                    )}
                 </>
             )}
         </div>

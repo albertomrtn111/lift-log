@@ -16,7 +16,7 @@ import {
     FileText,
     ClipboardList
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import { createClient } from '@/lib/supabase/client'
@@ -26,15 +26,16 @@ interface NavItem {
     href: string
     icon: React.ComponentType<{ className?: string }>
     label: string
+    badgeKey?: 'dashboardPending' | 'membersPendingSignup'
 }
 
 const navSections = [
     {
         title: 'OPERATIVA',
         items: [
-            { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard', badgeKey: 'dashboardPending' as const },
             { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
-            { href: '/coach/members', icon: Users, label: 'Miembros' },
+            { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
         ]
     },
     {
@@ -66,6 +67,20 @@ export function CoachSidebar() {
     const router = useRouter()
     const [collapsed, setCollapsed] = useState(false)
     const [loggingOut, setLoggingOut] = useState(false)
+    const [badges, setBadges] = useState<Record<string, number>>({})
+
+    // Fetch sidebar badges
+    useEffect(() => {
+        async function fetchBadges() {
+            try {
+                const res = await fetch('/api/sidebar-badges')
+                if (res.ok) setBadges(await res.json())
+            } catch { /* silent */ }
+        }
+        fetchBadges()
+        const interval = setInterval(fetchBadges, 60_000)
+        return () => clearInterval(interval)
+    }, [])
 
     // Get user context from cached provider
     const { coach } = useCoachContext()
@@ -126,6 +141,7 @@ export function CoachSidebar() {
                                 <nav className="space-y-1">
                                     {section.items.map((item) => {
                                         const isActive = pathname?.startsWith(item.href)
+                                        const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
 
                                         return (
                                             <Link
@@ -140,7 +156,14 @@ export function CoachSidebar() {
                                                 )}
                                                 title={collapsed ? item.label : undefined}
                                             >
-                                                <item.icon className={cn('h-5 w-5 shrink-0', isActive && 'text-primary')} />
+                                                <div className="relative shrink-0">
+                                                    <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
+                                                    {badgeCount > 0 && (
+                                                        <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                                                            {badgeCount}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 {!collapsed && <span>{item.label}</span>}
                                             </Link>
                                         )

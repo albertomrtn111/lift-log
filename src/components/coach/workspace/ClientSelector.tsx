@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
     Command,
     CommandEmpty,
@@ -22,17 +21,21 @@ import { Check, ChevronsUpDown, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
 import Link from 'next/link'
-
-interface ClientOption {
-    id: string
-    full_name?: string | null
-    email: string
-    status: string | null // Accept any status value, don't assume typed
-}
+import type { ClientSelectorOption } from '@/data/workspace'
 
 interface ClientSelectorProps {
-    clients: ClientOption[]
+    clients: ClientSelectorOption[]
     selectedClientId: string | null
+}
+
+function UrgencyDot({ client }: { client: ClientSelectorOption }) {
+    if (client.hasOverdueCheckin) {
+        return <span className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Check-in atrasado" />
+    }
+    if (client.hasPendingReview) {
+        return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Review pendiente" />
+    }
+    return null
 }
 
 export function ClientSelector({ clients, selectedClientId }: ClientSelectorProps) {
@@ -57,15 +60,6 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
 
     const activeClients = filteredClients.filter(c => c.status === 'active')
     const inactiveClients = filteredClients.filter(c => c.status !== 'active')
-
-    // DEV: Warn about clients with null/unexpected status
-    if (process.env.NODE_ENV === 'development') {
-        filteredClients.forEach(c => {
-            if (!c.status || !['active', 'inactive', 'pending'].includes(c.status)) {
-                console.warn(`[ClientSelector] Client "${c.full_name}" (${c.id}) has unexpected status: "${c.status}"`)
-            }
-        })
-    }
 
     const handleSelect = (clientId: string) => {
         router.push(`/coach/clients?client=${clientId}`)
@@ -98,6 +92,7 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                 >
                     {selectedClient ? (
                         <div className="flex items-center gap-2 truncate">
+                            <UrgencyDot client={selectedClient} />
                             <span className="truncate">{getClientDisplayIdentity(selectedClient).displayName}</span>
                             <Badge
                                 variant="secondary"
@@ -138,6 +133,7 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                                             <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
                                                 {getClientDisplayIdentity(client).initials}
                                             </div>
+                                            <UrgencyDot client={client} />
                                             <div className="truncate">
                                                 <p className="text-sm font-medium truncate">{getClientDisplayIdentity(client).displayName}</p>
                                                 <p className="text-xs text-muted-foreground truncate">{client.email}</p>

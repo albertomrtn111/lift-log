@@ -13,7 +13,8 @@ import {
     Dumbbell,
     Apple,
     ChevronRight,
-    X
+    X,
+    Activity
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createReviewAction } from './actions'
@@ -293,11 +294,38 @@ function CheckinDetailPanel({
                     </div>
                 )}
 
-                {/* Raw Payload (collapsible) */}
-                {checkin.raw_payload && (
+                {/* Extra metrics from raw_payload (production) */}
+                {(() => {
+                    if (!checkin.raw_payload || typeof checkin.raw_payload !== 'object') return null
+                    const coveredFields = new Set([
+                        'weight_avg_kg', 'weight_kg', 'steps_avg', 'sleep_avg_h',
+                        'training_adherence_pct', 'nutrition_adherence_pct'
+                    ])
+                    const extras = Object.entries(checkin.raw_payload as Record<string, unknown>)
+                        .filter(([key, val]) => !coveredFields.has(key) && typeof val === 'number')
+                    if (extras.length === 0) return null
+                    return (
+                        <div>
+                            <p className="text-sm font-medium mb-2">Otros datos</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {extras.map(([key, val]) => (
+                                    <MetricBox
+                                        key={key}
+                                        icon={Activity}
+                                        label={key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                        value={val as number}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )
+                })()}
+
+                {/* Raw Payload — solo visible en desarrollo */}
+                {process.env.NODE_ENV !== 'production' && checkin.raw_payload && (
                     <details className="text-xs">
                         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                            Ver datos raw
+                            Ver datos raw (dev)
                         </summary>
                         <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-x-auto">
                             {JSON.stringify(checkin.raw_payload, null, 2)}

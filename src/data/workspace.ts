@@ -130,32 +130,77 @@ export async function getClientForWorkspace(coachId: string, clientId: string): 
     return data as Client
 }
 
-export async function getClientsForSelector(coachId: string): Promise<Pick<Client, 'id' | 'full_name' | 'email' | 'status' | 'auth_user_id'>[]> {
+export interface ClientSelectorOption {
+    id: string
+    full_name: string | null
+    email: string
+    status: string | null
+    auth_user_id: string | null
+    hasOverdueCheckin?: boolean
+    hasPendingReview?: boolean
+}
+
+export async function getClientsForSelector(coachId: string): Promise<ClientSelectorOption[]> {
     const supabase = await createClient()
 
     const { data, error } = await supabase
         .from('clients')
-        .select('id, full_name, email, status, auth_user_id')
+        .select('id, full_name, email, status, auth_user_id, next_checkin_date')
         .eq('coach_id', coachId)
         .order('status', { ascending: true })
         .order('full_name', { ascending: true })
 
     if (error || !data) return []
 
-    // DEV: Log status from DB to catch source-of-truth issues
-    if (process.env.NODE_ENV === 'development') {
-        console.log('--- [getClientsForSelector] DB STATUS ---')
-        data.forEach((c: any) => {
-            if (!c.status) {
-                console.warn(`  ⚠️ Client "${c.full_name}" (${c.id}) has NULL/undefined status!`)
-            } else {
-                console.log(`  - ${c.full_name}: status="${c.status}"`)
-            }
-        })
-        console.log('-----------------------------------------')
+    const today = new Date()
+    const clientIds = data.map(c => c.id)
+
+    // Get latest checkin per client to check pending review
+    const { data: checkins } = await supabase
+        .from('checkins')
+        .select('id, client_id')
+        .in('client_id', clientIds)
+        .order('submitted_at', { ascending: false })
+
+    const latestCheckinByClient = new Map<string, string>()
+    for (const c of (checkins || [])) {
+        if (!latestCheckinByClient.has(c.client_id)) {
+            latestCheckinByClient.set(c.client_id, c.id)
+        }
     }
 
-    return data
+    const latestCheckinIds = Array.from(latestCheckinByClient.values())
+    let reviewMap = new Map<string, string>()
+    if (latestCheckinIds.length > 0) {
+        const { data: reviews } = await supabase
+            .from('reviews')
+            .select('checkin_id, status')
+            .in('checkin_id', latestCheckinIds)
+
+        for (const r of (reviews || [])) {
+            reviewMap.set(r.checkin_id, r.status)
+        }
+    }
+
+    return data.map(c => {
+        const nextCheckin = c.next_checkin_date ? new Date(c.next_checkin_date + 'T00:00:00') : null
+        const daysUntil = nextCheckin
+            ? Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+            : null
+
+        const latestCheckinId = latestCheckinByClient.get(c.id)
+        const reviewStatus = latestCheckinId ? reviewMap.get(latestCheckinId) : undefined
+
+        return {
+            id: c.id,
+            full_name: c.full_name,
+            email: c.email,
+            status: c.status,
+            auth_user_id: c.auth_user_id,
+            hasOverdueCheckin: daysUntil !== null && daysUntil < 0,
+            hasPendingReview: reviewStatus != null && reviewStatus !== 'approved',
+        }
+    })
 }
 
 // ============================================================================

@@ -39,6 +39,12 @@ export interface ClientWithMeta extends Client {
     lastCheckinDate?: string
     lastAdherencePercent?: number
     daysUntilCheckin: number
+    /** Average of training + nutrition adherence from latest checkin (0-100) */
+    lastAdherencePct?: number | null
+    /** true if the client has a submitted checkin without an approved review */
+    hasPendingReview?: boolean
+    /** ISO string of the most recent checkin */
+    lastCheckinAt?: string | null
 }
 
 export interface Checkin {
@@ -72,6 +78,14 @@ export interface CalendarEvent {
     date: string
     type: 'checkin'
     isUrgent: boolean
+    /** Whether this is a projected recurring event vs an actual checkin */
+    projected?: boolean
+    /** Status for color-coding */
+    status: 'completed' | 'pending_review' | 'upcoming' | 'overdue'
+    /** ID of the actual checkin if one exists */
+    checkinId?: string
+    /** Review status if a review exists */
+    reviewStatus?: 'draft' | 'approved' | 'rejected' | null
 }
 
 export interface CoachStats {

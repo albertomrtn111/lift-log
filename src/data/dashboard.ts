@@ -11,6 +11,8 @@ export interface DashboardKPIs {
     atRisk: number
     totalActive: number
     totalInactive: number
+    /** Number of clients with daysUntilCheckin < 0 */
+    overdueCount: number
 }
 
 export interface AtRiskClient extends ClientWithMeta {
@@ -32,6 +34,19 @@ export interface RecentCheckin {
     review_status: 'draft' | 'approved' | 'rejected' | null
 }
 
+export interface CompletedReview {
+    review_id: string
+    checkin_id: string
+    client_id: string
+    client_name: string
+    approved_at: string
+}
+
+export interface SidebarBadges {
+    dashboardPending: number
+    membersPendingSignup: number
+}
+
 // ============================================================================
 // DASHBOARD KPIS
 // ============================================================================
@@ -51,7 +66,7 @@ export async function getDashboardKPIs(coachId: string): Promise<DashboardKPIs> 
 
     if (error || !clients) {
         console.error('Error fetching dashboard KPIs:', error)
-        return { pendingToday: 0, pendingWeek: 0, atRisk: 0, totalActive: 0, totalInactive: 0 }
+        return { pendingToday: 0, pendingWeek: 0, atRisk: 0, totalActive: 0, totalInactive: 0, overdueCount: 0 }
     }
 
     const activeClients = clients.filter(c => c.status === 'active')
@@ -61,6 +76,9 @@ export async function getDashboardKPIs(coachId: string): Promise<DashboardKPIs> 
     const pendingWeek = activeClients.filter(c =>
         c.next_checkin_date > today && c.next_checkin_date <= weekEnd
     ).length
+
+    // Count overdue: next_checkin_date < today
+    const overdueCount = activeClients.filter(c => c.next_checkin_date < today).length
 
     // Count at-risk: overdue by more than 3 days
     const threeDaysAgo = new Date()
@@ -74,7 +92,90 @@ export async function getDashboardKPIs(coachId: string): Promise<DashboardKPIs> 
         atRisk,
         totalActive: activeClients.length,
         totalInactive: inactiveClients.length,
+        overdueCount,
     }
+}
+
+// ============================================================================
+// HELPER: Enrich clients with last adherence + pending review
+// ============================================================================
+
+async function enrichClientsWithMeta(
+    clients: Client[],
+    supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<ClientWithMeta[]> {
+    if (clients.length === 0) return []
+
+    const clientIds = clients.map(c => c.id)
+    const todayDate = new Date()
+
+    // Get latest checkin per client (with adherence)
+    const { data: checkins } = await supabase
+        .from('checkins')
+        .select('client_id, submitted_at, training_adherence_pct, nutrition_adherence_pct')
+        .in('client_id', clientIds)
+        .order('submitted_at', { ascending: false })
+
+    // Get reviews for latest checkins to check pending status
+    const latestCheckinIds: string[] = []
+    const { data: allCheckins } = await supabase
+        .from('checkins')
+        .select('id, client_id')
+        .in('client_id', clientIds)
+        .order('submitted_at', { ascending: false })
+
+    // Build a map of client → latest checkin id
+    const latestCheckinByClient = new Map<string, string>()
+    for (const c of (allCheckins || [])) {
+        if (!latestCheckinByClient.has(c.client_id)) {
+            latestCheckinByClient.set(c.client_id, c.id)
+            latestCheckinIds.push(c.id)
+        }
+    }
+
+    // Get reviews for those latest checkins
+    let reviewMap = new Map<string, string>()
+    if (latestCheckinIds.length > 0) {
+        const { data: reviews } = await supabase
+            .from('reviews')
+            .select('checkin_id, status')
+            .in('checkin_id', latestCheckinIds)
+
+        for (const r of (reviews || [])) {
+            reviewMap.set(r.checkin_id, r.status)
+        }
+    }
+
+    // Build per-client adherence map
+    const adherenceMap = new Map<string, { pct: number | null; at: string | null }>()
+    for (const c of (checkins || [])) {
+        if (!adherenceMap.has(c.client_id)) {
+            const t = c.training_adherence_pct
+            const n = c.nutrition_adherence_pct
+            let avg: number | null = null
+            if (t != null && n != null) avg = Math.round((t + n) / 2)
+            else if (t != null) avg = t
+            else if (n != null) avg = n
+
+            adherenceMap.set(c.client_id, { pct: avg, at: c.submitted_at })
+        }
+    }
+
+    return clients.map((client: Client) => {
+        const nextCheckin = new Date(client.next_checkin_date)
+        const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24))
+        const meta = adherenceMap.get(client.id)
+        const latestId = latestCheckinByClient.get(client.id)
+        const reviewStatus = latestId ? reviewMap.get(latestId) : undefined
+
+        return {
+            ...client,
+            daysUntilCheckin,
+            lastAdherencePct: meta?.pct ?? null,
+            lastCheckinAt: meta?.at ?? null,
+            hasPendingReview: reviewStatus != null && reviewStatus !== 'approved',
+        } as ClientWithMeta
+    })
 }
 
 // ============================================================================
@@ -98,12 +199,7 @@ export async function getDueTodayClients(coachId: string): Promise<ClientWithMet
         return []
     }
 
-    const todayDate = new Date()
-    return data.map((client: Client) => {
-        const nextCheckin = new Date(client.next_checkin_date)
-        const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24))
-        return { ...client, daysUntilCheckin } as ClientWithMeta
-    })
+    return enrichClientsWithMeta(data, supabase)
 }
 
 // ============================================================================
@@ -131,12 +227,7 @@ export async function getDueSoonClients(coachId: string, days: number = 7): Prom
         return []
     }
 
-    const todayDate = new Date()
-    return data.map((client: Client) => {
-        const nextCheckin = new Date(client.next_checkin_date)
-        const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24))
-        return { ...client, daysUntilCheckin } as ClientWithMeta
-    })
+    return enrichClientsWithMeta(data, supabase)
 }
 
 // ============================================================================
@@ -289,4 +380,100 @@ export async function getRecentCheckins(coachId: string, limit: number = 10): Pr
             review_status: review?.status || null,
         }
     })
+}
+
+// ============================================================================
+// COMPLETED TODAY (Mejora 6)
+// ============================================================================
+
+export async function getCompletedToday(coachId: string): Promise<CompletedReview[]> {
+    const supabase = await createClient()
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const { data: reviews, error } = await supabase
+        .from('reviews')
+        .select(`
+            id,
+            checkin_id,
+            updated_at,
+            checkins!inner(client_id, clients!inner(full_name))
+        `)
+        .eq('status', 'approved')
+        .gte('updated_at', todayStart.toISOString())
+        .order('updated_at', { ascending: false })
+
+    if (error || !reviews) {
+        return []
+    }
+
+    return reviews.map((r: any) => {
+        const checkinData = r.checkins as any
+        return {
+            review_id: r.id,
+            checkin_id: r.checkin_id,
+            client_id: checkinData?.client_id || '',
+            client_name: checkinData?.clients?.full_name || 'Cliente',
+            approved_at: r.updated_at,
+        }
+    })
+}
+
+// ============================================================================
+// COACH DISPLAY NAME (Mejora 3)
+// ============================================================================
+
+export async function getCoachDisplayName(userId: string): Promise<string> {
+    const supabase = await createClient()
+
+    // Try profiles first
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single()
+
+    if (profile?.full_name) return profile.full_name
+
+    // Fallback: coaches table via coach_memberships
+    const { data: membership } = await supabase
+        .from('coach_memberships')
+        .select('coaches(name)')
+        .eq('user_id', userId)
+        .single()
+
+    const coachData = membership?.coaches as unknown as { name: string } | null
+    if (coachData?.name) return coachData.name
+
+    return 'Coach'
+}
+
+// ============================================================================
+// SIDEBAR BADGES (Mejora 9)
+// ============================================================================
+
+export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> {
+    const supabase = await createClient()
+    const today = new Date().toISOString().split('T')[0]
+
+    // Count pending today
+    const { count: pendingCount } = await supabase
+        .from('clients')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_id', coachId)
+        .eq('status', 'active')
+        .lte('next_checkin_date', today)
+
+    // Count pending signup
+    const { count: signupCount } = await supabase
+        .from('clients')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_id', coachId)
+        .is('auth_user_id', null)
+        .eq('status', 'active')
+
+    return {
+        dashboardPending: pendingCount ?? 0,
+        membersPendingSignup: signupCount ?? 0,
+    }
 }

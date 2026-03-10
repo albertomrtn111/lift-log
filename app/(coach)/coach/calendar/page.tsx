@@ -19,17 +19,17 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return null
 
-    // Get current month/year from params or default to now
     const now = new Date()
     const year = params.year ? parseInt(params.year) : now.getFullYear()
     const month = params.month ? parseInt(params.month) : now.getMonth()
 
     const events = await getCalendarEvents(coachId, year, month)
-    const urgentCount = events.filter(e => e.isUrgent).length
+
+    const completedCount = events.filter(e => e.status === 'completed').length
+    const overdueCount = events.filter(e => e.status === 'overdue').length
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
-            {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 lg:px-8 py-6">
                     <div className="flex items-center gap-3">
@@ -40,8 +40,13 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                             <h1 className="text-xl font-bold">Calendario</h1>
                             <div className="flex items-center gap-2 mt-1">
                                 <Badge variant="secondary">{events.length} check-ins</Badge>
-                                {urgentCount > 0 && (
-                                    <Badge variant="destructive">{urgentCount} urgentes</Badge>
+                                {completedCount > 0 && (
+                                    <Badge className="bg-green-500/10 text-green-700 border-green-500/20" variant="outline">
+                                        {completedCount} completados
+                                    </Badge>
+                                )}
+                                {overdueCount > 0 && (
+                                    <Badge variant="destructive">{overdueCount} atrasados</Badge>
                                 )}
                             </div>
                         </div>

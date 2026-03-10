@@ -8,8 +8,12 @@ interface KPIStatCardProps {
     title: string
     value: number | string
     icon: ReactNode
-    variant?: 'default' | 'warning' | 'danger' | 'success'
+    variant?: 'default' | 'warning' | 'danger' | 'success' | 'muted'
     subtitle?: string
+    /** If provided, makes the card a clickable link/anchor */
+    href?: string
+    /** HTML id for scroll anchoring */
+    id?: string
 }
 
 export function KPIStatCard({
@@ -17,17 +21,27 @@ export function KPIStatCard({
     value,
     icon,
     variant = 'default',
-    subtitle
+    subtitle,
+    href,
+    id,
 }: KPIStatCardProps) {
     const variantStyles = {
         default: 'bg-primary/10 text-primary',
         warning: 'bg-warning/10 text-warning',
         danger: 'bg-destructive/10 text-destructive',
         success: 'bg-success/10 text-success',
+        muted: 'bg-muted text-muted-foreground',
     }
 
-    return (
-        <Card className="p-4">
+    const content = (
+        <Card
+            id={id}
+            className={cn(
+                'p-4 transition-all',
+                href && 'cursor-pointer hover:shadow-md hover:border-primary/20',
+                variant === 'muted' && 'opacity-60'
+            )}
+        >
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-sm text-muted-foreground">{title}</p>
@@ -45,4 +59,14 @@ export function KPIStatCard({
             </div>
         </Card>
     )
+
+    if (href) {
+        return (
+            <a href={href} className="block no-underline">
+                {content}
+            </a>
+        )
+    }
+
+    return content
 }

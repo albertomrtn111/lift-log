@@ -5,7 +5,9 @@ import {
     getDueTodayClients,
     getDueSoonClients,
     getAtRiskClients,
-    getRecentCheckins
+    getRecentCheckins,
+    getCompletedToday,
+    getCoachDisplayName,
 } from '@/data/dashboard'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -20,10 +22,23 @@ import {
     FileText
 } from 'lucide-react'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { KPIStatCard } from '@/components/coach/dashboard/KPIStatCard'
 import { ClientRow } from '@/components/coach/dashboard/ClientRow'
 import { RiskCard } from '@/components/coach/dashboard/RiskCard'
 import { CheckinRow } from '@/components/coach/dashboard/CheckinRow'
+import { CompletedTodaySection } from '@/components/coach/dashboard/CompletedTodaySection'
+import { WeekTimeline } from '@/components/coach/dashboard/WeekTimeline'
+
+// Greeting helper
+function getGreeting(): string {
+    const h = new Date().getHours()
+    if (h < 12) return 'Buenos días'
+    if (h < 20) return 'Buenas tardes'
+    return 'Buenas noches'
+}
 
 export default async function CoachDashboardPage() {
     const supabase = await createClient()
@@ -35,17 +50,22 @@ export default async function CoachDashboardPage() {
     if (!coachId) return null
 
     // Fetch all dashboard data in parallel
-    const [kpis, dueTodayClients, dueSoonClients, atRiskClients, recentCheckins] = await Promise.all([
+    const [kpis, dueTodayClients, dueSoonClients, atRiskClients, recentCheckins, completedToday, coachName] = await Promise.all([
         getDashboardKPIs(coachId),
         getDueTodayClients(coachId),
         getDueSoonClients(coachId, 7),
         getAtRiskClients(coachId),
         getRecentCheckins(coachId, 10),
+        getCompletedToday(coachId),
+        getCoachDisplayName(user.id),
     ])
+
+    const hasOverdue = kpis.overdueCount > 0
+    const todayFormatted = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
-            {/* Header */}
+            {/* Header — Mejora 3: Greeting */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 lg:px-8 py-6">
                     <div className="flex items-center gap-3">
@@ -53,33 +73,37 @@ export default async function CoachDashboardPage() {
                             <LayoutDashboard className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold">Dashboard</h1>
-                            <p className="text-sm text-muted-foreground">Tu panel operativo</p>
+                            <h1 className="text-xl font-bold">{getGreeting()}, {coachName}</h1>
+                            <p className="text-sm text-muted-foreground capitalize">{todayFormatted}</p>
                         </div>
                     </div>
                 </div>
             </header>
 
             <div className="px-4 lg:px-8 pt-6 space-y-6">
-                {/* KPI Cards */}
+                {/* KPI Cards — Mejora 2: Clickable + contextual */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <KPIStatCard
                         title="Pendientes hoy"
                         value={kpis.pendingToday}
                         icon={<Clock className="h-5 w-5" />}
                         variant={kpis.pendingToday > 0 ? 'warning' : 'default'}
+                        subtitle={hasOverdue ? `${kpis.overdueCount} atrasado${kpis.overdueCount !== 1 ? 's' : ''}` : undefined}
+                        href="#acciones-hoy"
                     />
                     <KPIStatCard
                         title="Esta semana"
                         value={kpis.pendingWeek}
                         icon={<Calendar className="h-5 w-5" />}
                         variant="default"
+                        href="#esta-semana"
                     />
                     <KPIStatCard
                         title="En riesgo"
                         value={kpis.atRisk}
                         icon={<AlertTriangle className="h-5 w-5" />}
-                        variant={kpis.atRisk > 0 ? 'danger' : 'default'}
+                        variant={kpis.atRisk > 0 ? 'danger' : 'muted'}
+                        href="#en-riesgo"
                     />
                     <KPIStatCard
                         title="Clientes activos"
@@ -87,17 +111,23 @@ export default async function CoachDashboardPage() {
                         icon={<Users className="h-5 w-5" />}
                         variant="success"
                         subtitle={kpis.totalInactive > 0 ? `${kpis.totalInactive} inactivos` : undefined}
+                        href="/coach/members"
                     />
                 </div>
 
-                {/* Acciones Hoy */}
-                <Card>
+                {/* Acciones Hoy — Mejora 1: Urgency styling */}
+                <Card
+                    id="acciones-hoy"
+                    className={cn(
+                        hasOverdue && 'border-destructive/30 bg-destructive/5'
+                    )}
+                >
                     <div className="flex items-center justify-between p-4 border-b">
                         <div className="flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-warning" />
+                            <Clock className={cn('h-5 w-5', hasOverdue ? 'text-destructive' : 'text-warning')} />
                             <h2 className="font-semibold">Acciones hoy</h2>
                             {dueTodayClients.length > 0 && (
-                                <Badge variant="secondary" className="bg-warning/10 text-warning border-0">
+                                <Badge variant={hasOverdue ? 'destructive' : 'secondary'} className={cn(!hasOverdue && 'bg-warning/10 text-warning border-0')}>
                                     {dueTodayClients.length}
                                 </Badge>
                             )}
@@ -123,8 +153,11 @@ export default async function CoachDashboardPage() {
                     )}
                 </Card>
 
-                {/* Esta Semana */}
-                <Card>
+                {/* Completados hoy — Mejora 6 */}
+                <CompletedTodaySection reviews={completedToday} />
+
+                {/* Esta Semana — Mejora 8: Timeline view */}
+                <Card id="esta-semana">
                     <div className="flex items-center justify-between p-4 border-b">
                         <div className="flex items-center gap-2">
                             <Calendar className="h-5 w-5 text-primary" />
@@ -141,43 +174,26 @@ export default async function CoachDashboardPage() {
                         </Button>
                     </div>
 
-                    {dueSoonClients.length === 0 ? (
-                        <div className="p-6 text-center text-muted-foreground">
-                            No hay check-ins programados para los próximos 7 días
-                        </div>
-                    ) : (
-                        <div className="divide-y">
-                            {dueSoonClients.slice(0, 5).map(client => (
-                                <ClientRow key={client.id} client={client} showFrequency={false} />
-                            ))}
-                            {dueSoonClients.length > 5 && (
-                                <div className="p-3 text-center">
-                                    <Button variant="ghost" size="sm" asChild>
-                                        <Link href="/coach/calendar">
-                                            Ver {dueSoonClients.length - 5} más
-                                        </Link>
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    <WeekTimeline clients={dueSoonClients} />
                 </Card>
 
                 {/* En Riesgo */}
-                {atRiskClients.length > 0 && (
-                    <Card>
-                        <div className="flex items-center gap-2 p-4 border-b">
-                            <AlertTriangle className="h-5 w-5 text-destructive" />
-                            <h2 className="font-semibold">En riesgo</h2>
-                            <Badge variant="destructive">{atRiskClients.length}</Badge>
-                        </div>
-                        <div className="p-4 grid gap-3 sm:grid-cols-2">
-                            {atRiskClients.map(client => (
-                                <RiskCard key={client.id} client={client} />
-                            ))}
-                        </div>
-                    </Card>
-                )}
+                <div id="en-riesgo">
+                    {atRiskClients.length > 0 && (
+                        <Card>
+                            <div className="flex items-center gap-2 p-4 border-b">
+                                <AlertTriangle className="h-5 w-5 text-destructive" />
+                                <h2 className="font-semibold">En riesgo</h2>
+                                <Badge variant="destructive">{atRiskClients.length}</Badge>
+                            </div>
+                            <div className="p-4 grid gap-3 sm:grid-cols-2">
+                                {atRiskClients.map(client => (
+                                    <RiskCard key={client.id} client={client} />
+                                ))}
+                            </div>
+                        </Card>
+                    )}
+                </div>
 
                 {/* Últimos Check-ins */}
                 <Card>

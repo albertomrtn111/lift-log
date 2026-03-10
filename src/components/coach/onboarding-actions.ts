@@ -10,7 +10,6 @@ interface SendOnboardingResult {
     success: boolean
     checkin_id?: string
     form_url?: string
-    reused?: boolean
     error?: string
 }
 
@@ -62,50 +61,37 @@ export async function sendOnboardingAction(
         }
     }
 
-    // 4) Reuse pending onboarding (last 14 days)
-    const fourteenDaysAgo = new Date()
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-
-    const { data: existing } = await supabase
+    // 4) Cancel any existing pending onboarding checkins for this client
+    // so they can't be accessed anymore, then always create a fresh one
+    await supabase
         .from('checkins')
-        .select('id')
+        .update({ status: 'cancelled' })
         .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('type', 'onboarding')
         .eq('status', 'pending')
-        .gte('created_at', fourteenDaysAgo.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
 
-    let checkinId: string
-    let reused = false
+    // 5) Always create a fresh onboarding checkin with the current default template
+    const { data: newCheckin, error: insertErr } = await supabase
+        .from('checkins')
+        .insert({
+            coach_id: validatedCoachId,
+            client_id: clientId,
+            type: 'onboarding',
+            status: 'pending',
+            form_template_id: template.id,
+            source: 'coach_portal',
+            raw_payload: {},
+        })
+        .select('id')
+        .single()
 
-    if (existing && existing.length > 0) {
-        checkinId = existing[0].id
-        reused = true
-    } else {
-        // 5) Create onboarding checkin
-        const { data: newCheckin, error: insertErr } = await supabase
-            .from('checkins')
-            .insert({
-                coach_id: validatedCoachId,
-                client_id: clientId,
-                type: 'onboarding',
-                status: 'pending',
-                form_template_id: template.id,
-                source: 'coach_portal',
-                raw_payload: {},
-            })
-            .select('id')
-            .single()
-
-        if (insertErr || !newCheckin) {
-            console.error('[sendOnboardingAction] Insert error:', insertErr)
-            return { success: false, error: insertErr?.message || 'Error al crear el onboarding' }
-        }
-
-        checkinId = newCheckin.id
+    if (insertErr || !newCheckin) {
+        console.error('[sendOnboardingAction] Insert error:', insertErr)
+        return { success: false, error: insertErr?.message || 'Error al crear el onboarding' }
     }
+
+    const checkinId = newCheckin.id
 
     // 6) Build URL
     const formUrl = `${BASE_URL}/forms/${checkinId}`
@@ -131,6 +117,5 @@ export async function sendOnboardingAction(
         success: true,
         checkin_id: checkinId,
         form_url: formUrl,
-        reused,
     }
 }
