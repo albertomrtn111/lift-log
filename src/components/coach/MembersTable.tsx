@@ -116,7 +116,7 @@ export function MembersTable({ clients, statusFilter, coachId }: MembersTablePro
 function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coachId: string; onUpdate: () => void }) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
-    const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string; reused: boolean } | null>(null)
+    const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
     const [copied, setCopied] = useState(false)
     const { toast } = useToast()
 
@@ -165,14 +165,10 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
             const result = await sendOnboardingAction(client.id, coachId)
             if (result.success && result.form_url) {
                 toast({
-                    title: result.reused
-                        ? 'Onboarding ya existente'
-                        : 'Onboarding enviado ✓',
-                    description: result.reused
-                        ? `Se reutilizó el onboarding pendiente para ${client.full_name}`
-                        : `Onboarding creado para ${client.full_name}`,
+                    title: 'Onboarding enviado ✓',
+                    description: `Onboarding creado para ${client.full_name}`,
                 })
-                setOnboardingLinkModal({ url: result.form_url, reused: result.reused ?? false })
+                setOnboardingLinkModal({ url: result.form_url })
             } else {
                 toast({
                     title: 'Error al enviar onboarding',
@@ -350,15 +346,11 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
             <Dialog open={!!onboardingLinkModal} onOpenChange={(v) => { if (!v) setOnboardingLinkModal(null) }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>
-                            {onboardingLinkModal?.reused ? 'Onboarding pendiente' : 'Onboarding creado'}
-                        </DialogTitle>
+                        <DialogTitle>Onboarding creado</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">
-                            {onboardingLinkModal?.reused
-                                ? 'Ya existía un onboarding pendiente. Comparte este enlace con el cliente:'
-                                : 'Comparte este enlace con el cliente para que complete su onboarding:'}
+                            Comparte este enlace con el cliente para que complete su onboarding:
                         </p>
                         <div className="flex items-center gap-2">
                             <Input
