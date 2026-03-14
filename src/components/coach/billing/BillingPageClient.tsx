@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BillingDashboardData, generateMonthlyRecords, updatePaymentStatus } from '@/data/billing'
+import type { BillingDashboardData } from '@/types/billing'
+import { generateMonthlyRecordsAction, updatePaymentStatusAction } from './billing-actions'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -114,7 +115,7 @@ export default function BillingPageClient({
     const handleGenerateRecords = async () => {
         setIsGenerating(true)
         try {
-            const result = await generateMonthlyRecords(coachId, year, month)
+            const result = await generateMonthlyRecordsAction(coachId, year, month)
             if (result.success) {
                 toast({ title: 'Éxito', description: `Se autogeneraron ${result.generatedCount} registros del mes.` })
                 // Refetch current month
@@ -168,7 +169,7 @@ export default function BillingPageClient({
                 }
             }
             
-            const result = await updatePaymentStatus(recordId, newStatus, paymentMethod)
+            const result = await updatePaymentStatusAction(recordId, newStatus, paymentMethod)
             if (!result.success) throw new Error(result.error)
                 
             toast({ title: 'Estado actualizado', description: 'Registro guardado correctamente.' })
