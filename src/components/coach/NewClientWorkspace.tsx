@@ -9,8 +9,10 @@ import {
     MacroPlan,
     TrainingProgram,
     DietPlan,
-    ClientSelectorOption
+    ClientSelectorOption,
 } from '@/data/workspace'
+import { MetricDefinition } from '@/types/metrics'
+import { FormTemplate } from '@/types/forms'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -49,6 +51,8 @@ interface NewClientWorkspaceProps {
     activeProgram: TrainingProgram | null
     programs: TrainingProgram[]
     coachId: string
+    metricDefinitions: MetricDefinition[]
+    formTemplates: FormTemplate[]
 }
 
 export function NewClientWorkspace({
@@ -64,6 +68,8 @@ export function NewClientWorkspace({
     activeProgram,
     programs,
     coachId,
+    metricDefinitions,
+    formTemplates,
 }: NewClientWorkspaceProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -271,6 +277,8 @@ export function NewClientWorkspace({
                                         clientId={selectedClient.id}
                                         checkins={checkins}
                                         onRefresh={handleRefresh}
+                                        metricDefinitions={metricDefinitions}
+                                        formTemplates={formTemplates}
                                     />
                                 )}
                             </TabsContent>

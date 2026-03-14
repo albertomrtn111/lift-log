@@ -15,6 +15,8 @@ import {
     listTrainingPrograms,
     getClientMetrics,
 } from '@/data/workspace'
+import { getMetricDefinitions } from '@/data/metric-definitions'
+import { getFormTemplates } from '@/data/form-templates'
 import { NewClientWorkspace } from '@/components/coach/NewClientWorkspace'
 
 interface PageProps {
@@ -56,6 +58,8 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     let activeProgram = null
     let programs: Awaited<ReturnType<typeof listTrainingPrograms>> = []
     let metrics: Awaited<ReturnType<typeof getClientMetrics>> = []
+    let metricDefinitions: Awaited<ReturnType<typeof getMetricDefinitions>> = []
+    let formTemplates: Awaited<ReturnType<typeof getFormTemplates>> = []
 
     if (selectedClientId) {
         // Fetch all data in parallel
@@ -71,6 +75,8 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             programData,
             programsData,
             metricsData,
+            metricDefinitionsData,
+            formTemplatesData,
         ] = await Promise.all([
             getClientForWorkspace(coachId, selectedClientId),
             getClientStatus(coachId, selectedClientId),
@@ -83,6 +89,8 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             getActiveTrainingProgram(coachId, selectedClientId),
             listTrainingPrograms(coachId, selectedClientId),
             getClientMetrics(coachId, selectedClientId, 90),
+            getMetricDefinitions(),
+            getFormTemplates(),
         ])
 
         selectedClient = clientData
@@ -96,6 +104,8 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         activeProgram = programData
         programs = programsData
         metrics = metricsData
+        metricDefinitions = metricDefinitionsData
+        formTemplates = formTemplatesData
     }
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -128,6 +138,8 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     activeProgram={activeProgram}
                     programs={programs}
                     coachId={coachId}
+                    metricDefinitions={metricDefinitions}
+                    formTemplates={formTemplates}
                 />
             </div>
         </div>

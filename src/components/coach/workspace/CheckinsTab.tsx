@@ -5,16 +5,13 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CheckinWithReview } from '@/data/workspace'
+import { MetricDefinition } from '@/types/metrics'
+import { FormTemplate } from '@/types/forms'
 import {
     FileText,
-    Scale,
-    Footprints,
-    Moon,
-    Dumbbell,
-    Apple,
+    Activity,
     ChevronRight,
     X,
-    Activity
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createReviewAction } from './actions'
@@ -25,9 +22,11 @@ interface CheckinsTabProps {
     clientId: string
     checkins: CheckinWithReview[]
     onRefresh: () => void
+    metricDefinitions: MetricDefinition[]
+    formTemplates: FormTemplate[]
 }
 
-export function CheckinsTab({ coachId, clientId, checkins, onRefresh }: CheckinsTabProps) {
+export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
     const [selectedCheckin, setSelectedCheckin] = useState<CheckinWithReview | null>(null)
 
     if (checkins.length === 0) {
@@ -42,43 +41,43 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh }: Checkins
         )
     }
 
-    return (
-        <div className="flex gap-6">
-            {/* Checkins List */}
-            <Card className={cn('flex-1', selectedCheckin && 'lg:flex-[0.6]')}>
-                <div className="p-4 border-b flex items-center justify-between">
-                    <h3 className="font-semibold flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-primary" />
-                        Check-ins
-                    </h3>
-                    <span className="text-sm text-muted-foreground">{checkins.length} registros</span>
-                </div>
-                <div className="divide-y max-h-[600px] overflow-y-auto">
-                    {checkins.map(checkin => (
-                        <CheckinRow
-                            key={checkin.id}
-                            checkin={checkin}
-                            isSelected={selectedCheckin?.id === checkin.id}
-                            onClick={() => setSelectedCheckin(checkin)}
-                            coachId={coachId}
-                            clientId={clientId}
-                            onRefresh={onRefresh}
-                        />
-                    ))}
-                </div>
-            </Card>
+    if (selectedCheckin) {
+        return (
+            <CheckinDetailPanel
+                checkin={selectedCheckin}
+                onClose={() => setSelectedCheckin(null)}
+                coachId={coachId}
+                clientId={clientId}
+                onRefresh={onRefresh}
+                metricDefinitions={metricDefinitions}
+                formTemplates={formTemplates}
+            />
+        )
+    }
 
-            {/* Detail Panel */}
-            {selectedCheckin && (
-                <CheckinDetailPanel
-                    checkin={selectedCheckin}
-                    onClose={() => setSelectedCheckin(null)}
-                    coachId={coachId}
-                    clientId={clientId}
-                    onRefresh={onRefresh}
-                />
-            )}
-        </div>
+    return (
+        <Card className="flex-1">
+            <div className="p-4 border-b flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-primary" />
+                    Check-ins
+                </h3>
+                <span className="text-sm text-muted-foreground">{checkins.length} registros</span>
+            </div>
+            <div className="divide-y max-h-[600px] overflow-y-auto">
+                {checkins.map(checkin => (
+                    <CheckinRow
+                        key={checkin.id}
+                        checkin={checkin}
+                        isSelected={false}
+                        onClick={() => setSelectedCheckin(checkin)}
+                        coachId={coachId}
+                        clientId={clientId}
+                        onRefresh={onRefresh}
+                    />
+                ))}
+            </div>
+        </Card>
     )
 }
 
@@ -118,7 +117,7 @@ function CheckinRow({
     const reviewBadge = () => {
         if (!checkin.review) {
             return (
-                <Badge variant="outline" className="bg-muted/50 text-xs">
+                <Badge variant="outline" className="bg-muted/50 text-xs text-muted-foreground">
                     Sin review
                 </Badge>
             )
@@ -136,66 +135,48 @@ function CheckinRow({
         )
     }
 
+    const rawPayload = (checkin.raw_payload as Record<string, unknown>) || {}
+    const metricCount = Object.keys(rawPayload).filter(k => k.startsWith('metric_') && rawPayload[k] !== null && rawPayload[k] !== '').length
+    const questionCount = Object.keys(rawPayload).filter(k => k.startsWith('campo_') && rawPayload[k] !== null && rawPayload[k] !== '').length
+
     return (
         <div
             className={cn(
-                'p-4 cursor-pointer transition-colors hover:bg-muted/30',
+                'p-4 cursor-pointer transition-colors hover:bg-muted/30 flex items-center justify-between',
                 isSelected && 'bg-primary/5'
             )}
             onClick={onClick}
         >
-            <div className="flex items-center justify-between mb-2">
-                <span className="font-medium">{formatDate(checkin.submitted_at)}</span>
-                <div className="flex items-center gap-2">
+            <div>
+                 <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium text-base">{formatDate(checkin.submitted_at)}</span>
                     {reviewBadge()}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                 </div>
+                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <Activity className="h-3.5 w-3.5" />
+                        {metricCount} métricas
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <FileText className="h-3.5 w-3.5" />
+                        {questionCount} respuestas
+                    </span>
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                {(checkin.weight_avg_kg || checkin.weight_kg) && (
-                    <span className="flex items-center gap-1">
-                        <Scale className="h-3.5 w-3.5" />
-                        {checkin.weight_avg_kg || checkin.weight_kg} kg
-                    </span>
+            <div className="flex items-center gap-4">
+                {!checkin.review && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCreateReview}
+                        disabled={isPending}
+                    >
+                        Crear review
+                    </Button>
                 )}
-                {checkin.steps_avg && (
-                    <span className="flex items-center gap-1">
-                        <Footprints className="h-3.5 w-3.5" />
-                        {Math.round(checkin.steps_avg).toLocaleString()}
-                    </span>
-                )}
-                {checkin.training_adherence_pct !== null && (
-                    <span className={cn(
-                        'flex items-center gap-1',
-                        checkin.training_adherence_pct < 60 && 'text-destructive'
-                    )}>
-                        <Dumbbell className="h-3.5 w-3.5" />
-                        {checkin.training_adherence_pct}%
-                    </span>
-                )}
-                {checkin.nutrition_adherence_pct !== null && (
-                    <span className={cn(
-                        'flex items-center gap-1',
-                        checkin.nutrition_adherence_pct < 60 && 'text-destructive'
-                    )}>
-                        <Apple className="h-3.5 w-3.5" />
-                        {checkin.nutrition_adherence_pct}%
-                    </span>
-                )}
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
-
-            {!checkin.review && (
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={handleCreateReview}
-                    disabled={isPending}
-                >
-                    Crear review
-                </Button>
-            )}
         </div>
     )
 }
@@ -205,13 +186,17 @@ function CheckinDetailPanel({
     onClose,
     coachId,
     clientId,
-    onRefresh
+    onRefresh,
+    metricDefinitions,
+    formTemplates
 }: {
     checkin: CheckinWithReview
     onClose: () => void
     coachId: string
     clientId: string
     onRefresh: () => void
+    metricDefinitions: MetricDefinition[]
+    formTemplates: FormTemplate[]
 }) {
     const [isPending, startTransition] = useTransition()
 
@@ -224,155 +209,151 @@ function CheckinDetailPanel({
 
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleDateString('es-ES', {
+            weekday: 'long',
             day: 'numeric',
             month: 'long',
             year: 'numeric'
         })
     }
 
+    const rawPayload = (checkin.raw_payload as Record<string, unknown>) || {}
+    const metricKeys = Object.keys(rawPayload).filter(k => k.startsWith('metric_') && rawPayload[k] !== null && rawPayload[k] !== '')
+    const questionKeys = Object.keys(rawPayload).filter(k => k.startsWith('campo_') && rawPayload[k] !== null && rawPayload[k] !== '')
+
+    const getMetricLabel = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def ? def.name : 'Métrica'
+    }
+
+    const getMetricUnit = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def?.unit ? ` ${def.unit}` : ''
+    }
+
+    const allFields = formTemplates.flatMap(t => t.schema)
+    const getFieldLabel = (key: string) => {
+        const field = allFields.find(f => f.id === key)
+        if (field) return field.label
+        const num = key.replace('campo_', '')
+        return `Pregunta ${num}`
+    }
+
     return (
-        <Card className="hidden lg:block w-[400px] shrink-0">
-            <div className="p-4 border-b flex items-center justify-between">
-                <h3 className="font-semibold">Detalle check-in</h3>
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                    <X className="h-4 w-4" />
-                </Button>
+        <Card className="w-full">
+            <div className="p-4 sm:p-6 border-b flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row bg-muted/20">
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <h3 className="font-semibold text-xl">Detalle del check-in</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground capitalize">
+                        {formatDate(checkin.submitted_at)}
+                    </p>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <Badge variant="secondary" className={cn("lg:text-sm", checkin.review?.status === 'approved' && 'bg-success/10 text-success border-success/20')}>
+                        {checkin.review?.status === 'approved' ? 'Aprobado' : checkin.review?.status === 'draft' ? 'Borrador' : 'Sin review'}
+                    </Badge>
+                    <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full bg-background border">
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
-            <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
-                {/* Header */}
-                <div className="pb-4 border-b">
-                    <p className="font-medium">{formatDate(checkin.submitted_at)}</p>
-                    {checkin.period_start && checkin.period_end && (
-                        <p className="text-sm text-muted-foreground">
-                            Periodo: {checkin.period_start} - {checkin.period_end}
+            <div className="p-4 sm:p-8 space-y-12">
+                {/* Datos de Progreso */}
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-muted-foreground" />
+                        Datos de progreso
+                    </h4>
+                    {metricKeys.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {metricKeys
+                                .filter(key => key.startsWith('metric_'))
+                                .map(key => (
+                                <MetricBox
+                                    key={key}
+                                    label={getMetricLabel(key)}
+                                    value={rawPayload[key] as number | string}
+                                    unit={getMetricUnit(key)}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground bg-muted/30 p-6 rounded-xl text-center border border-dashed">
+                            Sin métricas registradas en este check-in
                         </p>
                     )}
                 </div>
 
-                {/* Metrics Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                    <MetricBox
-                        icon={Scale}
-                        label="Peso"
-                        value={checkin.weight_avg_kg || checkin.weight_kg}
-                        unit="kg"
-                    />
-                    <MetricBox
-                        icon={Footprints}
-                        label="Pasos avg"
-                        value={checkin.steps_avg ? Math.round(checkin.steps_avg) : null}
-                    />
-                    <MetricBox
-                        icon={Moon}
-                        label="Sueño avg"
-                        value={checkin.sleep_avg_h}
-                        unit="h"
-                    />
-                    <MetricBox
-                        icon={Dumbbell}
-                        label="Adherencia entreno"
-                        value={checkin.training_adherence_pct}
-                        unit="%"
-                        warning={checkin.training_adherence_pct !== null && checkin.training_adherence_pct < 60}
-                    />
-                    <MetricBox
-                        icon={Apple}
-                        label="Adherencia nutrición"
-                        value={checkin.nutrition_adherence_pct}
-                        unit="%"
-                        warning={checkin.nutrition_adherence_pct !== null && checkin.nutrition_adherence_pct < 60}
-                    />
+                {/* Preguntas */}
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        Preguntas del entrenador
+                    </h4>
+                    {questionKeys.length > 0 ? (
+                        <div className="space-y-4">
+                            {questionKeys
+                                .filter(key => key.startsWith('campo_'))
+                                .map(key => (
+                                <div key={key} className="bg-muted/10 p-5 rounded-xl border">
+                                    <p className="text-sm font-medium mb-2 text-muted-foreground">
+                                        {getFieldLabel(key)}
+                                    </p>
+                                    <p className="text-base whitespace-pre-wrap">
+                                        {String(rawPayload[key])}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground bg-muted/30 p-6 rounded-xl text-center border border-dashed">
+                            Sin respuestas registradas
+                        </p>
+                    )}
                 </div>
 
-                {/* Notes */}
-                {checkin.notes && (
-                    <div>
-                        <p className="text-sm font-medium mb-1">Notas del cliente</p>
-                        <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-                            {checkin.notes}
-                        </p>
-                    </div>
-                )}
-
-                {/* Photos Viewer */}
-                <div className="pt-2">
+                {/* Fotos */}
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        Fotos de progreso
+                    </h4>
                     <CheckinPhotosViewer
                         checkinId={checkin.id}
                         coachId={coachId}
                     />
                 </div>
 
-                {/* Extra metrics from raw_payload (production) */}
-                {(() => {
-                    if (!checkin.raw_payload || typeof checkin.raw_payload !== 'object') return null
-                    const coveredFields = new Set([
-                        'weight_avg_kg', 'weight_kg', 'steps_avg', 'sleep_avg_h',
-                        'training_adherence_pct', 'nutrition_adherence_pct'
-                    ])
-                    const extras = Object.entries(checkin.raw_payload as Record<string, unknown>)
-                        .filter(([key, val]) => !coveredFields.has(key) && typeof val === 'number')
-                    if (extras.length === 0) return null
-                    return (
-                        <div>
-                            <p className="text-sm font-medium mb-2">Otros datos</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                {extras.map(([key, val]) => (
-                                    <MetricBox
-                                        key={key}
-                                        icon={Activity}
-                                        label={key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                        value={val as number}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )
-                })()}
-
-                {/* Raw Payload — solo visible en desarrollo */}
-                {process.env.NODE_ENV !== 'production' && checkin.raw_payload && (
-                    <details className="text-xs">
-                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                            Ver datos raw (dev)
-                        </summary>
-                        <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-x-auto">
-                            {JSON.stringify(checkin.raw_payload, null, 2)}
-                        </pre>
-                    </details>
-                )}
-
-                {/* Review Section */}
-                <div className="pt-4 border-t">
+                {/* Review */}
+                <div className="space-y-4 pt-8 border-t">
+                    <h4 className="font-semibold text-lg">Revisión</h4>
                     {checkin.review ? (
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium">Review</span>
-                                <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                        checkin.review.status === 'draft' && 'bg-warning/10 text-warning',
-                                        checkin.review.status === 'approved' && 'bg-success/10 text-success',
-                                    )}
-                                >
-                                    {checkin.review.status === 'draft' ? 'Borrador' : 'Aprobado'}
-                                </Badge>
+                        <div className="space-y-3 bg-muted/20 p-6 rounded-xl border">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-sm text-muted-foreground">Resumen del feedback</span>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                                {checkin.review.summary || 'Sin resumen'}
+                            <p className="text-base whitespace-pre-wrap">
+                                {checkin.review.summary || 'Sin resumen escrito todavía.'}
                             </p>
-                            <Button variant="outline" size="sm" className="w-full">
-                                <FileText className="h-4 w-4 mr-2" />
-                                Ver review completo
-                            </Button>
+                            <div className="pt-4">
+                                <Button variant="outline" size="sm">
+                                    <FileText className="h-4 w-4 mr-2" />
+                                    Abrir editor completo de revisión
+                                </Button>
+                            </div>
                         </div>
                     ) : (
-                        <div className="text-center">
-                            <p className="text-sm text-muted-foreground mb-3">
-                                Este check-in no tiene review
+                        <div className="text-center bg-muted/10 p-8 rounded-xl border border-dashed">
+                            <p className="text-sm text-muted-foreground mb-4">
+                                Este check-in aún no ha sido revisado
                             </p>
-                            <Button onClick={handleCreateReview} disabled={isPending} size="sm">
-                                Crear review
+                            <Button onClick={handleCreateReview} disabled={isPending}>
+                                Crear revisión para el cliente
                             </Button>
                         </div>
                     )}
@@ -383,27 +364,23 @@ function CheckinDetailPanel({
 }
 
 function MetricBox({
-    icon: Icon,
     label,
     value,
     unit = '',
-    warning = false
 }: {
-    icon: React.ElementType
     label: string
-    value: number | null | undefined
+    value: number | string | null | undefined
     unit?: string
-    warning?: boolean
 }) {
     return (
-        <div className="p-3 bg-muted/50 rounded-lg">
+        <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                <Icon className="h-3 w-3" />
                 {label}
             </div>
-            <p className={cn('font-medium', warning && 'text-destructive')}>
+            <p className="font-semibold text-lg">
                 {value !== null && value !== undefined ? `${value.toLocaleString()}${unit}` : '—'}
             </p>
         </div>
     )
 }
+
