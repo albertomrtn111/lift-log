@@ -1,6 +1,7 @@
 import { BottomNav } from '@/components/layout/BottomNav'
 import { ClientAppProvider } from '@/contexts/ClientAppContext'
 import { DevStalenessGuard } from '@/components/debug/DevStalenessGuard'
+import { PwaNavigationFix } from '@/components/layout/PwaNavigationFix'
 
 export default function AppLayout({
     children,
@@ -15,6 +16,7 @@ export default function AppLayout({
                 <main className="pb-24">
                     {children}
                 </main>
+                <PwaNavigationFix />
                 <BottomNav />
                 <DevStalenessGuard />
             </div>

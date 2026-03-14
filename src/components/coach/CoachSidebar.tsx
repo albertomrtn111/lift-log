@@ -15,7 +15,8 @@ import {
     LogOut,
     FileText,
     ClipboardList,
-    BarChart2
+    BarChart2,
+    Receipt
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -36,13 +37,19 @@ const navSections = [
         items: [
             { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard', badgeKey: 'dashboardPending' as const },
             { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
-            { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
+            { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
+        ]
+    },
+    {
+        title: 'FACTURACIÓN',
+        items: [
+            { href: '/coach/billing', icon: Receipt, label: 'Facturación' },
         ]
     },
     {
         title: 'CONFIGURACIÓN',
         items: [
-            { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
+            { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
             { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
             { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
             { href: '/coach/metrics', icon: BarChart2, label: 'Métricas' },

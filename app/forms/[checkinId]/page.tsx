@@ -30,6 +30,7 @@ export default async function FormPage({ params }: PageProps) {
             status,
             form_template_id,
             submitted_at,
+            raw_payload,
             form_templates (
                 id,
                 title,
@@ -79,30 +80,7 @@ export default async function FormPage({ params }: PageProps) {
         )
     }
 
-    // 4. Already submitted?
-    if (checkin.status !== 'pending') {
-        return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                <Card className="max-w-md p-8 text-center space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
-                        <AlertCircle className="h-8 w-8 text-success" />
-                    </div>
-                    <h2 className="text-xl font-semibold">Formulario ya enviado</h2>
-                    <p className="text-muted-foreground text-sm">
-                        Este formulario fue completado el{' '}
-                        {checkin.submitted_at
-                            ? new Date(checkin.submitted_at).toLocaleDateString('es-ES', {
-                                day: 'numeric',
-                                month: 'long',
-                                year: 'numeric',
-                            })
-                            : 'anteriormente'}
-                        .
-                    </p>
-                </Card>
-            </div>
-        )
-    }
+    // 4. Removed already-submitted guard block
 
     // 5. Get template data
     const template = checkin.form_templates as unknown as {
@@ -148,6 +126,7 @@ export default async function FormPage({ params }: PageProps) {
                     coachId={checkin.coach_id}
                     clientId={checkin.client_id}
                     metrics={metrics ?? []}
+                    initialValues={(checkin.raw_payload as Record<string, unknown>) ?? {}}
                 />
             </div>
         </div>

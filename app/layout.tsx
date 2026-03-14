@@ -11,6 +11,12 @@ const inter = Inter({
 export const metadata: Metadata = {
     title: 'NextTrain - Tu entrenamiento personal',
     description: 'Aplicación de seguimiento de entrenamiento y nutrición',
+    manifest: '/manifest.json',
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: 'default',
+        title: 'NexTrain',
+    },
 }
 
 export const viewport: Viewport = {

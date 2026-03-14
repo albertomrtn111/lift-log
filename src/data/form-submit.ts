@@ -40,10 +40,7 @@ export async function submitFormAction(
         return { success: false, error: 'No tienes permiso para enviar este formulario' }
     }
 
-    // 4. Prevent re-submission
-    if (checkin.status !== 'pending') {
-        return { success: false, error: 'Este formulario ya fue enviado' }
-    }
+    // 4. Removed prevent re-submission guard
 
     // 5. Validate type for onboarding-specific forms
     const isOnboarding = checkin.type === 'onboarding'

@@ -52,11 +52,12 @@ interface DynamicFormProps {
     coachId: string
     clientId: string
     metrics?: MetricDefinition[]
+    initialValues?: Record<string, unknown>
 }
 
-export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId, metrics = [] }: DynamicFormProps) {
+export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId, metrics = [], initialValues }: DynamicFormProps) {
     const router = useRouter()
-    const [values, setValues] = useState<Record<string, unknown>>({})
+    const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {})
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [submitting, setSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(false)

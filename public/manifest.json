@@ -1,0 +1,13 @@
+{
+  "name": "NexTrain",
+  "short_name": "NexTrain",
+  "start_url": "/planning",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#f8fafc",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/Logo_nexttrain.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/Logo_nexttrain.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

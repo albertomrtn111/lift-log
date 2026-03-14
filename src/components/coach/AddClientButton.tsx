@@ -40,6 +40,9 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
         checkin_frequency_days: 14,
         password: '',
         confirmPassword: '',
+        payment_amount: '',
+        payment_day: '',
+        payment_notes: '',
     })
 
     const resetForm = () => {
@@ -51,6 +54,9 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
             checkin_frequency_days: 14,
             password: '',
             confirmPassword: '',
+            payment_amount: '',
+            payment_day: '',
+            payment_notes: '',
         })
         setError(null)
         setCopied(false)
@@ -103,6 +109,9 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                 start_date: formData.start_date,
                 checkin_frequency_days: formData.checkin_frequency_days,
                 password: formData.password || undefined,
+                payment_amount: formData.payment_amount ? parseFloat(formData.payment_amount) : undefined,
+                payment_day: formData.payment_day ? parseInt(formData.payment_day) : undefined,
+                payment_notes: formData.payment_notes || undefined,
             })
 
             if (!result.success || !result.client) {
@@ -241,6 +250,54 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                                 value={formData.checkin_frequency_days}
                                 onChange={(e) => setFormData({ ...formData, checkin_frequency_days: parseInt(e.target.value) || 14 })}
                                 required
+                                disabled={isPending}
+                            />
+                        </div>
+                    </div>
+
+                    {/* ---- Payment info ---- */}
+                    <div className="border-t pt-4 mt-4 space-y-3">
+                        <div>
+                            <Label className="text-sm font-medium">💳 Información de pago</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Opcional — para tu control interno
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="payment_amount">Cuota mensual (€)</Label>
+                                <Input
+                                    id="payment_amount"
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    value={formData.payment_amount}
+                                    onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
+                                    placeholder="150.00"
+                                    disabled={isPending}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="payment_day">Día de cobro</Label>
+                                <Input
+                                    id="payment_day"
+                                    type="number"
+                                    min={1}
+                                    max={31}
+                                    value={formData.payment_day}
+                                    onChange={(e) => setFormData({ ...formData, payment_day: e.target.value })}
+                                    placeholder="1"
+                                    disabled={isPending}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="payment_notes">Notas de pago</Label>
+                            <Input
+                                id="payment_notes"
+                                value={formData.payment_notes}
+                                onChange={(e) => setFormData({ ...formData, payment_notes: e.target.value })}
+                                placeholder="Bizum, transferencia, efectivo..."
                                 disabled={isPending}
                             />
                         </div>

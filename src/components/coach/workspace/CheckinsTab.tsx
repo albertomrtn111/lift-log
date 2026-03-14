@@ -149,7 +149,7 @@ function CheckinRow({
         >
             <div>
                  <div className="flex items-center gap-2 mb-2">
-                    <span className="font-medium text-base">{formatDate(checkin.submitted_at)}</span>
+                    <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
                     {reviewBadge()}
                  </div>
                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -249,7 +249,7 @@ function CheckinDetailPanel({
                         <h3 className="font-semibold text-xl">Detalle del check-in</h3>
                     </div>
                     <p className="text-sm text-muted-foreground capitalize">
-                        {formatDate(checkin.submitted_at)}
+                        {checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">

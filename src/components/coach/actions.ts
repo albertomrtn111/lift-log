@@ -48,6 +48,9 @@ export async function createClientAction(data: {
     start_date: string
     checkin_frequency_days: number
     password?: string
+    payment_amount?: number
+    payment_day?: number
+    payment_notes?: string
 }) {
     // Validate coach_id against membership
     let coachId: string

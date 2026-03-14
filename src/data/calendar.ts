@@ -23,7 +23,7 @@ export async function getCalendarEvents(
     // 1. Get all active clients with frequency
     const { data: clients, error: clientsErr } = await supabase
         .from('clients')
-        .select('id, full_name, next_checkin_date, checkin_frequency_days')
+        .select('id, full_name, next_checkin_date, checkin_frequency_days, start_date')
         .eq('coach_id', coachId)
         .eq('status', 'active')
 
@@ -32,9 +32,9 @@ export async function getCalendarEvents(
     // 2. Get actual checkins in the month range
     const { data: checkins } = await supabase
         .from('checkins')
-        .select('id, client_id, submitted_at')
+        .select('id, client_id, submitted_at, status')
         .eq('coach_id', coachId)
-        .eq('type', 'review')
+        .eq('type', 'checkin')
         .gte('submitted_at', `${startDate}T00:00:00`)
         .lte('submitted_at', `${endDate}T23:59:59`)
 
@@ -53,7 +53,7 @@ export async function getCalendarEvents(
     }
 
     // Build a map of actual checkins by client + date
-    const actualCheckinMap = new Map<string, { checkinId: string; reviewStatus: string | null }>()
+    const actualCheckinMap = new Map<string, { checkinId: string; checkinStatus: string; reviewStatus: string | null }>()
     for (const c of (checkins || [])) {
         const dateStr = c.submitted_at?.split('T')[0]
         if (!dateStr) continue
@@ -61,6 +61,7 @@ export async function getCalendarEvents(
         const key = `${c.client_id}_${dateStr}`
         actualCheckinMap.set(key, {
             checkinId: c.id,
+            checkinStatus: c.status,
             reviewStatus: review?.status || null,
         })
     }
@@ -99,6 +100,9 @@ export async function getCalendarEvents(
 
         for (const date of projectedDates) {
             const dateStr = toLocalDateStr(date)
+            // No mostrar revisiones proyectadas anteriores a la fecha de alta
+            if (client.start_date && dateStr < client.start_date) continue
+
             const key = `${client.id}_${dateStr}`
             const actual = actualCheckinMap.get(key)
 
@@ -109,7 +113,7 @@ export async function getCalendarEvents(
             if (actual) {
                 checkinId = actual.checkinId
                 reviewStatus = actual.reviewStatus as CalendarEvent['reviewStatus']
-                status = reviewStatus === 'approved' ? 'completed' : 'pending_review'
+                status = actual.checkinStatus === 'reviewed' ? 'completed' : 'pending_review'
             } else if (dateStr < today) {
                 status = 'overdue'
             } else {
@@ -154,7 +158,7 @@ export async function getCalendarEvents(
             type: 'checkin',
             isUrgent: false,
             projected: false,
-            status: review?.status === 'approved' ? 'completed' : 'pending_review',
+            status: c.status === 'reviewed' ? 'completed' : 'pending_review',
             checkinId: c.id,
             reviewStatus: (review?.status as CalendarEvent['reviewStatus']) || null,
         })

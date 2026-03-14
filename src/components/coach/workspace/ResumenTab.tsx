@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram, Review } from '@/data/workspace'
+import { ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram } from '@/data/workspace'
 import {
     CheckCircle,
     AlertTriangle,
@@ -13,17 +12,9 @@ import {
     Dumbbell,
     Apple,
     FileText,
-    Edit,
-    Check,
-    RotateCcw,
-    ChevronDown,
-    ChevronUp,
-    ArrowRight,
-    Scale,
-    Target
+    ArrowRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createReviewAction, approveReviewAction, revertReviewToDraftAction } from './actions'
 
 interface ResumenTabProps {
     coachId: string
@@ -57,6 +48,7 @@ export function ResumenTab({
                 clientId={clientId}
                 checkin={latestCheckin}
                 onRefresh={onRefresh}
+                onSwitchTab={onSwitchTab}
             />
 
             {/* Active Plans Mini */}
@@ -78,7 +70,7 @@ export function ResumenTab({
                             </div>
                         ) : null
                     }
-                    onView={() => onSwitchTab('plan')}
+                    onView={() => onSwitchTab('diet')}
                 />
                 <ActivePlanCard
                     title="Programa entrenamiento"
@@ -97,7 +89,7 @@ export function ResumenTab({
                             </div>
                         ) : null
                     }
-                    onView={() => onSwitchTab('plan')}
+                    onView={() => onSwitchTab('progreso')}
                 />
             </div>
         </div>
@@ -196,40 +188,15 @@ function ReviewCard({
     coachId,
     clientId,
     checkin,
-    onRefresh
+    onRefresh,
+    onSwitchTab
 }: {
     coachId: string
     clientId: string
     checkin: CheckinWithReview | null
     onRefresh: () => void
+    onSwitchTab: (tab: string) => void
 }) {
-    const [isPending, startTransition] = useTransition()
-    const [expanded, setExpanded] = useState(false)
-
-    const handleCreateReview = () => {
-        if (!checkin) return
-        startTransition(async () => {
-            await createReviewAction(coachId, clientId, checkin.id)
-            onRefresh()
-        })
-    }
-
-    const handleApprove = () => {
-        if (!checkin?.review) return
-        startTransition(async () => {
-            await approveReviewAction(checkin.review!.id)
-            onRefresh()
-        })
-    }
-
-    const handleRevert = () => {
-        if (!checkin?.review) return
-        startTransition(async () => {
-            await revertReviewToDraftAction(checkin.review!.id)
-            onRefresh()
-        })
-    }
-
     if (!checkin) {
         return (
             <Card className="p-6 text-center">
@@ -242,112 +209,91 @@ function ReviewCard({
         )
     }
 
-    const review = checkin.review
+    if (checkin.status === 'pending') {
+        const dateStr = checkin.period_end 
+            ? new Date(checkin.period_end).toLocaleDateString('es-ES') 
+            : 'Pendiente'
+
+        return (
+            <Card className="p-6 text-center">
+                <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <div className="flex items-center justify-center gap-2 mb-2">
+                    <h3 className="font-semibold">Formulario enviado</h3>
+                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
+                        Pendiente
+                    </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                    Esperando respuesta del cliente
+                </p>
+                <div className="text-xs text-muted-foreground">
+                    Fecha programada: {dateStr}
+                </div>
+            </Card>
+        )
+    }
+
+    // Status: reviewed
+    const payload = (checkin.raw_payload as Record<string, unknown>) || {}
+    const metricKeys = Object.keys(payload).filter(k => k.startsWith('metric_')).slice(0, 4)
+    const questionKeys = metricKeys.length === 0 
+        ? Object.keys(payload).filter(k => k.startsWith('campo_')).slice(0, 2)
+        : []
 
     return (
-        <Card>
-            <div className="p-4 border-b flex items-center justify-between">
+        <Card className="flex flex-col">
+            <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <FileText className="h-5 w-5 text-primary" />
-                    <h3 className="font-semibold">Último Review</h3>
-                    {review && (
-                        <Badge
-                            variant="secondary"
-                            className={cn(
-                                review.status === 'draft' && 'bg-warning/10 text-warning',
-                                review.status === 'approved' && 'bg-success/10 text-success',
-                            )}
-                        >
-                            {review.status === 'draft' ? 'Borrador' : 'Aprobado'}
-                        </Badge>
-                    )}
+                    <h3 className="font-semibold">Último check-in</h3>
+                    <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                        Completado
+                    </Badge>
                 </div>
                 <span className="text-sm text-muted-foreground">
-                    Check-in: {new Date(checkin.submitted_at).toLocaleDateString('es-ES')}
+                    {checkin.submitted_at ? new Date(checkin.submitted_at).toLocaleDateString('es-ES') : ''}
                 </span>
             </div>
 
-            <div className="p-4">
-                {!review ? (
-                    <div className="text-center py-4">
-                        <p className="text-muted-foreground mb-4">
-                            Este check-in no tiene review asociado
-                        </p>
-                        <Button onClick={handleCreateReview} disabled={isPending}>
-                            <FileText className="h-4 w-4 mr-2" />
-                            Crear review
-                        </Button>
+            <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                {metricKeys.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3">
+                        {metricKeys.map(key => {
+                            const name = key.replace('metric_', '').substring(0, 20)
+                            return (
+                                <div key={key} className="bg-muted/50 p-2.5 rounded-lg border">
+                                    <p className="text-xs text-muted-foreground truncate" title={key.replace('metric_', '')}>
+                                        {name}
+                                    </p>
+                                    <p className="font-medium text-sm truncate">
+                                        {String(payload[key])}
+                                    </p>
+                                </div>
+                            )
+                        })}
+                    </div>
+                ) : questionKeys.length > 0 ? (
+                    <div className="space-y-3">
+                        {questionKeys.map(key => (
+                            <div key={key} className="bg-muted/50 p-3 rounded-lg border">
+                                <p className="text-xs text-muted-foreground mb-1 truncate">Pregunta respondida</p>
+                                <p className="text-sm font-medium line-clamp-2">
+                                    {String(payload[key])}
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                        {/* Summary */}
-                        <div>
-                            <p className="text-sm text-muted-foreground mb-1">Resumen</p>
-                            <p className="text-sm">{review.summary || 'Sin resumen (pendiente IA)'}</p>
-                        </div>
-
-                        {/* Message to client */}
-                        {review.message_to_client && (
-                            <div>
-                                <p className="text-sm text-muted-foreground mb-1">Mensaje al cliente</p>
-                                <p className="text-sm bg-muted/50 p-3 rounded-lg">{review.message_to_client}</p>
-                            </div>
-                        )}
-
-                        {/* Expandable analysis/proposal */}
-                        {(review.analysis || review.proposal) && (
-                            <div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setExpanded(!expanded)}
-                                    className="w-full justify-between"
-                                >
-                                    <span>Ver detalles (IA)</span>
-                                    {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                </Button>
-                                {expanded && (
-                                    <div className="mt-2 p-3 bg-muted/30 rounded-lg text-xs font-mono space-y-2">
-                                        {review.analysis && (
-                                            <div>
-                                                <p className="font-semibold mb-1">Analysis:</p>
-                                                <pre className="whitespace-pre-wrap">{JSON.stringify(review.analysis, null, 2)}</pre>
-                                            </div>
-                                        )}
-                                        {review.proposal && (
-                                            <div>
-                                                <p className="font-semibold mb-1">Proposal:</p>
-                                                <pre className="whitespace-pre-wrap">{JSON.stringify(review.proposal, null, 2)}</pre>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 pt-2 border-t">
-                            {review.status === 'draft' && (
-                                <>
-                                    <Button size="sm" onClick={handleApprove} disabled={isPending}>
-                                        <Check className="h-4 w-4 mr-2" />
-                                        Aprobar
-                                    </Button>
-                                    <Button variant="outline" size="sm" disabled>
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        Editar
-                                    </Button>
-                                </>
-                            )}
-                            {review.status === 'approved' && (
-                                <Button variant="outline" size="sm" onClick={handleRevert} disabled={isPending}>
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                    Volver a borrador
-                                </Button>
-                            )}
-                        </div>
+                    <div className="py-4 text-center">
+                        <p className="text-sm text-muted-foreground">
+                            Check-in enviado sin datos procesables en el formato actual.
+                        </p>
                     </div>
                 )}
+
+                <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => onSwitchTab('checkins')}>
+                    Ver revisión completa <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
             </div>
         </Card>
     )
