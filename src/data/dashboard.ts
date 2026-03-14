@@ -114,6 +114,7 @@ async function enrichClientsWithMeta(
         .from('checkins')
         .select('client_id, submitted_at, training_adherence_pct, nutrition_adherence_pct')
         .in('client_id', clientIds)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
 
     // Get reviews for latest checkins to check pending status
@@ -122,6 +123,7 @@ async function enrichClientsWithMeta(
         .from('checkins')
         .select('id, client_id')
         .in('client_id', clientIds)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
 
     // Build a map of client → latest checkin id
@@ -262,6 +264,7 @@ export async function getAtRiskClients(coachId: string): Promise<AtRiskClient[]>
         .from('checkins')
         .select('client_id, submitted_at, training_adherence_pct, nutrition_adherence_pct')
         .in('client_id', clientIds)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
 
     const atRiskClients: AtRiskClient[] = []
@@ -345,6 +348,7 @@ export async function getRecentCheckins(coachId: string, limit: number = 10): Pr
             clients!inner(full_name)
         `)
         .eq('coach_id', coachId)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
         .limit(limit)
 

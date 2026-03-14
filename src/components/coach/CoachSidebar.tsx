@@ -14,7 +14,8 @@ import {
     User,
     LogOut,
     FileText,
-    ClipboardList
+    ClipboardList,
+    BarChart2
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -44,6 +45,7 @@ const navSections = [
             { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
             { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
             { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
+            { href: '/coach/metrics', icon: BarChart2, label: 'Métricas' },
         ]
     }
 ]

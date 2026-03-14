@@ -17,6 +17,10 @@ const N8N_INVITE_URL =
     process.env.N8N_INVITE_WEBHOOK_URL ||
     'https://n8n.ascenttech.cloud/webhook/invite-client'
 
+const N8N_REVIEW_URL =
+    process.env.N8N_REVIEW_WEBHOOK_URL ||
+    'https://n8n.ascenttech.cloud/webhook/send-review'
+
 const N8N_USER = process.env.N8N_BASIC_AUTH_USER || ''
 const N8N_PASS = process.env.N8N_BASIC_AUTH_PASS || ''
 
@@ -117,5 +121,27 @@ export async function sendInviteEmail(params: {
         client_email: params.clientEmail,
         client_name: params.clientName,
         temp_password: params.tempPassword ?? null,
+    })
+}
+
+export async function sendReviewEmail(params: {
+    clientId: string
+    coachId: string
+    clientEmail?: string
+    clientName?: string
+    checkinId?: string
+    formTemplateId?: string
+    formUrl?: string
+}): Promise<N8nResult> {
+    console.log(`[n8n] Sending review for client=${params.clientId} coach=${params.coachId}`)
+
+    return callN8n(N8N_REVIEW_URL, {
+        client_id: params.clientId,
+        coach_id: params.coachId,
+        client_email: params.clientEmail,
+        client_name: params.clientName,
+        checkin_id: params.checkinId,
+        form_template_id: params.formTemplateId,
+        form_url: params.formUrl,
     })
 }

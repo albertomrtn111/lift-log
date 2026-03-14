@@ -160,6 +160,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
         .from('checkins')
         .select('id, client_id')
         .in('client_id', clientIds)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
 
     const latestCheckinByClient = new Map<string, string>()
@@ -227,6 +228,7 @@ export async function getClientStatus(coachId: string, clientId: string): Promis
         .select('submitted_at, training_adherence_pct, nutrition_adherence_pct')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
         .limit(1)
         .single()
@@ -274,6 +276,7 @@ export async function listCheckins(coachId: string, clientId: string): Promise<C
         .select('*')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
 
     if (error || !checkins) return []
@@ -301,6 +304,7 @@ export async function getLatestCheckin(coachId: string, clientId: string): Promi
         .select('*')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
+        .eq('type', 'review')
         .order('submitted_at', { ascending: false })
         .limit(1)
         .single()
@@ -599,6 +603,7 @@ export async function getClientMetrics(coachId: string, clientId: string, days: 
         .select('submitted_at, weight_kg, weight_avg_kg, steps_avg, sleep_avg_h, training_adherence_pct, nutrition_adherence_pct')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
+        .eq('type', 'review')
         .gte('submitted_at', startDate.toISOString())
         .order('submitted_at', { ascending: true })
 

@@ -47,12 +47,14 @@ import {
     ClipboardList,
     Copy,
     Check,
+    RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { deactivateClientAction, reactivateClientAction } from './actions'
 import { resendInviteAction } from './invite-actions'
 import { sendOnboardingAction } from './onboarding-actions'
+import { sendReviewAction } from './review-actions'
 import { useState } from 'react'
 import { EditClientModal } from './EditClientModal'
 import { useToast } from '@/hooks/use-toast'
@@ -117,6 +119,7 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
+    const [reviewLinkModal, setReviewLinkModal] = useState<{ url: string } | null>(null)
     const [copied, setCopied] = useState(false)
     const { toast } = useToast()
 
@@ -172,6 +175,25 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
             } else {
                 toast({
                     title: 'Error al enviar onboarding',
+                    description: result.error || 'Error desconocido',
+                    variant: 'destructive',
+                })
+            }
+        })
+    }
+
+    const handleSendReview = () => {
+        startTransition(async () => {
+            const result = await sendReviewAction(client.id, coachId)
+            if (result.success && result.form_url) {
+                toast({
+                    title: 'Revisión enviada ✓',
+                    description: `Revisión creada para ${client.full_name}`,
+                })
+                setReviewLinkModal({ url: result.form_url })
+            } else {
+                toast({
+                    title: 'Error al enviar revisión',
                     description: result.error || 'Error desconocido',
                     variant: 'destructive',
                 })
@@ -303,6 +325,29 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
                                 </Tooltip>
                             </TooltipProvider>
 
+                            {/* Send Review */}
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span>
+                                            <DropdownMenuItem
+                                                onClick={handleSendReview}
+                                                disabled={isPendingSignup}
+                                                className={isPendingSignup ? 'opacity-50' : ''}
+                                            >
+                                                <RefreshCw className="h-4 w-4 mr-2" />
+                                                Enviar revisión
+                                            </DropdownMenuItem>
+                                        </span>
+                                    </TooltipTrigger>
+                                    {isPendingSignup && (
+                                        <TooltipContent side="left">
+                                            <p className="text-xs">El cliente debe registrarse para recibir formularios</p>
+                                        </TooltipContent>
+                                    )}
+                                </Tooltip>
+                            </TooltipProvider>
+
                             {isPendingSignup && (
                                 <>
                                     <DropdownMenuItem onClick={handleResendInvite}>
@@ -377,6 +422,48 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
                         <Button variant="ghost" onClick={() => setOnboardingLinkModal(null)}>
                             Cerrar
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Review Link Modal */}
+            <Dialog open={!!reviewLinkModal} onOpenChange={(v) => { if (!v) setReviewLinkModal(null) }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Revisión enviada</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            Comparte este enlace con el cliente para que complete su revisión:
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                readOnly
+                                value={reviewLinkModal?.url ?? ''}
+                                className="text-xs font-mono"
+                            />
+                            <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                onClick={async () => {
+                                    if (!reviewLinkModal) return
+                                    try {
+                                        await navigator.clipboard.writeText(reviewLinkModal.url)
+                                        setCopied(true)
+                                        setTimeout(() => setCopied(false), 2000)
+                                    } catch {
+                                        toast({ title: 'Error al copiar', description: 'No se pudo copiar el enlace', variant: 'destructive' })
+                                    }
+                                }}
+                                className="shrink-0"
+                            >
+                                {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setReviewLinkModal(null)}>Cerrar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

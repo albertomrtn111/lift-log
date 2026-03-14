@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { FormField, FormFieldType } from '@/types/forms'
+import { MetricDefinition } from '@/types/metrics'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -50,9 +51,10 @@ interface DynamicFormProps {
     schema: FormField[]
     coachId: string
     clientId: string
+    metrics?: MetricDefinition[]
 }
 
-export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId }: DynamicFormProps) {
+export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId, metrics = [] }: DynamicFormProps) {
     const router = useRouter()
     const [values, setValues] = useState<Record<string, unknown>>({})
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -147,6 +149,16 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
             }
         }
 
+        // Add metrics values to payload
+        for (const metric of metrics) {
+            const val = values[`metric_${metric.id}`]
+            if (metric.value_type === 'number' || metric.value_type === 'scale') {
+                cleanedPayload[`metric_${metric.id}`] = val !== undefined && val !== '' && val !== null ? Number(val) : null
+            } else {
+                cleanedPayload[`metric_${metric.id}`] = val ?? null
+            }
+        }
+
         try {
             const result = await submitFormAction(checkinId, cleanedPayload)
             if (result.success) {
@@ -209,18 +221,49 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
             </div>
 
             <div className="space-y-4">
-                {schema
-                    .filter((field) => field.type !== 'photo_upload')
-                    .map((field) => (
-                        <FieldRenderer
-                            key={field.id}
-                            field={field}
-                            value={values[field.id]}
-                            error={errors[field.id]}
-                            onChange={(val) => setValue(field.id, val)}
-                            onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
-                        />
-                    ))}
+                {/* Metric definitions block */}
+                {metrics && metrics.length > 0 && (
+                    <div className="space-y-4 mb-8">
+                        <div className="space-y-1">
+                            <h2 className="text-lg font-semibold">📊 Métricas de seguimiento</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Rellena las que apliquen — ninguna es obligatoria
+                            </p>
+                        </div>
+                        {metrics.map((metric) => (
+                            <MetricFieldRenderer
+                                key={metric.id}
+                                metric={metric}
+                                value={values[`metric_${metric.id}`]}
+                                onChange={(val) => setValue(`metric_${metric.id}`, val)}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {/* Preguntas de la plantilla */}
+                {schema.filter((field) => field.type !== 'photo_upload').length > 0 && (
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <h2 className="text-lg font-semibold">💬 Preguntas de tu entrenador</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Responde con la mayor honestidad posible
+                            </p>
+                        </div>
+                        {schema
+                            .filter((field) => field.type !== 'photo_upload')
+                            .map((field) => (
+                                <FieldRenderer
+                                    key={field.id}
+                                    field={field}
+                                    value={values[field.id]}
+                                    error={errors[field.id]}
+                                    onChange={(val) => setValue(field.id, val)}
+                                    onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
+                                />
+                            ))}
+                    </div>
+                )}
             </div>
 
             {/* Photo upload block — renders independently of form submit */}
@@ -372,6 +415,76 @@ function FieldRenderer({
             )}
 
             {error && <p className="text-xs text-destructive">{error}</p>}
+        </Card>
+    )
+}
+
+// -------------------------------------------------------------------------
+// Metric Field Renderer
+// -------------------------------------------------------------------------
+
+function MetricFieldRenderer({
+    metric,
+    value,
+    onChange,
+}: {
+    metric: MetricDefinition
+    value: unknown
+    onChange: (val: unknown) => void
+}) {
+    return (
+        <Card className="p-4 space-y-2 relative overflow-hidden">
+             {/* Un sutil highlight para diferenciar las métricas de las preguntas normales */}
+             <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/20" />
+            
+            <div className="space-y-1">
+                <Label className="text-sm font-medium">
+                    {metric.name}
+                </Label>
+                {metric.description && (
+                    <p className="text-xs text-muted-foreground">{metric.description}</p>
+                )}
+            </div>
+
+            {metric.value_type === 'number' && (
+                <div className="relative">
+                    <Input
+                        type="number"
+                        value={value !== undefined && value !== null ? String(value) : ''}
+                        onChange={(e) => onChange(e.target.value)}
+                        min={metric.min_value ?? undefined}
+                        max={metric.max_value ?? undefined}
+                        step="any"
+                        placeholder="0"
+                        className={`text-sm ${metric.unit ? 'pr-12' : ''}`}
+                    />
+                    {metric.unit && (
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-sm text-muted-foreground">
+                            {metric.unit}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {metric.value_type === 'scale' && (
+                <ScaleInput
+                    value={value as number | undefined}
+                    min={metric.min_value ?? 1}
+                    max={metric.max_value ?? 10}
+                    step={1}
+                    onChange={onChange}
+                />
+            )}
+
+            {metric.value_type === 'text' && (
+                <Textarea
+                    value={(value as string) ?? ''}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder="Escribe tu respuesta..."
+                    rows={2}
+                    className="text-sm resize-none"
+                />
+            )}
         </Card>
     )
 }

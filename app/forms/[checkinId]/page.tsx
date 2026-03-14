@@ -128,6 +128,15 @@ export default async function FormPage({ params }: PageProps) {
         )
     }
 
+    // 6. Get coach's active metrics
+    const { data: metrics } = await supabase
+        .from('metric_definitions')
+        .select('*')
+        .eq('coach_id', checkin.coach_id)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+
     return (
         <div className="min-h-screen bg-background">
             <div className="container max-w-2xl py-8 px-4">
@@ -138,6 +147,7 @@ export default async function FormPage({ params }: PageProps) {
                     schema={template.schema}
                     coachId={checkin.coach_id}
                     clientId={checkin.client_id}
+                    metrics={metrics ?? []}
                 />
             </div>
         </div>

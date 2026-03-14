@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createReviewAction } from './actions'
+import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 
 interface CheckinsTabProps {
     coachId: string
@@ -293,6 +294,14 @@ function CheckinDetailPanel({
                         </p>
                     </div>
                 )}
+
+                {/* Photos Viewer */}
+                <div className="pt-2">
+                    <CheckinPhotosViewer
+                        checkinId={checkin.id}
+                        coachId={coachId}
+                    />
+                </div>
 
                 {/* Extra metrics from raw_payload (production) */}
                 {(() => {

@@ -34,6 +34,7 @@ export async function getCalendarEvents(
         .from('checkins')
         .select('id, client_id, submitted_at')
         .eq('coach_id', coachId)
+        .eq('type', 'review')
         .gte('submitted_at', `${startDate}T00:00:00`)
         .lte('submitted_at', `${endDate}T23:59:59`)
 

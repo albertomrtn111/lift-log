@@ -21,7 +21,8 @@ import {
   Check,
   Clock,
   Route as RouteIcon,
-  Dumbbell
+  Dumbbell,
+  Heart
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -35,6 +36,8 @@ interface CardioSessionDetailProps {
     actualAvgPace?: string
     rpe?: number
     feedbackNotes?: string
+    avgHeartRate?: number
+    maxHeartRate?: number
   }) => Promise<void>
 }
 
@@ -50,6 +53,8 @@ export function CardioSessionDetail({
   const [pace, setPace] = useState(item?.actualAvgPace ?? '')
   const [rpe, setRpe] = useState<number | null>(item?.rpe ?? null)
   const [notes, setNotes] = useState(item?.feedbackNotes ?? '')
+  const [avgHR, setAvgHR] = useState(item?.avgHeartRate?.toString() ?? '')
+  const [maxHR, setMaxHR] = useState(item?.maxHeartRate?.toString() ?? '')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   // Effect to auto-calculate pace when distance or duration changes
@@ -77,6 +82,8 @@ export function CardioSessionDetail({
       setPace(item.actualAvgPace ?? '')
       setRpe(item.rpe ?? null)
       setNotes(item.feedbackNotes ?? '')
+      setAvgHR(item.avgHeartRate?.toString() ?? '')
+      setMaxHR(item.maxHeartRate?.toString() ?? '')
     }
   }, [item, open])
 
@@ -94,6 +101,8 @@ export function CardioSessionDetail({
         actualAvgPace: pace || undefined,
         rpe: rpe ?? undefined,
         feedbackNotes: notes || undefined,
+        avgHeartRate: avgHR ? parseInt(avgHR) : undefined,
+        maxHeartRate: maxHR ? parseInt(maxHR) : undefined,
       })
       setSaveStatus('saved')
       setTimeout(() => {
@@ -238,6 +247,42 @@ export function CardioSessionDetail({
                   value={pace}
                   onChange={(e) => setPace(e.target.value)}
                 />
+              </div>
+
+              {/* ── Heart Rate divider strip ── */}
+              <div className="relative -mx-4 px-4 py-3 bg-rose-50/60 dark:bg-rose-950/20 border-y border-rose-100 dark:border-rose-900/30">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                      <Heart className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400 fill-rose-500 dark:fill-rose-400" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                          Pulsaciones
+                      </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                          <Label className="text-xs">Media (bpm)</Label>
+                          <Input
+                              type="number"
+                              min="40"
+                              max="220"
+                              step="1"
+                              placeholder="145"
+                              value={avgHR}
+                              onChange={(e) => setAvgHR(e.target.value)}
+                          />
+                      </div>
+                      <div className="space-y-1.5">
+                          <Label className="text-xs">Máxima (bpm)</Label>
+                          <Input
+                              type="number"
+                              min="40"
+                              max="220"
+                              step="1"
+                              placeholder="178"
+                              value={maxHR}
+                              onChange={(e) => setMaxHR(e.target.value)}
+                          />
+                      </div>
+                  </div>
               </div>
 
               <div className="space-y-2">

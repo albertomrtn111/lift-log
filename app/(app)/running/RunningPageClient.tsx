@@ -1,12 +1,24 @@
 'use client'
 
 import { useState, useTransition, useCallback } from 'react'
-import { Timer, CalendarOff } from 'lucide-react'
+import { Timer, CalendarOff, Dumbbell, Check } from 'lucide-react'
 import { WeekNavigation } from '@/components/running/WeekNavigation'
 import { WeeklySummaryCard } from '@/components/running/WeeklySummaryCard'
 import { RunningDayCard } from '@/components/running/RunningDayCard'
 import { CardioSessionDetail } from '@/components/planning/CardioSessionDetail'
-import { CalendarItem, getClientWeeklySchedule, saveCardioSessionLog } from '@/data/client-schedule'
+import {
+    CalendarItem,
+    getClientWeeklySchedule,
+    saveCardioSessionLog,
+    markStrengthSessionCompleted
+} from '@/data/client-schedule'
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns'
 
@@ -23,6 +35,9 @@ export default function RunningPageClient({
 }: RunningPageClientProps) {
     const [items, setItems] = useState<CalendarItem[]>(initialItems)
     const [selectedItem, setSelectedItem] = useState<CalendarItem | null>(null)
+    const [selectedStrength, setSelectedStrength] = useState<CalendarItem | null>(null)
+    const [completingStrength, setCompletingStrength] = useState(false)
+    const [strengthDone, setStrengthDone] = useState(false)
     const [weekOffset, setWeekOffset] = useState(0)
     const [isPending, startTransition] = useTransition()
 
@@ -74,13 +89,19 @@ export default function RunningPageClient({
             actualAvgPace?: string
             rpe?: number
             feedbackNotes?: string
+            avgHeartRate?: number
+            maxHeartRate?: number
         }
     ) => {
         const item = items.find(i => i.id === itemId)
         if (!item) return
 
         if (item.kind === 'cardio' && item.cardioSessionId) {
-            const result = await saveCardioSessionLog(item.cardioSessionId, data)
+            const result = await saveCardioSessionLog(item.cardioSessionId, {
+                ...data,
+                avgHeartRate: data.avgHeartRate,
+                maxHeartRate: data.maxHeartRate,
+            })
             if (result.success) {
                 // Update local state
                 setItems(prev =>
@@ -91,6 +112,39 @@ export default function RunningPageClient({
                     )
                 )
             }
+        }
+    }
+
+    const handleCompleteStrength = async () => {
+        if (!selectedStrength) return
+        setCompletingStrength(true)
+        try {
+            const isVirtual = selectedStrength.id.startsWith('virtual-')
+            const result = await markStrengthSessionCompleted(
+                selectedStrength.id,
+                isVirtual,
+                clientId,
+                selectedStrength.programId,
+                selectedStrength.dayId,
+                selectedStrength.date,
+            )
+            if (result.success) {
+                setStrengthDone(true)
+                // Update local state
+                setItems(prev =>
+                    prev.map(i =>
+                        i.id === selectedStrength.id
+                            ? { ...i, isCompleted: true }
+                            : i
+                    )
+                )
+                setTimeout(() => {
+                    setStrengthDone(false)
+                    setSelectedStrength(null)
+                }, 1000)
+            }
+        } finally {
+            setCompletingStrength(false)
         }
     }
 
@@ -151,7 +205,14 @@ export default function RunningPageClient({
                                 <RunningDayCard
                                     key={item.id}
                                     item={item}
-                                    onClick={() => setSelectedItem(item)}
+                                    onClick={() => {
+                                        if (item.kind === 'strength') {
+                                            setStrengthDone(false)
+                                            setSelectedStrength(item)
+                                        } else if (item.kind === 'cardio') {
+                                            setSelectedItem(item)
+                                        }
+                                    }}
                                 />
                             ))}
                         </div>
@@ -174,6 +235,72 @@ export default function RunningPageClient({
                 onOpenChange={(open) => !open && setSelectedItem(null)}
                 onSave={handleSaveLog}
             />
+
+            {/* Strength session completion sheet */}
+            <Sheet
+                open={!!selectedStrength}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSelectedStrength(null)
+                        setStrengthDone(false)
+                    }
+                }}
+            >
+                <SheetContent className="w-full sm:max-w-md">
+                    <SheetHeader>
+                        <SheetTitle>{selectedStrength?.title ?? 'Entrenamiento de fuerza'}</SheetTitle>
+                    </SheetHeader>
+
+                    <div className="py-6 space-y-6">
+                        {/* Program info */}
+                        {selectedStrength?.programName && (
+                            <p className="text-sm text-muted-foreground">
+                                {selectedStrength.programName}
+                            </p>
+                        )}
+
+                        {/* Status block */}
+                        {selectedStrength?.isCompleted ? (
+                            <div className="flex flex-col items-center gap-3 py-8 text-center">
+                                <div className="w-16 h-16 rounded-full bg-success/15 flex items-center justify-center">
+                                    <Check className="h-8 w-8 text-success" />
+                                </div>
+                                <p className="font-semibold text-success">¡Sesión completada!</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Ya registraste este entrenamiento.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                                    <div className="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center">
+                                        <Dumbbell className="h-8 w-8 text-warning" />
+                                    </div>
+                                    <p className="text-sm text-muted-foreground max-w-xs">
+                                        ¿Has completado este entrenamiento de fuerza?
+                                        Márcalo para llevar el seguimiento de tu progreso.
+                                    </p>
+                                </div>
+
+                                <Button
+                                    className="w-full"
+                                    size="lg"
+                                    disabled={completingStrength || strengthDone}
+                                    onClick={handleCompleteStrength}
+                                >
+                                    {strengthDone ? (
+                                        <><Check className="h-4 w-4 mr-2" /> ¡Completado!</>
+                                    ) : completingStrength ? (
+                                        'Guardando...'
+                                    ) : (
+                                        <><Dumbbell className="h-4 w-4 mr-2" /> He completado este entreno</>
+                                    )}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </SheetContent>
+            </Sheet>
         </div>
     )
 }

@@ -35,6 +35,8 @@ export interface CalendarItem {
     actualAvgPace?: string
     rpe?: number
     feedbackNotes?: string
+    avgHeartRate?: number
+    maxHeartRate?: number
 }
 
 // ------------------------------------------------------------------
@@ -225,6 +227,8 @@ export async function getClientWeeklySchedule(
         actualAvgPace: c.actual_avg_pace,
         rpe: c.rpe,
         feedbackNotes: c.feedback_notes,
+        avgHeartRate: c.avg_heart_rate ? Number(c.avg_heart_rate) : undefined,
+        maxHeartRate: c.max_heart_rate ? Number(c.max_heart_rate) : undefined,
     }))
 
     // ----- 4. Combine, sort by date -----
@@ -270,6 +274,8 @@ export async function saveCardioSessionLog(
         actualAvgPace?: string
         rpe?: number
         feedbackNotes?: string
+        avgHeartRate?: number
+        maxHeartRate?: number
     }
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
@@ -282,6 +288,8 @@ export async function saveCardioSessionLog(
             actual_avg_pace: data.actualAvgPace ?? null,
             rpe: data.rpe ?? null,
             feedback_notes: data.feedbackNotes ?? null,
+            avg_heart_rate: data.avgHeartRate ?? null,
+            max_heart_rate: data.maxHeartRate ?? null,
             is_completed: true,
             performed_date: new Date().toISOString(),
         })

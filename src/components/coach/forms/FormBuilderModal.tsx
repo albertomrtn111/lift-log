@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { FormField, FormTemplate, FormFieldType, PROGRESS_PHOTOS_FIELD } from '@/types/forms'
 import { FormFieldEditor } from './FormFieldEditor'
 import { Button } from '@/components/ui/button'
@@ -105,8 +105,8 @@ export function FormBuilderModal({
         )
     }, [editingTemplate])
 
-    const [title, setTitle] = useState(editingTemplate?.title ?? '')
-    const [fields, setFields] = useState<FormField[]>(getInitialFields)
+    const [title, setTitle] = useState('')
+    const [fields, setFields] = useState<FormField[]>([])
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<Record<number, string>>({})
     const [titleError, setTitleError] = useState('')
@@ -115,9 +115,8 @@ export function FormBuilderModal({
         computeNextFieldNumber(getInitialFields())
     )
 
-    // Reset state when modal opens with different data
-    const handleOpenChange = (v: boolean) => {
-        if (v) {
+    useEffect(() => {
+        if (open) {
             setTitle(editingTemplate?.title ?? '')
             const schema = getInitialFields()
             setFields(schema)
@@ -125,6 +124,10 @@ export function FormBuilderModal({
             setTitleError('')
             nextFieldNumberRef.current = computeNextFieldNumber(schema)
         }
+    }, [open, editingTemplate, getInitialFields])
+
+    // Pass the open state up
+    const handleOpenChange = (v: boolean) => {
         onOpenChange(v)
     }
 
