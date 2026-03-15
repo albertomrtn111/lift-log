@@ -12,17 +12,6 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verify coach role
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-    if (profile?.role !== 'coach') {
-        return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
-    }
-
     const { searchParams } = new URL(request.url)
     const yearStr = searchParams.get('year')
     const monthStr = searchParams.get('month')
@@ -39,7 +28,31 @@ export async function GET(request: Request) {
     }
 
     try {
-        const data = await getBillingDashboard(user.id, year, month)
+        // Resolve coachId from coaches table (coaches.created_by = auth.uid)
+        const { data: coachData } = await supabase
+            .from('coaches')
+            .select('id')
+            .eq('created_by', user.id)
+            .single()
+
+        if (!coachData) {
+            // Fallback: try coach_memberships
+            const { data: membership } = await supabase
+                .from('coach_memberships')
+                .select('coach_id')
+                .eq('user_id', user.id)
+                .eq('status', 'active')
+                .single()
+
+            if (!membership) {
+                return NextResponse.json({ error: 'No eres coach activo' }, { status: 403 })
+            }
+
+            const data = await getBillingDashboard(membership.coach_id, year, month)
+            return NextResponse.json({ data })
+        }
+
+        const data = await getBillingDashboard(coachData.id, year, month)
         return NextResponse.json({ data })
     } catch (error: any) {
         console.error('Error fetching billing data:', error)

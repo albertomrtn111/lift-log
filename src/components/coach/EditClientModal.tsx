@@ -34,6 +34,9 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
         start_date: client.start_date,
         checkin_frequency_days: client.checkin_frequency_days,
         next_checkin_date: client.next_checkin_date,
+        payment_amount: client.payment_amount != null ? String(client.payment_amount) : '',
+        payment_day: client.payment_day != null ? String(client.payment_day) : '',
+        payment_notes: client.payment_notes || '',
     })
 
     // Reset form when client changes
@@ -45,6 +48,9 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
             start_date: client.start_date,
             checkin_frequency_days: client.checkin_frequency_days,
             next_checkin_date: client.next_checkin_date,
+            payment_amount: client.payment_amount != null ? String(client.payment_amount) : '',
+            payment_day: client.payment_day != null ? String(client.payment_day) : '',
+            payment_notes: client.payment_notes || '',
         })
         setError(null)
     }, [client])
@@ -87,6 +93,9 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
                 start_date: formData.start_date,
                 checkin_frequency_days: formData.checkin_frequency_days,
                 next_checkin_date: formData.next_checkin_date,
+                payment_amount: formData.payment_amount !== '' ? parseFloat(formData.payment_amount) : null,
+                payment_day: formData.payment_day !== '' ? parseInt(formData.payment_day) : null,
+                payment_notes: formData.payment_notes || undefined,
             })
 
             if (result.success) {
@@ -100,7 +109,7 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Editar cliente</DialogTitle>
                     <DialogDescription>
@@ -187,6 +196,51 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
                         <p className="text-xs text-muted-foreground">
                             Se recalcula automáticamente al cambiar fecha inicio o frecuencia
                         </p>
+                    </div>
+
+                    <div className="border-t pt-4 mt-2 space-y-3">
+                        <div>
+                            <Label className="text-sm font-medium">💳 Información de pago</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">Opcional — para tu control interno</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_payment_amount">Cuota mensual (€)</Label>
+                                <Input
+                                    id="edit_payment_amount"
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    value={formData.payment_amount}
+                                    onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
+                                    placeholder="150.00"
+                                    disabled={isPending}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_payment_day">Día de cobro</Label>
+                                <Input
+                                    id="edit_payment_day"
+                                    type="number"
+                                    min={1}
+                                    max={31}
+                                    value={formData.payment_day}
+                                    onChange={(e) => setFormData({ ...formData, payment_day: e.target.value })}
+                                    placeholder="1"
+                                    disabled={isPending}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_payment_notes">Notas de pago</Label>
+                            <Input
+                                id="edit_payment_notes"
+                                value={formData.payment_notes}
+                                onChange={(e) => setFormData({ ...formData, payment_notes: e.target.value })}
+                                placeholder="Bizum, transferencia, efectivo..."
+                                disabled={isPending}
+                            />
+                        </div>
                     </div>
 
                     {error && (

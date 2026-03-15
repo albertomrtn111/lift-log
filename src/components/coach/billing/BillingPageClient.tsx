@@ -61,22 +61,32 @@ export default function BillingPageClient({
     const [isLoading, setIsLoading] = useState(false)
     const [isGenerating, setIsGenerating] = useState(false)
     
+    const fetchBillingData = async (y: number, m: number): Promise<BillingDashboardData | null> => {
+        try {
+            const res = await fetch(`/api/billing-data?year=${y}&month=${m}`)
+            if (!res.ok) return null
+            const json = await res.json()
+            // Validate shape before returning
+            if (!json.data || !Array.isArray(json.data.yearTotals) || !Array.isArray(json.data.records)) return null
+            return json.data as BillingDashboardData
+        } catch {
+            return null
+        }
+    }
+
     // Fetch data when year/month changes
     useEffect(() => {
         if (year === initialYear && month === initialMonth) return // Skip initial fetch
         
         const fetchData = async () => {
             setIsLoading(true)
-            try {
-                const res = await fetch(`/api/billing-data?year=${year}&month=${month}`)
-                if (!res.ok) throw new Error('Error fetching data')
-                const jsonData = await res.json()
-                setData(jsonData.data)
-            } catch (error) {
+            const freshData = await fetchBillingData(year, month)
+            if (freshData) {
+                setData(freshData)
+            } else {
                 toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' })
-            } finally {
-                setIsLoading(false)
             }
+            setIsLoading(false)
         }
         
         fetchData()
@@ -119,9 +129,9 @@ export default function BillingPageClient({
             if (result.success) {
                 toast({ title: 'Éxito', description: `Se autogeneraron ${result.generatedCount} registros del mes.` })
                 // Refetch current month
-                const res = await fetch(`/api/billing-data?year=${year}&month=${month}`)
-                const jsonData = await res.json()
-                setData(jsonData.data)
+                const freshData = await fetchBillingData(year, month)
+                if (freshData) setData(freshData)
+                else toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' })
             } else {
                 throw new Error(result.error || 'Unknown error')
             }
@@ -175,9 +185,9 @@ export default function BillingPageClient({
             toast({ title: 'Estado actualizado', description: 'Registro guardado correctamente.' })
             
             // Full refresh to ensure consistency (esp yearTotals)
-            const res = await fetch(`/api/billing-data?year=${year}&month=${month}`)
-            const jsonData = await res.json()
-            setData(jsonData.data)
+            const freshData = await fetchBillingData(year, month)
+            if (freshData) setData(freshData)
+            else toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' })
         } catch (err) {
             toast({ title: 'Error', description: 'No se pudo actualizar el estado', variant: 'destructive' })
             setData(backupData) // rollback
@@ -185,22 +195,22 @@ export default function BillingPageClient({
     }
 
     // Chart formatting
-    const chartData = data.yearTotals.map(t => ({
+    const chartData = (data?.yearTotals ?? []).map(t => ({
         name: MONTHS[t.month - 1],
         Cobrado: t.collected,
         Pendiente: t.pending
     }))
 
     // Sort records: pending/overdue first, then paid/waived
-    const sortedRecords = [...data.records].sort((a, b) => {
+    const sortedRecords = [...(data?.records ?? [])].sort((a, b) => {
         const orderWeight = { overdue: 0, pending: 1, paid: 2, waived: 3 }
         const weightDiff = orderWeight[a.status] - orderWeight[b.status]
         if (weightDiff !== 0) return weightDiff
         return (a.full_name || '').localeCompare(b.full_name || '')
     })
 
-    const annualCollected = data.yearTotals.reduce((sum, m) => sum + m.collected, 0)
-    const annualPending = data.yearTotals.reduce((sum, m) => sum + m.pending, 0)
+    const annualCollected = (data?.yearTotals ?? []).reduce((sum, m) => sum + m.collected, 0)
+    const annualPending = (data?.yearTotals ?? []).reduce((sum, m) => sum + m.pending, 0)
     
     // Re-calculate growth purely for this year vs initial comparison if we are not on initialYear
     // (A full implementation would fetch this per-year, but for simplicity we rely on the initial load 

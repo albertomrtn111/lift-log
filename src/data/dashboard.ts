@@ -114,37 +114,22 @@ async function enrichClientsWithMeta(
         .from('checkins')
         .select('client_id, submitted_at, training_adherence_pct, nutrition_adherence_pct')
         .in('client_id', clientIds)
-        .eq('type', 'review')
+        .eq('type', 'checkin')
         .order('submitted_at', { ascending: false })
 
     // Get reviews for latest checkins to check pending status
     const latestCheckinIds: string[] = []
     const { data: allCheckins } = await supabase
         .from('checkins')
-        .select('id, client_id')
+        .select('id, client_id, status')
         .in('client_id', clientIds)
-        .eq('type', 'review')
+        .eq('type', 'checkin')
         .order('submitted_at', { ascending: false })
-
-    // Build a map of client → latest checkin id
-    const latestCheckinByClient = new Map<string, string>()
-    for (const c of (allCheckins || [])) {
-        if (!latestCheckinByClient.has(c.client_id)) {
-            latestCheckinByClient.set(c.client_id, c.id)
-            latestCheckinIds.push(c.id)
-        }
-    }
-
     // Get reviews for those latest checkins
-    let reviewMap = new Map<string, string>()
-    if (latestCheckinIds.length > 0) {
-        const { data: reviews } = await supabase
-            .from('reviews')
-            .select('checkin_id, status')
-            .in('checkin_id', latestCheckinIds)
-
-        for (const r of (reviews || [])) {
-            reviewMap.set(r.checkin_id, r.status)
+    const pendingReviewByClient = new Map<string, boolean>()
+    for (const c of (allCheckins || [])) {
+        if (!pendingReviewByClient.has(c.client_id)) {
+            pendingReviewByClient.set(c.client_id, c.status === 'reviewed')
         }
     }
 
@@ -167,15 +152,12 @@ async function enrichClientsWithMeta(
         const nextCheckin = new Date(client.next_checkin_date)
         const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24))
         const meta = adherenceMap.get(client.id)
-        const latestId = latestCheckinByClient.get(client.id)
-        const reviewStatus = latestId ? reviewMap.get(latestId) : undefined
-
         return {
             ...client,
             daysUntilCheckin,
             lastAdherencePct: meta?.pct ?? null,
             lastCheckinAt: meta?.at ?? null,
-            hasPendingReview: reviewStatus != null && reviewStatus !== 'approved',
+            hasPendingReview: pendingReviewByClient.get(client.id) ?? false,
         } as ClientWithMeta
     })
 }
@@ -264,7 +246,7 @@ export async function getAtRiskClients(coachId: string): Promise<AtRiskClient[]>
         .from('checkins')
         .select('client_id, submitted_at, training_adherence_pct, nutrition_adherence_pct')
         .in('client_id', clientIds)
-        .eq('type', 'review')
+        .eq('type', 'checkin')
         .order('submitted_at', { ascending: false })
 
     const atRiskClients: AtRiskClient[] = []
@@ -340,15 +322,12 @@ export async function getRecentCheckins(coachId: string, limit: number = 10): Pr
             id,
             client_id,
             submitted_at,
-            weight_kg,
-            weight_avg_kg,
-            steps_avg,
-            training_adherence_pct,
-            nutrition_adherence_pct,
+            status,
+            raw_payload,
             clients!inner(full_name)
         `)
         .eq('coach_id', coachId)
-        .eq('type', 'review')
+        .eq('type', 'checkin')
         .order('submitted_at', { ascending: false })
         .limit(limit)
 
@@ -375,11 +354,11 @@ export async function getRecentCheckins(coachId: string, limit: number = 10): Pr
             client_id: checkin.client_id,
             client_name: clientData?.full_name || 'Cliente',
             submitted_at: checkin.submitted_at,
-            weight_kg: checkin.weight_kg,
-            weight_avg_kg: checkin.weight_avg_kg,
-            steps_avg: checkin.steps_avg,
-            training_adherence_pct: checkin.training_adherence_pct,
-            nutrition_adherence_pct: checkin.nutrition_adherence_pct,
+            weight_kg: null,
+            weight_avg_kg: null,
+            steps_avg: null,
+            training_adherence_pct: null,
+            nutrition_adherence_pct: null,
             review_id: review?.id || null,
             review_status: review?.status || null,
         }
@@ -476,8 +455,16 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
         .is('auth_user_id', null)
         .eq('status', 'active')
 
+    // Count pending checkins
+    const { count: pendingCheckins } = await supabase
+        .from('checkins')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_id', coachId)
+        .eq('type', 'checkin')
+        .eq('status', 'reviewed')
+
     return {
-        dashboardPending: pendingCount ?? 0,
+        dashboardPending: (pendingCount ?? 0) + (pendingCheckins ?? 0),
         membersPendingSignup: signupCount ?? 0,
     }
 }

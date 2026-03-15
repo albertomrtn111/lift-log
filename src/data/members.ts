@@ -178,6 +178,9 @@ export interface UpdateClientInput {
     start_date?: string
     checkin_frequency_days?: number
     next_checkin_date?: string
+    payment_amount?: number | null
+    payment_day?: number | null
+    payment_notes?: string | null
 }
 
 export interface UpdateClientResult {

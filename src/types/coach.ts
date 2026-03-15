@@ -33,6 +33,9 @@ export interface Client {
     invite_status: 'pending' | 'sent'
     invited_at: string | null
     created_at: string
+    payment_amount?: number | null
+    payment_day?: number | null
+    payment_notes?: string | null
 }
 
 export interface ClientWithMeta extends Client {
