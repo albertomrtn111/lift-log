@@ -29,14 +29,14 @@ export default async function RunningPage() {
     const weekStart = startOfWeek(today, { weekStartsOn: 1 })
     const weekEnd = endOfWeek(today, { weekStartsOn: 1 })
 
-    const items = await getClientWeeklySchedule(clientId, weekStart, weekEnd)
-
     const toDateStr = (d: Date) => {
         const y = d.getFullYear()
         const m = String(d.getMonth() + 1).padStart(2, '0')
         const day = String(d.getDate()).padStart(2, '0')
         return `${y}-${m}-${day}`
     }
+
+    const items = await getClientWeeklySchedule(clientId, toDateStr(weekStart), toDateStr(weekEnd))
 
     return (
         <RunningPageClient

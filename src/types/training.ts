@@ -83,6 +83,10 @@ export interface MacroPlan {
   cardioGoal?: string;
   effectiveFrom: string;
   effectiveTo?: string;
+  day_type_config?: {
+    training: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+    rest: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+  } | null;
 }
 
 export interface MealOption {

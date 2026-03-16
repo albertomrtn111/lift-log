@@ -58,17 +58,42 @@ export function ResumenTab({
                     icon={Apple}
                     hasData={!!activeMacroPlan}
                     content={
-                        activeMacroPlan ? (
-                            <div className="space-y-1">
-                                <p className="font-medium">{activeMacroPlan.kcal} kcal</p>
-                                <p className="text-sm text-muted-foreground">
-                                    P{activeMacroPlan.protein_g}g · C{activeMacroPlan.carbs_g}g · G{activeMacroPlan.fat_g}g
-                                </p>
-                                {activeMacroPlan.steps && (
-                                    <p className="text-xs text-muted-foreground">{activeMacroPlan.steps.toLocaleString()} pasos/día</p>
-                                )}
-                            </div>
-                        ) : null
+                        activeMacroPlan ? (() => {
+                            // Parsear day_type_config si es string
+                            let cfg = activeMacroPlan.day_type_config as any
+                            if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+                            
+                            if (cfg) {
+                                return (
+                                    <div className="space-y-1">
+                                        <p className="text-xs text-muted-foreground font-medium">Entreno</p>
+                                        <p className="font-medium">{cfg.training.kcal} kcal</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            P{cfg.training.protein_g}g · C{cfg.training.carbs_g}g · G{cfg.training.fat_g}g
+                                        </p>
+                                        <p className="text-xs text-muted-foreground font-medium pt-1">Descanso</p>
+                                        <p className="font-medium">{cfg.rest.kcal} kcal</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            P{cfg.rest.protein_g}g · C{cfg.rest.carbs_g}g · G{cfg.rest.fat_g}g
+                                        </p>
+                                        {activeMacroPlan.steps && (
+                                            <p className="text-xs text-muted-foreground">{activeMacroPlan.steps.toLocaleString()} pasos/día</p>
+                                        )}
+                                    </div>
+                                )
+                            }
+                            return (
+                                <div className="space-y-1">
+                                    <p className="font-medium">{activeMacroPlan.kcal} kcal</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        P{activeMacroPlan.protein_g}g · C{activeMacroPlan.carbs_g}g · G{activeMacroPlan.fat_g}g
+                                    </p>
+                                    {activeMacroPlan.steps && (
+                                        <p className="text-xs text-muted-foreground">{activeMacroPlan.steps.toLocaleString()} pasos/día</p>
+                                    )}
+                                </div>
+                            )
+                        })() : null
                     }
                     onView={() => onSwitchTab('diet')}
                 />

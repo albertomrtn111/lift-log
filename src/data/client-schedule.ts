@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 // ------------------------------------------------------------------
 // Types
@@ -74,8 +75,8 @@ export async function getClientId(userId: string): Promise<string | null> {
 
 export async function getClientWeeklySchedule(
     clientId: string,
-    weekStart: Date,
-    weekEnd: Date
+    weekStart: string,
+    weekEnd: string
 ): Promise<CalendarItem[]> {
     const supabase = await createClient()
 
@@ -86,8 +87,8 @@ export async function getClientWeeklySchedule(
         return `${y}-${m}-${day}`
     }
 
-    const startStr = toDateStr(weekStart)
-    const endStr = toDateStr(weekEnd)
+    const startStr = weekStart
+    const endStr = weekEnd
 
     // ----- 1. Virtual strength sessions from active program -----
     const strengthItems: CalendarItem[] = []
@@ -238,8 +239,8 @@ export async function getClientWeeklySchedule(
 
     // ----- 5. Fill rest days -----
     const result: CalendarItem[] = []
-    const current = new Date(weekStart)
-    const end = new Date(weekEnd)
+    const current = new Date(weekStart + 'T12:00:00')
+    const end = new Date(weekEnd + 'T12:00:00')
 
     while (current <= end) {
         const dateStr = toDateStr(current)
@@ -340,6 +341,7 @@ export async function markStrengthSessionCompleted(
             })
 
         if (error) return { success: false, error: error.message }
+        revalidatePath('/planning')
         return { success: true }
     }
 
@@ -350,7 +352,64 @@ export async function markStrengthSessionCompleted(
         .eq('id', sessionId)
 
     if (error) return { success: false, error: error.message }
+    revalidatePath('/planning')
     return { success: true }
+}
+
+/**
+ * Marca automáticamente una sesión de fuerza como completada
+ * cuando el cliente registra cualquier ejercicio del día.
+ * Si ya existe una sesión programada para hoy la actualiza;
+ * si no existe (sesión virtual) la crea.
+ */
+export async function autoMarkStrengthDayComplete(
+    clientId: string,
+    programId: string,
+    dayId: string,
+): Promise<void> {
+    const supabase = await createClient()
+    const today = new Date().toISOString().split('T')[0]
+
+    // ¿Ya existe una sesión para hoy?
+    const { data: existing } = await supabase
+        .from('scheduled_strength_sessions')
+        .select('id, is_completed')
+        .eq('client_id', clientId)
+        .eq('program_id', programId)
+        .eq('day_id', dayId)
+        .eq('scheduled_date', today)
+        .maybeSingle()
+
+    if (existing) {
+        if (!existing.is_completed) {
+            await supabase
+                .from('scheduled_strength_sessions')
+                .update({ is_completed: true })
+                .eq('id', existing.id)
+        }
+    } else {
+        // Sesión virtual: materializarla como completada
+        const { data: clientData } = await supabase
+            .from('clients')
+            .select('coach_id')
+            .eq('id', clientId)
+            .single()
+
+        if (clientData?.coach_id) {
+            await supabase
+                .from('scheduled_strength_sessions')
+                .insert({
+                    client_id: clientId,
+                    coach_id: clientData.coach_id,
+                    program_id: programId,
+                    day_id: dayId,
+                    scheduled_date: today,
+                    is_completed: true,
+                })
+        }
+    }
+
+    revalidatePath('/planning')
 }
 
 // ------------------------------------------------------------------

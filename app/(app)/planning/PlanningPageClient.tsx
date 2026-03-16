@@ -27,6 +27,13 @@ interface PlanningPageClientProps {
     initialWeek: number
 }
 
+const toLocalDateStr = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 export default function PlanningPageClient({
     program,
     initialItems,
@@ -60,7 +67,7 @@ export default function PlanningPageClient({
             const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
 
             startTransition(async () => {
-                const result = await getClientWeeklySchedule(clientId, weekStart, weekEnd)
+                const result = await getClientWeeklySchedule(clientId, toLocalDateStr(weekStart), toLocalDateStr(weekEnd))
                 setItems(result)
             })
         }

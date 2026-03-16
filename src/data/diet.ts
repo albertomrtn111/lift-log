@@ -10,6 +10,7 @@ export interface DBMacroPlan {
     fat_g: number
     steps?: number
     cardio_target?: any
+    day_type_config?: string | null
     effective_from: string
     effective_to?: string
     created_at: string
@@ -128,6 +129,16 @@ export async function getActiveDietPlan(clientId: string): Promise<DBDietPlan | 
  * Convert DB macro plan to frontend format
  */
 export function toFrontendMacroPlan(db: DBMacroPlan): MacroPlan {
+    let dayTypeConfig = null
+    if (db.day_type_config) {
+        try {
+            dayTypeConfig = typeof db.day_type_config === 'string'
+                ? JSON.parse(db.day_type_config)
+                : db.day_type_config
+        } catch {
+            dayTypeConfig = null
+        }
+    }
     return {
         id: db.id,
         kcal: db.kcal,
@@ -138,5 +149,6 @@ export function toFrontendMacroPlan(db: DBMacroPlan): MacroPlan {
         cardioGoal: typeof db.cardio_target === 'string' ? db.cardio_target : JSON.stringify(db.cardio_target),
         effectiveFrom: db.effective_from,
         effectiveTo: db.effective_to,
+        day_type_config: dayTypeConfig,
     }
 }

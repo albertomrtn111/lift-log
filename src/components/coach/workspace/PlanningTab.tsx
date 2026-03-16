@@ -512,7 +512,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                         <PlanningAddSessionDialog
                                             clientId={clientId}
                                             coachId={coachId}
-                                            date={day}
+                                            date={toLocalDateStr(day)}
                                             onSessionAdded={fetchSchedule}
                                         />
                                     </div>

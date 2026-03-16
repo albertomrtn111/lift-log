@@ -186,28 +186,81 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
                             </div>
 
                             {/* Macro cards */}
-                            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                                <Card className="macro-card card-hover">
-                                    <Flame className="h-6 w-6 text-accent mb-2" />
-                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.kcal}</span>
-                                    <span className="text-xs text-muted-foreground">kcal</span>
-                                </Card>
-                                <Card className="macro-card card-hover">
-                                    <Beef className="h-6 w-6 text-destructive mb-2" />
-                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.protein}g</span>
-                                    <span className="text-xs text-muted-foreground">Proteína</span>
-                                </Card>
-                                <Card className="macro-card card-hover">
-                                    <Wheat className="h-6 w-6 text-warning mb-2" />
-                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.carbs}g</span>
-                                    <span className="text-xs text-muted-foreground">Carbohidratos</span>
-                                </Card>
-                                <Card className="macro-card card-hover">
-                                    <Droplet className="h-6 w-6 text-warning/80 mb-2" />
-                                    <span className="text-xl sm:text-2xl font-bold">{macroPlan.fat}g</span>
-                                    <span className="text-xs text-muted-foreground">Grasa</span>
-                                </Card>
-                            </div>
+                            {macroPlan.day_type_config ? (
+                                // Modo dos días
+                                <div className="space-y-3">
+                                    <p className="text-sm font-medium text-muted-foreground">Día de entreno</p>
+                                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                        <Card className="macro-card card-hover">
+                                            <Flame className="h-6 w-6 text-accent mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.training.kcal}</span>
+                                            <span className="text-xs text-muted-foreground">kcal</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Beef className="h-6 w-6 text-destructive mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.training.protein_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Proteína</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Wheat className="h-6 w-6 text-warning mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.training.carbs_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Carbohidratos</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Droplet className="h-6 w-6 text-warning/80 mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.training.fat_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Grasa</span>
+                                        </Card>
+                                    </div>
+                                    <p className="text-sm font-medium text-muted-foreground pt-1">Día de descanso</p>
+                                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                        <Card className="macro-card card-hover">
+                                            <Flame className="h-6 w-6 text-accent mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.rest.kcal}</span>
+                                            <span className="text-xs text-muted-foreground">kcal</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Beef className="h-6 w-6 text-destructive mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.rest.protein_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Proteína</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Wheat className="h-6 w-6 text-warning mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.rest.carbs_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Carbohidratos</span>
+                                        </Card>
+                                        <Card className="macro-card card-hover">
+                                            <Droplet className="h-6 w-6 text-warning/80 mb-2" />
+                                            <span className="text-xl sm:text-2xl font-bold">{macroPlan.day_type_config.rest.fat_g}g</span>
+                                            <span className="text-xs text-muted-foreground">Grasa</span>
+                                        </Card>
+                                    </div>
+                                </div>
+                            ) : (
+                                // Modo simple — mantener el código actual con las 4 tarjetas
+                                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                    <Card className="macro-card card-hover">
+                                        <Flame className="h-6 w-6 text-accent mb-2" />
+                                        <span className="text-xl sm:text-2xl font-bold">{macroPlan.kcal}</span>
+                                        <span className="text-xs text-muted-foreground">kcal</span>
+                                    </Card>
+                                    <Card className="macro-card card-hover">
+                                        <Beef className="h-6 w-6 text-destructive mb-2" />
+                                        <span className="text-xl sm:text-2xl font-bold">{macroPlan.protein}g</span>
+                                        <span className="text-xs text-muted-foreground">Proteína</span>
+                                    </Card>
+                                    <Card className="macro-card card-hover">
+                                        <Wheat className="h-6 w-6 text-warning mb-2" />
+                                        <span className="text-xl sm:text-2xl font-bold">{macroPlan.carbs}g</span>
+                                        <span className="text-xs text-muted-foreground">Carbohidratos</span>
+                                    </Card>
+                                    <Card className="macro-card card-hover">
+                                        <Droplet className="h-6 w-6 text-warning/80 mb-2" />
+                                        <span className="text-xl sm:text-2xl font-bold">{macroPlan.fat}g</span>
+                                        <span className="text-xs text-muted-foreground">Grasa</span>
+                                    </Card>
+                                </div>
+                            )}
 
                             {/* Extra goals */}
                             {macroPlan.stepsGoal && (

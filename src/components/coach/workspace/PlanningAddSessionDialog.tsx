@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect, useMemo } from "react"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import {
     Dumbbell,
@@ -86,7 +86,7 @@ function blocksToText(blocks: CardioBlock[]): string {
 interface PlanningAddSessionDialogProps {
     clientId: string;
     coachId: string;
-    date: Date;
+    date: string;
     onSessionAdded: () => void;
 }
 
@@ -297,9 +297,9 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
     // Compute dialog title
     const dialogTitle = (() => {
         if (step === 2 && sessionType === 'cardio') {
-            return `Sesión de Cardio - ${format(date, "d 'de' MMMM", { locale: es })}`;
+            return `Sesión de Cardio - ${format(parseISO(date), "d 'de' MMMM", { locale: es })}`;
         }
-        return `Añadir Sesión - ${format(date, "EEEE d 'de' MMMM", { locale: es })}`;
+        return `Añadir Sesión - ${format(parseISO(date), "EEEE d 'de' MMMM", { locale: es })}`;
     })();
 
     const dialogDescription = (() => {

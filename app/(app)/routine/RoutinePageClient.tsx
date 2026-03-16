@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { WeekSelector } from '@/components/routine/WeekSelector'
 import { DayTabs } from '@/components/routine/DayTabs'
 import { ExerciseTable } from '@/components/routine/ExerciseTable'
@@ -8,10 +8,11 @@ import { MobileExerciseCards } from '@/components/routine/MobileExerciseCards'
 import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, ExerciseSet } from '@/types/training'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Dumbbell } from 'lucide-react'
-import { saveTrainingCell } from '@/data/client-schedule'
+import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet } from '@/data/exercise-sets'
 
 interface RoutinePageClientProps {
+    clientId: string
     program: TrainingProgram
     days: TrainingDay[]
     columns: TrainingColumn[]
@@ -23,6 +24,7 @@ interface RoutinePageClientProps {
 }
 
 export default function RoutinePageClient({
+    clientId,
     program,
     days,
     columns,
@@ -37,6 +39,7 @@ export default function RoutinePageClient({
     const [cells, setCells] = useState<TrainingCell[]>(initialCells)
     const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
     const isMobile = useIsMobile()
+    const markedDays = useRef<Set<string>>(new Set())
 
     const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
 
@@ -97,7 +100,13 @@ export default function RoutinePageClient({
         }))
 
         await updateSingleSet(setId, payload)
-    }, [])
+
+        const markKey = `${selectedDayId}-${selectedWeek}`
+        if (!markedDays.current.has(markKey)) {
+            markedDays.current.add(markKey)
+            await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId)
+        }
+    }, [selectedDayId, selectedWeek, clientId, program.id])
 
     // ─── Revert override ────────────────────────────────────────
     const handleRevertSet = useCallback(async (

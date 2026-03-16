@@ -54,7 +54,14 @@ export default async function PlanningPage() {
         )
         const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
 
-        initialItems = await getClientWeeklySchedule(clientId, weekStart, weekEnd)
+        const toDateStr = (d: Date) => {
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            return `${y}-${m}-${day}`
+        }
+
+        initialItems = await getClientWeeklySchedule(clientId, toDateStr(weekStart), toDateStr(weekEnd))
     }
 
     return (

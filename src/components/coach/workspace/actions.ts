@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { toLocalDateStr } from '@/lib/date-utils'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -122,7 +123,42 @@ export async function approveReviewAction(reviewId: string) {
         return { success: false, error: 'Error al aprobar review' }
     }
 
+    // ── Advance next_checkin_date & mark checkin as approved ──
+    const { data: review } = await supabase
+        .from('reviews')
+        .select('checkin_id, client_id')
+        .eq('id', reviewId)
+        .single()
+
+    if (review?.client_id) {
+        // 1. Compute next checkin date
+        const { data: client } = await supabase
+            .from('clients')
+            .select('checkin_frequency_days')
+            .eq('id', review.client_id)
+            .single()
+
+        const freqDays = client?.checkin_frequency_days ?? 14
+        const nextDate = new Date()
+        nextDate.setDate(nextDate.getDate() + freqDays)
+        const nextDateStr = toLocalDateStr(nextDate)
+
+        await supabase
+            .from('clients')
+            .update({ next_checkin_date: nextDateStr })
+            .eq('id', review.client_id)
+
+        // 2. Mark the checkin as fully processed
+        if (review.checkin_id) {
+            await supabase
+                .from('checkins')
+                .update({ status: 'approved' })
+                .eq('id', review.checkin_id)
+        }
+    }
+
     revalidatePath('/coach/clients')
+    revalidatePath('/coach/members')
     return { success: true }
 }
 

@@ -28,6 +28,13 @@ interface RunningPageClientProps {
     initialWeekStart: string // ISO date string
 }
 
+const toLocalDateStr = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 export default function RunningPageClient({
     initialItems,
     clientId,
@@ -49,7 +56,7 @@ export default function RunningPageClient({
         const ws = startOfWeek(target, { weekStartsOn: 1 })
         const we = endOfWeek(target, { weekStartsOn: 1 })
 
-        const result = await getClientWeeklySchedule(clientId, ws, we)
+        const result = await getClientWeeklySchedule(clientId, toLocalDateStr(ws), toLocalDateStr(we))
         setItems(result)
     }, [clientId, initialWeekStart])
 

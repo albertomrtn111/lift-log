@@ -258,7 +258,7 @@ type ScheduleStrengthInput = {
     clientId: string;
     programId: string;
     dayId: string;
-    date: Date;
+    date: string; // YYYY-MM-DD
 }
 
 export async function scheduleStrengthSession({ clientId, programId, dayId, date }: ScheduleStrengthInput) {
@@ -266,7 +266,7 @@ export async function scheduleStrengthSession({ clientId, programId, dayId, date
     const { supabase } = await requireActiveCoachId();
 
     try {
-        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const dateStr = date;
 
         // Resolve coach_id from clients table (required NOT NULL field)
         const { data: clientData, error: clientError } = await supabase
@@ -316,7 +316,7 @@ export async function scheduleStrengthSession({ clientId, programId, dayId, date
 type ScheduleCardioInput = {
     clientId: string;
     coachId: string;
-    date: Date;
+    date: string; // YYYY-MM-DD
     name: string;
     description?: string;
     notes?: string;
@@ -331,7 +331,7 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
     const { supabase } = await requireActiveCoachId(coachId);
 
     try {
-        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const dateStr = date;
 
         // structure.trainingType is needed for styling (colors/icons)
         const finalStructure = {

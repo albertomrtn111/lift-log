@@ -62,6 +62,7 @@ export default async function RoutinePage(
 
     return (
         <RoutinePageClient
+            clientId={clientId}
             program={data.program}
             days={data.days}
             columns={data.columns}

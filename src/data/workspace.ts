@@ -25,7 +25,7 @@ export interface Checkin {
     coach_id: string
     client_id: string
     type: 'checkin' | 'onboarding'
-    status: 'pending' | 'reviewed' | 'cancelled'
+    status: 'pending' | 'reviewed' | 'approved' | 'cancelled'
     submitted_at: string | null
     period_start: string | null
     period_end: string | null
