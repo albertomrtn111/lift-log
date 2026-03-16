@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Camera, Loader2, AlertCircle } from 'lucide-react'
+import { Camera, Loader2, AlertCircle, Download } from 'lucide-react'
 
 interface MediaRow {
     id: string
@@ -49,6 +49,27 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
     const getPublicUrl = (path: string): string => {
         const { data } = supabase.storage.from('checkin-media').getPublicUrl(path)
         return data.publicUrl
+    }
+
+    const handleDownload = async (e: React.MouseEvent, path: string) => {
+        e.preventDefault()
+        e.stopPropagation()
+        try {
+            const url = getPublicUrl(path)
+            const response = await fetch(url)
+            const blob = await response.blob()
+            const objectUrl = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = objectUrl
+            const filename = path.split('/').pop() || 'foto-progreso.jpg'
+            link.download = filename
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(objectUrl)
+        } catch (err) {
+            console.error('[CheckinPhotosViewer] Download error:', err)
+        }
     }
 
     if (loading) {
@@ -103,6 +124,16 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
                             loading="lazy"
                         />
+                        {/* Download overlay on hover */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
+                            <button
+                                onClick={(e) => handleDownload(e, photo.path)}
+                                className="bg-white/90 hover:bg-white text-black rounded-md p-1.5 transition-colors"
+                                title="Descargar foto"
+                            >
+                                <Download className="h-4 w-4" />
+                            </button>
+                        </div>
                     </a>
                 ))}
             </div>

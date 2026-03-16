@@ -238,6 +238,7 @@ export function NewClientWorkspace({
                                 <OnboardingTab
                                     clientId={selectedClient.id}
                                     coachId={coachId}
+                                    metricDefinitions={metricDefinitions}
                                 />
                             </TabsContent>
 

@@ -207,20 +207,26 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
             }
         }
 
-        await upsertMutation.mutateAsync({
-            id: editingPlan?.id,
-            kcal,
-            protein_g,
-            carbs_g,
-            fat_g,
-            day_type_config: dayTypeConfig,
-            steps: formData.steps || undefined,
-            notes: formData.notes || undefined,
-            effective_from: formData.effective_from,
-            effective_to: formData.effective_to || null,
-        })
-        setShowForm(false)
-        setEditingPlan(null)
+        try {
+            await upsertMutation.mutateAsync({
+                id: editingPlan?.id,
+                kcal,
+                protein_g,
+                carbs_g,
+                fat_g,
+                day_type_config: dayTypeConfig,
+                steps: formData.steps || undefined,
+                notes: formData.notes || undefined,
+                effective_from: formData.effective_from,
+                effective_to: formData.effective_to || null,
+            })
+            setShowForm(false)
+            setEditingPlan(null)
+        } catch (error) {
+            // onError from useMutation already handles the error toast
+            // The modal remains open so the user can retry or adjust values
+            console.error('[handleSave] Error saving macro plan:', error)
+        }
     }
 
     const updateValues = (key: 'simple' | 'training' | 'rest', field: keyof MacroValues, value: number) => {

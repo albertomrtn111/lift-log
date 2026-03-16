@@ -232,7 +232,8 @@ function CheckinDetailPanel({
         return def?.unit ? ` ${def.unit}` : ''
     }
 
-    const allFields = formTemplates.flatMap(t => t.schema)
+    const checkinTemplate = formTemplates.find(t => t.id === checkin.form_template_id)
+    const allFields = checkinTemplate ? checkinTemplate.schema : formTemplates.flatMap(t => t.schema)
     const getFieldLabel = (key: string) => {
         const field = allFields.find(f => f.id === key)
         if (field) return field.label

@@ -37,6 +37,7 @@ export interface Checkin {
     sleep_avg_h: number | null
     notes: string | null
     raw_payload: Record<string, unknown> | null
+    form_template_id: string | null
 }
 
 export interface CheckinWithReview extends Checkin {

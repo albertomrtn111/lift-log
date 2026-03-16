@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, ClipboardList, Calendar, AlertCircle } from 'lucide-react'
+import { Loader2, ClipboardList, Calendar, AlertCircle, Activity, FileText } from 'lucide-react'
+import { MetricDefinition } from '@/types/metrics'
+import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,13 +33,14 @@ interface FormSchemaField {
 interface OnboardingTabProps {
     clientId: string
     coachId: string
+    metricDefinitions: MetricDefinition[]
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function OnboardingTab({ clientId, coachId }: OnboardingTabProps) {
+export function OnboardingTab({ clientId, coachId, metricDefinitions }: OnboardingTabProps) {
     const [loading, setLoading] = useState(true)
     const [checkin, setCheckin] = useState<OnboardingCheckin | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -139,6 +142,20 @@ export function OnboardingTab({ clientId, coachId }: OnboardingTabProps) {
     // Otherwise, fall back to raw key-value rendering
     const hasSchema = schema.length > 0
 
+    const metricKeys = Object.keys(payload).filter(k => k.startsWith('metric_') && payload[k] !== null && payload[k] !== '')
+
+    const getMetricLabel = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def ? def.name : 'Métrica'
+    }
+
+    const getMetricUnit = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def?.unit ? ` ${def.unit}` : ''
+    }
+
     return (
         <div className="space-y-4">
             {/* Header */}
@@ -166,42 +183,77 @@ export function OnboardingTab({ clientId, coachId }: OnboardingTabProps) {
                 </div>
             </Card>
 
-            {/* Responses */}
-            {Object.keys(payload).length === 0 ? (
-                <Card className="p-8 text-center">
-                    <p className="text-sm text-muted-foreground">
-                        El formulario fue enviado sin respuestas.
-                    </p>
-                </Card>
-            ) : hasSchema ? (
-                <div className="grid gap-3">
-                    {schema.map((field) => {
-                        const value = payload[field.id]
-                        if (value === undefined || value === null) return null
+            {/* Metrics */}
+            {metricKeys.length > 0 && (
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-muted-foreground" />
+                        Datos de progreso
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {metricKeys.map((key) => (
+                            <MetricBox
+                                key={key}
+                                label={getMetricLabel(key)}
+                                value={payload[key] as number | string}
+                                unit={getMetricUnit(key)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
 
-                        return (
-                            <Card key={field.id} className="p-4">
+            {/* Responses */}
+            <div className="space-y-4">
+                <h4 className="font-semibold text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    Preguntas del entrenador
+                </h4>
+                {Object.keys(payload).length === 0 ? (
+                    <Card className="p-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                            El formulario fue enviado sin respuestas.
+                        </p>
+                    </Card>
+                ) : hasSchema ? (
+                    <div className="grid gap-3">
+                        {schema.map((field) => {
+                            const value = payload[field.id]
+                            if (value === undefined || value === null) return null
+
+                            return (
+                                <Card key={field.id} className="p-4 bg-muted/10 border-border">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                                        {field.label}
+                                    </p>
+                                    <ResponseValue value={value} />
+                                </Card>
+                            )
+                        })}
+                    </div>
+                ) : (
+                    // Fallback: render raw key-value pairs
+                    <div className="grid gap-3">
+                        {Object.entries(payload).map(([key, value]) => (
+                            <Card key={key} className="p-4 bg-muted/10 border-border">
                                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                                    {field.label}
+                                    {formatKey(key)}
                                 </p>
                                 <ResponseValue value={value} />
                             </Card>
-                        )
-                    })}
-                </div>
-            ) : (
-                // Fallback: render raw key-value pairs
-                <div className="grid gap-3">
-                    {Object.entries(payload).map(([key, value]) => (
-                        <Card key={key} className="p-4">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                                {formatKey(key)}
-                            </p>
-                            <ResponseValue value={value} />
-                        </Card>
-                    ))}
-                </div>
-            )}
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Photos */}
+            <div className="space-y-4">
+                <h4 className="font-semibold text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    Fotos de progreso
+                </h4>
+                <CheckinPhotosViewer checkinId={checkin.id} coachId={coachId} />
+            </div>
         </div>
     )
 }
@@ -263,6 +315,27 @@ function ResponseValue({ value }: { value: unknown }) {
     }
 
     return <p className="text-sm font-medium">{strValue}</p>
+}
+
+function MetricBox({
+    label,
+    value,
+    unit = '',
+}: {
+    label: string
+    value: number | string | null | undefined
+    unit?: string
+}) {
+    return (
+        <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                {label}
+            </div>
+            <p className="font-semibold text-lg">
+                {value !== null && value !== undefined ? `${value.toLocaleString()}${unit}` : '—'}
+            </p>
+        </div>
+    )
 }
 
 function formatKey(key: string): string {
