@@ -448,3 +448,58 @@ export async function saveCellAction(
 
     return { success: true }
 }
+
+export async function deleteExerciseAction(exerciseId: string) {
+    const supabase = await createClient()
+
+    // Eliminar primero las celdas asociadas para evitar huérfanos
+    await supabase
+        .from('training_cells')
+        .delete()
+        .eq('exercise_id', exerciseId)
+
+    // Eliminar también los sets si los hay
+    await supabase
+        .from('training_exercise_sets')
+        .delete()
+        .eq('exercise_id', exerciseId)
+
+    const { error } = await supabase
+        .from('training_exercises')
+        .delete()
+        .eq('id', exerciseId)
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/coach/clients')
+    return { success: true }
+}
+
+export async function reorderExerciseAction(exerciseId: string, direction: 'up' | 'down', dayId: string) {
+    const supabase = await createClient()
+
+    // Obtener todos los ejercicios del día ordenados
+    const { data: dayExercises, error } = await supabase
+        .from('training_exercises')
+        .select('id, order_index')
+        .eq('day_id', dayId)
+        .order('order_index', { ascending: true })
+
+    if (error || !dayExercises) return { success: false, error: 'No se pudieron cargar los ejercicios' }
+
+    const idx = dayExercises.findIndex(e => e.id === exerciseId)
+    if (idx === -1) return { success: false, error: 'Ejercicio no encontrado' }
+
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= dayExercises.length) return { success: false, error: 'No se puede mover más' }
+
+    const current = dayExercises[idx]
+    const swap = dayExercises[swapIdx]
+
+    // Intercambiar order_index entre los dos ejercicios
+    await supabase.from('training_exercises').update({ order_index: swap.order_index }).eq('id', current.id)
+    await supabase.from('training_exercises').update({ order_index: current.order_index }).eq('id', swap.id)
+
+    revalidatePath('/coach/clients')
+    return { success: true }
+}

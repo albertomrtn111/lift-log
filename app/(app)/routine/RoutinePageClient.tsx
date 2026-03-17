@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { WeekSelector } from '@/components/routine/WeekSelector'
 import { DayTabs } from '@/components/routine/DayTabs'
 import { ExerciseTable } from '@/components/routine/ExerciseTable'
@@ -40,6 +41,7 @@ export default function RoutinePageClient({
     const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
     const isMobile = useIsMobile()
     const markedDays = useRef<Set<string>>(new Set())
+    const router = useRouter()
 
     const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
 
@@ -105,8 +107,9 @@ export default function RoutinePageClient({
         if (!markedDays.current.has(markKey)) {
             markedDays.current.add(markKey)
             await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId)
+            router.refresh()
         }
-    }, [selectedDayId, selectedWeek, clientId, program.id])
+    }, [selectedDayId, selectedWeek, clientId, program.id, router])
 
     // ─── Revert override ────────────────────────────────────────
     const handleRevertSet = useCallback(async (

@@ -22,7 +22,9 @@ import {
     Loader2,
     Dumbbell,
     Settings2,
-    Download
+    Download,
+    ArrowUp,
+    ArrowDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
@@ -36,6 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { addExerciseAction, deleteExerciseAction, reorderExerciseAction } from '../actions'
 
 interface TrainingProgramWizardProps {
     programId: string | null
@@ -762,46 +765,21 @@ function StepProgramTable({
     programId: string
 }) {
     const { toast } = useToast()
-    const activeDayExercises = exercises.filter(e => e.day_id === activeDayId)
+    const activeDayExercises = exercises
+        .filter(e => e.day_id === activeDayId)
+        .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
 
     async function addExercise() {
         if (!activeDayId) {
             toast({ title: 'Atención', description: 'Selecciona primero un día de entrenamiento.' })
             return
         }
-
-        const supabase = createClient()
-
-        // 1. Session check
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-            toast({ title: 'Error', description: 'Sesión expirada', variant: 'destructive' })
-            return
-        }
-
         const order = activeDayExercises.length + 1
-
-        const { data, error } = await supabase
-            .from('training_exercises')
-            .insert({
-                program_id: programId,
-                coach_id: program.coach_id,
-                day_id: activeDayId,
-                exercise_name: 'Nuevo Ejercicio',
-                order_index: order,
-                sets: 3,
-                reps: '10',
-                rir: '2',
-                rest_seconds: 60,
-                notes: ''
-            })
-            .select()
-            .single()
-
-        if (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' })
-        } else {
-            setExercises([...exercises, data])
+        const result = await addExerciseAction(activeDayId, 'Nuevo Ejercicio', order)
+        if (!result.success) {
+            toast({ title: 'Error', description: result.error, variant: 'destructive' })
+        } else if (result.exercise) {
+            setExercises([...exercises, result.exercise])
         }
     }
 
@@ -861,14 +839,11 @@ function StepProgramTable({
                     </Button>
                 </div>
 
-                <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-primary/10">
+                <div className="scrollbar-thin scrollbar-thumb-primary/10">
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-muted/30 text-left text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
                                 <th className="p-5 border-b font-bold min-w-[250px]">Ejercicio</th>
-                                {cols.map(col => (
-                                    <th key={col.id} className="p-5 border-b font-bold text-center min-w-[100px]">{col.label}</th>
-                                ))}
                                 <th className="p-5 border-b font-bold w-12 shrink-0"></th>
                             </tr>
                         </thead>
@@ -890,7 +865,6 @@ function StepProgramTable({
                                         setExercises(exercises.filter(e => e.id !== ex.id))
                                     }}
                                     onCellUpdate={(columnId: string, value: string) => {
-                                        // Update state immediately for UI
                                         const newCell = {
                                             exercise_id: ex.id,
                                             column_id: columnId,
@@ -900,11 +874,35 @@ function StepProgramTable({
                                         const updatedCells = [...cells.filter(c => !(c.exercise_id === ex.id && c.column_id === columnId && c.week_index === activeWeek)), newCell]
                                         setCells(updatedCells)
                                     }}
+                                    onMoveUp={() => {
+                                        const dayExs = exercises.filter((e: any) => e.day_id === activeDayId).sort((a: any, b: any) => a.order_index - b.order_index)
+                                        const idx = dayExs.findIndex((e: any) => e.id === ex.id)
+                                        if (idx <= 0) return
+                                        const updated = [...exercises]
+                                        const aIdx = updated.findIndex((e: any) => e.id === dayExs[idx].id)
+                                        const bIdx = updated.findIndex((e: any) => e.id === dayExs[idx - 1].id)
+                                        const tmpOrder = updated[aIdx].order_index
+                                        updated[aIdx] = { ...updated[aIdx], order_index: updated[bIdx].order_index }
+                                        updated[bIdx] = { ...updated[bIdx], order_index: tmpOrder }
+                                        setExercises(updated)
+                                    }}
+                                    onMoveDown={() => {
+                                        const dayExs = exercises.filter((e: any) => e.day_id === activeDayId).sort((a: any, b: any) => a.order_index - b.order_index)
+                                        const idx = dayExs.findIndex((e: any) => e.id === ex.id)
+                                        if (idx < 0 || idx >= dayExs.length - 1) return
+                                        const updated = [...exercises]
+                                        const aIdx = updated.findIndex((e: any) => e.id === dayExs[idx].id)
+                                        const bIdx = updated.findIndex((e: any) => e.id === dayExs[idx + 1].id)
+                                        const tmpOrder = updated[aIdx].order_index
+                                        updated[aIdx] = { ...updated[aIdx], order_index: updated[bIdx].order_index }
+                                        updated[bIdx] = { ...updated[bIdx], order_index: tmpOrder }
+                                        setExercises(updated)
+                                    }}
                                 />
                             ))}
                             {activeDayExercises.length === 0 && activeDayId && (
                                 <tr>
-                                    <td colSpan={cols.length + 2} className="p-16 text-center">
+                                    <td colSpan={2} className="p-16 text-center">
                                         <div className="flex flex-col items-center gap-2 opacity-30">
                                             <Dumbbell className="h-10 w-10 mb-2" />
                                             <p className="text-lg font-semibold italic">No hay ejercicios para este día. ¡Añade el primero!</p>
@@ -914,7 +912,7 @@ function StepProgramTable({
                             )}
                             {!activeDayId && (
                                 <tr>
-                                    <td colSpan={cols.length + 2} className="p-16 text-center">
+                                    <td colSpan={2} className="p-16 text-center">
                                         <p className="text-lg font-semibold italic opacity-30">Selecciona un día de arriba para empezar a configurar</p>
                                     </td>
                                 </tr>
@@ -927,7 +925,7 @@ function StepProgramTable({
     )
 }
 
-function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, allCells, onUpdate, onDelete, onCellUpdate }: {
+function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, allCells, onUpdate, onDelete, onCellUpdate, onMoveUp, onMoveDown }: {
     exercise: any,
     programId: string,
     coachId: string,
@@ -937,7 +935,9 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
     allCells: any[],
     onUpdate: (ex: any) => void,
     onDelete: () => void,
-    onCellUpdate: (colId: string, val: string) => void
+    onCellUpdate: (colId: string, val: string) => void,
+    onMoveUp: () => void,
+    onMoveDown: () => void
 }) {
     const { toast } = useToast()
     const [rowCells, setRowCells] = useState<Record<string, string>>({})
@@ -1014,23 +1014,7 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
         }
     }
 
-    async function deleteExercise() {
-        const supabase = createClient()
-
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
-
-        const { error } = await supabase
-            .from('training_exercises')
-            .delete()
-            .eq('id', exercise.id)
-
-        if (error) {
-            toast({ title: 'Error al eliminar', description: error.message, variant: 'destructive' })
-        } else {
-            onDelete()
-        }
-    }
+    const [isProcessing, setIsProcessing] = useState(false)
 
     return (
         <tr className="hover:bg-primary/5 transition-all group border-b last:border-0 border-muted-foreground/10">
@@ -1089,34 +1073,56 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
                     </div>
                 </div>
             </td>
-            {columns.map(col => (
-                <td key={col.id} className="p-2 px-4 relative">
-                    <Input
-                        className={`text-center font-medium bg-muted/20 border-0 focus-visible:ring-1 focus-visible:ring-primary h-11 rounded-xl placeholder:opacity-30 transition-all ${isSaving[col.id] ? 'opacity-50 grayscale' : ''
-                            }`}
-                        value={rowCells[col.id] || ''}
-                        onChange={e => setRowCells(prev => ({ ...prev, [col.id]: e.target.value }))}
-                        onBlur={e => handleCellUpdate(col.id, e.target.value)}
-                        placeholder="-"
-                        disabled={isSaving[col.id]}
-                    />
-                    {isSaving[col.id] && (
-                        <div className="absolute right-6 top-1/2 -translate-y-1/2">
-                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                        </div>
-                    )}
-                </td>
-            ))}
             <td className="p-2 pr-5 text-right w-12 shrink-0">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive h-10 w-10 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 rounded-full active:scale-90"
-                    onClick={deleteExercise}
-                    title="Eliminar ejercicio"
-                >
-                    <Trash2 className="h-5 w-5" />
-                </Button>
+                <div className="flex items-center gap-0.5 justify-end">
+                    <button
+                        disabled={isProcessing}
+                        onClick={async () => {
+                            setIsProcessing(true)
+                            const result = await reorderExerciseAction(exercise.id, 'up', dayId)
+                            if (result.success) onMoveUp()
+                            else toast({ title: 'Error', description: result.error, variant: 'destructive' })
+                            setIsProcessing(false)
+                        }}
+                        className="p-1 hover:bg-muted rounded transition-all text-muted-foreground hover:text-foreground disabled:opacity-40"
+                        title="Subir ejercicio"
+                    >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        disabled={isProcessing}
+                        onClick={async () => {
+                            setIsProcessing(true)
+                            const result = await reorderExerciseAction(exercise.id, 'down', dayId)
+                            if (result.success) onMoveDown()
+                            else toast({ title: 'Error', description: result.error, variant: 'destructive' })
+                            setIsProcessing(false)
+                        }}
+                        className="p-1 hover:bg-muted rounded transition-all text-muted-foreground hover:text-foreground disabled:opacity-40"
+                        title="Bajar ejercicio"
+                    >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={isProcessing}
+                        className="text-destructive h-10 w-10 transition-opacity hover:bg-destructive/10 rounded-full active:scale-90 disabled:opacity-40"
+                        onClick={async () => {
+                            setIsProcessing(true)
+                            const result = await deleteExerciseAction(exercise.id)
+                            if (!result.success) {
+                                toast({ title: 'Error al eliminar', description: result.error, variant: 'destructive' })
+                            } else {
+                                onDelete()
+                            }
+                            setIsProcessing(false)
+                        }}
+                        title="Eliminar ejercicio"
+                    >
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                    </Button>
+                </div>
             </td>
         </tr>
     )
