@@ -42,9 +42,17 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     }
 
     if (selectedCheckin) {
+        // Calcular checkin anterior al seleccionado (para deltas de métricas)
+        const sortedCompleted = [...checkins]
+            .filter(c => c.status !== 'pending' && c.submitted_at)
+            .sort((a, b) => new Date(b.submitted_at!).getTime() - new Date(a.submitted_at!).getTime())
+        const selectedIndex = sortedCompleted.findIndex(c => c.id === selectedCheckin.id)
+        const previousCheckin = selectedIndex >= 0 ? (sortedCompleted[selectedIndex + 1] ?? null) : null
+
         return (
             <CheckinDetailPanel
                 checkin={selectedCheckin}
+                previousCheckin={previousCheckin}
                 onClose={() => setSelectedCheckin(null)}
                 coachId={coachId}
                 clientId={clientId}
@@ -183,6 +191,7 @@ function CheckinRow({
 
 function CheckinDetailPanel({
     checkin,
+    previousCheckin,
     onClose,
     coachId,
     clientId,
@@ -191,6 +200,7 @@ function CheckinDetailPanel({
     formTemplates
 }: {
     checkin: CheckinWithReview
+    previousCheckin?: CheckinWithReview | null
     onClose: () => void
     coachId: string
     clientId: string
@@ -230,6 +240,15 @@ function CheckinDetailPanel({
         const id = key.replace('metric_', '')
         const def = metricDefinitions.find(m => m.id === id)
         return def?.unit ? ` ${def.unit}` : ''
+    }
+
+    const previousPayload = (previousCheckin?.raw_payload as Record<string, unknown>) || {}
+
+    const getMetricDelta = (key: string): number | null => {
+        const curr = parseFloat(String(rawPayload[key] ?? ''))
+        const prev = parseFloat(String(previousPayload[key] ?? ''))
+        if (isNaN(curr) || isNaN(prev)) return null
+        return Math.round((curr - prev) * 100) / 100
     }
 
     const checkinTemplate = formTemplates.find(t => t.id === checkin.form_template_id)
@@ -280,6 +299,7 @@ function CheckinDetailPanel({
                                     label={getMetricLabel(key)}
                                     value={rawPayload[key] as number | string}
                                     unit={getMetricUnit(key)}
+                                    delta={getMetricDelta(key)}
                                 />
                             ))}
                         </div>
@@ -368,19 +388,34 @@ function MetricBox({
     label,
     value,
     unit = '',
+    delta,
 }: {
     label: string
     value: number | string | null | undefined
     unit?: string
+    delta?: number | null
 }) {
     return (
         <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
             <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
                 {label}
             </div>
-            <p className="font-semibold text-lg">
-                {value !== null && value !== undefined ? `${value.toLocaleString()}${unit}` : '—'}
-            </p>
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+                <p className="font-semibold text-lg">
+                    {value !== null && value !== undefined ? `${value.toLocaleString()}${unit}` : '—'}
+                </p>
+                {delta !== null && delta !== undefined && delta !== 0 && (
+                    <span className={cn(
+                        "text-xs font-semibold",
+                        delta > 0 ? "text-green-500" : "text-red-500"
+                    )}>
+                        {delta > 0 ? `+${delta}` : `${delta}`}
+                    </span>
+                )}
+                {delta === 0 && (
+                    <span className="text-xs text-muted-foreground">= sin cambio</span>
+                )}
+            </div>
         </div>
     )
 }

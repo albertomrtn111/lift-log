@@ -9,7 +9,9 @@ import {
     Zap,
     Shuffle,
     Gauge,
-    TrendingUp
+    TrendingUp,
+    Bike,
+    Waves
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -65,18 +67,45 @@ interface CardioSessionFormProps {
     }) => Promise<void>;
     isSubmitting?: boolean;
     onCancel?: () => void;
+    hideTypeSelector?: boolean;
+    visibleSections?: string[];
 }
 
-const SESSION_TYPES = [
-    { id: 'rodaje', label: 'Rodaje', icon: Footprints, color: 'text-green-500', bg: 'bg-green-500/10' },
-    { id: 'series', label: 'Series', icon: Zap, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-    { id: 'tempo', label: 'Tempo', icon: Gauge, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { id: 'hybrid', label: 'Híbrido', icon: Dumbbell, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-    { id: 'progressive', label: 'Progresivos', icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-    { id: 'fartlek', label: 'Fartlek', icon: Shuffle, color: 'text-pink-500', bg: 'bg-pink-500/10' },
+const SESSION_SECTIONS = [
+    {
+        label: 'Running',
+        types: [
+            { id: 'rodaje', label: 'Rodaje', icon: Footprints, color: 'text-green-500', bg: 'bg-green-500/10' },
+            { id: 'series', label: 'Series', icon: Zap, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+            { id: 'tempo', label: 'Tempo', icon: Gauge, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+            { id: 'fartlek', label: 'Fartlek', icon: Shuffle, color: 'text-pink-500', bg: 'bg-pink-500/10' },
+            { id: 'progressive', label: 'Progresivos', icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+        ],
+    },
+    {
+        label: 'Bicicleta',
+        types: [
+            { id: 'bike', label: 'Bicicleta', icon: Bike, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+        ],
+    },
+    {
+        label: 'Natación',
+        types: [
+            { id: 'swim', label: 'Natación', icon: Waves, color: 'text-teal-500', bg: 'bg-teal-500/10' },
+        ],
+    },
+    {
+        label: 'Híbrido',
+        types: [
+            { id: 'hybrid', label: 'Híbrido', icon: Dumbbell, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+        ],
+    },
 ]
 
-export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCancel }: CardioSessionFormProps) {
+// Flat list for lookups (name resolution in handleSubmit)
+const SESSION_TYPES = SESSION_SECTIONS.flatMap(s => s.types)
+
+export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCancel, hideTypeSelector, visibleSections }: CardioSessionFormProps) {
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -105,48 +134,62 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         })
     }
 
+    const displayedSections = visibleSections
+        ? SESSION_SECTIONS.filter(s => visibleSections.includes(s.label))
+        : SESSION_SECTIONS
+
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
 
                 {/* Session Type Selector */}
-                <Card className="border-none shadow-sm bg-muted/30">
-                    <CardContent className="p-4">
-                        <FormField
-                            control={form.control}
-                            name="trainingType"
-                            render={({ field }) => (
-                                <FormItem className="space-y-3">
-                                    <FormLabel className="text-base font-semibold">Tipo de Sesión</FormLabel>
-                                    <FormControl>
-                                        <RadioGroup
-                                            onValueChange={field.onChange}
-                                            defaultValue={field.value}
-                                            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"
-                                        >
-                                            {SESSION_TYPES.map((type) => {
-                                                const Icon = type.icon
-                                                return (
-                                                    <div key={type.id}>
-                                                        <RadioGroupItem
-                                                            value={type.id}
-                                                            id={type.id}
-                                                            className="peer sr-only"
-                                                        />
-                                                        <FormLabel
-                                                            htmlFor={type.id}
-                                                            className={cn(
-                                                                "flex flex-col items-center justify-between rounded-md border-2 bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all h-full",
-                                                                "border-transparent",
-                                                                type.bg
-                                                            )}
-                                                        >
-                                                            <Icon className={cn("mb-2 h-6 w-6", type.color)} />
-                                                            <span className="text-xs font-semibold text-center">{type.label}</span>
-                                                        </FormLabel>
+                {!hideTypeSelector && (
+                    <Card className="border-none shadow-sm bg-muted/30">
+                        <CardContent className="p-4">
+                            <FormField
+                                control={form.control}
+                                name="trainingType"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                        <FormLabel className="text-base font-semibold">Tipo de Sesión</FormLabel>
+                                        <FormControl>
+                                            <RadioGroup
+                                                onValueChange={field.onChange}
+                                                defaultValue={field.value}
+                                                className="space-y-4"
+                                            >
+                                                {displayedSections.map((section) => (
+                                                <div key={section.label}>
+                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                                        {section.label}
+                                                    </p>
+                                                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                                                        {section.types.map((type) => {
+                                                            const Icon = type.icon
+                                                            return (
+                                                                <div key={type.id}>
+                                                                    <RadioGroupItem
+                                                                        value={type.id}
+                                                                        id={type.id}
+                                                                        className="peer sr-only"
+                                                                    />
+                                                                    <FormLabel
+                                                                        htmlFor={type.id}
+                                                                        className={cn(
+                                                                            "flex flex-col items-center justify-center rounded-md border-2 bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all",
+                                                                            "border-transparent",
+                                                                            type.bg
+                                                                        )}
+                                                                    >
+                                                                        <Icon className={cn("mb-1.5 h-5 w-5", type.color)} />
+                                                                        <span className="text-xs font-semibold text-center leading-tight">{type.label}</span>
+                                                                    </FormLabel>
+                                                                </div>
+                                                            )
+                                                        })}
                                                     </div>
-                                                )
-                                            })}
+                                                </div>
+                                            ))}
                                         </RadioGroup>
                                     </FormControl>
                                     <FormMessage />
@@ -155,6 +198,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         />
                     </CardContent>
                 </Card>
+                )}
 
                 {/* Target Objectives Row */}
                 <div className="grid grid-cols-3 gap-4">

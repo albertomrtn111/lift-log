@@ -1,9 +1,12 @@
 'use client'
 
+import { useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram } from '@/data/workspace'
+import { approveReviewAction, forceAdvanceCheckinAction } from './actions'
+import { useToast } from '@/hooks/use-toast'
 import {
     CheckCircle,
     AlertTriangle,
@@ -12,8 +15,12 @@ import {
     Dumbbell,
     Apple,
     FileText,
-    ArrowRight
+    ArrowRight,
+    CheckCheck,
+    FastForward,
+    Loader2
 } from 'lucide-react'
+import { MetricDefinition } from '@/types/metrics'
 import { cn } from '@/lib/utils'
 
 interface ResumenTabProps {
@@ -25,6 +32,8 @@ interface ResumenTabProps {
     activeProgram: TrainingProgram | null
     onRefresh: () => void
     onSwitchTab: (tab: string) => void
+    metricDefinitions: MetricDefinition[]
+    previousCheckin?: CheckinWithReview | null
 }
 
 export function ResumenTab({
@@ -36,11 +45,13 @@ export function ResumenTab({
     activeProgram,
     onRefresh,
     onSwitchTab,
+    metricDefinitions,
+    previousCheckin,
 }: ResumenTabProps) {
     return (
         <div className="space-y-6">
             {/* Status Card */}
-            <StatusCard status={clientStatus} latestCheckin={latestCheckin} />
+            <StatusCard status={clientStatus} latestCheckin={latestCheckin} clientId={clientId} onRefresh={onRefresh} />
 
             {/* Latest Review Card */}
             <ReviewCard
@@ -49,6 +60,8 @@ export function ResumenTab({
                 checkin={latestCheckin}
                 onRefresh={onRefresh}
                 onSwitchTab={onSwitchTab}
+                metricDefinitions={metricDefinitions}
+                previousCheckin={previousCheckin ?? null}
             />
 
             {/* Active Plans Mini */}
@@ -121,7 +134,17 @@ export function ResumenTab({
     )
 }
 
-function StatusCard({ status, latestCheckin }: { status: ClientStatus | null; latestCheckin: CheckinWithReview | null }) {
+function StatusCard({
+    status,
+    latestCheckin,
+    clientId,
+    onRefresh,
+}: {
+    status: ClientStatus | null
+    latestCheckin: CheckinWithReview | null
+    clientId: string
+    onRefresh: () => void
+}) {
     if (!status) {
         return (
             <Card className="p-6 text-center text-muted-foreground">
@@ -205,7 +228,82 @@ function StatusCard({ status, latestCheckin }: { status: ClientStatus | null; la
                     </p>
                 </div>
             </div>
+
+            {status.daysUntilCheckin < 0 && (
+                <ActionSection
+                    latestCheckin={latestCheckin}
+                    clientId={clientId}
+                    onRefresh={onRefresh}
+                />
+            )}
         </Card>
+    )
+}
+
+function ActionSection({
+    latestCheckin,
+    clientId,
+    onRefresh,
+}: {
+    latestCheckin: CheckinWithReview | null
+    clientId: string
+    onRefresh: () => void
+}) {
+    const [isPending, startTransition] = useTransition()
+    const { toast } = useToast()
+
+    const hasReview = !!latestCheckin?.review?.id
+
+    const handleApprove = () => {
+        startTransition(async () => {
+            let result
+            if (hasReview) {
+                // Caso A: existe review formal → aprobarla
+                result = await approveReviewAction(latestCheckin!.review!.id)
+            } else {
+                // Caso B: no hay review o no hay checkin → forzar avance
+                result = await forceAdvanceCheckinAction(clientId)
+            }
+            if (result.success) {
+                toast({
+                    title: hasReview ? 'Revisión aprobada' : 'Check-in avanzado',
+                    description: 'El próximo check-in se ha programado correctamente.',
+                })
+                onRefresh()
+            } else {
+                toast({
+                    title: 'Error',
+                    description: result.error,
+                    variant: 'destructive',
+                })
+            }
+        })
+    }
+
+    return (
+        <div className="mt-4 pt-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-sm text-muted-foreground">
+                {hasReview
+                    ? 'Revisión pendiente de aprobar — apruébala para avanzar el ciclo'
+                    : 'No hay check-in esta semana — avanza el ciclo manualmente'}
+            </div>
+            <Button
+                size="sm"
+                variant={hasReview ? 'default' : 'outline'}
+                onClick={handleApprove}
+                disabled={isPending}
+                className="shrink-0 gap-2"
+            >
+                {isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : hasReview ? (
+                    <CheckCheck className="h-4 w-4" />
+                ) : (
+                    <FastForward className="h-4 w-4" />
+                )}
+                {hasReview ? 'Aprobar revisión' : 'Avanzar check-in'}
+            </Button>
+        </div>
     )
 }
 
@@ -214,13 +312,17 @@ function ReviewCard({
     clientId,
     checkin,
     onRefresh,
-    onSwitchTab
+    onSwitchTab,
+    metricDefinitions,
+    previousCheckin,
 }: {
     coachId: string
     clientId: string
     checkin: CheckinWithReview | null
     onRefresh: () => void
     onSwitchTab: (tab: string) => void
+    metricDefinitions: MetricDefinition[]
+    previousCheckin?: CheckinWithReview | null
 }) {
     if (!checkin) {
         return (
@@ -235,10 +337,9 @@ function ReviewCard({
     }
 
     if (checkin.status === 'pending') {
-        const dateStr = checkin.period_end 
-            ? new Date(checkin.period_end).toLocaleDateString('es-ES') 
+        const dateStr = checkin.period_end
+            ? new Date(checkin.period_end).toLocaleDateString('es-ES')
             : 'Pendiente'
-
         return (
             <Card className="p-6 text-center">
                 <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -258,12 +359,33 @@ function ReviewCard({
         )
     }
 
-    // Status: reviewed
+    // Helpers para resolver UUID → nombre real de métrica
+    const getMetricLabel = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def ? def.name : key.replace('metric_', '').substring(0, 20)
+    }
+
+    const getMetricUnit = (key: string) => {
+        const id = key.replace('metric_', '')
+        const def = metricDefinitions.find(m => m.id === id)
+        return def?.unit ? ` ${def.unit}` : ''
+    }
+
     const payload = (checkin.raw_payload as Record<string, unknown>) || {}
-    const metricKeys = Object.keys(payload).filter(k => k.startsWith('metric_')).slice(0, 4)
-    const questionKeys = metricKeys.length === 0 
-        ? Object.keys(payload).filter(k => k.startsWith('campo_')).slice(0, 2)
-        : []
+    const previousPayload = (previousCheckin?.raw_payload as Record<string, unknown>) || {}
+
+    const getMetricDelta = (key: string): number | null => {
+        const curr = parseFloat(String(payload[key] ?? ''))
+        const prev = parseFloat(String(previousPayload[key] ?? ''))
+        if (isNaN(curr) || isNaN(prev)) return null
+        return Math.round((curr - prev) * 100) / 100
+    }
+
+    // Solo métricas con valor relleno (no null, no string vacío)
+    const metricKeys = Object.keys(payload).filter(
+        k => k.startsWith('metric_') && payload[k] !== null && payload[k] !== ''
+    )
 
     return (
         <Card className="flex flex-col">
@@ -284,34 +406,36 @@ function ReviewCard({
                 {metricKeys.length > 0 ? (
                     <div className="grid grid-cols-2 gap-3">
                         {metricKeys.map(key => {
-                            const name = key.replace('metric_', '').substring(0, 20)
+                            const delta = getMetricDelta(key)
                             return (
                                 <div key={key} className="bg-muted/50 p-2.5 rounded-lg border">
-                                    <p className="text-xs text-muted-foreground truncate" title={key.replace('metric_', '')}>
-                                        {name}
+                                    <p className="text-xs text-muted-foreground truncate" title={getMetricLabel(key)}>
+                                        {getMetricLabel(key)}
                                     </p>
-                                    <p className="font-medium text-sm truncate">
-                                        {String(payload[key])}
-                                    </p>
+                                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                                        <p className="font-medium text-sm">
+                                            {String(payload[key])}{getMetricUnit(key)}
+                                        </p>
+                                        {delta !== null && delta !== 0 && (
+                                            <span className={cn(
+                                                "text-xs font-semibold",
+                                                delta > 0 ? "text-green-500" : "text-red-500"
+                                            )}>
+                                                {delta > 0 ? `+${delta}` : `${delta}`}
+                                            </span>
+                                        )}
+                                        {delta === 0 && (
+                                            <span className="text-xs text-muted-foreground">= sin cambio</span>
+                                        )}
+                                    </div>
                                 </div>
                             )
                         })}
                     </div>
-                ) : questionKeys.length > 0 ? (
-                    <div className="space-y-3">
-                        {questionKeys.map(key => (
-                            <div key={key} className="bg-muted/50 p-3 rounded-lg border">
-                                <p className="text-xs text-muted-foreground mb-1 truncate">Pregunta respondida</p>
-                                <p className="text-sm font-medium line-clamp-2">
-                                    {String(payload[key])}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
                 ) : (
                     <div className="py-4 text-center">
                         <p className="text-sm text-muted-foreground">
-                            Check-in enviado sin datos procesables en el formato actual.
+                            No hay métricas registradas en este check-in.
                         </p>
                     </div>
                 )}

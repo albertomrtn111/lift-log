@@ -13,7 +13,9 @@ import {
     Search,
     Heart,
     Check,
-    ArrowLeft
+    ArrowLeft,
+    Bike,
+    Waves
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -174,6 +176,19 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
             setStep(2);
         }
         // For cardio, stay on step 1 but show cardio sub-step (choose mode)
+    };
+
+    const handleSelectHybrid = () => {
+        setSessionType('cardio');
+        setCardioInitialData({
+            structure: {
+                trainingType: 'hybrid',
+                notes: '',
+                blocks: [],
+            },
+        });
+        setCardioMode('editor');
+        setStep(2);
     };
 
     // When user picks "Crear desde cero"
@@ -337,18 +352,18 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                 {/* STEP 1: SELECT TYPE (Strength / Cardio)        */}
                 {/* ═══════════════════════════════════════════════ */}
                 {step === 1 && !sessionType && (
-                    <div className="grid grid-cols-2 gap-4 py-4">
+                    <div className="grid grid-cols-3 gap-3 py-4">
                         <Card
                             className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
                             onClick={() => handleSelectType('strength')}
                         >
-                            <CardContent className="flex flex-col items-center justify-center p-6 gap-4">
-                                <div className="p-4 rounded-full bg-blue-100 dark:bg-blue-900/40">
-                                    <Dumbbell className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                            <CardContent className="flex flex-col items-center justify-center p-5 gap-3">
+                                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/40">
+                                    <Dumbbell className="h-7 w-7 text-blue-600 dark:text-blue-400" />
                                 </div>
                                 <div className="text-center">
-                                    <h3 className="font-semibold text-lg">Fuerza</h3>
-                                    <p className="text-sm text-muted-foreground">Sesión del programa activo</p>
+                                    <h3 className="font-semibold">Fuerza</h3>
+                                    <p className="text-xs text-muted-foreground">Sesión del programa activo</p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -357,13 +372,28 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                             className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
                             onClick={() => handleSelectType('cardio')}
                         >
-                            <CardContent className="flex flex-col items-center justify-center p-6 gap-4">
-                                <div className="p-4 rounded-full bg-orange-100 dark:bg-orange-900/40">
-                                    <Footprints className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+                            <CardContent className="flex flex-col items-center justify-center p-5 gap-3">
+                                <div className="p-3 rounded-full bg-orange-100 dark:bg-orange-900/40">
+                                    <Footprints className="h-7 w-7 text-orange-600 dark:text-orange-400" />
                                 </div>
                                 <div className="text-center">
-                                    <h3 className="font-semibold text-lg">Cardio</h3>
-                                    <p className="text-sm text-muted-foreground">Running, Bici, Remo...</p>
+                                    <h3 className="font-semibold">Cardio</h3>
+                                    <p className="text-xs text-muted-foreground">Running, Bici, Natación...</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card
+                            className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                            onClick={handleSelectHybrid}
+                        >
+                            <CardContent className="flex flex-col items-center justify-center p-5 gap-3">
+                                <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/40">
+                                    <Dumbbell className="h-7 w-7 text-purple-600 dark:text-purple-400" />
+                                </div>
+                                <div className="text-center">
+                                    <h3 className="font-semibold">Híbrido</h3>
+                                    <p className="text-xs text-muted-foreground">Fuerza + Cardio combinado</p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -592,6 +622,12 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                             onSubmit={handleCardioSubmit}
                             isSubmitting={isPending}
                             onCancel={handleCardioBack}
+                            hideTypeSelector={cardioInitialData?.structure?.trainingType === 'hybrid'}
+                            visibleSections={
+                                cardioInitialData?.structure?.trainingType === 'hybrid'
+                                    ? undefined
+                                    : ['Running', 'Bicicleta', 'Natación']
+                            }
                         />
                     </div>
                 )}

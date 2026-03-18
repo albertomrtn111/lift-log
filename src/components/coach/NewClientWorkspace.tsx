@@ -134,6 +134,14 @@ export function NewClientWorkspace({
         </Card>
     )
 
+    // Obtener el checkin anterior al último completado (para deltas de métricas)
+    const previousCheckin = useMemo(() => {
+        const completed = [...checkins]
+            .filter(c => c.status !== 'pending' && c.submitted_at)
+            .sort((a, b) => new Date(b.submitted_at!).getTime() - new Date(a.submitted_at!).getTime())
+        return completed[1] ?? null  // [0] es latestCheckin, [1] es el anterior
+    }, [checkins])
+
     return (
         <div className="space-y-4">
             {/* Client Selector + Prev/Next Navigation */}
@@ -252,6 +260,8 @@ export function NewClientWorkspace({
                                     activeProgram={activeProgram}
                                     onRefresh={handleRefresh}
                                     onSwitchTab={handleSwitchTab}
+                                    metricDefinitions={metricDefinitions}
+                                    previousCheckin={previousCheckin}
                                 />
                             </TabsContent>
 

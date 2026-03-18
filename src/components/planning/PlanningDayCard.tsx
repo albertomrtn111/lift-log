@@ -12,7 +12,11 @@ import {
   Check,
   ChevronRight,
   Minus,
-  Dumbbell
+  Dumbbell,
+  Gauge,
+  Shuffle,
+  Bike,
+  Waves
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -49,15 +53,31 @@ function getCardioIcon(trainingType?: string) {
     case 'series':
     case 'intervals':
     case 'hiit':
-      return { icon: Zap, color: 'text-warning', bgColor: 'bg-warning/10' }
+      return { icon: Zap, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' }
     case 'tempo':
     case 'umbral':
-      return { icon: TrendingUp, color: 'text-accent', bgColor: 'bg-accent/10' }
+      return { icon: Gauge, color: 'text-blue-500', bgColor: 'bg-blue-500/10' }
+    case 'hybrid':
+    case 'hibrido':
+      return { icon: Dumbbell, color: 'text-purple-500', bgColor: 'bg-purple-500/10' }
+    case 'progressive':
+    case 'progresivo':
+    case 'progresivos':
+      return { icon: TrendingUp, color: 'text-indigo-500', bgColor: 'bg-indigo-500/10' }
+    case 'fartlek':
+      return { icon: Shuffle, color: 'text-pink-500', bgColor: 'bg-pink-500/10' }
+    case 'bike':
+    case 'bicicleta':
+      return { icon: Bike, color: 'text-cyan-500', bgColor: 'bg-cyan-500/10' }
+    case 'swim':
+    case 'natacion':
+    case 'natación':
+      return { icon: Waves, color: 'text-teal-500', bgColor: 'bg-teal-500/10' }
+    case 'rodaje':
     case 'tirada_larga':
     case 'long':
-      return { icon: Route, color: 'text-primary', bgColor: 'bg-primary/10' }
     default:
-      return { icon: Footprints, color: 'text-success', bgColor: 'bg-success/10' }
+      return { icon: Footprints, color: 'text-green-500', bgColor: 'bg-green-500/10' }
   }
 }
 

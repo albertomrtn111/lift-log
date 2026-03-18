@@ -27,15 +27,16 @@ import {
     Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getProgressData, ProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
+import { getProgressData, getCardioProgressData, ProgressData, CardioProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
 import { TrainingProgressView } from './progress/TrainingProgressView'
+import { CardioProgressView } from './progress/CardioProgressView'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type RangeKey = '7d' | '15d' | '30d' | '3m' | '6m' | '12m'
-type SubTab = 'general' | 'training'
+type SubTab = 'general' | 'training' | 'cardio'
 
 const RANGE_OPTIONS: { key: RangeKey; label: string; days: number }[] = [
     { key: '7d', label: '7 días', days: 7 },
@@ -60,6 +61,8 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [range, setRange] = useState<RangeKey>('30d')
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<ProgressData | null>(null)
+    const [cardioData, setCardioData] = useState<CardioProgressData | null>(null)
+    const [cardioLoading, setCardioLoading] = useState(false)
 
     const rangeDays = RANGE_OPTIONS.find(r => r.key === range)!.days
 
@@ -86,6 +89,24 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     useEffect(() => {
         fetchData()
     }, [fetchData])
+
+    useEffect(() => {
+        if (subTab !== 'cardio') return
+        const fetchCardio = async () => {
+            setCardioLoading(true)
+            const dateTo = new Date()
+            const dateFrom = new Date()
+            dateFrom.setDate(dateFrom.getDate() - rangeDays)
+            const result = await getCardioProgressData(
+                clientId,
+                dateFrom.toISOString().split('T')[0],
+                dateTo.toISOString().split('T')[0]
+            )
+            if (result.success && result.data) setCardioData(result.data)
+            setCardioLoading(false)
+        }
+        fetchCardio()
+    }, [subTab, range, clientId, rangeDays])
 
     // -----------------------------------------------------------------------
     // Computed KPIs
@@ -167,6 +188,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 {[
                     { key: 'general' as SubTab, label: 'General' },
                     { key: 'training' as SubTab, label: 'Entrenamiento' },
+                    { key: 'cardio' as SubTab, label: 'Cardio' },
                 ].map(tab => (
                     <button
                         key={tab.key}
@@ -185,6 +207,34 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
 
             {subTab === 'training' ? (
                 <TrainingProgressView clientId={clientId} coachId={coachId} />
+            ) : subTab === 'cardio' ? (
+                <>
+                    {/* Range Selector */}
+                    <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+                        {RANGE_OPTIONS.map(opt => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setRange(opt.key)}
+                                className={cn(
+                                    "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+                                    range === opt.key
+                                        ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {cardioLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : cardioData ? (
+                        <CardioProgressView data={cardioData} />
+                    ) : null}
+                </>
             ) : (
                 <>
                     {/* Range Selector */}

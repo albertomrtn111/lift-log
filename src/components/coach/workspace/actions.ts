@@ -123,38 +123,18 @@ export async function approveReviewAction(reviewId: string) {
         return { success: false, error: 'Error al aprobar review' }
     }
 
-    // ── Advance next_checkin_date & mark checkin as approved ──
+    // ── Mark checkin as approved (without changing next_checkin_date) ──
     const { data: review } = await supabase
         .from('reviews')
-        .select('checkin_id, client_id')
+        .select('checkin_id')
         .eq('id', reviewId)
         .single()
 
-    if (review?.client_id) {
-        // 1. Compute next checkin date
-        const { data: client } = await supabase
-            .from('clients')
-            .select('checkin_frequency_days')
-            .eq('id', review.client_id)
-            .single()
-
-        const freqDays = client?.checkin_frequency_days ?? 14
-        const nextDate = new Date()
-        nextDate.setDate(nextDate.getDate() + freqDays)
-        const nextDateStr = toLocalDateStr(nextDate)
-
+    if (review?.checkin_id) {
         await supabase
-            .from('clients')
-            .update({ next_checkin_date: nextDateStr })
-            .eq('id', review.client_id)
-
-        // 2. Mark the checkin as fully processed
-        if (review.checkin_id) {
-            await supabase
-                .from('checkins')
-                .update({ status: 'approved' })
-                .eq('id', review.checkin_id)
-        }
+            .from('checkins')
+            .update({ status: 'approved' })
+            .eq('id', review.checkin_id)
     }
 
     revalidatePath('/coach/clients')
@@ -502,4 +482,52 @@ export async function reorderExerciseAction(exerciseId: string, direction: 'up' 
 
     revalidatePath('/coach/clients')
     return { success: true }
+}
+
+// ============================================================================
+// CHECK-IN ADVANCE ACTIONS
+// ============================================================================
+
+/**
+ * Fuerza el avance del próximo check-in sin necesitar una revisión formal.
+ * Útil cuando el cliente no ha enviado check-in esa semana o cuando
+ * el checkin existe pero no tiene revisión asociada.
+ */
+export async function forceAdvanceCheckinAction(clientId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado' }
+
+    // Obtener frecuencia del cliente
+    const { data: client } = await supabase
+        .from('clients')
+        .select('checkin_frequency_days, next_checkin_date')
+        .eq('id', clientId)
+        .single()
+
+    if (!client) return { success: false, error: 'Cliente no encontrado' }
+
+    // Avanzar desde hoy (patada hacia adelante)
+    const freqDays = client.checkin_frequency_days ?? 14
+    const nextDate = new Date()
+    nextDate.setDate(nextDate.getDate() + freqDays)
+    const nextDateStr = toLocalDateStr(nextDate)
+
+    // Actualizar next_checkin_date
+    const { error } = await supabase
+        .from('clients')
+        .update({ next_checkin_date: nextDateStr })
+        .eq('id', clientId)
+
+    if (error) return { success: false, error: error.message }
+
+    // Si hay algún checkin en estado reviewed sin revisión, marcarlo como approved
+    await supabase
+        .from('checkins')
+        .update({ status: 'approved' })
+        .eq('client_id', clientId)
+        .eq('status', 'reviewed')
+
+    revalidatePath('/coach/clients')
+    return { success: true, nextDate: nextDateStr }
 }
