@@ -531,3 +531,23 @@ export async function forceAdvanceCheckinAction(clientId: string) {
     revalidatePath('/coach/clients')
     return { success: true, nextDate: nextDateStr }
 }
+
+// ============================================================================
+// CHECKIN DELETE ACTION
+// ============================================================================
+
+export async function deleteCheckinAction(checkinId: string, coachId: string) {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+
+    const { error } = await supabase
+        .from('checkins')
+        .delete()
+        .eq('id', checkinId)
+        .eq('coach_id', validatedCoachId) // seguridad: solo el coach dueño puede borrar
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/coach/clients')
+    revalidatePath('/coach/members')
+    return { success: true }
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp } from 'lucide-react'
+import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { href: '/planning', icon: CalendarDays, label: 'Plan' }, // New Planning tab
   { href: '/progress', icon: TrendingUp, label: 'Progreso' }, // Changed icon to TrendingUp? Original was CalendarDays. Let's check imports.
   { href: '/summary', icon: BarChart3, label: 'Resumen' },
+  { href: '/chat', icon: MessageSquare, label: 'Chat' },
   { href: '/profile', icon: User, label: 'Perfil' },
 ]
 

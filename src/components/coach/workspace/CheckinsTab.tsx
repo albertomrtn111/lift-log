@@ -12,9 +12,10 @@ import {
     Activity,
     ChevronRight,
     X,
+    Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createReviewAction } from './actions'
+import { createReviewAction, deleteCheckinAction } from './actions'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 
 interface CheckinsTabProps {
@@ -114,6 +115,15 @@ function CheckinRow({
         })
     }
 
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (!confirm('¿Eliminar este check-in? Esta acción no se puede deshacer.')) return
+        startTransition(async () => {
+            await deleteCheckinAction(checkin.id, coachId)
+            onRefresh()
+        })
+    }
+
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleDateString('es-ES', {
             day: 'numeric',
@@ -183,6 +193,15 @@ function CheckinRow({
                         Crear review
                     </Button>
                 )}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                >
+                    <Trash2 className="h-4 w-4" />
+                </Button>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
         </div>
