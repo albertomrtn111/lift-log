@@ -23,21 +23,42 @@ export type ClientMetricInput = {
 }
 
 // Helper to get current client and coach ID
+// Returns null if no session or no matching client
 async function getClientContext() {
-    const supabase = createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    try {
+        const supabase = createClient()
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!user || authError) return null
+        if (authError) {
+            console.error('[getClientContext] Auth error:', authError.message)
+            return null
+        }
+        if (!user) {
+            console.warn('[getClientContext] No user in session — session may be expired')
+            return null
+        }
 
-    const { data: client, error: clientError } = await supabase
-        .from('clients')
-        .select('id, coach_id')
-        .eq('auth_user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle()
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .select('id, coach_id')
+            .eq('auth_user_id', user.id)
+            .eq('status', 'active')
+            .maybeSingle()
 
-    if (clientError || !client) return null
-    return { ...client, userId: user.id }
+        if (clientError) {
+            console.error('[getClientContext] Error fetching client:', clientError.message, clientError.code)
+            return null
+        }
+        if (!client) {
+            console.warn('[getClientContext] No active client found for user:', user.id)
+            return null
+        }
+
+        return { ...client, userId: user.id }
+    } catch (err) {
+        console.error('[getClientContext] Unexpected error:', err)
+        return null
+    }
 }
 
 export async function getClientMetrics(date: Date) {
@@ -63,76 +84,106 @@ export async function getClientMetrics(date: Date) {
     return data as ClientMetric | null
 }
 
-export async function saveClientMetrics(input: ClientMetricInput) {
-    const supabase = createClient()
-    const context = await getClientContext()
+export async function saveClientMetrics(input: ClientMetricInput): Promise<{ success: boolean; error?: string; sessionExpired?: boolean }> {
+    try {
+        const supabase = createClient()
+        const context = await getClientContext()
 
-    if (!context) return { success: false, error: 'Sesión no encontrada. Por favor recarga la página.' }
-
-    const payload = {
-        client_id: context.id,
-        coach_id: context.coach_id,
-        metric_date: input.metric_date,
-        weight_kg: input.weight_kg ?? null,
-        steps: input.steps ?? null,
-        sleep_h: input.sleep_h ?? null,
-        notes: input.notes ?? null,
-    }
-
-    const { error } = await supabase
-        .from('client_metrics')
-        .upsert(payload, { onConflict: 'client_id,metric_date' })
-
-    if (error) {
-        console.error('[saveClientMetrics] Error upsert:', error.code, error.message, error.details, error.hint)
-        if (error.code === '42501' || error.message?.includes('row-level security')) {
-            return { success: false, error: 'Sin permiso para guardar esta fecha. Recarga la página e intenta de nuevo.' }
+        if (!context) {
+            return {
+                success: false,
+                error: 'Sesión no encontrada. Por favor cierra la app, vuelve a abrirla e inicia sesión de nuevo.',
+                sessionExpired: true
+            }
         }
-        return { success: false, error: `Error al guardar: ${error.message}` }
-    }
 
-    return { success: true }
+        const payload = {
+            client_id: context.id,
+            coach_id: context.coach_id,
+            metric_date: input.metric_date,
+            weight_kg: input.weight_kg ?? null,
+            steps: input.steps ?? null,
+            sleep_h: input.sleep_h ?? null,
+            notes: input.notes ?? null,
+        }
+
+        const { error } = await supabase
+            .from('client_metrics')
+            .upsert(payload, { onConflict: 'client_id,metric_date' })
+
+        if (error) {
+            console.error('[saveClientMetrics] Upsert error:', error.code, error.message, error.details, error.hint)
+            if (error.code === '42501' || error.message?.includes('row-level security')) {
+                return { success: false, error: 'Sin permiso para guardar esta fecha. Recarga la página e intenta de nuevo.', sessionExpired: false }
+            }
+            return { success: false, error: `Error al guardar: ${error.message}`, sessionExpired: false }
+        }
+
+        return { success: true, sessionExpired: false }
+    } catch (err) {
+        console.error('[saveClientMetrics] Unexpected throw:', err)
+        return {
+            success: false,
+            error: 'Error inesperado al guardar. Por favor recarga la página.',
+            sessionExpired: false
+        }
+    }
 }
 
-export async function saveClientMetricsBulk(inputs: ClientMetricInput[]) {
-    const supabase = createClient()
-    const context = await getClientContext()
+export async function saveClientMetricsBulk(inputs: ClientMetricInput[]): Promise<{ success: boolean; error?: string; count?: number; sessionExpired?: boolean }> {
+    try {
+        const supabase = createClient()
+        const context = await getClientContext()
 
-    if (!context) return { success: false, error: 'Sesión no encontrada. Por favor recarga la página.' }
-
-    // Use only valid days that have at least one field filled
-    const validInputs = inputs.filter(i =>
-        i.weight_kg !== undefined ||
-        i.steps !== undefined ||
-        i.sleep_h !== undefined ||
-        i.notes !== undefined
-    )
-
-    if (validInputs.length === 0) return { success: true, count: 0 }
-
-    const rowsToUpsert = validInputs.map(input => ({
-        client_id: context.id,
-        coach_id: context.coach_id,
-        metric_date: input.metric_date,
-        weight_kg: input.weight_kg ?? null,
-        steps: input.steps ?? null,
-        sleep_h: input.sleep_h ?? null,
-        notes: input.notes ?? null,
-    }))
-
-    const { error } = await supabase
-        .from('client_metrics')
-        .upsert(rowsToUpsert, { onConflict: 'client_id,metric_date' })
-
-    if (error) {
-        console.error('[saveClientMetricsBulk] Error upsert:', error.code, error.message, error.details, error.hint)
-        if (error.code === '42501' || error.message?.includes('row-level security')) {
-            return { success: false, error: 'Sin permiso para guardar estas fechas. Recarga la página e intenta de nuevo.' }
+        if (!context) {
+            return {
+                success: false,
+                error: 'Sesión no encontrada. Por favor cierra la app, vuelve a abrirla e inicia sesión de nuevo.',
+                sessionExpired: true
+            }
         }
-        return { success: false, error: `Error al guardar métricas: ${error.message}` }
-    }
 
-    return { success: true, count: rowsToUpsert.length }
+        // Use only valid days that have at least one field filled
+        const validInputs = inputs.filter(i =>
+            i.weight_kg !== undefined ||
+            i.steps !== undefined ||
+            i.sleep_h !== undefined ||
+            i.notes !== undefined
+        )
+
+        if (validInputs.length === 0) return { success: true, count: 0, sessionExpired: false }
+
+        const rowsToUpsert = validInputs.map(input => ({
+            client_id: context.id,
+            coach_id: context.coach_id,
+            metric_date: input.metric_date,
+            weight_kg: input.weight_kg ?? null,
+            steps: input.steps ?? null,
+            sleep_h: input.sleep_h ?? null,
+            notes: input.notes ?? null,
+        }))
+
+        const { error } = await supabase
+            .from('client_metrics')
+            .upsert(rowsToUpsert, { onConflict: 'client_id,metric_date' })
+
+        if (error) {
+            console.error('[saveClientMetricsBulk] Error upsert:', error.code, error.message, error.details, error.hint)
+            if (error.code === '42501' || error.message?.includes('row-level security')) {
+                return { success: false, error: 'Sin permiso para guardar estas fechas. Recarga la página e intenta de nuevo.', sessionExpired: false }
+            }
+            return { success: false, error: `Error al guardar métricas: ${error.message}`, sessionExpired: false }
+        }
+
+        return { success: true, count: rowsToUpsert.length, sessionExpired: false }
+    } catch (err) {
+        console.error('[saveClientMetricsBulk] Unexpected throw:', err)
+        return {
+            success: false,
+            error: 'Error inesperado al guardar. Por favor recarga la página.',
+            sessionExpired: false
+        }
+    }
 }
 
 export async function getRecentClientMetrics(limit = 10) {
