@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -127,12 +128,19 @@ export function CoachSidebar() {
                         'flex items-center gap-3 p-4 border-b border-border',
                         collapsed && 'justify-center'
                     )}>
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                            <span className="font-black text-sm text-primary tracking-tight">NT</span>
+                        <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                            <Image
+                                src="/Logo_nexttrain.png"
+                                alt="NexTrain"
+                                width={40}
+                                height={40}
+                                className="object-contain"
+                                priority
+                            />
                         </div>
                         {!collapsed && (
                             <div>
-                                <h1 className="font-bold text-lg">NextTrain</h1>
+                                <h1 className="font-bold text-lg">NexTrain</h1>
                                 <p className="text-xs text-muted-foreground">Coach Portal</p>
                             </div>
                         )}

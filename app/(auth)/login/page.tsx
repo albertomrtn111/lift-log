@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Dumbbell, Loader2 } from 'lucide-react'
+import Image from 'next/image'
+import { Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -47,10 +48,17 @@ export default function LoginPage() {
     return (
         <Card className="w-full max-w-md p-8">
             <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                    <Dumbbell className="h-8 w-8 text-primary" />
+                <div className="w-16 h-16 flex items-center justify-center mb-4">
+                    <Image
+                        src="/Logo_nexttrain.png"
+                        alt="NexTrain"
+                        width={64}
+                        height={64}
+                        className="object-contain"
+                        priority
+                    />
                 </div>
-                <h1 className="text-2xl font-bold">NextTrain</h1>
+                <h1 className="text-2xl font-bold">NexTrain</h1>
                 <p className="text-muted-foreground text-sm mt-1">Inicia sesión para continuar</p>
             </div>
 
