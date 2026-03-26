@@ -74,6 +74,21 @@ export async function sendMessageAction(
         return { success: false, error: error.message }
     }
 
+    // Send push notification to the client (best-effort, non-blocking)
+    if (data) {
+        try {
+            const { sendPushToClient } = await import('@/lib/push')
+            await sendPushToClient(clientId, {
+                title: 'Tu entrenador',
+                body: trimmed.length > 100 ? trimmed.substring(0, 97) + '...' : trimmed,
+                url: '/chat',
+                tag: 'new-message',
+            })
+        } catch {
+            // Silencioso: notificaciones son best-effort
+        }
+    }
+
     return { success: true, message: data as Message }
 }
 

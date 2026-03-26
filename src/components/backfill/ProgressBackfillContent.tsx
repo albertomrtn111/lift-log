@@ -72,10 +72,10 @@ export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBa
 
     const inputs: ClientMetricInput[] = Object.values(data).map(d => ({
       metric_date: d.date,
-      weight_kg: d.weight,
-      steps: d.steps,
-      sleep_h: d.sleepHours,
-      notes: d.notes
+      weight_kg: d.weight !== undefined && !isNaN(d.weight) ? d.weight : undefined,
+      steps: d.steps !== undefined && !isNaN(d.steps) ? d.steps : undefined,
+      sleep_h: d.sleepHours !== undefined && !isNaN(d.sleepHours) ? d.sleepHours : undefined,
+      notes: d.notes || undefined
     }));
 
     const result = await saveClientMetricsBulk(inputs);

@@ -33,7 +33,8 @@ async function getClientContext() {
         .from('clients')
         .select('id, coach_id')
         .eq('auth_user_id', user.id)
-        .single()
+        .eq('status', 'active')
+        .maybeSingle()
 
     if (clientError || !client) return null
     return { ...client, userId: user.id }
@@ -83,11 +84,11 @@ export async function saveClientMetrics(input: ClientMetricInput) {
         .upsert(payload, { onConflict: 'client_id,metric_date' })
 
     if (error) {
-        console.error('Error saving metrics:', error)
+        console.error('[saveClientMetrics] Error upsert:', error.code, error.message, error.details, error.hint)
         if (error.code === '42501' || error.message?.includes('row-level security')) {
-            return { success: false, error: 'Tu sesión ha expirado. Por favor recarga la página e intenta de nuevo.' }
+            return { success: false, error: 'Sin permiso para guardar esta fecha. Recarga la página e intenta de nuevo.' }
         }
-        return { success: false, error: error.message }
+        return { success: false, error: `Error al guardar: ${error.message}` }
     }
 
     return { success: true }
@@ -124,11 +125,11 @@ export async function saveClientMetricsBulk(inputs: ClientMetricInput[]) {
         .upsert(rowsToUpsert, { onConflict: 'client_id,metric_date' })
 
     if (error) {
-        console.error('Error in bulk metrics upsert:', error)
+        console.error('[saveClientMetricsBulk] Error upsert:', error.code, error.message, error.details, error.hint)
         if (error.code === '42501' || error.message?.includes('row-level security')) {
-            return { success: false, error: 'Tu sesión ha expirado. Por favor recarga la página e intenta de nuevo.' }
+            return { success: false, error: 'Sin permiso para guardar estas fechas. Recarga la página e intenta de nuevo.' }
         }
-        return { success: false, error: error.message }
+        return { success: false, error: `Error al guardar métricas: ${error.message}` }
     }
 
     return { success: true, count: rowsToUpsert.length }

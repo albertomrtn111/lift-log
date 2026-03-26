@@ -131,10 +131,28 @@ export async function approveReviewAction(reviewId: string) {
         .single()
 
     if (review?.checkin_id) {
+        // Get client_id from the checkin for the push notification
+        const { data: checkin } = await supabase
+            .from('checkins')
+            .select('client_id')
+            .eq('id', review.checkin_id)
+            .single()
+
         await supabase
             .from('checkins')
             .update({ status: 'approved' })
             .eq('id', review.checkin_id)
+
+        // Send push notification to the client
+        if (checkin?.client_id) {
+            const { sendPushToClient } = await import('@/lib/push')
+            await sendPushToClient(checkin.client_id, {
+                title: '¡Tu revisión ha sido revisada! ✅',
+                body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
+                url: '/summary',
+                tag: 'review-approved',
+            })
+        }
     }
 
     revalidatePath('/coach/clients')
