@@ -123,7 +123,7 @@ export async function approveReviewAction(reviewId: string) {
         return { success: false, error: 'Error al aprobar review' }
     }
 
-    // ── Mark checkin as approved (without changing next_checkin_date) ──
+    // Obtener checkin_id del review
     const { data: review } = await supabase
         .from('reviews')
         .select('checkin_id')
@@ -131,27 +131,62 @@ export async function approveReviewAction(reviewId: string) {
         .single()
 
     if (review?.checkin_id) {
-        // Get client_id from the checkin for the push notification
+        // Obtener client_id desde el checkin
         const { data: checkin } = await supabase
             .from('checkins')
             .select('client_id')
             .eq('id', review.checkin_id)
             .single()
 
+        // Marcar checkin como aprobado
         await supabase
             .from('checkins')
             .update({ status: 'approved' })
             .eq('id', review.checkin_id)
 
-        // Send push notification to the client
         if (checkin?.client_id) {
-            const { sendPushToClient } = await import('@/lib/push')
-            await sendPushToClient(checkin.client_id, {
-                title: '¡Tu revisión ha sido revisada! ✅',
-                body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
-                url: '/summary',
-                tag: 'review-approved',
-            })
+            // ── Avanzar next_checkin_date al siguiente ciclo del calendario ──
+            const { data: clientData } = await supabase
+                .from('clients')
+                .select('checkin_frequency_days, next_checkin_date')
+                .eq('id', checkin.client_id)
+                .single()
+
+            if (clientData) {
+                const freqDays = clientData.checkin_frequency_days ?? 14
+                const nextCheckinDate = clientData.next_checkin_date
+                    ? new Date(clientData.next_checkin_date + 'T12:00:00') // noon para evitar desfase UTC
+                    : new Date()
+
+                // Avanzar desde la fecha agendada (no desde hoy)
+                // Si sigue en el pasado, seguir sumando ciclos hasta fecha futura
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                const newDate = new Date(nextCheckinDate)
+                do {
+                    newDate.setDate(newDate.getDate() + freqDays)
+                } while (newDate < today)
+
+                const newDateStr = toLocalDateStr(newDate)
+
+                await supabase
+                    .from('clients')
+                    .update({ next_checkin_date: newDateStr })
+                    .eq('id', checkin.client_id)
+            }
+
+            // Enviar push notification al cliente
+            try {
+                const { sendPushToClient } = await import('@/lib/push')
+                await sendPushToClient(checkin.client_id, {
+                    title: '¡Tu revisión ha sido revisada! ✅',
+                    body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
+                    url: '/summary',
+                    tag: 'review-approved',
+                })
+            } catch {
+                // Silencioso: notificaciones son best-effort
+            }
         }
     }
 
@@ -516,7 +551,6 @@ export async function forceAdvanceCheckinAction(clientId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'No autenticado' }
 
-    // Obtener frecuencia del cliente
     const { data: client } = await supabase
         .from('clients')
         .select('checkin_frequency_days, next_checkin_date')
@@ -525,13 +559,21 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     if (!client) return { success: false, error: 'Cliente no encontrado' }
 
-    // Avanzar desde hoy (patada hacia adelante)
     const freqDays = client.checkin_frequency_days ?? 14
-    const nextDate = new Date()
-    nextDate.setDate(nextDate.getDate() + freqDays)
-    const nextDateStr = toLocalDateStr(nextDate)
+    const nextCheckinDate = client.next_checkin_date
+        ? new Date(client.next_checkin_date + 'T12:00:00')
+        : new Date()
 
-    // Actualizar next_checkin_date
+    // Avanzar desde la fecha agendada, no desde hoy
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const newDate = new Date(nextCheckinDate)
+    do {
+        newDate.setDate(newDate.getDate() + freqDays)
+    } while (newDate < today)
+
+    const nextDateStr = toLocalDateStr(newDate)
+
     const { error } = await supabase
         .from('clients')
         .update({ next_checkin_date: nextDateStr })
@@ -539,7 +581,7 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     if (error) return { success: false, error: error.message }
 
-    // Si hay algún checkin en estado reviewed sin revisión, marcarlo como approved
+    // Marcar cualquier checkin en 'reviewed' sin revisión como aprobado
     await supabase
         .from('checkins')
         .update({ status: 'approved' })

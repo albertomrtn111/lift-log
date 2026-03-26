@@ -21,6 +21,7 @@ export type PushPermissionState = 'default' | 'granted' | 'denied' | 'unsupporte
 export function usePushNotifications() {
     const [permissionState, setPermissionState] = useState<PushPermissionState>('default')
     const [isSubscribed, setIsSubscribed] = useState(false)
+    const [isServerSynced, setIsServerSynced] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
 
     // Comprobar soporte y estado inicial
@@ -83,9 +84,16 @@ export function usePushNotifications() {
 
             if (response.ok) {
                 setIsSubscribed(true)
+                setIsServerSynced(true)
                 return true
+            } else {
+                const errorData = await response.json().catch(() => ({}))
+                console.error('[push] Error guardando suscripción en servidor:', response.status, errorData)
+                // La suscripción existe en el browser pero no en el servidor
+                setIsSubscribed(true)
+                setIsServerSynced(false)
+                return false
             }
-            return false
         } catch (err) {
             console.error('[push] Error subscribing:', err)
             return false
@@ -112,6 +120,7 @@ export function usePushNotifications() {
 
             await subscription.unsubscribe()
             setIsSubscribed(false)
+            setIsServerSynced(false)
             return true
         } catch (err) {
             console.error('[push] Error unsubscribing:', err)
@@ -121,5 +130,5 @@ export function usePushNotifications() {
         }
     }, [])
 
-    return { permissionState, isSubscribed, isLoading, subscribe, unsubscribe }
+    return { permissionState, isSubscribed, isServerSynced, isLoading, subscribe, unsubscribe }
 }
