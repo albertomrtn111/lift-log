@@ -28,6 +28,7 @@ import {
     Plus,
     Calendar,
     Utensils,
+    FlaskConical,
     Settings2,
     CalendarDays,
     MoreVertical,
@@ -42,6 +43,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { PlanningTab } from './PlanningTab'
 import { DietTab } from '../tabs/DietTab'
+import { SupplementsPanel } from './plan/SupplementsPanel'
 
 interface PlanTabProps {
     coachId: string
@@ -84,6 +86,13 @@ export function PlanTab({
                     <Utensils className="h-4 w-4" />
                     Nutrición
                 </TabsTrigger>
+                <TabsTrigger
+                    value="supplements"
+                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                >
+                    <FlaskConical className="h-4 w-4" />
+                    Suplementación
+                </TabsTrigger>
             </TabsList>
 
             <TabsContent value="schedule" className="mt-0">
@@ -106,6 +115,10 @@ export function PlanTab({
 
             <TabsContent value="diet" className="mt-0">
                 <DietTab clientId={clientId} coachId={coachId} />
+            </TabsContent>
+
+            <TabsContent value="supplements" className="mt-0">
+                <SupplementsPanel clientId={clientId} coachId={coachId} />
             </TabsContent>
         </Tabs>
     )

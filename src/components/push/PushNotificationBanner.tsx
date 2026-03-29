@@ -18,7 +18,7 @@ function isRunningAsPWA(): boolean {
 }
 
 export function PushNotificationBanner() {
-    const { permissionState, isSubscribed, isLoading, subscribe } = usePushNotifications()
+    const { permissionState, isSubscribed, isServerSynced, isLoading, subscribe } = usePushNotifications()
     const [dismissed, setDismissed] = useState(false)
 
     // No mostrar si lo descartó, ya denegó permisos, o no hay soporte
@@ -26,8 +26,8 @@ export function PushNotificationBanner() {
         return null
     }
 
-    // Si ya está suscrito y con permiso, no mostrar
-    if (isSubscribed && permissionState === 'granted') {
+    // Solo ocultar si está completamente activo en servidor Y en browser
+    if (isSubscribed && isServerSynced && permissionState === 'granted') {
         return null
     }
 
@@ -59,16 +59,24 @@ export function PushNotificationBanner() {
         )
     }
 
-    // Banner normal: pedir permiso y suscribirse
+    // Estado especial: suscripción en browser pero no en servidor
+    const needsSync = isSubscribed && !isServerSynced && permissionState === 'granted'
+
+    // Banner normal o de reintento
     return (
         <div className="mx-4 mt-4 p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
             <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <Bell className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">Activa las notificaciones</p>
+                <p className="text-sm font-medium text-foreground">
+                    {needsSync ? 'Notificaciones pendientes de activar' : 'Activa las notificaciones'}
+                </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                    Recibe avisos cuando tu entrenador te manda un mensaje o revisa tu check-in.
+                    {needsSync
+                        ? 'Las notificaciones no se guardaron correctamente. Pulsa para reintentar.'
+                        : 'Recibe avisos cuando tu entrenador te manda un mensaje o revisa tu check-in.'
+                    }
                 </p>
                 <div className="flex gap-2 mt-3">
                     <Button
@@ -77,16 +85,18 @@ export function PushNotificationBanner() {
                         disabled={isLoading}
                         className="text-xs h-8"
                     >
-                        {isLoading ? 'Activando...' : 'Activar'}
+                        {isLoading ? 'Activando...' : needsSync ? 'Reintentar' : 'Activar'}
                     </Button>
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDismissed(true)}
-                        className="text-xs h-8"
-                    >
-                        Ahora no
-                    </Button>
+                    {!needsSync && (
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDismissed(true)}
+                            className="text-xs h-8"
+                        >
+                            Ahora no
+                        </Button>
+                    )}
                 </div>
             </div>
             <button

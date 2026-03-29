@@ -34,20 +34,53 @@ export function usePushNotifications() {
         setPermissionState(Notification.permission as PushPermissionState)
     }, [])
 
-    // Registrar service worker y comprobar suscripción existente
+    // Registrar service worker y comprobar/re-sincronizar suscripción existente
     useEffect(() => {
         if (permissionState === 'unsupported') return
 
-        async function checkSubscription() {
+        async function checkAndSyncSubscription() {
             try {
                 const reg = await navigator.serviceWorker.register('/sw.js')
+                await navigator.serviceWorker.ready
+
                 const existing = await reg.pushManager.getSubscription()
-                setIsSubscribed(!!existing)
+                if (!existing) {
+                    setIsSubscribed(false)
+                    setIsServerSynced(false)
+                    return
+                }
+
+                setIsSubscribed(true)
+
+                // Intentar re-sincronizar con el servidor siempre que carguemos
+                // (el servidor hace upsert, así que es idempotente)
+                try {
+                    const subJson = existing.toJSON()
+                    const response = await fetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            endpoint: subJson.endpoint,
+                            keys: subJson.keys,
+                            userAgent: navigator.userAgent,
+                        }),
+                    })
+                    if (response.ok) {
+                        setIsServerSynced(true)
+                    } else {
+                        const errData = await response.json().catch(() => ({}))
+                        console.error('[push] Re-sync falló:', response.status, errData)
+                        setIsServerSynced(false)
+                    }
+                } catch (syncErr) {
+                    console.error('[push] Error en re-sync:', syncErr)
+                    setIsServerSynced(false)
+                }
             } catch (err) {
                 console.error('[push] Error checking subscription:', err)
             }
         }
-        checkSubscription()
+        checkAndSyncSubscription()
     }, [permissionState])
 
     const subscribe = useCallback(async (): Promise<boolean> => {

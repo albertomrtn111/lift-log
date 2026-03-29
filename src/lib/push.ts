@@ -59,7 +59,7 @@ export async function sendPushToClient(
         }
 
         if (!subscriptions || subscriptions.length === 0) {
-            console.log(`[push] Cliente ${clientId} no tiene suscripciones activas`)
+            console.warn(`[push] ⚠️ Cliente ${clientId} no tiene suscripciones en DB. ¿Se registró correctamente?`)
             return
         }
 

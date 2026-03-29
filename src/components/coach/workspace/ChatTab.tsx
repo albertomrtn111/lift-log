@@ -106,6 +106,7 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
             sender_role: 'coach',
             sender_id: '',
             content,
+            message_type: 'chat',
             read_at: null,
             created_at: new Date().toISOString(),
         }
@@ -188,31 +189,44 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
                         </p>
                     </div>
                 ) : (
-                    messages.map(msg => (
-                        <div
-                            key={msg.id}
-                            className={cn(
-                                'flex flex-col max-w-[80%]',
-                                msg.sender_role === 'coach'
-                                    ? 'ml-auto items-end'
-                                    : 'mr-auto items-start'
-                            )}
-                        >
+                    messages.map(msg => {
+                        const isReviewFeedback = msg.message_type === 'review_feedback'
+                        const isCoach = msg.sender_role === 'coach'
+
+                        return (
                             <div
+                                key={msg.id}
                                 className={cn(
-                                    'rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words',
-                                    msg.sender_role === 'coach'
-                                        ? 'bg-primary/10 text-foreground rounded-br-md'
-                                        : 'bg-muted/30 text-foreground rounded-bl-md'
+                                    'flex flex-col max-w-[80%]',
+                                    isCoach
+                                        ? 'ml-auto items-end'
+                                        : 'mr-auto items-start'
                                 )}
                             >
-                                {msg.content}
+                                <div
+                                    className={cn(
+                                        'rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words',
+                                        isReviewFeedback
+                                            ? 'bg-rose-500/10 border border-rose-500/20 text-foreground rounded-br-md'
+                                            : isCoach
+                                                ? 'bg-primary/10 text-foreground rounded-br-md'
+                                                : 'bg-muted/30 text-foreground rounded-bl-md'
+                                    )}
+                                >
+                                    {isReviewFeedback && (
+                                        <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-rose-500/20">
+                                            <MessageSquare className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                                            <span className="text-xs font-semibold text-rose-400">Feedback de revisión</span>
+                                        </div>
+                                    )}
+                                    {msg.content}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground mt-1 px-1">
+                                    {formatTimestamp(msg.created_at)}
+                                </span>
                             </div>
-                            <span className="text-[10px] text-muted-foreground mt-1 px-1">
-                                {formatTimestamp(msg.created_at)}
-                            </span>
-                        </div>
-                    ))
+                        )
+                    })
                 )}
                 <div ref={messagesEndRef} />
             </div>
