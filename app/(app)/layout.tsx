@@ -13,7 +13,7 @@ export default function AppLayout({
     // This allows instant navigation between tabs
     return (
         <ClientAppProvider>
-            <div className="min-h-screen bg-background">
+            <div className="min-h-screen bg-background safe-area-inset-top">
                 <PushNotificationBanner />
                 <main className="pb-24">
                     {children}
