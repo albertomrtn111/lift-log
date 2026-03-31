@@ -1,0 +1,30 @@
+services:
+  nexttrain_app:
+    container_name: nexttrain_app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      # HTTPS
+      - "traefik.http.routers.nexttrain.rule=Host(`nexttrain.ascenttech.cloud`)"
+      - "traefik.http.routers.nexttrain.entrypoints=websecure"
+      - "traefik.http.routers.nexttrain.tls=true"
+      - "traefik.http.services.nexttrain.loadbalancer.server.port=3000"
+      # HTTP -> HTTPS redirect
+      - "traefik.http.routers.nexttrain_http.rule=Host(`nexttrain.ascenttech.cloud`)"
+      - "traefik.http.routers.nexttrain_http.entrypoints=web"
+      - "traefik.http.routers.nexttrain_http.middlewares=nexttrain_https_redirect"
+      - "traefik.http.middlewares.nexttrain_https_redirect.redirectscheme.scheme=https"
+networks:
+  traefik:
+    external: true
