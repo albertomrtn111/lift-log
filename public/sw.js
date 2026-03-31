@@ -21,7 +21,7 @@ self.addEventListener('push', (event) => {
     const options = {
         body: data.body || '',
         icon: data.icon || '/icons/icon-192x192.png',
-        badge: data.badge || '/icons/badge-72x72.png',
+        // badge eliminado — el archivo badge-72x72.png no existe y puede causar errores en iOS
         tag: data.tag || 'default',
         renotify: true,
         data: {

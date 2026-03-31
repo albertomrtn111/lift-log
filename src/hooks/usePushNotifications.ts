@@ -23,6 +23,7 @@ export function usePushNotifications() {
     const [isSubscribed, setIsSubscribed] = useState(false)
     const [isServerSynced, setIsServerSynced] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
+    const [lastError, setLastError] = useState<string | null>(null)
 
     // Comprobar soporte y estado inicial
     useEffect(() => {
@@ -87,6 +88,7 @@ export function usePushNotifications() {
         if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return false
 
         setIsLoading(true)
+        setLastError(null)
         try {
             // 1. Pedir permiso si no se ha dado
             const permission = await Notification.requestPermission()
@@ -121,14 +123,16 @@ export function usePushNotifications() {
                 return true
             } else {
                 const errorData = await response.json().catch(() => ({}))
-                console.error('[push] Error guardando suscripción en servidor:', response.status, errorData)
+                console.error('[push] ❌ Servidor rechazó la suscripción:', response.status, JSON.stringify(errorData))
+                setLastError(`Error ${response.status}: ${errorData?.error || 'Servidor rechazó la suscripción'}`)
                 // La suscripción existe en el browser pero no en el servidor
                 setIsSubscribed(true)
                 setIsServerSynced(false)
                 return false
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('[push] Error subscribing:', err)
+            setLastError(err?.message || 'Error desconocido al suscribirse')
             return false
         } finally {
             setIsLoading(false)
@@ -163,5 +167,5 @@ export function usePushNotifications() {
         }
     }, [])
 
-    return { permissionState, isSubscribed, isServerSynced, isLoading, subscribe, unsubscribe }
+    return { permissionState, isSubscribed, isServerSynced, isLoading, subscribe, unsubscribe, lastError }
 }

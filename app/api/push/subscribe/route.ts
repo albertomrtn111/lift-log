@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getUserContext } from '@/lib/auth/get-user-context'
 
 export async function POST(request: NextRequest) {
     try {
@@ -14,13 +13,25 @@ export async function POST(request: NextRequest) {
 
         console.log('[push/subscribe] User:', user.id, user.email)
 
-        const context = await getUserContext(user.id)
-        console.log('[push/subscribe] Context: isClient=', context.isClient, 'clientId=', context.clientId, 'isCoach=', context.isCoach)
+        // Consultar clients directamente — más robusto que depender de get_my_roles()
+        const { data: clientRow, error: clientError } = await supabase
+            .from('clients')
+            .select('id, coach_id, status')
+            .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
+            .eq('status', 'active')
+            .maybeSingle()
 
-        if (!context.isClient || !context.clientId) {
-            console.error('[push/subscribe] ❌ User is not a client! isClient:', context.isClient, 'clientId:', context.clientId)
-            return NextResponse.json({ error: 'Not a client', debug: { isClient: context.isClient, clientId: context.clientId } }, { status: 403 })
+        if (clientError) {
+            console.error('[push/subscribe] Error querying clients:', clientError)
+            return NextResponse.json({ error: 'DB error', detail: clientError.message }, { status: 500 })
         }
+
+        if (!clientRow) {
+            console.error('[push/subscribe] ❌ No active client record for user:', user.id)
+            return NextResponse.json({ error: 'Not a client' }, { status: 403 })
+        }
+
+        console.log('[push/subscribe] Client found:', clientRow.id, 'coach:', clientRow.coach_id)
 
         const body = await request.json()
         const { endpoint, keys, userAgent } = body
@@ -30,12 +41,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid subscription data' }, { status: 400 })
         }
 
-        console.log('[push/subscribe] Saving subscription for client:', context.clientId, 'endpoint:', endpoint.substring(0, 50))
+        console.log('[push/subscribe] Saving for client:', clientRow.id, 'endpoint:', endpoint.substring(0, 60) + '...')
 
-        const { error } = await supabase
+        const { error: upsertError } = await supabase
             .from('push_subscriptions')
             .upsert({
-                client_id: context.clientId,
+                client_id: clientRow.id,
                 endpoint,
                 p256dh: keys.p256dh,
                 auth: keys.auth,
@@ -45,13 +56,13 @@ export async function POST(request: NextRequest) {
                 onConflict: 'client_id,endpoint',
             })
 
-        if (error) {
-            console.error('[push/subscribe] ❌ DB upsert error:', error.code, error.message, error.details, error.hint)
-            return NextResponse.json({ error: 'Failed to save subscription', detail: error.message }, { status: 500 })
+        if (upsertError) {
+            console.error('[push/subscribe] ❌ Upsert error:', upsertError.code, upsertError.message, upsertError.details, upsertError.hint)
+            return NextResponse.json({ error: 'Failed to save', detail: upsertError.message }, { status: 500 })
         }
 
-        console.log('[push/subscribe] ✅ Subscription saved for client:', context.clientId)
-        return NextResponse.json({ success: true })
+        console.log('[push/subscribe] ✅ Subscription saved for client:', clientRow.id)
+        return NextResponse.json({ success: true, clientId: clientRow.id })
 
     } catch (error) {
         console.error('[push/subscribe] Unexpected error:', error)
@@ -67,10 +78,7 @@ export async function DELETE(request: NextRequest) {
 
         const body = await request.json()
         const { endpoint } = body
-
-        if (!endpoint) {
-            return NextResponse.json({ error: 'Missing endpoint' }, { status: 400 })
-        }
+        if (!endpoint) return NextResponse.json({ error: 'Missing endpoint' }, { status: 400 })
 
         await supabase
             .from('push_subscriptions')

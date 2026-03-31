@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/auth/get-user-context'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 
 // Solo accesible para coaches — envía notificación de prueba a un clientId
 export async function POST(request: NextRequest) {
@@ -16,6 +17,16 @@ export async function POST(request: NextRequest) {
     const { clientId } = await request.json()
     if (!clientId) return NextResponse.json({ error: 'clientId requerido' }, { status: 400 })
 
+    // Verificar cuántas suscripciones tiene el cliente
+    const admin = createSupabaseAdmin(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { count } = await admin
+        .from('push_subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+
     const { sendPushToClient } = await import('@/lib/push')
     await sendPushToClient(clientId, {
         title: '🔔 Notificación de prueba',
@@ -24,5 +35,10 @@ export async function POST(request: NextRequest) {
         tag: 'test',
     })
 
-    return NextResponse.json({ success: true, message: 'Notificación enviada (revisa los logs del servidor)' })
+    return NextResponse.json({
+        success: true,
+        message: `Notificación enviada. Suscripciones en DB: ${count ?? 0}`,
+        clientId,
+        subscriptionCount: count ?? 0,
+    })
 }

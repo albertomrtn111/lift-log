@@ -18,7 +18,7 @@ function isRunningAsPWA(): boolean {
 }
 
 export function PushNotificationBanner() {
-    const { permissionState, isSubscribed, isServerSynced, isLoading, subscribe } = usePushNotifications()
+    const { permissionState, isSubscribed, isServerSynced, isLoading, subscribe, lastError } = usePushNotifications()
     const [dismissed, setDismissed] = useState(false)
 
     // No mostrar si lo descartó, ya denegó permisos, o no hay soporte
@@ -98,6 +98,9 @@ export function PushNotificationBanner() {
                         </Button>
                     )}
                 </div>
+                {lastError && (
+                    <p className="text-xs text-destructive mt-1">{lastError}</p>
+                )}
             </div>
             <button
                 onClick={() => setDismissed(true)}

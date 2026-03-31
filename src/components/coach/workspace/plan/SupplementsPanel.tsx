@@ -50,13 +50,16 @@ interface SupplementsPanelProps {
     clientId: string
 }
 
-const DOSE_UNITS = ['g', 'mg', 'ml', 'cápsulas', 'UI', 'otro'] as const
+const WEIGHT_UNITS = ['g', 'mg', 'ml'] as const
+const UNIT_UNITS = ['pastillas', 'cápsulas', 'comprimidos', 'UI'] as const
+const ALL_DOSE_UNITS = [...WEIGHT_UNITS, ...UNIT_UNITS, 'otro'] as const
 
 interface FormState {
     supplement_name: string
     dose_amount: string
     dose_unit: string
     custom_unit: string
+    dose_mode: 'weight' | 'units'
     daily_doses: number
     dose_schedule: string[]
     notes: string
@@ -70,6 +73,7 @@ function freshForm(): FormState {
         dose_amount: '',
         dose_unit: 'g',
         custom_unit: '',
+        dose_mode: 'weight',
         daily_doses: 1,
         dose_schedule: [''],
         notes: '',
@@ -79,12 +83,14 @@ function freshForm(): FormState {
 }
 
 function supplementToForm(s: ClientSupplement): FormState {
-    const isCustom = !DOSE_UNITS.includes(s.dose_unit as any)
+    const isCustom = !ALL_DOSE_UNITS.includes(s.dose_unit as any)
+    const dose_mode: 'weight' | 'units' = (UNIT_UNITS as readonly string[]).includes(s.dose_unit) ? 'units' : 'weight'
     return {
         supplement_name: s.supplement_name,
         dose_amount: String(s.dose_amount),
         dose_unit: isCustom ? 'otro' : s.dose_unit,
         custom_unit: isCustom ? s.dose_unit : '',
+        dose_mode,
         daily_doses: s.daily_doses,
         dose_schedule: s.dose_schedule.length > 0 ? [...s.dose_schedule] : [''],
         notes: s.notes || '',
@@ -309,15 +315,46 @@ export function SupplementsPanel({ coachId, clientId }: SupplementsPanelProps) {
                             />
                         </div>
 
-                        {/* Dose Amount + Unit */}
+                        {/* Tipo de dosificación */}
+                        <div className="space-y-2">
+                            <Label>Tipo de dosis</Label>
+                            <div className="flex rounded-lg border overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setForm(prev => ({ ...prev, dose_mode: 'weight', dose_unit: 'g' }))}
+                                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                                        form.dose_mode === 'weight'
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-background text-muted-foreground hover:bg-muted'
+                                    }`}
+                                >
+                                    Peso / Volumen
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setForm(prev => ({ ...prev, dose_mode: 'units', dose_unit: 'pastillas' }))}
+                                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors border-l ${
+                                        form.dose_mode === 'units'
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-background text-muted-foreground hover:bg-muted'
+                                    }`}
+                                >
+                                    Pastillas / Cápsulas
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Cantidad + Unidad en función del modo */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Cantidad por toma *</Label>
+                                <Label>
+                                    {form.dose_mode === 'weight' ? 'Cantidad por toma *' : 'Unidades por toma *'}
+                                </Label>
                                 <Input
                                     type="number"
-                                    step="0.1"
+                                    step={form.dose_mode === 'weight' ? '0.1' : '1'}
                                     min="0"
-                                    placeholder="5"
+                                    placeholder={form.dose_mode === 'weight' ? '5' : '1'}
                                     value={form.dose_amount}
                                     onChange={(e) => setForm(prev => ({ ...prev, dose_amount: e.target.value }))}
                                 />
@@ -332,9 +369,22 @@ export function SupplementsPanel({ coachId, clientId }: SupplementsPanelProps) {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {DOSE_UNITS.map(u => (
-                                            <SelectItem key={u} value={u}>{u}</SelectItem>
-                                        ))}
+                                        {form.dose_mode === 'weight' ? (
+                                            <>
+                                                <SelectItem value="g">g (gramos)</SelectItem>
+                                                <SelectItem value="mg">mg (miligramos)</SelectItem>
+                                                <SelectItem value="ml">ml (mililitros)</SelectItem>
+                                                <SelectItem value="otro">Otro...</SelectItem>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <SelectItem value="pastillas">pastillas</SelectItem>
+                                                <SelectItem value="cápsulas">cápsulas</SelectItem>
+                                                <SelectItem value="comprimidos">comprimidos</SelectItem>
+                                                <SelectItem value="UI">UI (unidades internacionales)</SelectItem>
+                                                <SelectItem value="otro">Otro...</SelectItem>
+                                            </>
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>
