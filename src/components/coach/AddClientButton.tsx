@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -18,12 +25,29 @@ import { Plus, Loader2, Send, Save, Copy, Check, Eye, EyeOff } from 'lucide-reac
 import { createClientAction } from './actions'
 import { sendInviteAction } from './invite-actions'
 import { useToast } from '@/hooks/use-toast'
+import { FormTemplate } from '@/types/forms'
 
 interface AddClientButtonProps {
     coachId: string
+    formTemplates: FormTemplate[]
 }
 
-export function AddClientButton({ coachId }: AddClientButtonProps) {
+const NONE_TEMPLATE_VALUE = '__none__'
+
+function getActiveTemplatesByType(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
+    return formTemplates
+        .filter((template) => template.type === type && template.is_active)
+        .sort((a, b) => {
+            if (a.is_default === b.is_default) return a.title.localeCompare(b.title)
+            return a.is_default ? -1 : 1
+        })
+}
+
+function getDefaultTemplateId(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
+    return getActiveTemplatesByType(formTemplates, type).find((template) => template.is_default)?.id ?? NONE_TEMPLATE_VALUE
+}
+
+export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
     const [error, setError] = useState<string | null>(null)
@@ -43,7 +67,12 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
         payment_amount: '',
         payment_day: '',
         payment_notes: '',
+        checkin_template_id: getDefaultTemplateId(formTemplates, 'checkin'),
+        onboarding_template_id: getDefaultTemplateId(formTemplates, 'onboarding'),
     })
+
+    const activeCheckinTemplates = getActiveTemplatesByType(formTemplates, 'checkin')
+    const activeOnboardingTemplates = getActiveTemplatesByType(formTemplates, 'onboarding')
 
     const resetForm = () => {
         setFormData({
@@ -57,6 +86,8 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
             payment_amount: '',
             payment_day: '',
             payment_notes: '',
+            checkin_template_id: getDefaultTemplateId(formTemplates, 'checkin'),
+            onboarding_template_id: getDefaultTemplateId(formTemplates, 'onboarding'),
         })
         setError(null)
         setCopied(false)
@@ -112,6 +143,8 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                 payment_amount: formData.payment_amount ? parseFloat(formData.payment_amount) : undefined,
                 payment_day: formData.payment_day ? parseInt(formData.payment_day) : undefined,
                 payment_notes: formData.payment_notes || undefined,
+                checkin_template_id: formData.checkin_template_id !== NONE_TEMPLATE_VALUE ? formData.checkin_template_id : undefined,
+                onboarding_template_id: formData.onboarding_template_id !== NONE_TEMPLATE_VALUE ? formData.onboarding_template_id : undefined,
             })
 
             if (!result.success || !result.client) {
@@ -252,6 +285,57 @@ export function AddClientButton({ coachId }: AddClientButtonProps) {
                                 required
                                 disabled={isPending}
                             />
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-4 mt-4 space-y-3">
+                        <div>
+                            <Label className="text-sm font-medium">Formularios asignados</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Elige qué onboarding y qué check-in tendrá este cliente desde el primer momento.
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="checkin_template_id">Check-in</Label>
+                                <Select
+                                    value={formData.checkin_template_id}
+                                    onValueChange={(value) => setFormData({ ...formData, checkin_template_id: value })}
+                                    disabled={isPending}
+                                >
+                                    <SelectTrigger id="checkin_template_id">
+                                        <SelectValue placeholder="Selecciona un check-in" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
+                                        {activeCheckinTemplates.map((template) => (
+                                            <SelectItem key={template.id} value={template.id}>
+                                                {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="onboarding_template_id">Onboarding</Label>
+                                <Select
+                                    value={formData.onboarding_template_id}
+                                    onValueChange={(value) => setFormData({ ...formData, onboarding_template_id: value })}
+                                    disabled={isPending}
+                                >
+                                    <SelectTrigger id="onboarding_template_id">
+                                        <SelectValue placeholder="Selecciona un onboarding" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
+                                        {activeOnboardingTemplates.map((template) => (
+                                            <SelectItem key={template.id} value={template.id}>
+                                                {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
 

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ClientWithMeta } from '@/types/coach'
+import { FormTemplate } from '@/types/forms'
 import { StatusFilter } from '@/data/members'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,13 +18,15 @@ interface MembersPageClientProps {
     coachId: string
     initialStatusFilter: StatusFilter
     initialSearch: string
+    formTemplates: FormTemplate[]
 }
 
 export function MembersPageClient({
     clients,
     coachId,
     initialStatusFilter,
-    initialSearch
+    initialSearch,
+    formTemplates,
 }: MembersPageClientProps) {
     const router = useRouter()
     const [search, setSearch] = useState(initialSearch)
@@ -97,12 +100,12 @@ export function MembersPageClient({
                     </form>
 
                     {/* Add client button */}
-                    <AddClientButton coachId={coachId} />
+                    <AddClientButton coachId={coachId} formTemplates={formTemplates} />
                 </div>
             </Card>
 
             {/* Table */}
-            <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} />
+            <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} formTemplates={formTemplates} />
         </div>
     )
 }

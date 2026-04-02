@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Client } from '@/types/coach'
+import { FormTemplate } from '@/types/forms'
 import { ClientStatus } from '@/data/workspace'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -38,10 +39,11 @@ interface WorkspaceHeaderProps {
     client: Client
     clientStatus: ClientStatus | null
     coachId: string
+    formTemplates: FormTemplate[]
     onClientUpdated: () => void
 }
 
-export function WorkspaceHeader({ client, clientStatus, coachId, onClientUpdated }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, onClientUpdated }: WorkspaceHeaderProps) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const { displayName, initials } = getClientDisplayIdentity(client)
@@ -259,6 +261,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, onClientUpdated
 
             <EditClientModal
                 client={client}
+                formTemplates={formTemplates}
                 open={editModalOpen}
                 onOpenChange={setEditModalOpen}
                 onSuccess={onClientUpdated}

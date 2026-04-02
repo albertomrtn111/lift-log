@@ -31,6 +31,7 @@ export interface FormTemplate {
     title: string
     type: 'checkin' | 'onboarding' | 'general'
     schema: FormField[]
+    assigned_client_ids: string[]
     is_active: boolean
     created_at: string
     is_default: boolean
@@ -39,6 +40,12 @@ export interface FormTemplate {
 export interface CreateFormTemplateInput {
     title: string
     type: 'checkin' | 'onboarding' | 'general'
+    schema: FormField[]
+    assigned_client_ids?: string[]
+}
+
+export interface FormBuilderInitialData {
+    title: string
     schema: FormField[]
 }
 

@@ -4,10 +4,11 @@ import { TemplatesTable } from '@/components/coach/templates/TemplatesTable'
 import { CreateTemplateDialog } from '@/components/coach/templates/CreateTemplateDialog'
 import { CardioTemplateDialog } from '@/components/coach/templates/CardioTemplateDialog'
 import { ImportTemplateDialog } from '@/components/coach/templates/ImportTemplateDialog'
-import { FileText, Dumbbell, Heart, Plus, Upload } from 'lucide-react'
+import { FileText, Dumbbell, Heart, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AITemplateDialog } from '@/components/coach/templates/AITemplateDialog'
 
 export const metadata = {
     title: 'Plantillas de Entrenamiento | NextTrain Coach',
@@ -57,6 +58,14 @@ export default async function TemplatesPage() {
 
                     <TabsContent value="strength">
                         <div className="mb-6 flex justify-end gap-2">
+                            <AITemplateDialog
+                                defaultType="strength"
+                                trigger={
+                                    <Button variant="outline" className="gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary">
+                                        ✦ Generar con IA
+                                    </Button>
+                                }
+                            />
                             <ImportTemplateDialog
                                 trigger={
                                     <Button variant="outline" className="gap-2">
@@ -78,7 +87,15 @@ export default async function TemplatesPage() {
                     </TabsContent>
 
                     <TabsContent value="cardio">
-                        <div className="mb-6 flex justify-end">
+                        <div className="mb-6 flex justify-end gap-2">
+                            <AITemplateDialog
+                                defaultType="cardio"
+                                trigger={
+                                    <Button variant="outline" className="gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary">
+                                        ✦ Generar con IA
+                                    </Button>
+                                }
+                            />
                             <CardioTemplateDialog
                                 trigger={
                                     <Button>+ Nueva Sesión Cardio</Button>

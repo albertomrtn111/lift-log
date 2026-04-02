@@ -2,9 +2,17 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { Client } from '@/types/coach'
+import { FormTemplate } from '@/types/forms'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import {
     Dialog,
     DialogContent,
@@ -18,14 +26,79 @@ import { updateClientAction } from './actions'
 
 interface EditClientModalProps {
     client: Client
+    formTemplates: FormTemplate[]
     open: boolean
     onOpenChange: (open: boolean) => void
     onSuccess: () => void
 }
 
-export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditClientModalProps) {
+const NONE_TEMPLATE_VALUE = '__none__'
+
+function getActiveTemplatesByType(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
+    return formTemplates
+        .filter((template) => template.type === type && template.is_active)
+        .sort((a, b) => {
+            if (a.is_default === b.is_default) return a.title.localeCompare(b.title)
+            return a.is_default ? -1 : 1
+        })
+}
+
+function getExplicitTemplateIdForClient(
+    formTemplates: FormTemplate[],
+    clientId: string,
+    type: 'checkin' | 'onboarding'
+) {
+    return formTemplates.find((template) =>
+        template.type === type && (template.assigned_client_ids ?? []).includes(clientId)
+    )?.id
+}
+
+function getDefaultTemplateId(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
+    return getActiveTemplatesByType(formTemplates, type).find((template) => template.is_default)?.id
+}
+
+function getTemplateSelectionState(
+    formTemplates: FormTemplate[],
+    clientId: string,
+    type: 'checkin' | 'onboarding'
+) {
+    const explicitTemplateId = getExplicitTemplateIdForClient(formTemplates, clientId, type)
+    const resolvedTemplateId = explicitTemplateId ?? getDefaultTemplateId(formTemplates, type) ?? NONE_TEMPLATE_VALUE
+
+    return {
+        resolvedTemplateId,
+        explicitTemplateId,
+        isExplicit: Boolean(explicitTemplateId),
+    }
+}
+
+function resolveAssignmentPayload(params: {
+    selectedValue: string
+    initialResolvedValue: string
+    initialWasExplicit: boolean
+}) {
+    const { selectedValue, initialResolvedValue, initialWasExplicit } = params
+
+    if (selectedValue === NONE_TEMPLATE_VALUE) return null
+    if (!initialWasExplicit && selectedValue === initialResolvedValue) return null
+    return selectedValue
+}
+
+export function EditClientModal({ client, formTemplates, open, onOpenChange, onSuccess }: EditClientModalProps) {
     const [isPending, startTransition] = useTransition()
     const [error, setError] = useState<string | null>(null)
+    const [initialAssignmentState, setInitialAssignmentState] = useState({
+        checkinResolvedValue: NONE_TEMPLATE_VALUE,
+        checkinWasExplicit: false,
+        onboardingResolvedValue: NONE_TEMPLATE_VALUE,
+        onboardingWasExplicit: false,
+    })
+
+    const activeCheckinTemplates = getActiveTemplatesByType(formTemplates, 'checkin')
+    const activeOnboardingTemplates = getActiveTemplatesByType(formTemplates, 'onboarding')
+
+    const checkinSelection = getTemplateSelectionState(formTemplates, client.id, 'checkin')
+    const onboardingSelection = getTemplateSelectionState(formTemplates, client.id, 'onboarding')
 
     const [formData, setFormData] = useState({
         full_name: client.full_name,
@@ -37,10 +110,15 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
         payment_amount: client.payment_amount != null ? String(client.payment_amount) : '',
         payment_day: client.payment_day != null ? String(client.payment_day) : '',
         payment_notes: client.payment_notes || '',
+        checkin_template_id: checkinSelection.resolvedTemplateId,
+        onboarding_template_id: onboardingSelection.resolvedTemplateId,
     })
 
     // Reset form when client changes
     useEffect(() => {
+        const nextCheckinSelection = getTemplateSelectionState(formTemplates, client.id, 'checkin')
+        const nextOnboardingSelection = getTemplateSelectionState(formTemplates, client.id, 'onboarding')
+
         setFormData({
             full_name: client.full_name,
             email: client.email,
@@ -51,9 +129,17 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
             payment_amount: client.payment_amount != null ? String(client.payment_amount) : '',
             payment_day: client.payment_day != null ? String(client.payment_day) : '',
             payment_notes: client.payment_notes || '',
+            checkin_template_id: nextCheckinSelection.resolvedTemplateId,
+            onboarding_template_id: nextOnboardingSelection.resolvedTemplateId,
+        })
+        setInitialAssignmentState({
+            checkinResolvedValue: nextCheckinSelection.resolvedTemplateId,
+            checkinWasExplicit: nextCheckinSelection.isExplicit,
+            onboardingResolvedValue: nextOnboardingSelection.resolvedTemplateId,
+            onboardingWasExplicit: nextOnboardingSelection.isExplicit,
         })
         setError(null)
-    }, [client])
+    }, [client, formTemplates])
 
     // Auto-recalculate next_checkin_date when start_date or frequency changes
     const recalculateNextCheckin = (startDate: string, frequency: number) => {
@@ -96,6 +182,16 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
                 payment_amount: formData.payment_amount !== '' ? parseFloat(formData.payment_amount) : null,
                 payment_day: formData.payment_day !== '' ? parseInt(formData.payment_day) : null,
                 payment_notes: formData.payment_notes || undefined,
+                checkin_template_id: resolveAssignmentPayload({
+                    selectedValue: formData.checkin_template_id,
+                    initialResolvedValue: initialAssignmentState.checkinResolvedValue,
+                    initialWasExplicit: initialAssignmentState.checkinWasExplicit,
+                }),
+                onboarding_template_id: resolveAssignmentPayload({
+                    selectedValue: formData.onboarding_template_id,
+                    initialResolvedValue: initialAssignmentState.onboardingResolvedValue,
+                    initialWasExplicit: initialAssignmentState.onboardingWasExplicit,
+                }),
             })
 
             if (result.success) {
@@ -196,6 +292,55 @@ export function EditClientModal({ client, open, onOpenChange, onSuccess }: EditC
                         <p className="text-xs text-muted-foreground">
                             Se recalcula automáticamente al cambiar fecha inicio o frecuencia
                         </p>
+                    </div>
+
+                    <div className="border-t pt-4 mt-2 space-y-3">
+                        <div>
+                            <Label className="text-sm font-medium">Formularios asignados</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Cambiarlo aquí actualiza también la asignación dentro de Formularios.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_checkin_template">Check-in</Label>
+                            <Select
+                                value={formData.checkin_template_id}
+                                onValueChange={(value) => setFormData({ ...formData, checkin_template_id: value })}
+                                disabled={isPending}
+                            >
+                                <SelectTrigger id="edit_checkin_template">
+                                    <SelectValue placeholder="Selecciona un check-in" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
+                                    {activeCheckinTemplates.map((template) => (
+                                        <SelectItem key={template.id} value={template.id}>
+                                            {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_onboarding_template">Onboarding</Label>
+                            <Select
+                                value={formData.onboarding_template_id}
+                                onValueChange={(value) => setFormData({ ...formData, onboarding_template_id: value })}
+                                disabled={isPending}
+                            >
+                                <SelectTrigger id="edit_onboarding_template">
+                                    <SelectValue placeholder="Selecciona un onboarding" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
+                                    {activeOnboardingTemplates.map((template) => (
+                                        <SelectItem key={template.id} value={template.id}>
+                                            {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="border-t pt-4 mt-2 space-y-3">

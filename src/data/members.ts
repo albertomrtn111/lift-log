@@ -181,6 +181,8 @@ export interface UpdateClientInput {
     payment_amount?: number | null
     payment_day?: number | null
     payment_notes?: string | null
+    checkin_template_id?: string | null
+    onboarding_template_id?: string | null
 }
 
 export interface UpdateClientResult {

@@ -3,6 +3,7 @@
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendReviewEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
+import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -36,21 +37,19 @@ export async function sendReviewAction(
     if (clientErr || !client) return { success: false, error: 'Cliente no encontrado' }
     if (!client.email) return { success: false, error: 'El cliente no tiene email configurado' }
 
-    // 3) Find default checkin template
-    const { data: template, error: tplErr } = await supabase
-        .from('form_templates')
-        .select('id')
-        .eq('coach_id', validatedCoachId)
-        .eq('type', 'checkin')
-        .eq('is_default', true)
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+    // 3) Resolve the assigned checkin template for this client.
+    // Falls back to the default active check-in template if the client
+    // has no explicit assignment yet.
+    const template = await resolveCheckinTemplateForClient({
+        supabase,
+        coachId: validatedCoachId,
+        clientId,
+    })
 
-    if (tplErr || !template) {
+    if (!template) {
         return {
             success: false,
-            error: 'No tienes una plantilla default de revisión. Crea una en Formularios y márcala como default.',
+            error: 'No tienes una plantilla de revisión disponible para este cliente. Asigna una en Formularios o define una por defecto.',
         }
     }
 

@@ -3,10 +3,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { revalidatePath } from 'next/cache'
-import { createReviewForCheckin, updateReview } from '@/data/workspace'
+import { ensureReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -74,17 +76,77 @@ export async function createReviewAction(
         return { success: false, error: e.message }
     }
 
-    // Validate coach_id against membership
-    const { coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId)
+    try {
+        // Validate coach_id against membership
+        const { coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId)
 
-    const review = await createReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
+        const review = await ensureReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
 
-    if (!review) {
-        return { success: false, error: 'Error al crear review' }
+        if (!review) {
+            return { success: false, error: 'Error al crear review' }
+        }
+
+        if (review.ai_status !== 'completed' || !review.ai_summary) {
+            const admin = createAdminClient()
+            await admin
+                .from('reviews')
+                .update({
+                    ai_status: 'pending',
+                    ai_summary: null,
+                    ai_error: null,
+                    ai_generated_at: null,
+                    analysis: null,
+                })
+                .eq('id', review.id)
+
+            void generateCheckinAnalysis(checkinId, review.id)
+        }
+
+        revalidatePath('/coach/clients')
+        return { success: true, review }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo crear la review'
+        return { success: false, error: message }
     }
+}
 
-    revalidatePath('/coach/clients')
-    return { success: true, review }
+export async function regenerateReviewAIAction(
+    coachId: string,
+    checkinId: string,
+    reviewId: string
+) {
+    try {
+        const { coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+
+        const admin = createAdminClient()
+        const { error: resetError } = await admin
+            .from('reviews')
+            .update({
+                ai_status: 'pending',
+                ai_summary: null,
+                ai_error: null,
+                ai_generated_at: null,
+                analysis: null,
+            })
+            .eq('id', reviewId)
+            .eq('checkin_id', checkinId)
+            .eq('coach_id', validatedCoachId)
+
+        if (resetError) {
+            return { success: false, error: resetError.message }
+        }
+
+        const result = await generateCheckinAnalysis(checkinId, reviewId)
+        if (!result.success) {
+            return { success: false, error: result.error || 'No se pudo regenerar el análisis IA' }
+        }
+
+        revalidatePath('/coach/clients')
+        return { success: true }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo regenerar el análisis IA'
+        return { success: false, error: message }
+    }
 }
 
 export async function updateReviewAction(

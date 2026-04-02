@@ -3,6 +3,7 @@
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ClientWithMeta } from '@/types/coach'
+import { FormTemplate } from '@/types/forms'
 import { StatusFilter } from '@/data/members'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -64,9 +65,10 @@ interface MembersTableProps {
     clients: ClientWithMeta[]
     statusFilter: StatusFilter
     coachId: string
+    formTemplates: FormTemplate[]
 }
 
-export function MembersTable({ clients, statusFilter, coachId }: MembersTableProps) {
+export function MembersTable({ clients, statusFilter, coachId, formTemplates }: MembersTableProps) {
     const router = useRouter()
 
     if (clients.length === 0) {
@@ -107,7 +109,13 @@ export function MembersTable({ clients, statusFilter, coachId }: MembersTablePro
                 </TableHeader>
                 <TableBody>
                     {clients.map((client) => (
-                        <ClientRow key={client.id} client={client} coachId={coachId} onUpdate={() => router.refresh()} />
+                        <ClientRow
+                            key={client.id}
+                            client={client}
+                            coachId={coachId}
+                            formTemplates={formTemplates}
+                            onUpdate={() => router.refresh()}
+                        />
                     ))}
                 </TableBody>
             </Table>
@@ -115,7 +123,17 @@ export function MembersTable({ clients, statusFilter, coachId }: MembersTablePro
     )
 }
 
-function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coachId: string; onUpdate: () => void }) {
+function ClientRow({
+    client,
+    coachId,
+    formTemplates,
+    onUpdate,
+}: {
+    client: ClientWithMeta
+    coachId: string
+    formTemplates: FormTemplate[]
+    onUpdate: () => void
+}) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
@@ -382,6 +400,7 @@ function ClientRow({ client, coachId, onUpdate }: { client: ClientWithMeta; coac
 
             <EditClientModal
                 client={client}
+                formTemplates={formTemplates}
                 open={editModalOpen}
                 onOpenChange={setEditModalOpen}
                 onSuccess={onUpdate}

@@ -76,6 +76,30 @@ export function NewClientWorkspace({
 
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'resumen')
 
+    // Persist selected client in localStorage so navigating away and back preserves selection
+    const STORAGE_KEY = 'coach_last_client_id'
+
+    const selectedClientId = selectedClient?.id || searchParams.get('client')
+
+    // On mount: if no ?client= param, redirect to the last stored client
+    useEffect(() => {
+        if (!searchParams.get('client')) {
+            const stored = localStorage.getItem(STORAGE_KEY)
+            // Only redirect if the stored client is still in the list
+            if (stored && clients.some(c => c.id === stored)) {
+                router.replace(`/coach/clients?client=${stored}&tab=${activeTab}`)
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Run once on mount
+
+    // Save selected client to localStorage whenever it changes
+    useEffect(() => {
+        if (selectedClientId) {
+            localStorage.setItem(STORAGE_KEY, selectedClientId)
+        }
+    }, [selectedClientId])
+
     const handleRefresh = useCallback(() => {
         router.refresh()
     }, [router])
@@ -83,8 +107,6 @@ export function NewClientWorkspace({
     const handleSwitchTab = useCallback((tab: string) => {
         setActiveTab(tab)
     }, [])
-
-    const selectedClientId = selectedClient?.id || searchParams.get('client')
 
     const handleClientChange = (clientId: string) => {
         router.push(`/coach/clients?client=${clientId}&tab=${activeTab}`)
@@ -192,6 +214,7 @@ export function NewClientWorkspace({
                         client={selectedClient}
                         clientStatus={clientStatus}
                         coachId={coachId}
+                        formTemplates={formTemplates}
                         onClientUpdated={handleRefresh}
                     />
 

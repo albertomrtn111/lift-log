@@ -1,6 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureReviewForCheckin } from '@/data/workspace'
+import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 
 interface SubmitFormResult {
     success: boolean
@@ -74,6 +77,52 @@ export async function submitFormAction(
         if (clientErr) {
             // Non-blocking: checkin was already saved, log the error
             console.error('[submitFormAction] Client onboarding update error:', clientErr)
+        }
+    }
+
+    // 8. For regular check-ins, ensure a review exists and launch AI analysis asynchronously.
+    if (!isOnboarding) {
+        try {
+            const admin = createAdminClient()
+            const { data: adminCheckin, error: adminCheckinError } = await admin
+                .from('checkins')
+                .select('id, coach_id, client_id')
+                .eq('id', checkinId)
+                .single()
+
+            if (adminCheckinError || !adminCheckin) {
+                console.error('[submitFormAction] Could not load checkin for AI review:', adminCheckinError)
+            } else {
+                const review = await ensureReviewForCheckin(
+                    adminCheckin.coach_id,
+                    adminCheckin.client_id,
+                    adminCheckin.id,
+                    null
+                )
+
+                if (!review) {
+                    console.error('[submitFormAction] Could not create or load review for AI analysis')
+                } else {
+                    const { error: reviewResetError } = await admin
+                        .from('reviews')
+                        .update({
+                            ai_status: 'pending',
+                            ai_summary: null,
+                            ai_error: null,
+                            ai_generated_at: null,
+                            analysis: null,
+                        })
+                        .eq('id', review.id)
+
+                    if (reviewResetError) {
+                        console.error('[submitFormAction] Could not reset AI review fields:', reviewResetError)
+                    } else {
+                        void generateCheckinAnalysis(checkinId, review.id)
+                    }
+                }
+            }
+        } catch (aiBootstrapError) {
+            console.error('[submitFormAction] AI bootstrap failed:', aiBootstrapError)
         }
     }
 

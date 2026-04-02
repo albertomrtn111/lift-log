@@ -1,9 +1,23 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Client } from '@/types/coach'
 
 // ============================================================================
 // TYPES
 // ============================================================================
+
+export interface AICheckinAnalysis {
+    overall_summary: string
+    body_metrics_summary: string
+    weight_trend_analysis: string
+    training_analysis: string
+    cardio_analysis: string
+    nutrition_analysis: string
+    adherence_analysis: string
+    coach_recommendations: string[]
+    suggested_changes: string[]
+    warnings_or_flags: string[]
+}
 
 export interface Review {
     id: string
@@ -14,10 +28,15 @@ export interface Review {
     summary: string | null
     analysis: Record<string, unknown> | null
     proposal: Record<string, unknown> | null
+    ai_status: 'idle' | 'pending' | 'completed' | 'failed'
+    ai_summary: string | null
+    ai_generated_at: string | null
+    ai_error: string | null
     message_to_client: string | null
     created_by: string | null
     approved_by: string | null
     created_at: string
+    updated_at?: string
 }
 
 export interface Checkin {
@@ -348,9 +367,9 @@ export async function createReviewForCheckin(
     coachId: string,
     clientId: string,
     checkinId: string,
-    createdBy: string
+    createdBy: string | null
 ): Promise<Review | null> {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase
         .from('reviews')
@@ -359,6 +378,7 @@ export async function createReviewForCheckin(
             client_id: clientId,
             checkin_id: checkinId,
             status: 'draft',
+            ai_status: 'idle',
             created_by: createdBy,
         })
         .select()
@@ -369,6 +389,32 @@ export async function createReviewForCheckin(
         return null
     }
     return data as Review
+}
+
+export async function ensureReviewForCheckin(
+    coachId: string,
+    clientId: string,
+    checkinId: string,
+    createdBy: string | null
+): Promise<Review | null> {
+    const supabase = createAdminClient()
+
+    const { data: existing, error: existingError } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('checkin_id', checkinId)
+        .maybeSingle()
+
+    if (existingError) {
+        console.error('Error loading existing review:', existingError)
+        return null
+    }
+
+    if (existing) {
+        return existing as Review
+    }
+
+    return createReviewForCheckin(coachId, clientId, checkinId, createdBy)
 }
 
 export async function updateReview(

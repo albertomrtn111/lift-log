@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -37,11 +37,13 @@ import {
 import { activateTrainingProgramAction, archiveTrainingProgramAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
 import { TrainingProgramWizard } from './plan/TrainingProgramWizard'
+import { AITrainingDialog } from './plan/AITrainingDialog'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { PlanningTab } from './PlanningTab'
 import { DietTab } from '../tabs/DietTab'
+import type { StrengthStructure } from '@/types/templates'
 
 interface PlanTabProps {
     coachId: string
@@ -150,6 +152,43 @@ function EntrenoSubtab({
     const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
     const [isArchiving, setIsArchiving] = useState(false)
 
+    // AI state
+    const [pendingAIStructure, setPendingAIStructure] = useState<StrengthStructure | null>(null)
+    const [pendingAIName, setPendingAIName] = useState<string | null>(null)
+    const [existingExercises, setExistingExercises] = useState<Array<{
+        dayName: string; exerciseName: string; sets?: number | null
+        reps?: string | null; rir?: string | null; restSeconds?: number | null; notes?: string | null
+    }>>([])
+
+    // Load existing exercises for AI context when active program changes
+    useEffect(() => {
+        if (!activeProgram) { setExistingExercises([]); return }
+        const supabase = createClient()
+        Promise.all([
+            supabase.from('training_days').select('id, name').eq('program_id', activeProgram.id),
+            supabase.from('training_exercises').select('day_id, exercise_name, sets, reps, rir, rest_seconds, notes').eq('program_id', activeProgram.id).order('order_index'),
+        ]).then(([{ data: days }, { data: exs }]) => {
+            if (!days || !exs) return
+            const dayMap = new Map(days.map((d: any) => [d.id, d.name]))
+            setExistingExercises(exs.map((e: any) => ({
+                dayName: dayMap.get(e.day_id) ?? 'Día',
+                exerciseName: e.exercise_name,
+                sets: e.sets,
+                reps: e.reps,
+                rir: e.rir != null ? String(e.rir) : null,
+                restSeconds: e.rest_seconds,
+                notes: e.notes,
+            })))
+        })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeProgram?.id])
+
+    function handleAIConfirm(structure: StrengthStructure, name: string, weeks: number) {
+        setPendingAIStructure({ ...structure, weeks })
+        setPendingAIName(name)
+        setWizardConfig({ isOpen: true, programId: null, step: 1 })
+    }
+
     const handleCreate = async () => {
         setLastError(null)
 
@@ -217,13 +256,30 @@ function EntrenoSubtab({
                         <Dumbbell className="h-5 w-5 text-primary" />
                         Programa activo
                     </h3>
-                    <Button
-                        size="sm"
-                        onClick={() => setWizardConfig({ isOpen: true, programId: null, step: 1 })}
-                    >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nuevo programa
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <AITrainingDialog
+                            existingProgram={activeProgram && existingExercises.length > 0
+                                ? { name: activeProgram.name, weeks: activeProgram.total_weeks, exercises: existingExercises }
+                                : null
+                            }
+                            onConfirm={handleAIConfirm}
+                            trigger={
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors font-medium"
+                                >
+                                    ✦ Generar con IA
+                                </button>
+                            }
+                        />
+                        <Button
+                            size="sm"
+                            onClick={() => setWizardConfig({ isOpen: true, programId: null, step: 1 })}
+                        >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Nuevo programa
+                        </Button>
+                    </div>
                 </div>
 
                 {activeProgram ? (
@@ -302,9 +358,13 @@ function EntrenoSubtab({
                     clientId={clientId}
                     isOpen={wizardConfig.isOpen}
                     initialStep={wizardConfig.step}
+                    pendingAIStructure={pendingAIStructure}
+                    pendingAIName={pendingAIName}
                     onOpenChange={(open) => setWizardConfig(prev => ({ ...prev, isOpen: open }))}
                     onClose={() => {
                         setWizardConfig({ isOpen: false, programId: null, step: 1 })
+                        setPendingAIStructure(null)
+                        setPendingAIName(null)
                         onRefresh()
                     }}
                 />

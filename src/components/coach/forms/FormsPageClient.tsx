@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { FormTemplate, FormField } from '@/types/forms'
+import { FormTemplate, FormField, FormBuilderInitialData } from '@/types/forms'
+import { Client } from '@/types/coach'
 import { FormBuilderModal } from './FormBuilderModal'
+import { AIFormDialog } from './AIFormDialog'
 import {
     createFormTemplate,
     updateFormTemplate,
@@ -51,6 +53,7 @@ import {
     Power,
     Trash2,
     FileText,
+    Sparkles,
 } from 'lucide-react'
 
 type TabType = 'onboarding' | 'checkin' | 'general'
@@ -63,18 +66,18 @@ const TAB_CONFIG: { value: TabType; label: string }[] = [
 
 interface FormsPageClientProps {
     templates: FormTemplate[]
+    activeClients: Pick<Client, 'id' | 'full_name'>[]
 }
 
-export function FormsPageClient({ templates }: FormsPageClientProps) {
+export function FormsPageClient({ templates, activeClients }: FormsPageClientProps) {
     const router = useRouter()
     const { toast } = useToast()
     const [isPending, startTransition] = useTransition()
     const [activeTab, setActiveTab] = useState<TabType>('onboarding')
     const [builderOpen, setBuilderOpen] = useState(false)
     const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null)
+    const [builderInitialData, setBuilderInitialData] = useState<FormBuilderInitialData | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<FormTemplate | null>(null)
-
-    const filteredTemplates = templates.filter((t) => t.type === activeTab)
 
     // -----------------------------------------------------------------------
     // Actions
@@ -82,23 +85,44 @@ export function FormsPageClient({ templates }: FormsPageClientProps) {
 
     const handleCreate = () => {
         setEditingTemplate(null)
+        setBuilderInitialData(null)
         setBuilderOpen(true)
     }
 
     const handleEdit = (template: FormTemplate) => {
+        setBuilderInitialData(null)
         setEditingTemplate(template)
         setBuilderOpen(true)
     }
 
-    const handleSave = async (data: { title: string; schema: FormField[] }) => {
+    const handleGeneratedDraft = (
+        type: Extract<TabType, 'onboarding' | 'checkin'>,
+        data: FormBuilderInitialData
+    ) => {
+        setEditingTemplate(null)
+        setBuilderInitialData(data)
+        setActiveTab(type)
+        setBuilderOpen(true)
+    }
+
+    const handleBuilderOpenChange = (open: boolean) => {
+        setBuilderOpen(open)
+        if (!open) {
+            setEditingTemplate(null)
+            setBuilderInitialData(null)
+        }
+    }
+
+    const handleSave = async (data: { title: string; schema: FormField[]; assigned_client_ids?: string[] }) => {
         if (editingTemplate) {
             const result = await updateFormTemplate(editingTemplate.id, {
                 title: data.title,
                 schema: data.schema,
+                assigned_client_ids: data.assigned_client_ids,
             })
             if (result.success) {
                 toast({ title: 'Plantilla actualizada' })
-                setBuilderOpen(false)
+                handleBuilderOpenChange(false)
                 router.refresh()
             } else {
                 toast({ title: 'Error', description: result.error, variant: 'destructive' })
@@ -108,10 +132,11 @@ export function FormsPageClient({ templates }: FormsPageClientProps) {
                 title: data.title,
                 type: activeTab,
                 schema: data.schema,
+                assigned_client_ids: data.assigned_client_ids,
             })
             if (result.success) {
                 toast({ title: 'Plantilla creada' })
-                setBuilderOpen(false)
+                handleBuilderOpenChange(false)
                 router.refresh()
             } else {
                 toast({ title: 'Error', description: result.error, variant: 'destructive' })
@@ -209,10 +234,25 @@ export function FormsPageClient({ templates }: FormsPageClientProps) {
                             )
                         })}
                     </TabsList>
-                    <Button onClick={handleCreate} className="gap-1.5 shrink-0">
-                        <Plus className="h-4 w-4" />
-                        Crear Plantilla
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <AIFormDialog
+                            defaultType={activeTab === 'general' ? 'onboarding' : activeTab}
+                            onGenerated={handleGeneratedDraft}
+                            trigger={
+                                <Button
+                                    variant="outline"
+                                    className="gap-2 shrink-0 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary"
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    Generar con IA
+                                </Button>
+                            }
+                        />
+                        <Button onClick={handleCreate} className="gap-1.5 shrink-0">
+                            <Plus className="h-4 w-4" />
+                            Crear Plantilla
+                        </Button>
+                    </div>
                 </div>
 
                 {TAB_CONFIG.map((tab) => (
@@ -233,9 +273,11 @@ export function FormsPageClient({ templates }: FormsPageClientProps) {
             {/* Builder Modal */}
             <FormBuilderModal
                 open={builderOpen}
-                onOpenChange={setBuilderOpen}
+                onOpenChange={handleBuilderOpenChange}
                 templateType={activeTab}
                 editingTemplate={editingTemplate}
+                initialData={builderInitialData}
+                activeClients={activeClients}
                 onSave={handleSave}
             />
 
@@ -317,7 +359,18 @@ function TemplateTable({
                         >
                             <TableCell>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-medium">{t.title}</span>
+                                    <div>
+                                        <span className="font-medium">{t.title}</span>
+                                        {(t.type === 'checkin' || t.type === 'onboarding') && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {(t.assigned_client_ids?.length ?? 0) > 0
+                                                    ? `${t.assigned_client_ids.length} atleta${t.assigned_client_ids.length === 1 ? '' : 's'} asignado${t.assigned_client_ids.length === 1 ? '' : 's'}`
+                                                    : t.is_default
+                                                        ? 'Plantilla por defecto'
+                                                        : 'Sin atletas asignados'}
+                                            </p>
+                                        )}
+                                    </div>
                                     {t.is_default && (
                                         <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20 text-[10px] px-1.5">
                                             <Star className="h-3 w-3 mr-0.5 fill-current" />

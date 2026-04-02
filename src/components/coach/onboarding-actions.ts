@@ -3,6 +3,7 @@
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendOnboardingEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
+import { resolveOnboardingTemplateForClient } from '@/data/form-templates'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -42,22 +43,20 @@ export async function sendOnboardingAction(
         return { success: false, error: 'El cliente no tiene email configurado' }
     }
 
-    // 3) Find default onboarding template
-    const { data: template, error: tplErr } = await supabase
-        .from('form_templates')
-        .select('id')
-        .eq('coach_id', validatedCoachId)
-        .eq('type', 'onboarding')
-        .eq('is_default', true)
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+    // 3) Resolve the assigned onboarding template for this client.
+    // Falls back to the default active onboarding template if the client
+    // has no explicit assignment yet.
+    const template = await resolveOnboardingTemplateForClient({
+        supabase,
+        coachId: validatedCoachId,
+        clientId,
+    })
 
-    if (tplErr || !template) {
+    if (!template) {
         return {
             success: false,
             error:
-                'No tienes una plantilla default de onboarding. Crea una en Formularios y márcala como default.',
+                'No tienes una plantilla de onboarding disponible para este cliente. Asigna una en Formularios o define una por defecto.',
         }
     }
 
@@ -71,7 +70,7 @@ export async function sendOnboardingAction(
         .eq('type', 'onboarding')
         .eq('status', 'pending')
 
-    // 5) Always create a fresh onboarding checkin with the current default template
+    // 5) Always create a fresh onboarding checkin with the resolved template
     const { data: newCheckin, error: insertErr } = await supabase
         .from('checkins')
         .insert({

@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CheckinWithReview } from '@/data/workspace'
+import type { CheckinWithReview } from '@/data/workspace'
 import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
 import {
@@ -12,10 +12,19 @@ import {
     Activity,
     ChevronRight,
     X,
+    Sparkles,
+    Loader2,
+    AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createReviewAction } from './actions'
+import { createReviewAction, regenerateReviewAIAction } from './actions'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
+import {
+    CheckinAIAnalysisSheet,
+    getParsedAIAnalysis,
+    getReviewAIStatus,
+} from './CheckinAIAnalysisSheet'
+import { useToast } from '@/hooks/use-toast'
 
 interface CheckinsTabProps {
     coachId: string
@@ -28,6 +37,9 @@ interface CheckinsTabProps {
 
 export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
     const [selectedCheckin, setSelectedCheckin] = useState<CheckinWithReview | null>(null)
+    const liveSelectedCheckin = selectedCheckin
+        ? checkins.find((checkin) => checkin.id === selectedCheckin.id) ?? selectedCheckin
+        : null
 
     if (checkins.length === 0) {
         return (
@@ -41,17 +53,17 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
         )
     }
 
-    if (selectedCheckin) {
+    if (liveSelectedCheckin) {
         // Calcular checkin anterior al seleccionado (para deltas de métricas)
         const sortedCompleted = [...checkins]
             .filter(c => c.status !== 'pending' && c.submitted_at)
             .sort((a, b) => new Date(b.submitted_at!).getTime() - new Date(a.submitted_at!).getTime())
-        const selectedIndex = sortedCompleted.findIndex(c => c.id === selectedCheckin.id)
+        const selectedIndex = sortedCompleted.findIndex(c => c.id === liveSelectedCheckin.id)
         const previousCheckin = selectedIndex >= 0 ? (sortedCompleted[selectedIndex + 1] ?? null) : null
 
         return (
             <CheckinDetailPanel
-                checkin={selectedCheckin}
+                checkin={liveSelectedCheckin}
                 previousCheckin={previousCheckin}
                 onClose={() => setSelectedCheckin(null)}
                 coachId={coachId}
@@ -143,6 +155,27 @@ function CheckinRow({
         )
     }
 
+    const aiStatus = getReviewAIStatus(checkin.review)
+
+    const aiBadge = () => {
+        if (!checkin.review) return null
+
+        return (
+            <Badge
+                variant="outline"
+                className={cn(
+                    'text-xs',
+                    aiStatus === 'completed' && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+                    aiStatus === 'pending' && 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                    aiStatus === 'failed' && 'bg-destructive/10 text-destructive border-destructive/20',
+                    aiStatus === 'idle' && 'bg-muted/60 text-muted-foreground'
+                )}
+            >
+                IA {aiStatus === 'completed' ? 'lista' : aiStatus === 'pending' ? 'pendiente' : aiStatus === 'failed' ? 'error' : 'sin generar'}
+            </Badge>
+        )
+    }
+
     const rawPayload = (checkin.raw_payload as Record<string, unknown>) || {}
     const metricCount = Object.keys(rawPayload).filter(k => k.startsWith('metric_') && rawPayload[k] !== null && rawPayload[k] !== '').length
     const questionCount = Object.keys(rawPayload).filter(k => k.startsWith('campo_') && rawPayload[k] !== null && rawPayload[k] !== '').length
@@ -159,6 +192,7 @@ function CheckinRow({
                  <div className="flex items-center gap-2 mb-2">
                     <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
                     {reviewBadge()}
+                    {aiBadge()}
                  </div>
                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
@@ -209,6 +243,9 @@ function CheckinDetailPanel({
     formTemplates: FormTemplate[]
 }) {
     const [isPending, startTransition] = useTransition()
+    const [aiSheetOpen, setAISheetOpen] = useState(false)
+    const [isRegeneratingAI, startRegeneratingAI] = useTransition()
+    const { toast } = useToast()
 
     const handleCreateReview = () => {
         startTransition(async () => {
@@ -243,6 +280,8 @@ function CheckinDetailPanel({
     }
 
     const previousPayload = (previousCheckin?.raw_payload as Record<string, unknown>) || {}
+    const aiStatus = getReviewAIStatus(checkin.review)
+    const aiAnalysis = getParsedAIAnalysis(checkin.review)
 
     const getMetricDelta = (key: string): number | null => {
         const curr = parseFloat(String(rawPayload[key] ?? ''))
@@ -258,6 +297,29 @@ function CheckinDetailPanel({
         if (field) return field.label
         const num = key.replace('campo_', '')
         return `Pregunta ${num}`
+    }
+
+    const handleRegenerateAI = () => {
+        if (!checkin.review?.id) return
+
+        startRegeneratingAI(async () => {
+            const result = await regenerateReviewAIAction(coachId, checkin.id, checkin.review!.id)
+            if (!result.success) {
+                toast({
+                    title: 'Error al regenerar IA',
+                    description: result.error || 'No se pudo regenerar el análisis IA.',
+                    variant: 'destructive',
+                })
+                return
+            }
+
+            toast({
+                title: 'Análisis IA actualizado',
+                description: 'La revisión ya tiene un nuevo análisis generado.',
+            })
+            setAISheetOpen(true)
+            onRefresh()
+        })
     }
 
     return (
@@ -357,16 +419,94 @@ function CheckinDetailPanel({
                         <div className="space-y-3 bg-muted/20 p-6 rounded-xl border">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="font-medium text-sm text-muted-foreground">Resumen del feedback</span>
+                                <Badge
+                                    variant="outline"
+                                    className={cn(
+                                        aiStatus === 'completed' && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+                                        aiStatus === 'pending' && 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                                        aiStatus === 'failed' && 'bg-destructive/10 text-destructive border-destructive/20',
+                                        aiStatus === 'idle' && 'bg-muted/60 text-muted-foreground'
+                                    )}
+                                >
+                                    IA {aiStatus === 'completed' ? 'disponible' : aiStatus === 'pending' ? 'generando' : aiStatus === 'failed' ? 'error' : 'sin generar'}
+                                </Badge>
                             </div>
                             <p className="text-base whitespace-pre-wrap">
                                 {checkin.review.summary || 'Sin resumen escrito todavía.'}
                             </p>
-                            <div className="pt-4">
-                                <Button variant="outline" size="sm">
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    Abrir editor completo de revisión
-                                </Button>
+                            <div className="rounded-xl border bg-background/80 p-4 space-y-3">
+                                <div className="flex items-center gap-2 text-sm font-medium">
+                                    <Sparkles className="h-4 w-4 text-primary" />
+                                    Assistant IA del coach
+                                </div>
+                                {aiStatus === 'completed' && aiAnalysis ? (
+                                    <>
+                                        <p className="text-sm leading-6 text-muted-foreground">
+                                            {checkin.review.ai_summary || aiAnalysis.overall_summary}
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Badge variant="secondary">
+                                                {aiAnalysis.coach_recommendations.length} recomendaciones
+                                            </Badge>
+                                            {aiAnalysis.suggested_changes.length > 0 && (
+                                                <Badge variant="secondary">
+                                                    {aiAnalysis.suggested_changes.length} cambios sugeridos
+                                                </Badge>
+                                            )}
+                                            {aiAnalysis.warnings_or_flags.length > 0 && (
+                                                <Badge variant="outline" className="border-amber-500/30 text-amber-700">
+                                                    {aiAnalysis.warnings_or_flags.length} alertas
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : aiStatus === 'pending' ? (
+                                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Generando análisis IA para esta revisión.
+                                    </div>
+                                ) : aiStatus === 'failed' ? (
+                                    <div className="text-sm text-destructive">
+                                        <div className="flex items-center gap-2 font-medium">
+                                            <AlertTriangle className="h-4 w-4" />
+                                            No se pudo generar el análisis IA
+                                        </div>
+                                        <p className="mt-1">{checkin.review.ai_error || 'Error desconocido.'}</p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                        Este check-in todavía no tiene análisis IA generado.
+                                    </p>
+                                )}
                             </div>
+                            <div className="pt-4">
+                                <div className="flex flex-wrap gap-2">
+                                    <Button variant="secondary" size="sm" onClick={() => setAISheetOpen(true)}>
+                                        <Sparkles className="h-4 w-4 mr-2" />
+                                        Ver análisis IA
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleRegenerateAI}
+                                        disabled={isRegeneratingAI}
+                                    >
+                                        {isRegeneratingAI ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Sparkles className="h-4 w-4 mr-2" />
+                                        )}
+                                        Regenerar IA
+                                    </Button>
+                                </div>
+                            </div>
+                            <CheckinAIAnalysisSheet
+                                review={checkin.review}
+                                open={aiSheetOpen}
+                                onOpenChange={setAISheetOpen}
+                                onRegenerate={handleRegenerateAI}
+                                regenerating={isRegeneratingAI}
+                            />
                         </div>
                     ) : (
                         <div className="text-center bg-muted/10 p-8 rounded-xl border border-dashed">
@@ -419,4 +559,3 @@ function MetricBox({
         </div>
     )
 }
-

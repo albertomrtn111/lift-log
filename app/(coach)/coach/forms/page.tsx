@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getFormTemplates } from '@/data/form-templates'
+import { getActiveClients } from '@/data/members'
 import { FormsPageClient } from '@/components/coach/forms/FormsPageClient'
 import { ClipboardList } from 'lucide-react'
 
@@ -13,7 +14,10 @@ export default async function FormsPage() {
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return null
 
-    const templates = await getFormTemplates()
+    const [templates, activeClients] = await Promise.all([
+        getFormTemplates(),
+        getActiveClients(coachId),
+    ])
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -35,7 +39,7 @@ export default async function FormsPage() {
             </header>
 
             <div className="px-4 lg:px-8 pt-6">
-                <FormsPageClient templates={templates} />
+                <FormsPageClient templates={templates} activeClients={activeClients} />
             </div>
         </div>
     )

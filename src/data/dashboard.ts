@@ -455,16 +455,8 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
         .is('auth_user_id', null)
         .eq('status', 'active')
 
-    // Count pending checkins
-    const { count: pendingCheckins } = await supabase
-        .from('checkins')
-        .select('id', { count: 'exact', head: true })
-        .eq('coach_id', coachId)
-        .eq('type', 'checkin')
-        .eq('status', 'reviewed')
-
     return {
-        dashboardPending: (pendingCount ?? 0) + (pendingCheckins ?? 0),
+        dashboardPending: pendingCount ?? 0,
         membersPendingSignup: signupCount ?? 0,
     }
 }

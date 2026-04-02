@@ -6,6 +6,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendInviteEmail } from '@/lib/n8n'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { syncClientTemplateAssignment } from '@/data/form-templates'
 
 export async function deactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'inactive')
@@ -30,11 +31,58 @@ export async function reactivateClientAction(clientId: string) {
 }
 
 export async function updateClientAction(clientId: string, data: UpdateClientInput) {
-    const result = await updateClientDetails(clientId, data)
+    let supabase, coachId: string
+    try {
+        ; ({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return {
+            success: false,
+            error: 'No autorizado: ' + e.message,
+        }
+    }
+
+    const { data: clientRow, error: clientError } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('id', clientId)
+        .eq('coach_id', coachId)
+        .single()
+
+    if (clientError || !clientRow) {
+        return { success: false, error: 'Cliente no encontrado o sin permisos' }
+    }
+
+    const { checkin_template_id, onboarding_template_id, ...clientUpdates } = data
+    const result = await updateClientDetails(clientId, clientUpdates)
 
     if (result.success) {
+        const checkinAssignment = await syncClientTemplateAssignment({
+            supabase,
+            coachId,
+            clientId,
+            type: 'checkin',
+            templateId: checkin_template_id ?? null,
+        })
+
+        if (!checkinAssignment.success) {
+            return { success: false, error: checkinAssignment.error }
+        }
+
+        const onboardingAssignment = await syncClientTemplateAssignment({
+            supabase,
+            coachId,
+            clientId,
+            type: 'onboarding',
+            templateId: onboarding_template_id ?? null,
+        })
+
+        if (!onboardingAssignment.success) {
+            return { success: false, error: onboardingAssignment.error }
+        }
+
         revalidatePath('/coach/members')
         revalidatePath('/coach/clients')
+        revalidatePath('/coach/forms')
     }
 
     return result
@@ -51,11 +99,13 @@ export async function createClientAction(data: {
     payment_amount?: number
     payment_day?: number
     payment_notes?: string
+    checkin_template_id?: string
+    onboarding_template_id?: string
 }) {
     // Validate coach_id against membership
-    let coachId: string
+    let coachId: string, supabase
     try {
-        ({ coachId } = await requireActiveCoachId(data.coach_id))
+        ({ coachId, supabase } = await requireActiveCoachId(data.coach_id))
     } catch (e: any) {
         return {
             success: false,
@@ -93,6 +143,36 @@ export async function createClientAction(data: {
 
     const client = result.client
     console.log(`[createClientAction] Client created: ${client.id} (${client.email})`)
+
+    const checkinAssignment = await syncClientTemplateAssignment({
+        supabase,
+        coachId,
+        clientId: client.id,
+        type: 'checkin',
+        templateId: data.checkin_template_id ?? null,
+    })
+
+    if (!checkinAssignment.success) {
+        return {
+            success: false,
+            error: checkinAssignment.error || 'No se pudo asignar el check-in al cliente',
+        }
+    }
+
+    const onboardingAssignment = await syncClientTemplateAssignment({
+        supabase,
+        coachId,
+        clientId: client.id,
+        type: 'onboarding',
+        templateId: data.onboarding_template_id ?? null,
+    })
+
+    if (!onboardingAssignment.success) {
+        return {
+            success: false,
+            error: onboardingAssignment.error || 'No se pudo asignar el onboarding al cliente',
+        }
+    }
 
     // 2. If password provided, create Supabase Auth user with SERVICE ROLE
     if (data.password) {
@@ -190,5 +270,6 @@ export async function createClientAction(data: {
 
     revalidatePath('/coach/members')
     revalidatePath('/coach/clients')
+    revalidatePath('/coach/forms')
     return { success: true, client }
 }

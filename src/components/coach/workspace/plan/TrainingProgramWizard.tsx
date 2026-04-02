@@ -48,6 +48,9 @@ interface TrainingProgramWizardProps {
     initialStep?: number
     onOpenChange: (open: boolean) => void
     onClose: () => void
+    /** When set, the wizard auto-imports this structure into Step 2 after the program is created in Step 1 */
+    pendingAIStructure?: import('@/types/templates').StrengthStructure | null
+    pendingAIName?: string | null
 }
 
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
@@ -59,7 +62,9 @@ export function TrainingProgramWizard({
     isOpen,
     initialStep = 1,
     onOpenChange,
-    onClose
+    onClose,
+    pendingAIStructure,
+    pendingAIName,
 }: TrainingProgramWizardProps) {
     const { toast } = useToast()
     const [step, setStep] = useState(initialStep)
@@ -88,10 +93,10 @@ export function TrainingProgramWizard({
             if (currentProgramId) {
                 loadAllData(currentProgramId)
             } else {
-                // Initialize for creation
+                // Initialize for creation — pre-fill with AI name/weeks if provided
                 setProgram({
-                    name: 'Nuevo Programa',
-                    weeks: 4,
+                    name: pendingAIName ?? 'Nuevo Programa',
+                    weeks: pendingAIStructure?.weeks ?? 4,
                     effective_from: new Date().toISOString().split('T')[0],
                     coach_id: coachId,
                     client_id: clientId,
@@ -225,6 +230,90 @@ export function TrainingProgramWizard({
     }
 
     const prevStep = () => setStep(s => Math.max(s - 1, 1))
+
+    /**
+     * Writes days + exercises directly to DB using explicit IDs.
+     * Used by the AI flow where we have the real programId immediately —
+     * avoids the React state closure issue with currentProgramId.
+     */
+    async function applyStructureToDB(
+        programId: string,
+        resolvedCoachId: string,
+        structure: StrengthStructure,
+    ) {
+        const supabase = createClient()
+
+        // Build days + exercises with fresh UUIDs
+        const newDays: any[] = []
+        const newExercises: any[] = []
+
+        structure.days.forEach((day, dIdx) => {
+            const newDayId = crypto.randomUUID()
+            newDays.push({ id: newDayId, name: day.name, order_index: dIdx + 1 })
+            ;(day.exercises ?? []).forEach((ex, eIdx) => {
+                newExercises.push({
+                    id: crypto.randomUUID(),
+                    day_id: newDayId,
+                    exercise_name: ex.exercise_name || '',
+                    order_index: ex.order ?? eIdx + 1,
+                    sets: ex.sets ?? 3,
+                    reps: ex.reps ?? '10',
+                    rir: ex.rir != null ? Number(ex.rir) : null,
+                    rest_seconds: ex.rest_seconds ?? 60,
+                    notes: ex.notes || null,
+                })
+            })
+        })
+
+        // Clear any pre-existing days/exercises (RPC creates program with empty days)
+        await supabase.from('training_exercises').delete().eq('program_id', programId)
+        await supabase.from('training_days').delete().eq('program_id', programId)
+
+        // Insert days
+        const { error: daysError } = await supabase.from('training_days').insert(
+            newDays.map(d => ({
+                id: d.id,
+                program_id: programId,
+                coach_id: resolvedCoachId,
+                name: d.name,
+                order_index: d.order_index,
+                day_name: d.name,
+                day_order: d.order_index,
+            }))
+        )
+        if (daysError) {
+            toast({ title: 'Error al cargar días de la IA', description: daysError.message, variant: 'destructive' })
+            return
+        }
+
+        // Insert exercises
+        if (newExercises.length > 0) {
+            const { error: exError } = await supabase.from('training_exercises').insert(
+                newExercises.map(e => ({
+                    id: e.id,
+                    program_id: programId,
+                    coach_id: resolvedCoachId,
+                    day_id: e.day_id,
+                    exercise_name: e.exercise_name,
+                    order_index: e.order_index,
+                    sets: e.sets,
+                    reps: e.reps,
+                    rir: e.rir,
+                    rest_seconds: e.rest_seconds,
+                    notes: e.notes,
+                }))
+            )
+            if (exError) {
+                toast({ title: 'Error al cargar ejercicios de la IA', description: exError.message, variant: 'destructive' })
+                return
+            }
+        }
+
+        // Update weeks on the program if structure specifies them
+        if (structure.weeks) {
+            await supabase.from('training_programs').update({ weeks: structure.weeks }).eq('id', programId)
+        }
+    }
 
     const handleImportTemplate = async (template: TrainingTemplate) => {
         if (template.type !== 'strength') {
@@ -390,9 +479,15 @@ export function TrainingProgramWizard({
                             programId={currentProgramId}
                             coachId={coachId}
                             clientId={clientId}
-                            onCreated={(newId) => {
+                            onCreated={async (newId) => {
                                 setCurrentProgramId(newId)
-                                loadAllData(newId)
+
+                                // Auto-import AI structure BEFORE loadAllData so Step 2 shows the exercises
+                                if (pendingAIStructure) {
+                                    await applyStructureToDB(newId, coachId ?? '', pendingAIStructure)
+                                }
+
+                                await loadAllData(newId)
                             }}
                         />
                     )}
