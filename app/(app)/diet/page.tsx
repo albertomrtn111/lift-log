@@ -17,14 +17,22 @@ export default async function DietPage() {
             <DietPageClient
                 macroPlan={null}
                 dietPlan={null}
+                supplements={[]}
             />
         )
     }
 
     // Fetch active plans for this client
-    const [macroPlan, dietPlan] = await Promise.all([
+    const [macroPlan, dietPlan, supplementsData] = await Promise.all([
         getActiveMacroPlan(clientId),
         getActiveDietPlan(clientId),
+        supabase
+            .from('client_supplements')
+            .select('id, supplement_name, dose_amount, dose_unit, daily_doses, dose_schedule, notes, start_date, end_date')
+            .eq('client_id', clientId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: true })
+            .then(({ data }) => data ?? []),
     ])
 
     // Convert to frontend format
@@ -52,6 +60,7 @@ export default async function DietPage() {
         <DietPageClient
             macroPlan={frontendMacroPlan}
             dietPlan={parsedDietPlan}
+            supplements={supplementsData}
         />
     )
 }

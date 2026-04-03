@@ -1,10 +1,11 @@
 'use client'
 
-import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp } from 'lucide-react'
+import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { useClientUnreadMessages } from '@/hooks/useClientUnreadMessages'
 
 interface NavItem {
   href: string
@@ -18,6 +19,7 @@ const navItems: NavItem[] = [
   { href: '/planning', icon: CalendarDays, label: 'Plan' }, // New Planning tab
   { href: '/progress', icon: TrendingUp, label: 'Progreso' }, // Changed icon to TrendingUp? Original was CalendarDays. Let's check imports.
   { href: '/summary', icon: BarChart3, label: 'Resumen' },
+  { href: '/chat', icon: MessageSquare, label: 'Chat' },
   { href: '/profile', icon: User, label: 'Perfil' },
 ]
 
@@ -27,6 +29,7 @@ export function BottomNav() {
   const pathname = usePathname()
   const router = useRouter()
   const isDev = process.env.NODE_ENV === 'development' && DEBUG_NAV
+  const unreadCount = useClientUnreadMessages()
 
   // Log route changes in DEV
   useEffect(() => {
@@ -76,7 +79,14 @@ export function BottomNav() {
                 isActive && 'nav-item-active'
               )}
             >
-              <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
+              <div className="relative">
+                <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
+                {item.href === '/chat' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none pointer-events-none">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium">{item.label}</span>
             </Link>
           )

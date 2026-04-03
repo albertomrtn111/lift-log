@@ -71,8 +71,22 @@ export async function getUserContext(userId: string): Promise<UserContext> {
     const coachId = roles?.coach_id || null
 
     const isClient = !!roles?.is_client
-    const clientId = roles?.client_id || null
-    const clientCoachId = null // Minimal info for context
+
+    // Fetch real client IDs from the clients table (get_my_roles only returns booleans)
+    let clientId: string | null = null
+    let clientCoachId: string | null = null
+
+    if (isClient) {
+        const { data: clientRow } = await supabase
+            .from('clients')
+            .select('id, coach_id')
+            .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
+            .eq('status', 'active')
+            .maybeSingle()
+
+        clientId = clientRow?.id ?? null
+        clientCoachId = clientRow?.coach_id ?? null
+    }
 
     // Determine role
     let role: UserRole = 'none'
@@ -89,10 +103,10 @@ export async function getUserContext(userId: string): Promise<UserContext> {
         clientId,
         clientCoachId,
         profile,
-        clientRecord: isClient ? {
-            id: clientId!,
+        clientRecord: clientId ? {
+            id: clientId,
             full_name: profile.full_name,
-            coach_id: '',
+            coach_id: clientCoachId ?? '',
             status: 'active'
         } : null
     }

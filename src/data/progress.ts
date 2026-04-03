@@ -23,37 +23,60 @@ export type ClientMetricInput = {
 }
 
 // Helper to get current client and coach ID
+// Returns null if no session or no matching client
 async function getClientContext() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    try {
+        const supabase = createClient()
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (!user) return null
+        if (authError) {
+            console.error('[getClientContext] Auth error:', authError.message)
+            return null
+        }
+        if (!user) {
+            console.warn('[getClientContext] No user in session — session may be expired')
+            return null
+        }
 
-    const { data: client } = await supabase
-        .from('clients')
-        .select('id, coach_id')
-        .eq('user_id', user.id)
-        .single()
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .select('id, coach_id')
+            .eq('auth_user_id', user.id)
+            .eq('status', 'active')
+            .maybeSingle()
 
-    return client
+        if (clientError) {
+            console.error('[getClientContext] Error fetching client:', clientError.message, clientError.code)
+            return null
+        }
+        if (!client) {
+            console.warn('[getClientContext] No active client found for user:', user.id)
+            return null
+        }
+
+        return { ...client, userId: user.id }
+    } catch (err) {
+        console.error('[getClientContext] Unexpected error:', err)
+        return null
+    }
 }
 
 export async function getClientMetrics(date: Date) {
-    const supabase = await createClient()
-    const client = await getClientContext()
+    const supabase = createClient()
+    const context = await getClientContext()
 
-    if (!client) return null
+    if (!context) return null
 
     const dateStr = format(date, 'yyyy-MM-dd')
 
     const { data, error } = await supabase
         .from('client_metrics')
         .select('*')
-        .eq('client_id', client.id)
+        .eq('client_id', context.id)
         .eq('metric_date', dateStr)
-        .single()
+        .maybeSingle()
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
         console.error('Error fetching metrics:', error)
         return null
     }
@@ -61,79 +84,110 @@ export async function getClientMetrics(date: Date) {
     return data as ClientMetric | null
 }
 
-export async function saveClientMetrics(input: ClientMetricInput) {
-    const supabase = await createClient()
-    const client = await getClientContext()
+export async function saveClientMetrics(input: ClientMetricInput): Promise<{ success: boolean; error?: string; sessionExpired?: boolean }> {
+    try {
+        const supabase = createClient()
+        const context = await getClientContext()
 
-    if (!client) return { success: false, error: 'Client not found' }
+        if (!context) {
+            return {
+                success: false,
+                error: 'Sesión no encontrada. Por favor cierra la app, vuelve a abrirla e inicia sesión de nuevo.',
+                sessionExpired: true
+            }
+        }
 
-    const payload = {
-        client_id: client.id,
-        coach_id: client.coach_id,
-        metric_date: input.metric_date,
-        weight_kg: input.weight_kg,
-        steps: input.steps,
-        sleep_h: input.sleep_h,
-        notes: input.notes,
-        created_by: (await supabase.auth.getUser()).data.user?.id
+        const payload = {
+            client_id: context.id,
+            coach_id: context.coach_id,
+            metric_date: input.metric_date,
+            weight_kg: input.weight_kg ?? null,
+            steps: input.steps ?? null,
+            sleep_h: input.sleep_h ?? null,
+            notes: input.notes ?? null,
+        }
+
+        const { error } = await supabase
+            .from('client_metrics')
+            .upsert(payload, { onConflict: 'client_id,metric_date' })
+
+        if (error) {
+            console.error('[saveClientMetrics] Upsert error:', error.code, error.message, error.details, error.hint)
+            if (error.code === '42501' || error.message?.includes('row-level security')) {
+                return { success: false, error: 'Sin permiso para guardar esta fecha. Recarga la página e intenta de nuevo.', sessionExpired: false }
+            }
+            return { success: false, error: `Error al guardar: ${error.message}`, sessionExpired: false }
+        }
+
+        return { success: true, sessionExpired: false }
+    } catch (err) {
+        console.error('[saveClientMetrics] Unexpected throw:', err)
+        return {
+            success: false,
+            error: 'Error inesperado al guardar. Por favor recarga la página.',
+            sessionExpired: false
+        }
     }
-
-    const { error } = await supabase
-        .from('client_metrics')
-        .upsert(payload, {
-            onConflict: 'client_id, metric_date'
-        })
-
-    if (error) {
-        console.error('Error saving metrics:', error)
-        return { success: false, error: error.message }
-    }
-
-    return { success: true }
 }
 
-export async function saveClientMetricsBulk(inputs: ClientMetricInput[]) {
-    const supabase = await createClient()
-    const client = await getClientContext()
+export async function saveClientMetricsBulk(inputs: ClientMetricInput[]): Promise<{ success: boolean; error?: string; count?: number; sessionExpired?: boolean }> {
+    try {
+        const supabase = createClient()
+        const context = await getClientContext()
 
-    if (!client) return { success: false, error: 'Client not found' }
+        if (!context) {
+            return {
+                success: false,
+                error: 'Sesión no encontrada. Por favor cierra la app, vuelve a abrirla e inicia sesión de nuevo.',
+                sessionExpired: true
+            }
+        }
 
-    // Use only valid days that have at least one field filled
-    const validInputs = inputs.filter(i =>
-        i.weight_kg !== undefined ||
-        i.steps !== undefined ||
-        i.sleep_h !== undefined ||
-        i.notes !== undefined
-    )
+        // Use only valid days that have at least one field filled
+        const validInputs = inputs.filter(i =>
+            i.weight_kg !== undefined ||
+            i.steps !== undefined ||
+            i.sleep_h !== undefined ||
+            i.notes !== undefined
+        )
 
-    if (validInputs.length === 0) return { success: true, count: 0 }
+        if (validInputs.length === 0) return { success: true, count: 0, sessionExpired: false }
 
-    const rowsToUpsert = validInputs.map(input => ({
-        client_id: client.id,
-        coach_id: client.coach_id,
-        metric_date: input.metric_date,
-        weight_kg: input.weight_kg,
-        steps: input.steps,
-        sleep_h: input.sleep_h,
-        notes: input.notes
-    }))
+        const rowsToUpsert = validInputs.map(input => ({
+            client_id: context.id,
+            coach_id: context.coach_id,
+            metric_date: input.metric_date,
+            weight_kg: input.weight_kg ?? null,
+            steps: input.steps ?? null,
+            sleep_h: input.sleep_h ?? null,
+            notes: input.notes ?? null,
+        }))
 
-    const { error } = await supabase
-        .from('client_metrics')
-        .upsert(rowsToUpsert, {
-            onConflict: 'client_id, metric_date'
-        })
+        const { error } = await supabase
+            .from('client_metrics')
+            .upsert(rowsToUpsert, { onConflict: 'client_id,metric_date' })
 
-    if (error) {
-        console.error('Error in bulk metrics upsert:', error)
-        return { success: false, error: error.message }
+        if (error) {
+            console.error('[saveClientMetricsBulk] Error upsert:', error.code, error.message, error.details, error.hint)
+            if (error.code === '42501' || error.message?.includes('row-level security')) {
+                return { success: false, error: 'Sin permiso para guardar estas fechas. Recarga la página e intenta de nuevo.', sessionExpired: false }
+            }
+            return { success: false, error: `Error al guardar métricas: ${error.message}`, sessionExpired: false }
+        }
+
+        return { success: true, count: rowsToUpsert.length, sessionExpired: false }
+    } catch (err) {
+        console.error('[saveClientMetricsBulk] Unexpected throw:', err)
+        return {
+            success: false,
+            error: 'Error inesperado al guardar. Por favor recarga la página.',
+            sessionExpired: false
+        }
     }
-
-    return { success: true, count: rowsToUpsert.length }
 }
 
 export async function getRecentClientMetrics(limit = 10) {
-    const supabase = await createClient()
+    const supabase = createClient()
     const client = await getClientContext()
 
     if (!client) return []
@@ -154,7 +208,7 @@ export async function getRecentClientMetrics(limit = 10) {
 }
 
 export async function getClientMetricsRange(startDate: Date, endDate: Date) {
-    const supabase = await createClient()
+    const supabase = createClient()
     const client = await getClientContext()
 
     if (!client) return []

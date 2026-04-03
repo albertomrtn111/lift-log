@@ -1,4 +1,6 @@
-import { useState } from 'react';
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -16,7 +18,8 @@ interface ProgressBackfillContentProps {
 }
 
 export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBackfillContentProps) {
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const router = useRouter();
   const [data, setData] = useState<Record<string, ProgressBackfillData>>(() => {
     const initial: Record<string, ProgressBackfillData> = {};
     days.forEach(day => {
@@ -68,36 +71,46 @@ export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBa
   }).length;
 
   const handleSaveAll = async () => {
-    setSaveStatus('saving');
+    setSaveStatus('saving')
+    try {
+      const inputs: ClientMetricInput[] = Object.values(data).map(d => ({
+        metric_date: d.date,
+        weight_kg: d.weight !== undefined && !isNaN(d.weight) ? d.weight : undefined,
+        steps: d.steps !== undefined && !isNaN(d.steps) ? d.steps : undefined,
+        sleep_h: d.sleepHours !== undefined && !isNaN(d.sleepHours) ? d.sleepHours : undefined,
+        notes: d.notes || undefined
+      }))
 
-    const inputs: ClientMetricInput[] = Object.values(data).map(d => ({
-      metric_date: d.date,
-      weight_kg: d.weight,
-      steps: d.steps,
-      sleep_h: d.sleepHours,
-      notes: d.notes
-    }));
+      const result = await saveClientMetricsBulk(inputs)
 
-    const result = await saveClientMetricsBulk(inputs);
-
-    if (result.success) {
-      if (result.count === 0) {
-        toast.info('No hay cambios introducidos para guardar.');
-        setSaveStatus('idle');
+      if (result.success) {
+        if (result.count === 0) {
+          toast.info('No hay cambios introducidos para guardar.')
+          setSaveStatus('idle')
+        } else {
+          setSaveStatus('saved')
+          toast.success(`Se han guardado ${result.count} registros correctamente.`)
+          setTimeout(() => {
+            setSaveStatus('idle')
+            if (onSuccess) onSuccess()
+            if (onClose) onClose()
+          }, 1000)
+        }
       } else {
-        setSaveStatus('saved');
-        toast.success(`Se han guardado ${result.count} registros correctamente.`);
-        setTimeout(() => {
-          setSaveStatus('idle');
-          if (onSuccess) onSuccess();
-          if (onClose) onClose();
-        }, 1000);
+        setSaveStatus('idle')
+        if (result.sessionExpired) {
+          toast.error('Tu sesión ha caducado. Redirigiendo al inicio de sesión...')
+          setTimeout(() => router.push('/login'), 2000)
+        } else {
+          toast.error('Error al guardar: ' + result.error)
+        }
       }
-    } else {
-      setSaveStatus('idle');
-      toast.error('Error al guardar: ' + result.error);
+    } catch (err) {
+      setSaveStatus('idle')
+      console.error('[handleSaveAll] Unexpected error:', err)
+      toast.error('Error inesperado. Por favor recarga la página.')
     }
-  };
+  }
 
   return (
     <div className="space-y-3">

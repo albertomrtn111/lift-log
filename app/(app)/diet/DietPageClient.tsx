@@ -21,7 +21,8 @@ import {
     MessageSquare,
     ListTodo,
     AlertCircle,
-    CalendarIcon
+    CalendarIcon,
+    FlaskConical
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
@@ -59,12 +60,25 @@ interface ParsedDietPlan {
     effectiveFrom: string
 }
 
+interface ClientSupplement {
+    id: string
+    supplement_name: string
+    dose_amount: number
+    dose_unit: string
+    daily_doses: number
+    dose_schedule: string[]
+    notes?: string
+    start_date?: string
+    end_date?: string
+}
+
 interface DietPageClientProps {
     macroPlan: MacroPlan | null
     dietPlan: ParsedDietPlan | null
+    supplements: ClientSupplement[]
 }
 
-export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
+export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageClientProps) {
     const [backfillOpen, setBackfillOpen] = useState(false)
     const [date, setDate] = useState<Date>(new Date())
     const [adherence, setAdherence] = useState(0) // Default 0 instead of 85
@@ -125,8 +139,8 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
     const hasMacros = !!macroPlan
     const hasMeals = !!(dietPlan?.meals?.labels?.length)
 
-    // Default tab based on available data
-    const defaultTab = hasMacros ? 'macros' : (hasMeals ? 'meals' : 'macros')
+    const hasSupplements = supplements.length > 0
+    const defaultTab = hasMacros ? 'macros' : (hasMeals ? 'meals' : (hasSupplements ? 'supplements' : 'macros'))
 
     return (
         <div className="min-h-screen pb-4">
@@ -146,9 +160,10 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
             </header>
 
             <Tabs defaultValue={defaultTab} className="px-4 pt-4">
-                <TabsList className="w-full grid grid-cols-2 mb-4">
+                <TabsList className="w-full grid grid-cols-3 mb-4">
                     <TabsTrigger value="macros">Macros</TabsTrigger>
                     <TabsTrigger value="meals">Plan de comidas</TabsTrigger>
+                    <TabsTrigger value="supplements">Suplementos</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="macros" className="space-y-4 animate-fade-in">
@@ -414,6 +429,55 @@ export function DietPageClient({ macroPlan, dietPlan }: DietPageClientProps) {
                                 Tu entrenador aún no ha configurado un plan de comidas para ti.
                             </p>
                         </Card>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="supplements" className="space-y-4 animate-fade-in">
+                    {supplements.length > 0 ? (
+                        <div className="space-y-3">
+                            {supplements.map((s) => (
+                                <Card key={s.id} className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+                                            <FlaskConical className="h-4 w-4 text-accent" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-foreground truncate">{s.supplement_name}</p>
+                                            <p className="text-sm text-muted-foreground mt-0.5">
+                                                {s.dose_amount} {s.dose_unit} · {s.daily_doses} {s.daily_doses === 1 ? 'toma' : 'tomas'} al día
+                                            </p>
+                                            {s.dose_schedule?.filter(t => t).length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                    {s.dose_schedule.filter(t => t).map((time, i) => (
+                                                        <Badge key={i} variant="secondary" className="text-xs font-mono px-2 py-0.5">
+                                                            {time}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {s.notes && (
+                                                <p className="text-xs text-muted-foreground mt-2 italic">{s.notes}</p>
+                                            )}
+                                            {(s.start_date || s.end_date) && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {s.start_date && `Desde ${format(new Date(s.start_date + 'T12:00:00'), 'dd MMM yyyy', { locale: es })}`}
+                                                    {s.start_date && s.end_date && ' · '}
+                                                    {s.end_date && `Hasta ${format(new Date(s.end_date + 'T12:00:00'), 'dd MMM yyyy', { locale: es })}`}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-muted/30 flex items-center justify-center mb-4">
+                                <FlaskConical className="h-7 w-7 text-muted-foreground opacity-40" />
+                            </div>
+                            <p className="font-medium text-muted-foreground">Sin suplementación prescrita</p>
+                            <p className="text-sm text-muted-foreground/70 mt-1">Tu coach añadirá aquí tu pauta de suplementación</p>
+                        </div>
                     )}
                 </TabsContent>
             </Tabs>

@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { revalidatePath } from 'next/cache'
-import { ensureReviewForCheckin, updateReview } from '@/data/workspace'
+import { createReviewForCheckin, ensureReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
@@ -185,7 +185,7 @@ export async function approveReviewAction(reviewId: string) {
         return { success: false, error: 'Error al aprobar review' }
     }
 
-    // ── Mark checkin as approved (without changing next_checkin_date) ──
+    // Obtener checkin_id del review
     const { data: review } = await supabase
         .from('reviews')
         .select('checkin_id')
@@ -193,10 +193,63 @@ export async function approveReviewAction(reviewId: string) {
         .single()
 
     if (review?.checkin_id) {
+        // Obtener client_id desde el checkin
+        const { data: checkin } = await supabase
+            .from('checkins')
+            .select('client_id')
+            .eq('id', review.checkin_id)
+            .single()
+
+        // Marcar checkin como aprobado
         await supabase
             .from('checkins')
             .update({ status: 'approved' })
             .eq('id', review.checkin_id)
+
+        if (checkin?.client_id) {
+            // ── Avanzar next_checkin_date al siguiente ciclo del calendario ──
+            const { data: clientData } = await supabase
+                .from('clients')
+                .select('checkin_frequency_days, next_checkin_date')
+                .eq('id', checkin.client_id)
+                .single()
+
+            if (clientData) {
+                const freqDays = clientData.checkin_frequency_days ?? 14
+                const nextCheckinDate = clientData.next_checkin_date
+                    ? new Date(clientData.next_checkin_date + 'T12:00:00') // noon para evitar desfase UTC
+                    : new Date()
+
+                // Avanzar desde la fecha agendada (no desde hoy)
+                // Si sigue en el pasado, seguir sumando ciclos hasta fecha futura
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                const newDate = new Date(nextCheckinDate)
+                do {
+                    newDate.setDate(newDate.getDate() + freqDays)
+                } while (newDate < today)
+
+                const newDateStr = toLocalDateStr(newDate)
+
+                await supabase
+                    .from('clients')
+                    .update({ next_checkin_date: newDateStr })
+                    .eq('id', checkin.client_id)
+            }
+
+            // Enviar push notification al cliente
+            try {
+                const { sendPushToClient } = await import('@/lib/push')
+                await sendPushToClient(checkin.client_id, {
+                    title: '¡Tu revisión ha sido revisada! ✅',
+                    body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
+                    url: '/summary',
+                    tag: 'review-approved',
+                })
+            } catch {
+                // Silencioso: notificaciones son best-effort
+            }
+        }
     }
 
     revalidatePath('/coach/clients')
@@ -560,7 +613,6 @@ export async function forceAdvanceCheckinAction(clientId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'No autenticado' }
 
-    // Obtener frecuencia del cliente
     const { data: client } = await supabase
         .from('clients')
         .select('checkin_frequency_days, next_checkin_date')
@@ -569,13 +621,21 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     if (!client) return { success: false, error: 'Cliente no encontrado' }
 
-    // Avanzar desde hoy (patada hacia adelante)
     const freqDays = client.checkin_frequency_days ?? 14
-    const nextDate = new Date()
-    nextDate.setDate(nextDate.getDate() + freqDays)
-    const nextDateStr = toLocalDateStr(nextDate)
+    const nextCheckinDate = client.next_checkin_date
+        ? new Date(client.next_checkin_date + 'T12:00:00')
+        : new Date()
 
-    // Actualizar next_checkin_date
+    // Avanzar desde la fecha agendada, no desde hoy
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const newDate = new Date(nextCheckinDate)
+    do {
+        newDate.setDate(newDate.getDate() + freqDays)
+    } while (newDate < today)
+
+    const nextDateStr = toLocalDateStr(newDate)
+
     const { error } = await supabase
         .from('clients')
         .update({ next_checkin_date: nextDateStr })
@@ -583,7 +643,7 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     if (error) return { success: false, error: error.message }
 
-    // Si hay algún checkin en estado reviewed sin revisión, marcarlo como approved
+    // Marcar cualquier checkin en 'reviewed' sin revisión como aprobado
     await supabase
         .from('checkins')
         .update({ status: 'approved' })
@@ -592,4 +652,120 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     revalidatePath('/coach/clients')
     return { success: true, nextDate: nextDateStr }
+}
+
+// ============================================================================
+// CHECKIN DELETE ACTION
+// ============================================================================
+
+export async function deleteCheckinAction(checkinId: string, coachId: string) {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+
+    const { error } = await supabase
+        .from('checkins')
+        .delete()
+        .eq('id', checkinId)
+        .eq('coach_id', validatedCoachId) // seguridad: solo el coach dueño puede borrar
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/coach/clients')
+    revalidatePath('/coach/members')
+    return { success: true }
+}
+
+// ============================================================================
+// REVIEW WITH FEEDBACK
+// ============================================================================
+
+export async function createReviewWithFeedbackAction(
+    coachId: string,
+    clientId: string,
+    checkinId: string,
+    feedbackMessage: string
+): Promise<{ success: boolean; error?: string }> {
+    if (!feedbackMessage.trim()) {
+        return { success: false, error: 'El mensaje de feedback no puede estar vacío' }
+    }
+
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado' }
+
+    const { coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+
+    // 1. Crear la review
+    const review = await createReviewForCheckin(validatedCoachId, clientId, checkinId, user.id)
+    if (!review) return { success: false, error: 'Error al crear la revisión' }
+
+    // 2. Aprobar la review con el mensaje
+    const approved = await updateReview(review.id, {
+        status: 'approved',
+        approved_by: user.id,
+        message_to_client: feedbackMessage.trim(),
+        summary: feedbackMessage.trim(),
+    })
+    if (!approved) return { success: false, error: 'Error al aprobar la revisión' }
+
+    // 3. Marcar el checkin como aprobado
+    await supabase
+        .from('checkins')
+        .update({ status: 'approved' })
+        .eq('id', checkinId)
+
+    // 4. Avanzar next_checkin_date (misma lógica que approveReviewAction)
+    const { data: clientData } = await supabase
+        .from('clients')
+        .select('checkin_frequency_days, next_checkin_date')
+        .eq('id', clientId)
+        .single()
+
+    if (clientData) {
+        const freqDays = clientData.checkin_frequency_days ?? 14
+        const baseDate = clientData.next_checkin_date
+            ? new Date(clientData.next_checkin_date + 'T12:00:00')
+            : new Date()
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const newDate = new Date(baseDate)
+        do {
+            newDate.setDate(newDate.getDate() + freqDays)
+        } while (newDate < today)
+
+        await supabase
+            .from('clients')
+            .update({ next_checkin_date: toLocalDateStr(newDate) })
+            .eq('id', clientId)
+    }
+
+    // 5. Insertar mensaje en el chat con message_type = 'review_feedback'
+    await supabase
+        .from('messages')
+        .insert({
+            coach_id: validatedCoachId,
+            client_id: clientId,
+            sender_role: 'coach',
+            sender_id: user.id,
+            content: feedbackMessage.trim(),
+            message_type: 'review_feedback',
+        })
+
+    // 6. Push notification al cliente
+    try {
+        const { sendPushToClient } = await import('@/lib/push')
+        await sendPushToClient(clientId, {
+            title: '📋 Tu entrenador ha revisado tu check-in',
+            body: feedbackMessage.trim().length > 100
+                ? feedbackMessage.trim().substring(0, 97) + '...'
+                : feedbackMessage.trim(),
+            url: '/chat',
+            tag: 'review-feedback',
+        })
+    } catch {
+        // Best-effort
+    }
+
+    revalidatePath('/coach/clients')
+    revalidatePath('/coach/members')
+    return { success: true }
 }

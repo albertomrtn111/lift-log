@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ export default function ProgressPage() {
     const [backfillOpen, setBackfillOpen] = useState(false)
     const [recentMetrics, setRecentMetrics] = useState<ClientMetric[]>([])
     const [isLoading, setIsLoading] = useState(false)
+    const router = useRouter()
 
     // Load Metrics for selected date
     useEffect(() => {
@@ -74,24 +76,34 @@ export default function ProgressPage() {
 
     const handleSave = async () => {
         setSaveStatus('saving')
+        try {
+            const payload = {
+                metric_date: format(selectedDate, 'yyyy-MM-dd'),
+                weight_kg: weight ? parseFloat(weight) : undefined,
+                steps: steps ? parseInt(steps) : undefined,
+                sleep_h: sleep ? parseFloat(sleep) : undefined,
+                notes: notes || undefined
+            }
 
-        const payload = {
-            metric_date: format(selectedDate, 'yyyy-MM-dd'),
-            weight_kg: weight ? parseFloat(weight) : undefined,
-            steps: steps ? parseInt(steps) : undefined,
-            sleep_h: sleep ? parseFloat(sleep) : undefined,
-            notes: notes || undefined
-        }
+            const result = await saveClientMetrics(payload)
 
-        const result = await saveClientMetrics(payload)
-
-        if (result.success) {
-            setSaveStatus('saved')
-            loadRecent() // Refresh recent list
-            setTimeout(() => setSaveStatus('idle'), 2000)
-        } else {
+            if (result.success) {
+                setSaveStatus('saved')
+                loadRecent()
+                setTimeout(() => setSaveStatus('idle'), 2000)
+            } else {
+                setSaveStatus('idle')
+                if (result.sessionExpired) {
+                    toast.error('Tu sesión ha caducado. Redirigiendo al inicio de sesión...')
+                    setTimeout(() => router.push('/login'), 2000)
+                } else {
+                    toast.error('Error al guardar: ' + result.error)
+                }
+            }
+        } catch (err) {
             setSaveStatus('idle')
-            toast.error('Error al guardar: ' + result.error)
+            console.error('[handleSave] Unexpected error:', err)
+            toast.error('Error inesperado. Por favor recarga la página.')
         }
     }
 

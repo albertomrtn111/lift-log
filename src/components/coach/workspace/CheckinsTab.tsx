@@ -4,6 +4,15 @@ import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from '@/components/ui/dialog'
 import type { CheckinWithReview } from '@/data/workspace'
 import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
@@ -15,9 +24,11 @@ import {
     Sparkles,
     Loader2,
     AlertTriangle,
+    Trash2,
+    MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createReviewAction, regenerateReviewAIAction } from './actions'
+import { createReviewWithFeedbackAction, deleteCheckinAction, regenerateReviewAIAction } from './actions'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 import {
     CheckinAIAnalysisSheet,
@@ -40,6 +51,73 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     const liveSelectedCheckin = selectedCheckin
         ? checkins.find((checkin) => checkin.id === selectedCheckin.id) ?? selectedCheckin
         : null
+    const [feedbackDialog, setFeedbackDialog] = useState<{
+        open: boolean
+        checkinId: string
+        checkinDate: string
+    } | null>(null)
+    const [feedbackText, setFeedbackText] = useState('')
+    const [isSendingFeedback, setIsSendingFeedback] = useState(false)
+
+    const handleOpenFeedbackDialog = (checkinId: string, checkinDate: string) => {
+        setFeedbackText('')
+        setFeedbackDialog({ open: true, checkinId, checkinDate })
+    }
+
+    const handleSendFeedback = async () => {
+        if (!feedbackDialog || !feedbackText.trim()) return
+        setIsSendingFeedback(true)
+        const result = await createReviewWithFeedbackAction(
+            coachId,
+            clientId,
+            feedbackDialog.checkinId,
+            feedbackText
+        )
+        setIsSendingFeedback(false)
+        if (result.success) {
+            setFeedbackDialog(null)
+            setFeedbackText('')
+            onRefresh()
+        }
+    }
+
+    const feedbackDialogElement = feedbackDialog?.open ? (
+        <Dialog open={feedbackDialog.open} onOpenChange={(open) => !open && setFeedbackDialog(null)}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-primary" />
+                        Crear revisión — {feedbackDialog.checkinDate}
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                    <Label>Mensaje de feedback al cliente</Label>
+                    <Textarea
+                        placeholder="Escribe el feedback para este cliente. Este mensaje aparecerá en el chat como una revisión..."
+                        value={feedbackText}
+                        onChange={(e) => setFeedbackText(e.target.value)}
+                        rows={5}
+                        className="resize-none"
+                        autoFocus
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Al enviar, la revisión quedará aprobada y se avanzará el próximo check-in automáticamente.
+                    </p>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setFeedbackDialog(null)} disabled={isSendingFeedback}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        onClick={handleSendFeedback}
+                        disabled={!feedbackText.trim() || isSendingFeedback}
+                    >
+                        {isSendingFeedback ? 'Enviando...' : 'Enviar revisión'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    ) : null
 
     if (checkins.length === 0) {
         return (
@@ -62,42 +140,50 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
         const previousCheckin = selectedIndex >= 0 ? (sortedCompleted[selectedIndex + 1] ?? null) : null
 
         return (
-            <CheckinDetailPanel
-                checkin={liveSelectedCheckin}
-                previousCheckin={previousCheckin}
-                onClose={() => setSelectedCheckin(null)}
-                coachId={coachId}
-                clientId={clientId}
-                onRefresh={onRefresh}
-                metricDefinitions={metricDefinitions}
-                formTemplates={formTemplates}
-            />
+            <>
+                <CheckinDetailPanel
+                    checkin={liveSelectedCheckin}
+                    previousCheckin={previousCheckin}
+                    onClose={() => setSelectedCheckin(null)}
+                    coachId={coachId}
+                    clientId={clientId}
+                    onRefresh={onRefresh}
+                    metricDefinitions={metricDefinitions}
+                    formTemplates={formTemplates}
+                    onOpenFeedbackDialog={handleOpenFeedbackDialog}
+                />
+                {feedbackDialogElement}
+            </>
         )
     }
 
     return (
-        <Card className="flex-1">
-            <div className="p-4 border-b flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    Check-ins
-                </h3>
-                <span className="text-sm text-muted-foreground">{checkins.length} registros</span>
-            </div>
-            <div className="divide-y max-h-[600px] overflow-y-auto">
-                {checkins.map(checkin => (
-                    <CheckinRow
-                        key={checkin.id}
-                        checkin={checkin}
-                        isSelected={false}
-                        onClick={() => setSelectedCheckin(checkin)}
-                        coachId={coachId}
-                        clientId={clientId}
-                        onRefresh={onRefresh}
-                    />
-                ))}
-            </div>
-        </Card>
+        <>
+            <Card className="flex-1">
+                <div className="p-4 border-b flex items-center justify-between">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        Check-ins
+                    </h3>
+                    <span className="text-sm text-muted-foreground">{checkins.length} registros</span>
+                </div>
+                <div className="divide-y max-h-[600px] overflow-y-auto">
+                    {checkins.map(checkin => (
+                        <CheckinRow
+                            key={checkin.id}
+                            checkin={checkin}
+                            isSelected={false}
+                            onClick={() => setSelectedCheckin(checkin)}
+                            coachId={coachId}
+                            clientId={clientId}
+                            onRefresh={onRefresh}
+                            onOpenFeedbackDialog={handleOpenFeedbackDialog}
+                        />
+                    ))}
+                </div>
+            </Card>
+            {feedbackDialogElement}
+        </>
     )
 }
 
@@ -107,7 +193,8 @@ function CheckinRow({
     onClick,
     coachId,
     clientId,
-    onRefresh
+    onRefresh,
+    onOpenFeedbackDialog
 }: {
     checkin: CheckinWithReview
     isSelected: boolean
@@ -115,13 +202,16 @@ function CheckinRow({
     coachId: string
     clientId: string
     onRefresh: () => void
+    onOpenFeedbackDialog: (checkinId: string, checkinDate: string) => void
 }) {
     const [isPending, startTransition] = useTransition()
 
-    const handleCreateReview = (e: React.MouseEvent) => {
+
+    const handleDelete = (e: React.MouseEvent) => {
         e.stopPropagation()
+        if (!confirm('¿Eliminar este check-in? Esta acción no se puede deshacer.')) return
         startTransition(async () => {
-            await createReviewAction(coachId, clientId, checkin.id)
+            await deleteCheckinAction(checkin.id, coachId)
             onRefresh()
         })
     }
@@ -211,12 +301,20 @@ function CheckinRow({
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleCreateReview}
-                        disabled={isPending}
+                        onClick={(e) => { e.stopPropagation(); onOpenFeedbackDialog(checkin.id, checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Check-in') }}
                     >
-                        Crear review
+                        Crear revisión
                     </Button>
                 )}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                >
+                    <Trash2 className="h-4 w-4" />
+                </Button>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
         </div>
@@ -231,7 +329,8 @@ function CheckinDetailPanel({
     clientId,
     onRefresh,
     metricDefinitions,
-    formTemplates
+    formTemplates,
+    onOpenFeedbackDialog
 }: {
     checkin: CheckinWithReview
     previousCheckin?: CheckinWithReview | null
@@ -241,18 +340,11 @@ function CheckinDetailPanel({
     onRefresh: () => void
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
+    onOpenFeedbackDialog: (checkinId: string, checkinDate: string) => void
 }) {
-    const [isPending, startTransition] = useTransition()
     const [aiSheetOpen, setAISheetOpen] = useState(false)
     const [isRegeneratingAI, startRegeneratingAI] = useTransition()
     const { toast } = useToast()
-
-    const handleCreateReview = () => {
-        startTransition(async () => {
-            await createReviewAction(coachId, clientId, checkin.id)
-            onRefresh()
-        })
-    }
 
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleDateString('es-ES', {
@@ -513,7 +605,7 @@ function CheckinDetailPanel({
                             <p className="text-sm text-muted-foreground mb-4">
                                 Este check-in aún no ha sido revisado
                             </p>
-                            <Button onClick={handleCreateReview} disabled={isPending}>
+                            <Button onClick={() => onOpenFeedbackDialog(checkin.id, checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Check-in')}>
                                 Crear revisión para el cliente
                             </Button>
                         </div>

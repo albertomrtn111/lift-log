@@ -9,13 +9,26 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-    title: 'NextTrain - Tu entrenamiento personal',
-    description: 'Aplicación de seguimiento de entrenamiento y nutrición',
+    title: 'NexTrain - Tu entrenamiento personal',
+    description: 'Tu plataforma de entrenamiento personal',
     manifest: '/manifest.json',
     appleWebApp: {
         capable: true,
-        statusBarStyle: 'default',
+        statusBarStyle: 'black-translucent',
         title: 'NexTrain',
+        startupImage: '/icons/icon-512x512.png',
+    },
+    icons: {
+        icon: [
+            { url: '/favicon.ico', sizes: 'any' },
+            { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+            { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+        ],
+        apple: [
+            { url: '/icons/icon-180x180.png', sizes: '180x180', type: 'image/png' },
+            { url: '/icons/icon-152x152.png', sizes: '152x152', type: 'image/png' },
+            { url: '/icons/icon-144x144.png', sizes: '144x144', type: 'image/png' },
+        ],
     },
 }
 
