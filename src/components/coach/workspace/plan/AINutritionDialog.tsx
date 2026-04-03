@@ -34,7 +34,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useActiveMacroPlan, useUpsertMacroPlan } from '@/hooks/useMacroPlan'
 import { useActiveDietPlan, useCreateDietPlan, useDietPlanStructure } from '@/hooks/useDietOptions'
 import type { MacroPlan, DietPlanWithStructure } from '@/data/nutrition/types'
-import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/app/api/ai/generate-nutrition/route'
+import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
 
 // ============================================================================
 // Types

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
 
 // ============================================================================
 // Request Schema
@@ -39,7 +40,7 @@ const RequestSchema = z.object({
 // Output Schemas (Zod)
 // ============================================================================
 
-export const AIMacrosProposalSchema = z.object({
+const AIMacrosProposalSchema = z.object({
     type: z.literal('macros'),
     kcal: z.number().int().min(800).max(8000),
     protein_g: z.number().int().min(50).max(600),
@@ -73,16 +74,12 @@ const DietMealSchema = z.object({
     options: z.array(DietOptionSchema).min(1),
 })
 
-export const AIDietProposalSchema = z.object({
+const AIDietProposalSchema = z.object({
     type: z.literal('options_diet'),
     name: z.string().min(1),
     meals: z.array(DietMealSchema).min(1),
     explanation: z.string().min(1),
 })
-
-export type AIMacrosProposal = z.infer<typeof AIMacrosProposalSchema>
-export type AIDietProposal = z.infer<typeof AIDietProposalSchema>
-export type AINutritionProposal = AIMacrosProposal | AIDietProposal
 
 // ============================================================================
 // Context → text helpers

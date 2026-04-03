@@ -26,7 +26,7 @@ import {
     ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { AITrainingProposal } from '@/app/api/ai/generate-training/route'
+import type { AITrainingProposal } from '@/types/ai-training'
 import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================

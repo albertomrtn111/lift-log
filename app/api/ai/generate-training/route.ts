@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import type { AITrainingProposal } from '@/types/ai-training'
 
 // ============================================================================
 // Request Schema
@@ -44,15 +45,13 @@ const AIDaySchema = z.object({
     exercises: z.array(AIExerciseSchema).min(1),
 })
 
-export const AITrainingProposalSchema = z.object({
+const AITrainingProposalSchema = z.object({
     name: z.string().min(1),
     weeks: z.number().int().min(1).max(52),
     days: z.array(AIDaySchema).min(1),
     explanation: z.string().min(1),
     changes: z.array(z.string()).default([]),  // list of change descriptions (used in modify mode)
 })
-
-export type AITrainingProposal = z.infer<typeof AITrainingProposalSchema>
 
 // ============================================================================
 // Prompt builders

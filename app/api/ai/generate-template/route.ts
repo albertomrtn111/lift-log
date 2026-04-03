@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import type { AIStrengthTemplate, AICardioTemplate, AIGeneratedTemplate } from '@/types/ai-template'
 
 // ============================================================================
 // Request / Response Schemas (Zod)
@@ -22,7 +23,7 @@ const StrengthRowSchema = z.object({
     notas: z.string().default(''),
 })
 
-export const AIStrengthTemplateSchema = z.object({
+const AIStrengthTemplateSchema = z.object({
     type: z.literal('strength'),
     name: z.string().min(1),
     description: z.string().default(''),
@@ -31,7 +32,7 @@ export const AIStrengthTemplateSchema = z.object({
 })
 
 // Cardio: mirrors CardioTemplateDialog form fields
-export const AICardioTemplateSchema = z.object({
+const AICardioTemplateSchema = z.object({
     type: z.literal('cardio'),
     name: z.string().min(1),
     description: z.string().default(''),
@@ -40,10 +41,6 @@ export const AICardioTemplateSchema = z.object({
     details: z.string().min(1),
     clientNotes: z.string().default(''),
 })
-
-export type AIStrengthTemplate = z.infer<typeof AIStrengthTemplateSchema>
-export type AICardioTemplate = z.infer<typeof AICardioTemplateSchema>
-export type AIGeneratedTemplate = AIStrengthTemplate | AICardioTemplate
 
 // ============================================================================
 // Prompt builders

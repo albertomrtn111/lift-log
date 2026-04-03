@@ -33,7 +33,7 @@ import type {
     TemplateDay,
     TemplateExercise,
 } from '@/types/templates'
-import type { AIStrengthTemplate, AICardioTemplate, AIGeneratedTemplate } from '@/app/api/ai/generate-template/route'
+import type { AIStrengthTemplate, AICardioTemplate, AIGeneratedTemplate } from '@/types/ai-template'
 
 // ============================================================================
 // Types
