@@ -10,7 +10,6 @@ import {
     createFormTemplate,
     updateFormTemplate,
     duplicateFormTemplate,
-    setFormTemplateDefault,
     toggleFormTemplateActive,
     deleteFormTemplate,
 } from '@/data/form-templates'
@@ -49,7 +48,6 @@ import {
     MoreHorizontal,
     Pencil,
     Copy,
-    Star,
     Power,
     Trash2,
     FileText,
@@ -156,18 +154,6 @@ export function FormsPageClient({ templates, activeClients }: FormsPageClientPro
         })
     }
 
-    const handleSetDefault = (template: FormTemplate) => {
-        startTransition(async () => {
-            const result = await setFormTemplateDefault(template.id)
-            if (result.success) {
-                toast({ title: 'Plantilla predeterminada actualizada' })
-                router.refresh()
-            } else {
-                toast({ title: 'Error', description: result.error, variant: 'destructive' })
-            }
-        })
-    }
-
     const handleToggleActive = (template: FormTemplate) => {
         startTransition(async () => {
             const result = await toggleFormTemplateActive(template.id)
@@ -183,14 +169,6 @@ export function FormsPageClient({ templates, activeClients }: FormsPageClientPro
     }
 
     const handleDelete = (template: FormTemplate) => {
-        if (template.is_default) {
-            toast({
-                title: 'No se puede eliminar',
-                description: 'Quita el estado predeterminado antes de eliminar.',
-                variant: 'destructive',
-            })
-            return
-        }
         setDeleteTarget(template)
     }
 
@@ -262,7 +240,6 @@ export function FormsPageClient({ templates, activeClients }: FormsPageClientPro
                             isPending={isPending}
                             onEdit={handleEdit}
                             onDuplicate={handleDuplicate}
-                            onSetDefault={handleSetDefault}
                             onToggleActive={handleToggleActive}
                             onDelete={handleDelete}
                         />
@@ -315,7 +292,6 @@ function TemplateTable({
     isPending,
     onEdit,
     onDuplicate,
-    onSetDefault,
     onToggleActive,
     onDelete,
 }: {
@@ -323,7 +299,6 @@ function TemplateTable({
     isPending: boolean
     onEdit: (t: FormTemplate) => void
     onDuplicate: (t: FormTemplate) => void
-    onSetDefault: (t: FormTemplate) => void
     onToggleActive: (t: FormTemplate) => void
     onDelete: (t: FormTemplate) => void
 }) {
@@ -358,24 +333,14 @@ function TemplateTable({
                             className={isPending ? 'opacity-60 pointer-events-none' : ''}
                         >
                             <TableCell>
-                                <div className="flex items-center gap-2">
-                                    <div>
-                                        <span className="font-medium">{t.title}</span>
-                                        {(t.type === 'checkin' || t.type === 'onboarding') && (
-                                            <p className="text-xs text-muted-foreground">
-                                                {(t.assigned_client_ids?.length ?? 0) > 0
-                                                    ? `${t.assigned_client_ids.length} atleta${t.assigned_client_ids.length === 1 ? '' : 's'} asignado${t.assigned_client_ids.length === 1 ? '' : 's'}`
-                                                    : t.is_default
-                                                        ? 'Plantilla por defecto'
-                                                        : 'Sin atletas asignados'}
-                                            </p>
-                                        )}
-                                    </div>
-                                    {t.is_default && (
-                                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20 text-[10px] px-1.5">
-                                            <Star className="h-3 w-3 mr-0.5 fill-current" />
-                                            Predeterminado
-                                        </Badge>
+                                <div>
+                                    <span className="font-medium">{t.title}</span>
+                                    {(t.type === 'checkin' || t.type === 'onboarding') && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {(t.assigned_client_ids?.length ?? 0) > 0
+                                                ? `${t.assigned_client_ids.length} atleta${t.assigned_client_ids.length === 1 ? '' : 's'} asignado${t.assigned_client_ids.length === 1 ? '' : 's'}`
+                                                : 'Sin atletas asignados'}
+                                        </p>
                                     )}
                                 </div>
                             </TableCell>
@@ -414,12 +379,6 @@ function TemplateTable({
                                             <Copy className="mr-2 h-4 w-4" />
                                             Duplicar
                                         </DropdownMenuItem>
-                                        {!t.is_default && (
-                                            <DropdownMenuItem onClick={() => onSetDefault(t)}>
-                                                <Star className="mr-2 h-4 w-4" />
-                                                Predeterminar
-                                            </DropdownMenuItem>
-                                        )}
                                         <DropdownMenuItem onClick={() => onToggleActive(t)}>
                                             <Power className="mr-2 h-4 w-4" />
                                             {t.is_active ? 'Desactivar' : 'Activar'}

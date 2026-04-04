@@ -37,10 +37,7 @@ const NONE_TEMPLATE_VALUE = '__none__'
 function getActiveTemplatesByType(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
     return formTemplates
         .filter((template) => template.type === type && template.is_active)
-        .sort((a, b) => {
-            if (a.is_default === b.is_default) return a.title.localeCompare(b.title)
-            return a.is_default ? -1 : 1
-        })
+        .sort((a, b) => a.title.localeCompare(b.title))
 }
 
 function getExplicitTemplateIdForClient(
@@ -53,17 +50,13 @@ function getExplicitTemplateIdForClient(
     )?.id
 }
 
-function getDefaultTemplateId(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
-    return getActiveTemplatesByType(formTemplates, type).find((template) => template.is_default)?.id
-}
-
 function getTemplateSelectionState(
     formTemplates: FormTemplate[],
     clientId: string,
     type: 'checkin' | 'onboarding'
 ) {
     const explicitTemplateId = getExplicitTemplateIdForClient(formTemplates, clientId, type)
-    const resolvedTemplateId = explicitTemplateId ?? getDefaultTemplateId(formTemplates, type) ?? NONE_TEMPLATE_VALUE
+    const resolvedTemplateId = explicitTemplateId ?? NONE_TEMPLATE_VALUE
 
     return {
         resolvedTemplateId,
@@ -315,7 +308,7 @@ export function EditClientModal({ client, formTemplates, open, onOpenChange, onS
                                     <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
                                     {activeCheckinTemplates.map((template) => (
                                         <SelectItem key={template.id} value={template.id}>
-                                            {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                            {template.title}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -335,7 +328,7 @@ export function EditClientModal({ client, formTemplates, open, onOpenChange, onS
                                     <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
                                     {activeOnboardingTemplates.map((template) => (
                                         <SelectItem key={template.id} value={template.id}>
-                                            {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                            {template.title}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

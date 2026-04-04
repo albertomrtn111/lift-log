@@ -26,7 +26,7 @@ export function getDefaultMode(role: UserRole): AppMode | null {
  * Get the redirect path for a given mode
  */
 export function getModeRedirectPath(mode: AppMode): string {
-    return mode === 'coach' ? '/coach/dashboard' : '/routine'
+    return mode === 'coach' ? '/coach/dashboard' : '/planning'
 }
 
 /**

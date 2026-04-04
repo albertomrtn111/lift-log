@@ -149,9 +149,9 @@ export default function PlanningPageClient({
     }
 
     return (
-        <div className="min-h-screen pb-20">
+        <div className="app-mobile-page min-h-screen">
             {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-3">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">

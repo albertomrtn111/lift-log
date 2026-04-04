@@ -162,8 +162,8 @@ export default function ProfileSettingsPage() {
     // Loading
     if (loading) {
         return (
-            <div className="min-h-screen pb-4">
-                <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <div className="app-mobile-page min-h-screen pb-4">
+                <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                     <div className="px-4 py-4 flex items-center gap-3">
                         <Button variant="ghost" size="icon" onClick={() => router.back()}>
                             <ArrowLeft className="h-5 w-5" />
@@ -182,9 +182,9 @@ export default function ProfileSettingsPage() {
     }
 
     return (
-        <div className="min-h-screen pb-4">
+        <div className="app-mobile-page min-h-screen pb-4">
             {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4 flex items-center gap-3">
                     <Button variant="ghost" size="icon" asChild>
                         <Link href="/profile">

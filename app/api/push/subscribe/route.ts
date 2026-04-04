@@ -80,9 +80,25 @@ export async function DELETE(request: NextRequest) {
         const { endpoint } = body
         if (!endpoint) return NextResponse.json({ error: 'Missing endpoint' }, { status: 400 })
 
+        const { data: clientRow, error: clientError } = await supabase
+            .from('clients')
+            .select('id')
+            .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
+            .eq('status', 'active')
+            .maybeSingle()
+
+        if (clientError) {
+            return NextResponse.json({ error: 'DB error', detail: clientError.message }, { status: 500 })
+        }
+
+        if (!clientRow) {
+            return NextResponse.json({ error: 'Not a client' }, { status: 403 })
+        }
+
         await supabase
             .from('push_subscriptions')
             .delete()
+            .eq('client_id', clientRow.id)
             .eq('endpoint', endpoint)
 
         return NextResponse.json({ success: true })

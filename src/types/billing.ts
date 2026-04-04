@@ -18,6 +18,14 @@ export interface PaymentRecord {
     email?: string
 }
 
+export interface BillingClientOption {
+    id: string
+    full_name: string
+    email: string
+    status: 'active' | 'inactive' | 'pending'
+    payment_amount: number | null
+}
+
 export interface BillingSummary {
     totalProjected: number
     totalCollected: number

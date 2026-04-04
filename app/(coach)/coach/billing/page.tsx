@@ -1,5 +1,5 @@
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { generateMonthlyRecords, getBillingDashboard, getAnnualComparison } from '@/data/billing'
+import { generateMonthlyRecords, getBillingDashboard, getAnnualComparison, listBillingClients } from '@/data/billing'
 import BillingPageClient from '@/components/coach/billing/BillingPageClient'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +20,10 @@ export default async function BillingPage({
 
     // Pre-fetch data for the initial render
     const initialData = await getBillingDashboard(coachId, targetYear, targetMonth)
-    const annualComparison = await getAnnualComparison(coachId, targetYear)
+    const [annualComparison, clientOptions] = await Promise.all([
+        getAnnualComparison(coachId, targetYear),
+        listBillingClients(coachId),
+    ])
 
     return (
         <div className="flex-1 space-y-6 p-4 sm:p-8 pt-6">
@@ -30,6 +33,7 @@ export default async function BillingPage({
                 initialMonth={targetMonth}
                 initialData={initialData}
                 annualComparison={annualComparison}
+                clientOptions={clientOptions}
             />
         </div>
     )

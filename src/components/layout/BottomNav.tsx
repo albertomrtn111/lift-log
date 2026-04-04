@@ -60,8 +60,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card glass"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="app-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card glass"
     >
       <div className="flex items-center justify-around px-1 py-1">
         {navItems.map((item) => {

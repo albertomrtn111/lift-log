@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getBillingDashboard } from '@/data/billing'
+import { generateMonthlyRecords, getBillingDashboard } from '@/data/billing'
 
 export async function GET(request: Request) {
     const supabase = await createClient()
@@ -48,10 +48,12 @@ export async function GET(request: Request) {
                 return NextResponse.json({ error: 'No eres coach activo' }, { status: 403 })
             }
 
+            await generateMonthlyRecords(membership.coach_id, year, month)
             const data = await getBillingDashboard(membership.coach_id, year, month)
             return NextResponse.json({ data })
         }
 
+        await generateMonthlyRecords(coachData.id, year, month)
         const data = await getBillingDashboard(coachData.id, year, month)
         return NextResponse.json({ data })
     } catch (error: any) {

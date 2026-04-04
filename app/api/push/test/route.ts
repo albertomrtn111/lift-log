@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUserContext } from '@/lib/auth/get-user-context'
-import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+import { isPushServerConfigured, sendPushToClient } from '@/lib/push'
 
 // Solo accesible para coaches — envía notificación de prueba a un clientId
 export async function POST(request: NextRequest) {
@@ -17,18 +17,14 @@ export async function POST(request: NextRequest) {
     const { clientId } = await request.json()
     if (!clientId) return NextResponse.json({ error: 'clientId requerido' }, { status: 400 })
 
-    // Verificar cuántas suscripciones tiene el cliente
-    const admin = createSupabaseAdmin(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const { count } = await admin
-        .from('push_subscriptions')
-        .select('*', { count: 'exact', head: true })
-        .eq('client_id', clientId)
+    if (!isPushServerConfigured()) {
+        return NextResponse.json({
+            success: false,
+            error: 'Push notifications no configuradas en este entorno.',
+        }, { status: 503 })
+    }
 
-    const { sendPushToClient } = await import('@/lib/push')
-    await sendPushToClient(clientId, {
+    const result = await sendPushToClient(clientId, {
         title: '🔔 Notificación de prueba',
         body: 'Si ves esto, las push notifications están funcionando correctamente.',
         url: '/chat',
@@ -36,9 +32,11 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({
-        success: true,
-        message: `Notificación enviada. Suscripciones en DB: ${count ?? 0}`,
+        success: result.ok,
+        message: result.ok
+            ? `Notificación procesada. Suscripciones: ${result.subscriptionCount ?? 0}, enviadas: ${result.deliveredCount ?? 0}`
+            : 'No se pudo procesar la notificación de prueba.',
         clientId,
-        subscriptionCount: count ?? 0,
+        push: result,
     })
 }

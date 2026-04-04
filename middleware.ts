@@ -12,14 +12,25 @@ export async function middleware(req: NextRequest) {
         return NextResponse.next()
     }
 
+    // Inject pathname into request headers so server components can read it
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-pathname', pathname)
+
     let res = NextResponse.next({
-        request: req,
+        request: { headers: requestHeaders },
     })
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('[middleware] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    }
 
     // Official @supabase/ssr pattern: NEVER mutate req.cookies in setAll
     const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        supabaseUrl,
+        supabaseAnonKey,
         {
             cookies: {
                 getAll() {
@@ -35,37 +46,17 @@ export async function middleware(req: NextRequest) {
         }
     )
 
-    // 1. Get Session first (lightweight, reads from cookie)
-    const { data: { session } } = await supabase.auth.getSession()
-
-    if (isDev) {
-        console.log("--- [Middleware] SESSION_DEBUG ---")
-        console.log(`Path: ${pathname}`)
-        console.log(`Session User ID: ${session?.user?.id ?? 'NONE'}`)
-        console.log(`Has access_token: ${!!session?.access_token}`)
-        console.log(`access_token length: ${session?.access_token?.length ?? 0}`)
-        console.log("---------------------------------")
-    }
-
-    // 2. No session → redirect to /login
-    if (!session) {
-        if (isDev) console.log(`[Middleware] No session at ${pathname}, redirecting to /login`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/login'
-        return NextResponse.redirect(url)
-    }
-
-    // 3. Validate user via getUser() (server-side verification against Supabase Auth)
+    // 1. Validate user via getUser() (server-side verification against Supabase Auth)
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-        if (isDev) console.log(`[Middleware] getUser() returned null despite session, redirecting to /login`)
+        if (isDev) console.log(`[Middleware] No authenticated user at ${pathname}, redirecting to /login`)
         const url = req.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
     }
 
-    // 4. Deterministic Role Detection via RPC (only if session exists)
+    // 2. Deterministic Role Detection via RPC
     let isCoach = false
     let isClient = false
     let resolutionSource = 'RPC'
@@ -117,7 +108,7 @@ export async function middleware(req: NextRequest) {
         console.log("------------------------------------------")
     }
 
-    // 5. Redirection & Protection Logic
+    // 3. Redirection & Protection Logic
     const isNoAccessPage = pathname === '/no-access'
     const isProfilePage = pathname === '/profile'
     const isModeSelectionPage = pathname === '/mode'

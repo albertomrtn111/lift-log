@@ -3,12 +3,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { revalidatePath } from 'next/cache'
-import { createReviewForCheckin, ensureReviewForCheckin, updateReview } from '@/data/workspace'
+import { ensureReviewForCheckin, updateReview } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
+import { sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
+import { SupabaseClient } from '@supabase/supabase-js'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -168,93 +170,92 @@ export async function updateReviewAction(
     return { success: true }
 }
 
-export async function approveReviewAction(reviewId: string) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+function revalidateReviewSurfaces() {
+    revalidatePath('/coach/clients')
+    revalidatePath('/coach/members')
+    revalidatePath('/coach/dashboard')
+    revalidatePath('/coach/calendar')
+}
 
-    if (!user) {
-        return { success: false, error: 'No autenticado' }
-    }
+async function advanceClientNextCheckinDate(
+    supabase: SupabaseClient,
+    clientId: string
+) {
+    const { data: clientData } = await supabase
+        .from('clients')
+        .select('checkin_frequency_days, next_checkin_date')
+        .eq('id', clientId)
+        .single()
 
-    const success = await updateReview(reviewId, {
+    if (!clientData) return
+
+    const freqDays = clientData.checkin_frequency_days ?? 14
+    const baseDate = clientData.next_checkin_date
+        ? new Date(clientData.next_checkin_date + 'T12:00:00')
+        : new Date()
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const newDate = new Date(baseDate)
+    do {
+        newDate.setDate(newDate.getDate() + freqDays)
+    } while (newDate < today)
+
+    await supabase
+        .from('clients')
+        .update({ next_checkin_date: toLocalDateStr(newDate) })
+        .eq('id', clientId)
+}
+
+async function finalizeApprovedReview(
+    supabase: SupabaseClient,
+    userId: string,
+    reviewId: string,
+    checkinId: string,
+    clientId: string
+) {
+    const approved = await updateReview(reviewId, {
         status: 'approved',
-        approved_by: user.id
+        approved_by: userId,
     })
 
-    if (!success) {
-        return { success: false, error: 'Error al aprobar review' }
+    if (!approved) {
+        return { success: false as const, error: 'Error al aprobar la revisión' }
     }
 
-    // Obtener checkin_id del review
+    const { error: checkinError } = await supabase
+        .from('checkins')
+        .update({ status: 'archived' })
+        .eq('id', checkinId)
+
+    if (checkinError) {
+        return { success: false as const, error: checkinError.message || 'No se pudo cerrar el check-in.' }
+    }
+
+    await advanceClientNextCheckinDate(supabase, clientId)
+
+    return { success: true as const }
+}
+
+export async function approveReviewAction(reviewId: string) {
+    const supabase = await createClient()
     const { data: review } = await supabase
         .from('reviews')
-        .select('checkin_id')
+        .select('coach_id, client_id, checkin_id')
         .eq('id', reviewId)
         .single()
 
-    if (review?.checkin_id) {
-        // Obtener client_id desde el checkin
-        const { data: checkin } = await supabase
-            .from('checkins')
-            .select('client_id')
-            .eq('id', review.checkin_id)
-            .single()
-
-        // Marcar checkin como aprobado
-        await supabase
-            .from('checkins')
-            .update({ status: 'approved' })
-            .eq('id', review.checkin_id)
-
-        if (checkin?.client_id) {
-            // ── Avanzar next_checkin_date al siguiente ciclo del calendario ──
-            const { data: clientData } = await supabase
-                .from('clients')
-                .select('checkin_frequency_days, next_checkin_date')
-                .eq('id', checkin.client_id)
-                .single()
-
-            if (clientData) {
-                const freqDays = clientData.checkin_frequency_days ?? 14
-                const nextCheckinDate = clientData.next_checkin_date
-                    ? new Date(clientData.next_checkin_date + 'T12:00:00') // noon para evitar desfase UTC
-                    : new Date()
-
-                // Avanzar desde la fecha agendada (no desde hoy)
-                // Si sigue en el pasado, seguir sumando ciclos hasta fecha futura
-                const today = new Date()
-                today.setHours(0, 0, 0, 0)
-                const newDate = new Date(nextCheckinDate)
-                do {
-                    newDate.setDate(newDate.getDate() + freqDays)
-                } while (newDate < today)
-
-                const newDateStr = toLocalDateStr(newDate)
-
-                await supabase
-                    .from('clients')
-                    .update({ next_checkin_date: newDateStr })
-                    .eq('id', checkin.client_id)
-            }
-
-            // Enviar push notification al cliente
-            try {
-                const { sendPushToClient } = await import('@/lib/push')
-                await sendPushToClient(checkin.client_id, {
-                    title: '¡Tu revisión ha sido revisada! ✅',
-                    body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
-                    url: '/summary',
-                    tag: 'review-approved',
-                })
-            } catch {
-                // Silencioso: notificaciones son best-effort
-            }
-        }
+    if (!review) {
+        return { success: false, error: 'No se encontró la revisión.' }
     }
 
-    revalidatePath('/coach/clients')
-    revalidatePath('/coach/members')
-    return { success: true }
+    return completeReviewAction({
+        coachId: review.coach_id,
+        clientId: review.client_id,
+        checkinId: review.checkin_id,
+        sendToClient: false,
+    })
 }
 
 export async function revertReviewToDraftAction(reviewId: string) {
@@ -643,10 +644,10 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 
     if (error) return { success: false, error: error.message }
 
-    // Marcar cualquier checkin en 'reviewed' sin revisión como aprobado
+    // Marcar cualquier checkin en 'reviewed' sin revisión como archivado
     await supabase
         .from('checkins')
-        .update({ status: 'approved' })
+        .update({ status: 'archived' })
         .eq('client_id', clientId)
         .eq('status', 'reviewed')
 
@@ -683,89 +684,103 @@ export async function createReviewWithFeedbackAction(
     clientId: string,
     checkinId: string,
     feedbackMessage: string
-): Promise<{ success: boolean; error?: string }> {
-    if (!feedbackMessage.trim()) {
-        return { success: false, error: 'El mensaje de feedback no puede estar vacío' }
-    }
-
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const { coachId: validatedCoachId } = await requireActiveCoachId(coachId)
-
-    // 1. Crear la review
-    const review = await createReviewForCheckin(validatedCoachId, clientId, checkinId, user.id)
-    if (!review) return { success: false, error: 'Error al crear la revisión' }
-
-    // 2. Aprobar la review con el mensaje
-    const approved = await updateReview(review.id, {
-        status: 'approved',
-        approved_by: user.id,
-        message_to_client: feedbackMessage.trim(),
-        summary: feedbackMessage.trim(),
+): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; error?: string }> {
+    return completeReviewAction({
+        coachId,
+        clientId,
+        checkinId,
+        feedbackMessage,
+        sendToClient: true,
     })
-    if (!approved) return { success: false, error: 'Error al aprobar la revisión' }
+}
 
-    // 3. Marcar el checkin como aprobado
-    await supabase
-        .from('checkins')
-        .update({ status: 'approved' })
-        .eq('id', checkinId)
+export async function completeReviewAction(input: {
+    coachId: string
+    clientId: string
+    checkinId: string
+    feedbackMessage?: string
+    sendToClient?: boolean
+}): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; error?: string }> {
+    const feedbackMessage = input.feedbackMessage?.trim() || ''
 
-    // 4. Avanzar next_checkin_date (misma lógica que approveReviewAction)
-    const { data: clientData } = await supabase
-        .from('clients')
-        .select('checkin_frequency_days, next_checkin_date')
-        .eq('id', clientId)
-        .single()
-
-    if (clientData) {
-        const freqDays = clientData.checkin_frequency_days ?? 14
-        const baseDate = clientData.next_checkin_date
-            ? new Date(clientData.next_checkin_date + 'T12:00:00')
-            : new Date()
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const newDate = new Date(baseDate)
-        do {
-            newDate.setDate(newDate.getDate() + freqDays)
-        } while (newDate < today)
-
-        await supabase
-            .from('clients')
-            .update({ next_checkin_date: toLocalDateStr(newDate) })
-            .eq('id', clientId)
+    if (input.sendToClient && !feedbackMessage) {
+        return { success: false, error: 'Escribe un feedback antes de enviarlo al cliente.' }
     }
 
-    // 5. Insertar mensaje en el chat con message_type = 'review_feedback'
-    await supabase
-        .from('messages')
-        .insert({
-            coach_id: validatedCoachId,
-            client_id: clientId,
-            sender_role: 'coach',
-            sender_id: user.id,
-            content: feedbackMessage.trim(),
-            message_type: 'review_feedback',
-        })
-
-    // 6. Push notification al cliente
     try {
-        const { sendPushToClient } = await import('@/lib/push')
-        await sendPushToClient(clientId, {
-            title: '📋 Tu entrenador ha revisado tu check-in',
-            body: feedbackMessage.trim().length > 100
-                ? feedbackMessage.trim().substring(0, 97) + '...'
-                : feedbackMessage.trim(),
-            url: '/chat',
-            tag: 'review-feedback',
-        })
-    } catch {
-        // Best-effort
-    }
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { success: false, error: 'No autenticado' }
 
-    revalidatePath('/coach/clients')
-    revalidatePath('/coach/members')
-    return { success: true }
+        const { coachId: validatedCoachId } = await requireActiveCoachId(input.coachId)
+
+        const review = await ensureReviewForCheckin(validatedCoachId, input.clientId, input.checkinId, user.id)
+        if (!review) {
+            return { success: false, error: 'No se pudo cargar o crear la revisión.' }
+        }
+
+        const isAlreadyApproved = review.status === 'approved'
+
+        if (!isAlreadyApproved) {
+            const finalized = await finalizeApprovedReview(
+                supabase,
+                user.id,
+                review.id,
+                input.checkinId,
+                input.clientId
+            )
+
+            if (!finalized.success) {
+                return { success: false, error: finalized.error }
+            }
+        }
+
+        if (input.sendToClient) {
+            const { error: messageError } = await supabase
+                .from('messages')
+                .insert({
+                    coach_id: validatedCoachId,
+                    client_id: input.clientId,
+                    sender_role: 'coach',
+                    sender_id: user.id,
+                    content: feedbackMessage,
+                    message_type: 'review_feedback',
+                })
+
+            if (messageError) {
+                revalidateReviewSurfaces()
+                return {
+                    success: false,
+                    partialSuccess: true,
+                    error: 'La revisión quedó aprobada, pero no se pudo enviar el feedback al cliente.',
+                }
+            }
+
+            const messageSaved = await updateReview(review.id, {
+                message_to_client: feedbackMessage,
+            })
+
+            if (!messageSaved) {
+                revalidateReviewSurfaces()
+                return {
+                    success: false,
+                    partialSuccess: true,
+                    error: 'La revisión quedó aprobada y el mensaje salió al chat, pero no se pudo guardar el feedback en la revisión.',
+                }
+            }
+
+            await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            revalidateReviewSurfaces()
+            return { success: true, sentToClient: true }
+        }
+
+        if (!isAlreadyApproved) {
+            await sendReviewApprovedNotification(input.clientId)
+        }
+        revalidateReviewSurfaces()
+        return { success: true, sentToClient: false }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo completar la revisión.'
+        return { success: false, error: message }
+    }
 }

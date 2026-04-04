@@ -37,14 +37,7 @@ const NONE_TEMPLATE_VALUE = '__none__'
 function getActiveTemplatesByType(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
     return formTemplates
         .filter((template) => template.type === type && template.is_active)
-        .sort((a, b) => {
-            if (a.is_default === b.is_default) return a.title.localeCompare(b.title)
-            return a.is_default ? -1 : 1
-        })
-}
-
-function getDefaultTemplateId(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
-    return getActiveTemplatesByType(formTemplates, type).find((template) => template.is_default)?.id ?? NONE_TEMPLATE_VALUE
+        .sort((a, b) => a.title.localeCompare(b.title))
 }
 
 export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps) {
@@ -67,8 +60,8 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
         payment_amount: '',
         payment_day: '',
         payment_notes: '',
-        checkin_template_id: getDefaultTemplateId(formTemplates, 'checkin'),
-        onboarding_template_id: getDefaultTemplateId(formTemplates, 'onboarding'),
+        checkin_template_id: NONE_TEMPLATE_VALUE,
+        onboarding_template_id: NONE_TEMPLATE_VALUE,
     })
 
     const activeCheckinTemplates = getActiveTemplatesByType(formTemplates, 'checkin')
@@ -86,8 +79,8 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
             payment_amount: '',
             payment_day: '',
             payment_notes: '',
-            checkin_template_id: getDefaultTemplateId(formTemplates, 'checkin'),
-            onboarding_template_id: getDefaultTemplateId(formTemplates, 'onboarding'),
+            checkin_template_id: NONE_TEMPLATE_VALUE,
+            onboarding_template_id: NONE_TEMPLATE_VALUE,
         })
         setError(null)
         setCopied(false)
@@ -310,7 +303,7 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                                         <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
                                         {activeCheckinTemplates.map((template) => (
                                             <SelectItem key={template.id} value={template.id}>
-                                                {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                                {template.title}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -330,7 +323,7 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                                         <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
                                         {activeOnboardingTemplates.map((template) => (
                                             <SelectItem key={template.id} value={template.id}>
-                                                {template.title}{template.is_default ? ' · Predeterminado' : ''}
+                                                {template.title}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

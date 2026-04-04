@@ -56,15 +56,15 @@ export async function sendOnboardingAction(
         return {
             success: false,
             error:
-                'No tienes una plantilla de onboarding disponible para este cliente. Asigna una en Formularios o define una por defecto.',
+                'No tienes una plantilla de onboarding asignada a este cliente. Asígnala desde su perfil en Clientes o desde Formularios.',
         }
     }
 
-    // 4) Cancel any existing pending onboarding checkins for this client
+    // 4) Archive any existing pending onboarding checkins for this client
     // so they can't be accessed anymore, then always create a fresh one
     await supabase
         .from('checkins')
-        .update({ status: 'cancelled' })
+        .update({ status: 'archived' })
         .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('type', 'onboarding')

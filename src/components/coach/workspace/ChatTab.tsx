@@ -12,6 +12,7 @@ import {
     markMessagesReadAction,
 } from './chat-actions'
 import { createClient } from '@/lib/supabase/client'
+import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
 
 interface ChatTabProps {
     coachId: string
@@ -205,21 +206,18 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
                             >
                                 <div
                                     className={cn(
-                                        'rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words',
-                                        isReviewFeedback
-                                            ? 'bg-rose-500/10 border border-rose-500/20 text-foreground rounded-br-md'
-                                            : isCoach
+                                        'text-sm break-words',
+                                        !isReviewFeedback && 'rounded-2xl px-4 py-2.5 whitespace-pre-wrap',
+                                        !isReviewFeedback && (isCoach
                                                 ? 'bg-primary/10 text-foreground rounded-br-md'
-                                                : 'bg-muted/30 text-foreground rounded-bl-md'
+                                                : 'bg-muted/30 text-foreground rounded-bl-md')
                                     )}
                                 >
-                                    {isReviewFeedback && (
-                                        <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-rose-500/20">
-                                            <MessageSquare className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                                            <span className="text-xs font-semibold text-rose-400">Feedback de revisión</span>
-                                        </div>
+                                    {isReviewFeedback ? (
+                                        <ReviewFeedbackCard content={msg.content} createdAt={msg.created_at} />
+                                    ) : (
+                                        msg.content
                                     )}
-                                    {msg.content}
                                 </div>
                                 <span className="text-[10px] text-muted-foreground mt-1 px-1">
                                     {formatTimestamp(msg.created_at)}

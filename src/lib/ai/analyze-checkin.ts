@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { callGemini } from '@/lib/ai/gemini'
+import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 
 const AICheckinAnalysisSchema = z.object({
     overall_summary: z.string().min(1),
@@ -433,7 +434,8 @@ export async function generateCheckinAnalysis(
             .eq('id', reviewId)
 
         const context = await buildContext(checkinId)
-        const rawText = await callGemini(buildPrompt(context), {
+        const coachContext = await getCoachAIProfileContext(context.checkin.coach_id)
+        const rawText = await callGemini(coachContext + buildPrompt(context), {
             maxOutputTokens: 4096,
             thinkingBudget: 0,
             temperature: 0.4,

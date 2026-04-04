@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -28,7 +28,7 @@ export function usePushNotifications() {
     // Comprobar soporte y estado inicial
     useEffect(() => {
         if (typeof window === 'undefined') return
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        if (!VAPID_PUBLIC_KEY || !('serviceWorker' in navigator) || !('PushManager' in window)) {
             setPermissionState('unsupported')
             return
         }
@@ -86,6 +86,11 @@ export function usePushNotifications() {
 
     const subscribe = useCallback(async (): Promise<boolean> => {
         if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return false
+        if (!VAPID_PUBLIC_KEY) {
+            setPermissionState('unsupported')
+            setLastError('Las notificaciones push no están configuradas en este entorno.')
+            return false
+        }
 
         setIsLoading(true)
         setLastError(null)

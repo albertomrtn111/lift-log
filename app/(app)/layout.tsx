@@ -13,9 +13,9 @@ export default function AppLayout({
     // This allows instant navigation between tabs
     return (
         <ClientAppProvider>
-            <div className="min-h-screen bg-background safe-area-inset-top">
+            <div className="app-mobile-shell bg-background">
                 <PushNotificationBanner />
-                <main className="pb-24">
+                <main className="app-mobile-main">
                     {children}
                 </main>
                 <PwaNavigationFix />

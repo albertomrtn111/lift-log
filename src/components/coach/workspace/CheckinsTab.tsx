@@ -4,15 +4,6 @@ import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from '@/components/ui/dialog'
 import type { CheckinWithReview } from '@/data/workspace'
 import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
@@ -25,10 +16,10 @@ import {
     Loader2,
     AlertTriangle,
     Trash2,
-    MessageSquare,
+    CheckCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createReviewWithFeedbackAction, deleteCheckinAction, regenerateReviewAIAction } from './actions'
+import { deleteCheckinAction, regenerateReviewAIAction } from './actions'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 import {
     CheckinAIAnalysisSheet,
@@ -36,6 +27,7 @@ import {
     getReviewAIStatus,
 } from './CheckinAIAnalysisSheet'
 import { useToast } from '@/hooks/use-toast'
+import { ReviewApprovalDialog } from './ReviewApprovalDialog'
 
 interface CheckinsTabProps {
     coachId: string
@@ -46,78 +38,72 @@ interface CheckinsTabProps {
     formTemplates: FormTemplate[]
 }
 
+function getReviewStatusMeta(checkin: CheckinWithReview) {
+    if (!checkin.review) {
+        return {
+            label: 'Sin review',
+            className: 'bg-muted/50 text-muted-foreground border-border',
+        }
+    }
+
+    if (checkin.review.status === 'approved' && checkin.review.message_to_client?.trim()) {
+        return {
+            label: 'Aprobada y enviada',
+            className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+        }
+    }
+
+    if (checkin.review.status === 'approved') {
+        return {
+            label: 'Aprobada',
+            className: 'bg-success/10 text-success border-success/20',
+        }
+    }
+
+    if (checkin.review.status === 'draft') {
+        return {
+            label: 'Borrador',
+            className: 'bg-warning/10 text-warning border-warning/20',
+        }
+    }
+
+    return {
+        label: 'Rechazada',
+        className: 'bg-destructive/10 text-destructive border-destructive/20',
+    }
+}
+
+function canOpenReviewFlow(checkin: CheckinWithReview) {
+    if (checkin.status === 'pending') return false
+    return (
+        !checkin.review ||
+        checkin.review.status === 'draft' ||
+        (checkin.review.status === 'approved' && !checkin.review.message_to_client?.trim())
+    )
+}
+
+function getReviewActionLabel(checkin: CheckinWithReview) {
+    if (checkin.review?.status === 'approved' && !checkin.review.message_to_client?.trim()) {
+        return 'Enviar feedback'
+    }
+
+    return 'Cerrar revisión'
+}
+
 export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
     const [selectedCheckin, setSelectedCheckin] = useState<CheckinWithReview | null>(null)
     const liveSelectedCheckin = selectedCheckin
         ? checkins.find((checkin) => checkin.id === selectedCheckin.id) ?? selectedCheckin
         : null
-    const [feedbackDialog, setFeedbackDialog] = useState<{
-        open: boolean
-        checkinId: string
-        checkinDate: string
-    } | null>(null)
-    const [feedbackText, setFeedbackText] = useState('')
-    const [isSendingFeedback, setIsSendingFeedback] = useState(false)
+    const [reviewDialogCheckinId, setReviewDialogCheckinId] = useState<string | null>(null)
+    const reviewDialogCheckin = reviewDialogCheckinId
+        ? checkins.find((checkin) => checkin.id === reviewDialogCheckinId)
+            ?? (liveSelectedCheckin?.id === reviewDialogCheckinId ? liveSelectedCheckin : null)
+        : null
 
-    const handleOpenFeedbackDialog = (checkinId: string, checkinDate: string) => {
-        setFeedbackText('')
-        setFeedbackDialog({ open: true, checkinId, checkinDate })
+    const handleOpenReviewDialog = (checkinId: string) => {
+        setReviewDialogCheckinId(checkinId)
     }
-
-    const handleSendFeedback = async () => {
-        if (!feedbackDialog || !feedbackText.trim()) return
-        setIsSendingFeedback(true)
-        const result = await createReviewWithFeedbackAction(
-            coachId,
-            clientId,
-            feedbackDialog.checkinId,
-            feedbackText
-        )
-        setIsSendingFeedback(false)
-        if (result.success) {
-            setFeedbackDialog(null)
-            setFeedbackText('')
-            onRefresh()
-        }
-    }
-
-    const feedbackDialogElement = feedbackDialog?.open ? (
-        <Dialog open={feedbackDialog.open} onOpenChange={(open) => !open && setFeedbackDialog(null)}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <MessageSquare className="h-5 w-5 text-primary" />
-                        Crear revisión — {feedbackDialog.checkinDate}
-                    </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3 py-2">
-                    <Label>Mensaje de feedback al cliente</Label>
-                    <Textarea
-                        placeholder="Escribe el feedback para este cliente. Este mensaje aparecerá en el chat como una revisión..."
-                        value={feedbackText}
-                        onChange={(e) => setFeedbackText(e.target.value)}
-                        rows={5}
-                        className="resize-none"
-                        autoFocus
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Al enviar, la revisión quedará aprobada y se avanzará el próximo check-in automáticamente.
-                    </p>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setFeedbackDialog(null)} disabled={isSendingFeedback}>
-                        Cancelar
-                    </Button>
-                    <Button
-                        onClick={handleSendFeedback}
-                        disabled={!feedbackText.trim() || isSendingFeedback}
-                    >
-                        {isSendingFeedback ? 'Enviando...' : 'Enviar revisión'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    ) : null
 
     if (checkins.length === 0) {
         return (
@@ -150,9 +136,16 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                     onRefresh={onRefresh}
                     metricDefinitions={metricDefinitions}
                     formTemplates={formTemplates}
-                    onOpenFeedbackDialog={handleOpenFeedbackDialog}
+                    onOpenReviewDialog={handleOpenReviewDialog}
                 />
-                {feedbackDialogElement}
+                <ReviewApprovalDialog
+                    open={!!reviewDialogCheckin}
+                    onOpenChange={(open) => !open && setReviewDialogCheckinId(null)}
+                    coachId={coachId}
+                    clientId={clientId}
+                    checkin={reviewDialogCheckin}
+                    onCompleted={onRefresh}
+                />
             </>
         )
     }
@@ -177,12 +170,19 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                             coachId={coachId}
                             clientId={clientId}
                             onRefresh={onRefresh}
-                            onOpenFeedbackDialog={handleOpenFeedbackDialog}
+                            onOpenReviewDialog={handleOpenReviewDialog}
                         />
                     ))}
                 </div>
             </Card>
-            {feedbackDialogElement}
+            <ReviewApprovalDialog
+                open={!!reviewDialogCheckin}
+                onOpenChange={(open) => !open && setReviewDialogCheckinId(null)}
+                coachId={coachId}
+                clientId={clientId}
+                checkin={reviewDialogCheckin}
+                onCompleted={onRefresh}
+            />
         </>
     )
 }
@@ -194,7 +194,7 @@ function CheckinRow({
     coachId,
     clientId,
     onRefresh,
-    onOpenFeedbackDialog
+    onOpenReviewDialog
 }: {
     checkin: CheckinWithReview
     isSelected: boolean
@@ -202,7 +202,7 @@ function CheckinRow({
     coachId: string
     clientId: string
     onRefresh: () => void
-    onOpenFeedbackDialog: (checkinId: string, checkinDate: string) => void
+    onOpenReviewDialog: (checkinId: string) => void
 }) {
     const [isPending, startTransition] = useTransition()
 
@@ -224,26 +224,7 @@ function CheckinRow({
         })
     }
 
-    const reviewBadge = () => {
-        if (!checkin.review) {
-            return (
-                <Badge variant="outline" className="bg-muted/50 text-xs text-muted-foreground">
-                    Sin review
-                </Badge>
-            )
-        }
-        const colors = {
-            draft: 'bg-warning/10 text-warning border-0',
-            approved: 'bg-success/10 text-success border-0',
-            rejected: 'bg-destructive/10 text-destructive border-0',
-        }
-        const labels = { draft: 'Borrador', approved: 'Aprobado', rejected: 'Rechazado' }
-        return (
-            <Badge variant="secondary" className={cn('text-xs', colors[checkin.review.status])}>
-                {labels[checkin.review.status]}
-            </Badge>
-        )
-    }
+    const reviewMeta = getReviewStatusMeta(checkin)
 
     const aiStatus = getReviewAIStatus(checkin.review)
 
@@ -281,7 +262,9 @@ function CheckinRow({
             <div>
                  <div className="flex items-center gap-2 mb-2">
                     <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
-                    {reviewBadge()}
+                    <Badge variant="outline" className={cn('text-xs', reviewMeta.className)}>
+                        {reviewMeta.label}
+                    </Badge>
                     {aiBadge()}
                  </div>
                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -297,13 +280,14 @@ function CheckinRow({
             </div>
 
             <div className="flex items-center gap-4">
-                {!checkin.review && (
+                {canOpenReviewFlow(checkin) && (
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={(e) => { e.stopPropagation(); onOpenFeedbackDialog(checkin.id, checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Check-in') }}
+                        onClick={(e) => { e.stopPropagation(); onOpenReviewDialog(checkin.id) }}
                     >
-                        Crear revisión
+                        <CheckCheck className="h-4 w-4 mr-2" />
+                        {getReviewActionLabel(checkin)}
                     </Button>
                 )}
                 <Button
@@ -330,7 +314,7 @@ function CheckinDetailPanel({
     onRefresh,
     metricDefinitions,
     formTemplates,
-    onOpenFeedbackDialog
+    onOpenReviewDialog
 }: {
     checkin: CheckinWithReview
     previousCheckin?: CheckinWithReview | null
@@ -340,7 +324,7 @@ function CheckinDetailPanel({
     onRefresh: () => void
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
-    onOpenFeedbackDialog: (checkinId: string, checkinDate: string) => void
+    onOpenReviewDialog: (checkinId: string) => void
 }) {
     const [aiSheetOpen, setAISheetOpen] = useState(false)
     const [isRegeneratingAI, startRegeneratingAI] = useTransition()
@@ -374,6 +358,7 @@ function CheckinDetailPanel({
     const previousPayload = (previousCheckin?.raw_payload as Record<string, unknown>) || {}
     const aiStatus = getReviewAIStatus(checkin.review)
     const aiAnalysis = getParsedAIAnalysis(checkin.review)
+    const reviewMeta = getReviewStatusMeta(checkin)
 
     const getMetricDelta = (key: string): number | null => {
         const curr = parseFloat(String(rawPayload[key] ?? ''))
@@ -427,8 +412,8 @@ function CheckinDetailPanel({
                     </p>
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                    <Badge variant="secondary" className={cn("lg:text-sm", checkin.review?.status === 'approved' && 'bg-success/10 text-success border-success/20')}>
-                        {checkin.review?.status === 'approved' ? 'Aprobado' : checkin.review?.status === 'draft' ? 'Borrador' : 'Sin review'}
+                    <Badge variant="outline" className={cn("lg:text-sm", reviewMeta.className)}>
+                        {reviewMeta.label}
                     </Badge>
                     <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full bg-background border">
                         <X className="h-4 w-4" />
@@ -526,6 +511,12 @@ function CheckinDetailPanel({
                             <p className="text-base whitespace-pre-wrap">
                                 {checkin.review.summary || 'Sin resumen escrito todavía.'}
                             </p>
+                            {checkin.review.message_to_client?.trim() && (
+                                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+                                    <p className="text-sm font-medium text-emerald-700 mb-2">Feedback enviado al cliente</p>
+                                    <p className="text-sm whitespace-pre-wrap">{checkin.review.message_to_client}</p>
+                                </div>
+                            )}
                             <div className="rounded-xl border bg-background/80 p-4 space-y-3">
                                 <div className="flex items-center gap-2 text-sm font-medium">
                                     <Sparkles className="h-4 w-4 text-primary" />
@@ -573,6 +564,12 @@ function CheckinDetailPanel({
                             </div>
                             <div className="pt-4">
                                 <div className="flex flex-wrap gap-2">
+                                    {canOpenReviewFlow(checkin) && (
+                                        <Button size="sm" onClick={() => onOpenReviewDialog(checkin.id)}>
+                                            <CheckCheck className="h-4 w-4 mr-2" />
+                                            {getReviewActionLabel(checkin)}
+                                        </Button>
+                                    )}
                                     <Button variant="secondary" size="sm" onClick={() => setAISheetOpen(true)}>
                                         <Sparkles className="h-4 w-4 mr-2" />
                                         Ver análisis IA
@@ -605,8 +602,9 @@ function CheckinDetailPanel({
                             <p className="text-sm text-muted-foreground mb-4">
                                 Este check-in aún no ha sido revisado
                             </p>
-                            <Button onClick={() => onOpenFeedbackDialog(checkin.id, checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Check-in')}>
-                                Crear revisión para el cliente
+                            <Button onClick={() => onOpenReviewDialog(checkin.id)}>
+                                <CheckCheck className="h-4 w-4 mr-2" />
+                                {getReviewActionLabel(checkin)}
                             </Button>
                         </div>
                     )}

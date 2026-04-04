@@ -1,6 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import {
+    analyzeTrainingProgress,
+    type TrainingProgressAIAnalysis,
+} from '@/lib/ai/analyze-training-progress'
 
 // ============================================================================
 // Types
@@ -47,6 +52,19 @@ export interface TrainingProgressData {
     program: ProgramSummary
     days: ProgressDay[]
     maxWeek: number
+}
+
+export interface AnalyzeTrainingProgressInput {
+    coachId: string
+    clientId: string
+    programId: string
+    coachInstruction?: string
+}
+
+export interface AnalyzeTrainingProgressResponse {
+    success: boolean
+    analysis?: TrainingProgressAIAnalysis
+    error?: string
 }
 
 // ============================================================================
@@ -200,5 +218,59 @@ export async function getTrainingProgressData(
     } catch (error: any) {
         console.error('[getTrainingProgressData] Error:', error.message)
         return { success: false, error: error.message }
+    }
+}
+
+// ============================================================================
+// Analyze progression with AI
+// ============================================================================
+
+export async function analyzeTrainingProgressAction(
+    input: AnalyzeTrainingProgressInput
+): Promise<AnalyzeTrainingProgressResponse> {
+    try {
+        const { supabase, coachId } = await requireActiveCoachId(input.coachId)
+
+        const { data: programRow, error: programError } = await supabase
+            .from('training_programs')
+            .select('id')
+            .eq('id', input.programId)
+            .eq('client_id', input.clientId)
+            .single()
+
+        if (programError || !programRow) {
+            return { success: false, error: 'No se encontró el programa seleccionado.' }
+        }
+
+        const progressResult = await getTrainingProgressData(input.programId)
+        if (!progressResult.success || !progressResult.data) {
+            return { success: false, error: progressResult.error || 'No se pudo cargar el progreso del programa.' }
+        }
+
+        const hasTrackedSets = progressResult.data.days.some((day) =>
+            day.exercises.some((exercise) =>
+                Object.values(exercise.setsByWeek).some((sets) => sets.length > 0)
+            )
+        )
+
+        if (!hasTrackedSets) {
+            return {
+                success: false,
+                error: 'Aún no hay datos de entrenamiento suficientes para generar un análisis útil.'
+            }
+        }
+
+        return await analyzeTrainingProgress({
+            coachId,
+            clientId: input.clientId,
+            program: progressResult.data.program,
+            days: progressResult.data.days,
+            maxWeek: progressResult.data.maxWeek,
+            coachInstruction: input.coachInstruction,
+        })
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Error desconocido'
+        console.error('[analyzeTrainingProgressAction] Error:', message)
+        return { success: false, error: message }
     }
 }

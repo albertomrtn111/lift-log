@@ -1,9 +1,124 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
-import { UnifiedCalendarItem, ScheduledStrengthSession, CardioSession } from "@/types/planning";
+import { UnifiedCalendarItem, PlanningSnapshot, PlanningNote, PlanningDayState } from "@/types/planning";
 import { CardioStructure } from "@/types/templates";
 import { requireActiveCoachId } from "@/lib/auth/require-coach";
+
+type TrainingDayRow = {
+    id: string;
+    name: string;
+    order_index?: number | null;
+    default_weekday?: number | null;
+}
+
+type ActiveProgramRow = {
+    id: string;
+    name: string;
+    weeks?: number | null;
+    effective_from: string;
+    training_days?: TrainingDayRow[] | null;
+}
+
+type CalendarNoteRow = {
+    id: string;
+    note_date: string;
+    kind: PlanningNote['kind'];
+    content: string;
+}
+
+function toLocalDateStr(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function parseLocalDate(value: string) {
+    return new Date(`${value}T12:00:00`);
+}
+
+function startOfLocalWeek(value: Date) {
+    const result = new Date(value);
+    const mondayOffset = (result.getDay() + 6) % 7;
+    result.setDate(result.getDate() - mondayOffset);
+    return result;
+}
+
+function eachDateBetween(startDate: Date, endDate: Date) {
+    const days: Date[] = [];
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+        days.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+}
+
+function getWeekdayNumber(value: Date) {
+    return ((value.getDay() + 6) % 7) + 1;
+}
+
+function getProgramWeekForDate(date: Date, effectiveFrom: string, totalWeeks: number) {
+    const programStart = startOfLocalWeek(parseLocalDate(effectiveFrom));
+    const targetWeek = startOfLocalWeek(date);
+    const diffMs = targetWeek.getTime() - programStart.getTime();
+    const weekIndex = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7)) + 1;
+    if (weekIndex < 1 || weekIndex > totalWeeks) return null;
+    return weekIndex;
+}
+
+function derivePhaseLabel(currentWeek: number | null, totalWeeks: number | null) {
+    if (!currentWeek || !totalWeeks) return null;
+    if (totalWeeks === 1) return 'Semana única';
+    if (currentWeek === 1) return 'Inicio del bloque';
+    if (currentWeek === totalWeeks) return 'Cierre del bloque';
+    if (currentWeek === totalWeeks - 1) return 'Consolidación';
+    if (currentWeek <= Math.max(2, Math.ceil(totalWeeks * 0.33))) return 'Construcción';
+    if (currentWeek >= Math.ceil(totalWeeks * 0.66)) return 'Afinado';
+    return 'Desarrollo';
+}
+
+function deriveWeeklyObjective(strengthSessions: number, cardioSessions: number, plannedRestDays: number) {
+    if (strengthSessions === 0 && cardioSessions === 0) return 'Semana sin sesiones programadas';
+    if (strengthSessions > 0 && cardioSessions > 0) return `Microciclo híbrido con ${plannedRestDays} día${plannedRestDays === 1 ? '' : 's'} de descarga`;
+    if (strengthSessions > cardioSessions) return 'Microciclo orientado a fuerza';
+    if (cardioSessions > strengthSessions) return 'Microciclo orientado a resistencia';
+    return 'Semana equilibrada';
+}
+
+function deriveStrengthFocus(dayName: string | null | undefined, exerciseNames: string[]) {
+    const normalized = `${dayName ?? ''} ${exerciseNames.join(' ')}`.toLowerCase();
+
+    if (/(full[\s-]?body|fullbody|cuerpo completo)/.test(normalized)) return 'Full body';
+    if (/(torso|upper)/.test(normalized)) return 'Torso';
+    if (/(pierna|leg|lower|tren inferior)/.test(normalized)) return 'Pierna';
+    if (/(empuje|push|pecho|hombro|tr[ií]ceps)/.test(normalized)) return 'Empuje';
+    if (/(tir[oó]n|pull|espalda|b[ií]ceps)/.test(normalized)) return 'Tirón';
+    if (/(gl[uú]teo|glute|posterior|femoral)/.test(normalized)) return 'Posterior';
+    if (/(core|abdomen|abs)/.test(normalized)) return 'Core';
+
+    return 'General';
+}
+
+function getCardioSummaryLine(cardio: any) {
+    const parts: string[] = [];
+    let distance = cardio.target_distance_km ? Number(cardio.target_distance_km) : undefined;
+    let duration = cardio.target_duration_min ? Number(cardio.target_duration_min) : undefined;
+
+    if ((!distance || !duration) && cardio.structure?.blocks) {
+        const continuousBlock = cardio.structure.blocks.find((block: any) => block.type === 'continuous');
+        if (continuousBlock) {
+            if (!distance && continuousBlock.distance) distance = Number(continuousBlock.distance);
+            if (!duration && continuousBlock.duration) duration = Number(continuousBlock.duration);
+        }
+    }
+
+    if (distance) parts.push(`${distance} km`);
+    if (duration) parts.push(`${duration} min`);
+    if (cardio.target_pace) parts.push(cardio.target_pace);
+    return parts.join(' · ');
+}
 
 // ----------------------------------------------------------------------
 // GET SCHEDULE
@@ -16,24 +131,15 @@ import { requireActiveCoachId } from "@/lib/auth/require-coach";
 export async function getWeeklySchedule(
     clientId: string,
     startDate: Date,
-    endDate: Date
-): Promise<{ success: boolean; data?: UnifiedCalendarItem[]; error?: string }> {
+    endDate: Date,
+    anchorDate: Date = startDate
+): Promise<{ success: boolean; data?: PlanningSnapshot; error?: string }> {
     const supabase = await createClient();
 
     try {
-        // Timezone-safe date formatter (avoids toISOString UTC shift)
-        const toLocalDateStr = (d: Date) => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        };
-
         const startStr = toLocalDateStr(startDate);
         const endStr = toLocalDateStr(endDate);
 
-        // 1. Fetch ACTIVE training programs with their days (including default_weekday)
-        // Fetch several because some might have no days configured
         const { data: programsArr, error: programError } = await supabase
             .from('training_programs')
             .select(`
@@ -53,77 +159,10 @@ export async function getWeeklySchedule(
             .order('created_at', { ascending: false })
             .limit(10);
 
-        console.log('[getWeeklySchedule] Program query:',
-            programError ? `ERROR: ${programError.message}` : `${(programsArr || []).length} programs found`);
-
-        // Pick the most recent program that has at least one day with default_weekday set
-        const activeProgram = (programsArr || []).find((p: any) =>
+        const activeProgram = ((programsArr || []) as ActiveProgramRow[]).find((p) =>
             p.training_days?.some((d: any) => d.default_weekday != null)
         ) || null;
 
-        console.log('[getWeeklySchedule] Selected program:',
-            activeProgram ? `${activeProgram.name} (${activeProgram.id})` : 'NONE');
-
-        // 2. Generate virtual strength sessions from the active program
-        const strengthItems: UnifiedCalendarItem[] = [];
-
-        if (!programError && activeProgram && activeProgram.training_days) {
-            const programStart = new Date(activeProgram.effective_from + 'T12:00:00'); // Noon to avoid timezone shift
-            const totalWeeks = activeProgram.weeks || 4;
-
-            console.log('[getWeeklySchedule] Active program:', activeProgram.name,
-                'weeks:', totalWeeks, 'start:', activeProgram.effective_from,
-                'days:', (activeProgram.training_days as any[]).map((d: any) => `${d.name}(weekday=${d.default_weekday})`));
-
-            for (const day of activeProgram.training_days as any[]) {
-                if (!day.default_weekday) continue; // Skip days without assigned weekday
-
-                // default_weekday: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
-
-                // For each week of the program, compute the session date
-                for (let week = 0; week < totalWeeks; week++) {
-                    // Start of this program week (Monday-based)
-                    const weekStart = new Date(programStart);
-                    weekStart.setDate(weekStart.getDate() + (week * 7));
-
-                    // Find the Monday of this week
-                    const mondayOffset = (weekStart.getDay() + 6) % 7; // Days since Monday
-                    const monday = new Date(weekStart);
-                    monday.setDate(monday.getDate() - mondayOffset);
-
-                    // Set to the target weekday
-                    const sessionDate = new Date(monday);
-                    sessionDate.setDate(monday.getDate() + (day.default_weekday - 1)); // 1=Mon→+0, 2=Tue→+1, etc.
-
-                    const sessionDateStr = toLocalDateStr(sessionDate);
-
-                    // Only include if within the requested calendar range
-                    if (sessionDateStr >= startStr && sessionDateStr <= endStr) {
-                        strengthItems.push({
-                            type: 'strength' as const,
-                            id: `virtual-${activeProgram.id}-${day.id}-w${week}`,
-                            client_id: clientId,
-                            training_program_id: activeProgram.id,
-                            training_day_id: day.id,
-                            date: sessionDateStr,
-                            is_completed: false,
-                            created_at: new Date().toISOString(),
-                            training_days: {
-                                name: day.name,
-                                order_index: day.order_index
-                            },
-                            training_programs: {
-                                name: activeProgram.name
-                            }
-                        });
-                    }
-                }
-            }
-
-            console.log('[getWeeklySchedule] Generated', strengthItems.length, 'virtual strength sessions');
-        }
-
-        // 2b. Fetch REAL scheduled strength sessions from DB (manually added via dialog)
         const { data: realStrengthData, error: realStrengthError } = await supabase
             .from('scheduled_strength_sessions')
             .select(`
@@ -140,63 +179,132 @@ export async function getWeeklySchedule(
             .gte('scheduled_date', startStr)
             .lte('scheduled_date', endStr);
 
-        if (realStrengthError) {
-            console.error('[getWeeklySchedule] Real strength fetch error:', realStrengthError.message);
+        if (realStrengthError) throw new Error(realStrengthError.message);
+
+        const uniqueDayIds = new Set<string>();
+        const uniqueProgramIds = new Set<string>();
+
+        for (const day of activeProgram?.training_days || []) {
+            uniqueDayIds.add(day.id);
+            uniqueProgramIds.add(activeProgram!.id);
         }
 
-        // Fetch day names and program names for real sessions
-        const realStrengthItems: UnifiedCalendarItem[] = [];
-        if (realStrengthData && realStrengthData.length > 0) {
-            // Collect unique day_ids and program_ids to batch-fetch names
-            const dayIds = [...new Set(realStrengthData.map((s: any) => s.day_id))];
-            const programIds = [...new Set(realStrengthData.map((s: any) => s.program_id))];
+        for (const session of (realStrengthData || []) as any[]) {
+            uniqueDayIds.add(session.day_id);
+            uniqueProgramIds.add(session.program_id);
+        }
 
-            const { data: daysData } = await supabase
-                .from('training_days')
-                .select('id, name, order_index')
-                .in('id', dayIds);
+        const dayIds = Array.from(uniqueDayIds);
+        const programIds = Array.from(uniqueProgramIds);
 
-            const { data: programsData } = await supabase
-                .from('training_programs')
-                .select('id, name')
-                .in('id', programIds);
+        const [{ data: daysData }, { data: programsData }, { data: exerciseRows }] = await Promise.all([
+            dayIds.length > 0
+                ? supabase.from('training_days').select('id, name, order_index, default_weekday').in('id', dayIds)
+                : Promise.resolve({ data: [] as any[] }),
+            programIds.length > 0
+                ? supabase.from('training_programs').select('id, name').in('id', programIds)
+                : Promise.resolve({ data: [] as any[] }),
+            dayIds.length > 0
+                ? supabase.from('training_exercises').select('day_id, exercise_name').in('day_id', dayIds)
+                : Promise.resolve({ data: [] as any[] }),
+        ]);
 
-            const daysMap = new Map((daysData || []).map((d: any) => [d.id, d]));
-            const programsMap = new Map((programsData || []).map((p: any) => [p.id, p]));
+        const daysMap = new Map((daysData || []).map((d: any) => [d.id, d]));
+        const programsMap = new Map((programsData || []).map((p: any) => [p.id, p]));
+        const exercisesByDayId = new Map<string, string[]>();
+        for (const exercise of (exerciseRows || []) as any[]) {
+            const list = exercisesByDayId.get(exercise.day_id) || [];
+            if (exercise.exercise_name) list.push(exercise.exercise_name);
+            exercisesByDayId.set(exercise.day_id, list);
+        }
 
-            for (const s of realStrengthData as any[]) {
-                const dayInfo = daysMap.get(s.day_id);
-                const programInfo = programsMap.get(s.program_id);
-                realStrengthItems.push({
-                    type: 'strength' as const,
-                    id: s.id,
-                    client_id: s.client_id,
-                    training_program_id: s.program_id,
-                    training_day_id: s.day_id,
-                    date: s.scheduled_date,
-                    is_completed: s.is_completed,
-                    created_at: s.created_at,
-                    training_days: dayInfo ? { name: dayInfo.name, order_index: dayInfo.order_index } : { name: 'Día' },
-                    training_programs: programInfo ? { name: programInfo.name } : { name: 'Programa' },
-                });
+        const virtualStrengthItems: UnifiedCalendarItem[] = [];
+        const totalWeeks = activeProgram?.weeks || 4;
+        if (!programError && activeProgram && activeProgram.training_days) {
+            for (const day of activeProgram.training_days) {
+                if (!day.default_weekday) continue;
+
+                for (let week = 0; week < totalWeeks; week++) {
+                    const baseWeekDate = parseLocalDate(activeProgram.effective_from);
+                    baseWeekDate.setDate(baseWeekDate.getDate() + (week * 7));
+                    const monday = startOfLocalWeek(baseWeekDate);
+                    const sessionDate = new Date(monday);
+                    sessionDate.setDate(monday.getDate() + ((day.default_weekday || 1) - 1));
+                    const sessionDateStr = toLocalDateStr(sessionDate);
+
+                    if (sessionDateStr < startStr || sessionDateStr > endStr) continue;
+
+                    const exerciseNames = exercisesByDayId.get(day.id) || [];
+                    virtualStrengthItems.push({
+                        type: 'strength',
+                        id: `virtual-${activeProgram.id}-${day.id}-w${week}`,
+                        client_id: clientId,
+                        training_program_id: activeProgram.id,
+                        training_day_id: day.id,
+                        date: sessionDateStr,
+                        is_completed: false,
+                        created_at: new Date().toISOString(),
+                        training_days: {
+                            name: day.name,
+                            order_index: day.order_index ?? undefined,
+                        },
+                        training_programs: {
+                            name: activeProgram.name,
+                        },
+                        exercise_count: exerciseNames.length,
+                        focus_label: deriveStrengthFocus(day.name, exerciseNames),
+                        source_kind: 'program_auto',
+                        source_label: 'Programa',
+                        week_index: week + 1,
+                        is_program_auto: true,
+                    });
+                }
             }
         }
 
-        // Deduplicate: if a real scheduled session exists for the same day_id within this week, suppress the virtual
-        const realDayIds = new Set(realStrengthItems.map(r => (r as any).training_day_id));
-        const virtualDayIds = new Set(strengthItems.map(v => (v as any).training_day_id));
-        const dedupedVirtual = strengthItems.filter(v => !realDayIds.has((v as any).training_day_id));
+        const realStrengthItems: UnifiedCalendarItem[] = ((realStrengthData || []) as any[]).map((session) => {
+            const dayInfo = daysMap.get(session.day_id);
+            const programInfo = programsMap.get(session.program_id);
+            const exerciseNames = exercisesByDayId.get(session.day_id) || [];
+            const replacedVirtual = virtualStrengthItems.some((virtualItem) => (
+                virtualItem.type === 'strength' &&
+                virtualItem.training_day_id === session.day_id
+            ));
 
-        // Mark real sessions that replaced a virtual (so UI keeps the auto/dashed style)
-        for (const r of realStrengthItems) {
-            if (virtualDayIds.has((r as any).training_day_id)) {
-                (r as any).is_program_auto = true;
-            }
-        }
+            return {
+                type: 'strength',
+                id: session.id,
+                client_id: session.client_id,
+                training_program_id: session.program_id,
+                training_day_id: session.day_id,
+                date: session.scheduled_date,
+                is_completed: session.is_completed,
+                created_at: session.created_at,
+                training_days: dayInfo
+                    ? { name: dayInfo.name, order_index: dayInfo.order_index ?? undefined }
+                    : { name: 'Día' },
+                training_programs: programInfo ? { name: programInfo.name } : { name: 'Programa' },
+                exercise_count: exerciseNames.length,
+                focus_label: deriveStrengthFocus(dayInfo?.name, exerciseNames),
+                source_kind: replacedVirtual ? 'adjusted' : 'manual',
+                source_label: replacedVirtual ? 'Ajustada' : 'Manual',
+                week_index: activeProgram?.effective_from
+                    ? getProgramWeekForDate(parseLocalDate(session.scheduled_date), activeProgram.effective_from, totalWeeks)
+                    : null,
+                is_program_auto: replacedVirtual,
+            };
+        });
 
+        const realDayIds = new Set(
+            realStrengthItems
+                .filter((item) => item.type === 'strength')
+                .map((item) => item.training_day_id)
+        );
+        const dedupedVirtual = virtualStrengthItems.filter(
+            (item) => item.type === 'strength' && !realDayIds.has(item.training_day_id)
+        );
         const allStrengthItems = [...dedupedVirtual, ...realStrengthItems];
 
-        // 3. Fetch Cardio Sessions (these are real DB rows, already working)
         const { data: cardioData, error: cardioError } = await supabase
             .from('cardio_sessions')
             .select(`
@@ -220,9 +328,8 @@ export async function getWeeklySchedule(
 
         if (cardioError) throw new Error(cardioError.message);
 
-        // 4. Map Cardio → UnifiedCalendarItem
         const cardioItems: UnifiedCalendarItem[] = (cardioData || []).map((c: any) => ({
-            type: 'cardio' as const,
+            type: 'cardio',
             id: c.id,
             client_id: c.client_id,
             date: c.scheduled_date,
@@ -235,18 +342,111 @@ export async function getWeeklySchedule(
             target_distance_km: c.target_distance_km ? Number(c.target_distance_km) : undefined,
             target_duration_min: c.target_duration_min ? Number(c.target_duration_min) : undefined,
             target_pace: c.target_pace || undefined,
+            cardio_type: c.structure?.trainingType || 'rodaje',
+            summary_line: getCardioSummaryLine(c),
         }));
 
-        // 5. Combine and sort by date
         const allItems = [...allStrengthItems, ...cardioItems].sort((a, b) =>
-            a.date.localeCompare(b.date)
+            a.date.localeCompare(b.date) || a.type.localeCompare(b.type)
         );
 
-        return { success: true, data: allItems };
+        let notesEnabled = true;
+        let planningNotes: PlanningNote[] = [];
+
+        const { data: noteRows, error: noteError } = await supabase
+            .from('calendar_notes')
+            .select('id, note_date, kind, content')
+            .eq('client_id', clientId)
+            .gte('note_date', startStr)
+            .lte('note_date', endStr)
+            .order('note_date', { ascending: true });
+
+        if (noteError) {
+            notesEnabled = false;
+        } else {
+            planningNotes = ((noteRows || []) as CalendarNoteRow[]).map((note) => ({
+                id: note.id,
+                date: note.note_date,
+                kind: note.kind,
+                content: note.content,
+            }));
+        }
+
+        const notesByDate = new Map<string, PlanningNote[]>();
+        for (const note of planningNotes) {
+            const list = notesByDate.get(note.date) || [];
+            list.push(note);
+            notesByDate.set(note.date, list);
+        }
+
+        const itemsByDate = new Map<string, UnifiedCalendarItem[]>();
+        for (const item of allItems) {
+            const list = itemsByDate.get(item.date) || [];
+            list.push(item);
+            itemsByDate.set(item.date, list);
+        }
+
+        const programWeekdays = new Set(
+            (activeProgram?.training_days || [])
+                .map((day) => day.default_weekday)
+                .filter((day): day is number => day != null)
+        );
+
+        const dayContexts = eachDateBetween(startDate, endDate).map((date) => {
+            const dateStr = toLocalDateStr(date);
+            const dayItems = itemsByDate.get(dateStr) || [];
+            const dayNotes = notesByDate.get(dateStr) || [];
+            const weekIndex = activeProgram?.effective_from
+                ? getProgramWeekForDate(date, activeProgram.effective_from, totalWeeks)
+                : null;
+
+            let state: PlanningDayState = 'empty';
+            if (dayItems.length > 0) {
+                state = 'scheduled';
+            } else if (weekIndex && !programWeekdays.has(getWeekdayNumber(date))) {
+                state = 'planned_rest';
+            }
+
+            return {
+                date: dateStr,
+                state,
+                noteCount: dayNotes.length,
+                notes: dayNotes,
+            };
+        });
+
+        const anchorWeek = activeProgram?.effective_from
+            ? getProgramWeekForDate(anchorDate, activeProgram.effective_from, totalWeeks)
+            : null;
+        const plannedRestDays = dayContexts.filter((day) => day.state === 'planned_rest').length;
+        const emptyDays = dayContexts.filter((day) => day.state === 'empty').length;
+        const strengthSessions = allItems.filter((item) => item.type === 'strength').length;
+        const cardioSessions = allItems.filter((item) => item.type === 'cardio').length;
+
+        return {
+            success: true,
+            data: {
+                items: allItems,
+                overview: {
+                    programId: activeProgram?.id || null,
+                    programName: activeProgram?.name || null,
+                    currentWeek: anchorWeek,
+                    totalWeeks: activeProgram ? totalWeeks : null,
+                    phaseLabel: derivePhaseLabel(anchorWeek, activeProgram ? totalWeeks : null),
+                    weeklyObjective: deriveWeeklyObjective(strengthSessions, cardioSessions, plannedRestDays),
+                    strengthSessions,
+                    cardioSessions,
+                    plannedRestDays,
+                    emptyDays,
+                },
+                dayContexts,
+                notesEnabled,
+            },
+        };
 
     } catch (error: any) {
         console.error('[getWeeklySchedule] Error:', error);
-        return { success: false, data: [], error: error.message };
+        return { success: false, error: error.message };
     }
 }
 

@@ -1,175 +1,335 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CalendarEvent } from '@/types/coach'
+import type { CalendarData, CalendarEvent, CalendarNote } from '@/types/coach'
 import { toLocalDateStr, parseLocalDate } from '@/lib/date-utils'
-import { addDays } from 'date-fns'
 
-// ============================================================================
-// Get all calendar events for a month (projected + actual)
-// ============================================================================
+type ClientRecord = {
+    id: string
+    full_name: string
+    next_checkin_date: string | null
+    checkin_frequency_days: number | null
+    start_date: string | null
+    status: string | null
+}
 
-export async function getCalendarEvents(
+type CheckinRecord = {
+    id: string
+    client_id: string
+    submitted_at: string | null
+    created_at: string
+    status: string | null
+    source: string | null
+    raw_payload: Record<string, unknown> | null
+    weight_kg: number | null
+    weight_avg_kg: number | null
+    training_adherence_pct: number | null
+    nutrition_adherence_pct: number | null
+    sleep_avg_h: number | null
+}
+
+type ReviewRecord = {
+    id: string
+    checkin_id: string
+    status: 'draft' | 'approved' | 'rejected' | null
+    ai_status: 'idle' | 'pending' | 'completed' | 'failed' | null
+}
+
+type CalendarNoteRecord = {
+    id: string
+    note_date: string
+    kind: CalendarNote['kind']
+    content: string
+    client_id: string | null
+    created_at: string
+    updated_at: string
+}
+
+interface CalendarRangeInput {
+    startDate: string
+    endDate: string
+}
+
+const IGNORED_CHECKIN_STATUSES = new Set(['cancelled', 'archived'])
+
+function countPrefixedValues(
+    payload: Record<string, unknown> | null,
+    prefix: string
+): number {
+    if (!payload) return 0
+
+    return Object.entries(payload).filter(([key, value]) => {
+        if (!key.startsWith(prefix)) return false
+        return value !== null && value !== ''
+    }).length
+}
+
+function compareEvents(left: CalendarEvent, right: CalendarEvent) {
+    const statusWeight: Record<CalendarEvent['status'], number> = {
+        missing: 0,
+        pending_review: 1,
+        scheduled: 2,
+        completed: 3,
+    }
+
+    const statusDiff = statusWeight[left.status] - statusWeight[right.status]
+    if (statusDiff !== 0) return statusDiff
+
+    return left.clientName.localeCompare(right.clientName, 'es')
+}
+
+function buildSubmittedEvent(
+    checkin: CheckinRecord,
+    review: ReviewRecord | undefined,
+    clientName: string
+): CalendarEvent | null {
+    if (!checkin.submitted_at) return null
+
+    const date = checkin.submitted_at.split('T')[0]
+    const status: CalendarEvent['status'] =
+        review?.status === 'approved' || checkin.status === 'archived'
+            ? 'completed'
+            : 'pending_review'
+
+    return {
+        id: `submitted-${checkin.id}`,
+        clientId: checkin.client_id,
+        clientName,
+        date,
+        type: 'checkin',
+        isUrgent: status === 'pending_review',
+        projected: false,
+        status,
+        checkinId: checkin.id,
+        reviewId: review?.id,
+        reviewStatus: review?.status ?? null,
+        checkinStatus: (checkin.status as CalendarEvent['checkinStatus']) ?? null,
+        submittedAt: checkin.submitted_at,
+        expectedDate: null,
+        source: 'submitted',
+        checkinSource: checkin.source,
+        weightKg: checkin.weight_avg_kg ?? checkin.weight_kg ?? null,
+        trainingAdherencePct: checkin.training_adherence_pct,
+        nutritionAdherencePct: checkin.nutrition_adherence_pct,
+        sleepAvgH: checkin.sleep_avg_h,
+        aiStatus: review?.ai_status ?? null,
+        rawMetricCount: countPrefixedValues(checkin.raw_payload, 'metric_'),
+        rawResponseCount: countPrefixedValues(checkin.raw_payload, 'campo_'),
+    }
+}
+
+function buildScheduledEvent(
+    checkin: CheckinRecord,
+    client: ClientRecord,
+    today: string
+): CalendarEvent {
+    const dueDate = client.next_checkin_date || checkin.created_at.split('T')[0]
+    const status: CalendarEvent['status'] = dueDate < today ? 'missing' : 'scheduled'
+
+    return {
+        id: `scheduled-${checkin.id}`,
+        clientId: client.id,
+        clientName: client.full_name,
+        date: dueDate,
+        type: 'checkin',
+        isUrgent: status === 'missing',
+        projected: false,
+        status,
+        checkinId: checkin.id,
+        reviewId: undefined,
+        reviewStatus: null,
+        checkinStatus: 'pending',
+        submittedAt: null,
+        expectedDate: dueDate,
+        source: 'scheduled',
+        checkinSource: checkin.source,
+        weightKg: null,
+        trainingAdherencePct: null,
+        nutritionAdherencePct: null,
+        sleepAvgH: null,
+        aiStatus: null,
+        rawMetricCount: 0,
+        rawResponseCount: 0,
+    }
+}
+
+function mapCalendarNote(
+    note: CalendarNoteRecord,
+    clientName: string | null
+): CalendarNote {
+    return {
+        id: note.id,
+        date: note.note_date,
+        kind: note.kind,
+        content: note.content,
+        clientId: note.client_id,
+        clientName,
+        createdAt: note.created_at,
+        updatedAt: note.updated_at,
+    }
+}
+
+export async function getCalendarData(
     coachId: string,
-    year: number,
-    month: number
-): Promise<CalendarEvent[]> {
+    range: CalendarRangeInput
+): Promise<CalendarData> {
     const supabase = await createClient()
-
-    const monthStart = new Date(year, month, 1)
-    const monthEnd = new Date(year, month + 1, 0)
-    const startDate = toLocalDateStr(monthStart)
-    const endDate = toLocalDateStr(monthEnd)
     const today = toLocalDateStr(new Date())
 
-    // 1. Get all active clients with frequency
-    const { data: clients, error: clientsErr } = await supabase
+    const { data: clients, error: clientsError } = await supabase
         .from('clients')
-        .select('id, full_name, next_checkin_date, checkin_frequency_days, start_date')
+        .select('id, full_name, next_checkin_date, checkin_frequency_days, start_date, status')
         .eq('coach_id', coachId)
-        .eq('status', 'active')
 
-    if (clientsErr || !clients) return []
-
-    // 2. Get actual checkins in the month range
-    const { data: checkins } = await supabase
-        .from('checkins')
-        .select('id, client_id, submitted_at, status')
-        .eq('coach_id', coachId)
-        .eq('type', 'checkin')
-        .gte('submitted_at', `${startDate}T00:00:00`)
-        .lte('submitted_at', `${endDate}T23:59:59`)
-
-    // 3. Get reviews for those checkins
-    const checkinIds = (checkins || []).map(c => c.id)
-    let reviewMap = new Map<string, { id: string; status: string }>()
-    if (checkinIds.length > 0) {
-        const { data: reviews } = await supabase
-            .from('reviews')
-            .select('id, checkin_id, status')
-            .in('checkin_id', checkinIds)
-
-        for (const r of (reviews || [])) {
-            reviewMap.set(r.checkin_id, { id: r.id, status: r.status })
+    if (clientsError || !clients) {
+        return {
+            events: [],
+            notes: [],
+            notesEnabled: false,
         }
     }
 
-    // Build a map of actual checkins by client + date
-    const actualCheckinMap = new Map<string, { checkinId: string; checkinStatus: string; reviewStatus: string | null }>()
-    for (const c of (checkins || [])) {
-        const dateStr = c.submitted_at?.split('T')[0]
-        if (!dateStr) continue
-        const review = reviewMap.get(c.id)
-        const key = `${c.client_id}_${dateStr}`
-        actualCheckinMap.set(key, {
-            checkinId: c.id,
-            checkinStatus: c.status,
-            reviewStatus: review?.status || null,
-        })
-    }
+    const allClients = clients as ClientRecord[]
+    const activeClients = allClients.filter((client) => client.status === 'active')
+    const clientNameById = new Map(allClients.map((client) => [client.id, client.full_name]))
+    const activeClientById = new Map(activeClients.map((client) => [client.id, client]))
 
-    // Build client name map
-    const clientNameMap = new Map(clients.map(c => [c.id, c.full_name]))
+    const { data: submittedCheckins } = await supabase
+        .from('checkins')
+        .select(`
+            id,
+            client_id,
+            submitted_at,
+            created_at,
+            status,
+            source,
+            raw_payload,
+            weight_kg,
+            weight_avg_kg,
+            training_adherence_pct,
+            nutrition_adherence_pct,
+            sleep_avg_h
+        `)
+        .eq('coach_id', coachId)
+        .eq('type', 'checkin')
+        .not('submitted_at', 'is', null)
+        .gte('submitted_at', `${range.startDate}T00:00:00`)
+        .lte('submitted_at', `${range.endDate}T23:59:59`)
+
+    const { data: pendingCheckins } = await supabase
+        .from('checkins')
+        .select(`
+            id,
+            client_id,
+            submitted_at,
+            created_at,
+            status,
+            source,
+            raw_payload,
+            weight_kg,
+            weight_avg_kg,
+            training_adherence_pct,
+            nutrition_adherence_pct,
+            sleep_avg_h
+        `)
+        .eq('coach_id', coachId)
+        .eq('type', 'checkin')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+
+    const filteredSubmittedCheckins = ((submittedCheckins ?? []) as CheckinRecord[])
+        .filter((checkin) => !IGNORED_CHECKIN_STATUSES.has(checkin.status ?? ''))
+
+    const filteredPendingCheckins = ((pendingCheckins ?? []) as CheckinRecord[])
+        .filter((checkin) => activeClientById.has(checkin.client_id))
+
+    const reviewIds = filteredSubmittedCheckins.map((checkin) => checkin.id)
+    let reviewsByCheckinId = new Map<string, ReviewRecord>()
+    if (reviewIds.length > 0) {
+        const { data: reviews } = await supabase
+            .from('reviews')
+            .select('id, checkin_id, status, ai_status')
+            .in('checkin_id', reviewIds)
+
+        reviewsByCheckinId = new Map(
+            ((reviews ?? []) as ReviewRecord[]).map((review) => [review.checkin_id, review])
+        )
+    }
 
     const events: CalendarEvent[] = []
 
-    // 4. For each client, project all checkin dates in the month
-    for (const client of clients) {
-        const freq = client.checkin_frequency_days || 7
-        const nextDate = parseLocalDate(client.next_checkin_date)
+    for (const checkin of filteredSubmittedCheckins) {
+        const submittedEvent = buildSubmittedEvent(
+            checkin,
+            reviewsByCheckinId.get(checkin.id),
+            clientNameById.get(checkin.client_id) || 'Cliente'
+        )
 
-        // Find all projected dates in [monthStart, monthEnd]
-        // Start from next_checkin_date and go backwards/forwards by frequency
-        const projectedDates: Date[] = []
-
-        // Go backwards from next_checkin_date to find first date before or at monthStart
-        let cursor = new Date(nextDate)
-        while (cursor > monthEnd) {
-            cursor = addDays(cursor, -freq)
-        }
-        // Now go backwards until before monthStart to find starting point
-        while (cursor >= monthStart) {
-            cursor = addDays(cursor, -freq)
-        }
-        // Now go forwards through the month
-        cursor = addDays(cursor, freq)
-        while (cursor <= monthEnd) {
-            if (cursor >= monthStart) {
-                projectedDates.push(new Date(cursor))
-            }
-            cursor = addDays(cursor, freq)
-        }
-
-        for (const date of projectedDates) {
-            const dateStr = toLocalDateStr(date)
-            // No mostrar revisiones proyectadas anteriores a la fecha de alta
-            if (client.start_date && dateStr < client.start_date) continue
-
-            const key = `${client.id}_${dateStr}`
-            const actual = actualCheckinMap.get(key)
-
-            let status: CalendarEvent['status']
-            let checkinId: string | undefined
-            let reviewStatus: CalendarEvent['reviewStatus'] = null
-
-            if (actual) {
-                checkinId = actual.checkinId
-                reviewStatus = actual.reviewStatus as CalendarEvent['reviewStatus']
-                status = actual.checkinStatus === 'reviewed' ? 'completed' : 'pending_review'
-            } else if (dateStr < today) {
-                status = 'overdue'
-            } else {
-                status = 'upcoming'
-            }
-
-            events.push({
-                id: actual ? `actual-${actual.checkinId}` : `projected-${client.id}-${dateStr}`,
-                clientId: client.id,
-                clientName: client.full_name,
-                date: dateStr,
-                type: 'checkin',
-                isUrgent: status === 'overdue',
-                projected: !actual,
-                status,
-                checkinId,
-                reviewStatus,
-            })
+        if (submittedEvent) {
+            events.push(submittedEvent)
         }
     }
 
-    // 5. Also add actual checkins that don't match any projected date
-    // (e.g., extra check-ins submitted outside the schedule)
-    for (const c of (checkins || [])) {
-        const dateStr = c.submitted_at?.split('T')[0]
-        if (!dateStr) continue
-        if (dateStr < startDate || dateStr > endDate) continue
-
-        const key = `${c.client_id}_${dateStr}`
-        // Check if already covered by projection
-        const alreadyExists = events.some(e => e.clientId === c.client_id && e.date === dateStr)
-        if (alreadyExists) continue
-
-        const review = reviewMap.get(c.id)
-        const clientName = clientNameMap.get(c.client_id) || 'Cliente'
-
-        events.push({
-            id: `actual-${c.id}`,
-            clientId: c.client_id,
-            clientName: clientName,
-            date: dateStr,
-            type: 'checkin',
-            isUrgent: false,
-            projected: false,
-            status: c.status === 'reviewed' ? 'completed' : 'pending_review',
-            checkinId: c.id,
-            reviewStatus: (review?.status as CalendarEvent['reviewStatus']) || null,
-        })
+    const latestPendingByClient = new Map<string, CheckinRecord>()
+    for (const checkin of filteredPendingCheckins) {
+        if (!latestPendingByClient.has(checkin.client_id)) {
+            latestPendingByClient.set(checkin.client_id, checkin)
+        }
     }
 
-    return events.sort((a, b) => a.date.localeCompare(b.date))
+    for (const [clientId, checkin] of latestPendingByClient.entries()) {
+        const client = activeClientById.get(clientId)
+        if (!client) continue
+
+        const dueDate = client.next_checkin_date || checkin.created_at.split('T')[0]
+        if (dueDate < range.startDate || dueDate > range.endDate) continue
+        if (client.start_date && dueDate < client.start_date) continue
+
+        events.push(buildScheduledEvent(checkin, client, today))
+    }
+
+    let notesEnabled = true
+    let notes: CalendarNote[] = []
+
+    const { data: noteRows, error: notesError } = await supabase
+        .from('calendar_notes')
+        .select('id, note_date, kind, content, client_id, created_at, updated_at')
+        .eq('coach_id', coachId)
+        .gte('note_date', range.startDate)
+        .lte('note_date', range.endDate)
+        .order('note_date', { ascending: true })
+        .order('created_at', { ascending: true })
+
+    if (notesError) {
+        notesEnabled = false
+    } else {
+        notes = ((noteRows ?? []) as CalendarNoteRecord[]).map((note) =>
+            mapCalendarNote(note, note.client_id ? clientNameById.get(note.client_id) || 'Cliente' : null)
+        )
+    }
+
+    return {
+        events: events.sort((left, right) => {
+            const dateDiff = left.date.localeCompare(right.date)
+            if (dateDiff !== 0) return dateDiff
+            return compareEvents(left, right)
+        }),
+        notes,
+        notesEnabled,
+    }
 }
 
-// ============================================================================
-// Upcoming checkins (used by other parts of the app)
-// ============================================================================
+export async function getCalendarDataForMonth(
+    coachId: string,
+    year: number,
+    month: number
+): Promise<CalendarData> {
+    const monthStart = toLocalDateStr(new Date(year, month, 1))
+    const monthEnd = toLocalDateStr(new Date(year, month + 1, 0))
+
+    return getCalendarData(coachId, {
+        startDate: monthStart,
+        endDate: monthEnd,
+    })
+}
 
 export async function getUpcomingCheckins(
     coachId: string,
@@ -194,12 +354,15 @@ export async function getUpcomingCheckins(
     const todayDate = new Date()
 
     return data.map((client) => ({
-        id: `checkin-${client.id}`,
+        id: `scheduled-client-${client.id}`,
         clientId: client.id,
         clientName: client.full_name,
         date: client.next_checkin_date,
         type: 'checkin' as const,
         isUrgent: Math.ceil((parseLocalDate(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
-        status: 'upcoming' as const,
+        status: 'scheduled' as const,
+        projected: false,
+        expectedDate: client.next_checkin_date,
+        source: 'scheduled' as const,
     }))
 }

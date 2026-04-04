@@ -12,41 +12,24 @@ import type {
 
 /**
  * Ensure we have a valid session before any write operation.
- * Throws error with detailed debug info if session is missing.
+ * Throws error if the authenticated user is missing.
  */
 async function ensureSession(supabase: ReturnType<typeof createClient>, context: string) {
-    // Check session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-    console.log(`[${context}] SESSION:`, session ? {
-        user_id: session.user.id,
-        email: session.user.email,
-        expires_at: session.expires_at
-    } : null)
-
-    if (sessionError) {
-        console.error(`[${context}] SESSION_ERROR:`, sessionError)
-    }
-
-    // Also get user (more reliable than session alone)
     const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-    console.log(`[${context}] USER:`, user ? { id: user.id, email: user.email } : null)
 
     if (userError) {
         console.error(`[${context}] USER_ERROR:`, userError)
     }
 
-    if (!session || !user) {
+    if (!user) {
         const error = new Error(
-            `[${context}] No valid session. Session: ${!!session}, User: ${!!user}. ` +
-            'Inserts will fail with RLS. User must re-authenticate.'
+            `[${context}] No authenticated user. Inserts will fail with RLS. User must re-authenticate.`
         )
         console.error(error.message)
         throw error
     }
 
-    return { session, user }
+    return { user }
 }
 
 /**
@@ -1260,4 +1243,3 @@ async function logDatabaseDefaults(supabase: ReturnType<typeof createClient>) {
     // we'll just log that we are attempting active status.
     console.log('[logDatabaseDefaults] (Note: Direct schema inspection requires RPC/admin).')
 }
-

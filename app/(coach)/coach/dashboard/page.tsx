@@ -1,42 +1,33 @@
+import Link from 'next/link'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import {
+    AlertTriangle,
+    ArrowRight,
+    Bell,
+    Calendar,
+    Clock,
+    FileText,
+    LayoutDashboard,
+    Users,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import {
-    getDashboardKPIs,
-    getDueTodayClients,
-    getDueSoonClients,
-    getAtRiskClients,
-    getRecentCheckins,
-    getCompletedToday,
-    getCoachDisplayName,
-} from '@/data/dashboard'
+import { getCoachDashboardData } from '@/data/dashboard'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-    LayoutDashboard,
-    Clock,
-    Calendar,
-    AlertTriangle,
-    Users,
-    ArrowRight,
-    FileText
-} from 'lucide-react'
-import Link from 'next/link'
-import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { KPIStatCard } from '@/components/coach/dashboard/KPIStatCard'
-import { ClientRow } from '@/components/coach/dashboard/ClientRow'
-import { RiskCard } from '@/components/coach/dashboard/RiskCard'
+import { NotificationsList } from '@/components/coach/dashboard/NotificationsList'
+import { AttentionClientList } from '@/components/coach/dashboard/AttentionClientList'
 import { CheckinRow } from '@/components/coach/dashboard/CheckinRow'
-import { CompletedTodaySection } from '@/components/coach/dashboard/CompletedTodaySection'
-import { WeekTimeline } from '@/components/coach/dashboard/WeekTimeline'
+import { WeeklyOperationsCard } from '@/components/coach/dashboard/WeeklyOperationsCard'
+import { ActivityFeed } from '@/components/coach/dashboard/ActivityFeed'
 
-// Greeting helper
 function getGreeting(): string {
-    const h = new Date().getHours()
-    if (h < 12) return 'Buenos días'
-    if (h < 20) return 'Buenas tardes'
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Buenos días'
+    if (hour < 20) return 'Buenas tardes'
     return 'Buenas noches'
 }
 
@@ -49,204 +40,190 @@ export default async function CoachDashboardPage() {
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return null
 
-    // Fetch all dashboard data in parallel
-    const [kpis, dueTodayClients, dueSoonClients, atRiskClients, recentCheckins, completedToday, coachName] = await Promise.all([
-        getDashboardKPIs(coachId),
-        getDueTodayClients(coachId),
-        getDueSoonClients(coachId, 7),
-        getAtRiskClients(coachId),
-        getRecentCheckins(coachId, 10),
-        getCompletedToday(coachId),
-        getCoachDisplayName(user.id),
-    ])
-
-    const hasOverdue = kpis.overdueCount > 0
+    const dashboard = await getCoachDashboardData(coachId, user.id)
     const todayFormatted = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
-            {/* Header — Mejora 3: Greeting */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 lg:px-8 py-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <LayoutDashboard className="h-5 w-5 text-primary" />
+            <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
+                <div className="px-4 py-6 lg:px-8">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10">
+                                <LayoutDashboard className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-bold">
+                                    {getGreeting()}, {dashboard.coachName}
+                                </h1>
+                                <p className="text-sm text-muted-foreground capitalize">{todayFormatted}</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-xl font-bold">{getGreeting()}, {coachName}</h1>
-                            <p className="text-sm text-muted-foreground capitalize">{todayFormatted}</p>
-                        </div>
+
+                        <Badge variant="secondary" className="hidden sm:inline-flex bg-muted/70">
+                            {dashboard.kpis.pendingToday > 0 ? `${dashboard.kpis.pendingToday} foco${dashboard.kpis.pendingToday !== 1 ? 's' : ''} hoy` : 'Operativa estable'}
+                        </Badge>
                     </div>
                 </div>
             </header>
 
-            <div className="px-4 lg:px-8 pt-6 space-y-6">
-                {/* KPI Cards — Mejora 2: Clickable + contextual */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-6 px-4 pt-6 lg:px-8">
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     <KPIStatCard
                         title="Pendientes hoy"
-                        value={kpis.pendingToday}
+                        value={dashboard.kpis.pendingToday}
                         icon={<Clock className="h-5 w-5" />}
-                        variant={kpis.pendingToday > 0 ? 'warning' : 'default'}
-                        subtitle={hasOverdue ? `${kpis.overdueCount} atrasado${kpis.overdueCount !== 1 ? 's' : ''}` : undefined}
-                        href="#acciones-hoy"
+                        variant={dashboard.kpis.pendingToday > 0 ? 'warning' : 'default'}
+                        subtitle={
+                            dashboard.kpis.pendingReviews > 0
+                                ? `${dashboard.kpis.pendingReviews} review${dashboard.kpis.pendingReviews !== 1 ? 's' : ''} abierta${dashboard.kpis.pendingReviews !== 1 ? 's' : ''}`
+                                : 'Sin urgencias abiertas'
+                        }
+                        href="#notificaciones"
                     />
                     <KPIStatCard
-                        title="Esta semana"
-                        value={kpis.pendingWeek}
+                        title="Check-ins esta semana"
+                        value={dashboard.kpis.checkinsThisWeek}
                         icon={<Calendar className="h-5 w-5" />}
                         variant="default"
-                        href="#esta-semana"
+                        subtitle="Enviados por clientes esta semana"
+                        href="#ultimos-checkins"
                     />
                     <KPIStatCard
-                        title="En riesgo"
-                        value={kpis.atRisk}
+                        title="Requieren atención"
+                        value={dashboard.kpis.requiresAttention}
                         icon={<AlertTriangle className="h-5 w-5" />}
-                        variant={kpis.atRisk > 0 ? 'danger' : 'muted'}
-                        href="#en-riesgo"
+                        variant={dashboard.kpis.requiresAttention > 0 ? 'danger' : 'muted'}
+                        subtitle={
+                            dashboard.kpis.highPriorityAttention > 0
+                                ? `${dashboard.kpis.highPriorityAttention} caso${dashboard.kpis.highPriorityAttention !== 1 ? 's' : ''} prioritario${dashboard.kpis.highPriorityAttention !== 1 ? 's' : ''}`
+                                : 'Sin incidencias críticas'
+                        }
+                        href="#requieren-atencion"
                     />
                     <KPIStatCard
                         title="Clientes activos"
-                        value={kpis.totalActive}
+                        value={dashboard.kpis.activeClients}
                         icon={<Users className="h-5 w-5" />}
                         variant="success"
-                        subtitle={kpis.totalInactive > 0 ? `${kpis.totalInactive} inactivos` : undefined}
+                        subtitle={
+                            dashboard.kpis.clientsWithoutProgram > 0
+                                ? `${dashboard.kpis.clientsWithoutProgram} sin programa activo`
+                                : dashboard.kpis.inactiveClients > 0
+                                    ? `${dashboard.kpis.inactiveClients} inactivos`
+                                    : 'Todos con seguimiento activo'
+                        }
                         href="/coach/members"
                     />
                 </div>
 
-                {/* Acciones Hoy — Mejora 1: Urgency styling */}
-                <Card
-                    id="acciones-hoy"
-                    className={cn(
-                        hasOverdue && 'border-destructive/30 bg-destructive/5'
-                    )}
-                >
-                    <div className="flex items-center justify-between p-4 border-b">
-                        <div className="flex items-center gap-2">
-                            <Clock className={cn('h-5 w-5', hasOverdue ? 'text-destructive' : 'text-warning')} />
-                            <h2 className="font-semibold">Acciones hoy</h2>
-                            {dueTodayClients.length > 0 && (
-                                <Badge variant={hasOverdue ? 'destructive' : 'secondary'} className={cn(!hasOverdue && 'bg-warning/10 text-warning border-0')}>
-                                    {dueTodayClients.length}
-                                </Badge>
-                            )}
-                        </div>
-                    </div>
-
-                    {dueTodayClients.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
-                                <Clock className="h-6 w-6 text-success" />
+                <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+                    <Card id="notificaciones" className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <Bell className="h-5 w-5 text-primary" />
+                                    <h2 className="font-semibold">Notificaciones</h2>
+                                    {dashboard.notifications.length > 0 && (
+                                        <Badge variant="secondary" className="bg-primary/10 text-primary border-0">
+                                            {dashboard.notifications.length}
+                                        </Badge>
+                                    )}
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Mensajes nuevos y check-ins recibidos recientemente.
+                                </p>
                             </div>
-                            <p className="font-medium">¡Todo al día!</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                No hay check-ins pendientes para hoy
+                        </div>
+                        <NotificationsList notifications={dashboard.notifications} />
+                    </Card>
+
+                    <Card className="overflow-hidden">
+                        <div className="border-b p-4">
+                            <div className="flex items-center gap-2">
+                                <Calendar className="h-5 w-5 text-primary" />
+                                <h2 className="font-semibold">Operativa de la semana</h2>
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Carga de trabajo y próximos hitos para los siguientes días.
                             </p>
                         </div>
-                    ) : (
-                        <div className="divide-y">
-                            {dueTodayClients.map(client => (
-                                <ClientRow key={client.id} client={client} />
-                            ))}
-                        </div>
-                    )}
-                </Card>
-
-                {/* Completados hoy — Mejora 6 */}
-                <CompletedTodaySection reviews={completedToday} />
-
-                {/* Esta Semana — Mejora 8: Timeline view */}
-                <Card id="esta-semana">
-                    <div className="flex items-center justify-between p-4 border-b">
-                        <div className="flex items-center gap-2">
-                            <Calendar className="h-5 w-5 text-primary" />
-                            <h2 className="font-semibold">Esta semana</h2>
-                            {dueSoonClients.length > 0 && (
-                                <Badge variant="secondary">{dueSoonClients.length}</Badge>
-                            )}
-                        </div>
-                        <Button variant="ghost" size="sm" asChild>
-                            <Link href="/coach/calendar">
-                                Ver calendario
-                                <ArrowRight className="h-4 w-4 ml-1" />
-                            </Link>
-                        </Button>
-                    </div>
-
-                    <WeekTimeline clients={dueSoonClients} />
-                </Card>
-
-                {/* En Riesgo */}
-                <div id="en-riesgo">
-                    {atRiskClients.length > 0 && (
-                        <Card>
-                            <div className="flex items-center gap-2 p-4 border-b">
-                                <AlertTriangle className="h-5 w-5 text-destructive" />
-                                <h2 className="font-semibold">En riesgo</h2>
-                                <Badge variant="destructive">{atRiskClients.length}</Badge>
-                            </div>
-                            <div className="p-4 grid gap-3 sm:grid-cols-2">
-                                {atRiskClients.map(client => (
-                                    <RiskCard key={client.id} client={client} />
-                                ))}
-                            </div>
-                        </Card>
-                    )}
+                        <WeeklyOperationsCard weeklyOperations={dashboard.weeklyOperations} />
+                    </Card>
                 </div>
 
-                {/* Últimos Check-ins */}
-                <Card>
-                    <div className="flex items-center justify-between p-4 border-b">
-                        <div className="flex items-center gap-2">
-                            <FileText className="h-5 w-5 text-primary" />
-                            <h2 className="font-semibold">Últimos check-ins recibidos</h2>
-                        </div>
-                    </div>
-
-                    {recentCheckins.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
-                                <FileText className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                            <p className="font-medium">Sin check-ins</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Aún no has recibido check-ins de tus clientes
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="divide-y">
-                            {recentCheckins.map(checkin => (
-                                <CheckinRow key={checkin.id} checkin={checkin} />
-                            ))}
-                        </div>
-                    )}
-                </Card>
-
-                {/* Quick Summary */}
-                <Card className="p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Users className="h-5 w-5 text-muted-foreground" />
-                            <div>
-                                <span className="font-semibold">{kpis.totalActive}</span>
-                                <span className="text-muted-foreground ml-1">activos</span>
-                                {kpis.totalInactive > 0 && (
-                                    <>
-                                        <span className="text-muted-foreground mx-2">·</span>
-                                        <span className="text-muted-foreground">{kpis.totalInactive} inactivos</span>
-                                    </>
+                <Card id="requieren-atencion" className="overflow-hidden">
+                    <div className="flex items-center justify-between border-b p-4">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5 text-destructive" />
+                                <h2 className="font-semibold">Clientes que requieren atención</h2>
+                                {dashboard.attentionClients.length > 0 && (
+                                    <Badge variant="destructive">{dashboard.attentionClients.length}</Badge>
                                 )}
                             </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Misma lógica que el KPI superior: reviews pendientes, atraso, adherencia baja o clientes sin programa.
+                            </p>
                         </div>
-                        <Button variant="outline" size="sm" asChild>
-                            <Link href="/coach/members">
-                                Ir a Miembros
-                                <ArrowRight className="h-4 w-4 ml-1" />
-                            </Link>
-                        </Button>
                     </div>
+                    <AttentionClientList clients={dashboard.attentionClients} />
                 </Card>
+
+                <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
+                    <Card id="ultimos-checkins" className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <FileText className="h-5 w-5 text-primary" />
+                                    <h2 className="font-semibold">Últimos check-ins recibidos</h2>
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Historial reciente con estado de revisión y señales rápidas para priorizar.
+                                </p>
+                            </div>
+                        </div>
+
+                        {dashboard.recentCheckins.length === 0 ? (
+                            <div className="p-8 text-center">
+                                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                                    <FileText className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                                <p className="font-medium">Aún no hay check-ins recibidos</p>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Cuando entren formularios aparecerán aquí con su estado de revisión.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="divide-y">
+                                {dashboard.recentCheckins.map((checkin) => (
+                                    <CheckinRow key={checkin.id} checkin={checkin} />
+                                ))}
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <LayoutDashboard className="h-5 w-5 text-primary" />
+                                    <h2 className="font-semibold">Actividad reciente</h2>
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Qué ha pasado desde la última vez que abriste el panel.
+                                </p>
+                            </div>
+                            <Button variant="ghost" size="sm" asChild>
+                                <Link href="/coach/calendar">
+                                    Ver agenda
+                                    <ArrowRight className="ml-1 h-4 w-4" />
+                                </Link>
+                            </Button>
+                        </div>
+                        <ActivityFeed items={dashboard.activity} />
+                    </Card>
+                </div>
             </div>
         </div>
     )

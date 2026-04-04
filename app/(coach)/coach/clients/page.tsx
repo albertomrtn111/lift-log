@@ -138,6 +138,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     activeProgram={activeProgram}
                     programs={programs}
                     coachId={coachId}
+                    metrics={metrics}
                     metricDefinitions={metricDefinitions}
                     formTemplates={formTemplates}
                 />

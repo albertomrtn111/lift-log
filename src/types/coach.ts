@@ -74,6 +74,9 @@ export interface Review {
     created_at: string
 }
 
+export type CalendarEventStatus = 'completed' | 'pending_review' | 'scheduled' | 'missing'
+export type CalendarNoteKind = 'note' | 'reminder' | 'alert'
+
 export interface CalendarEvent {
     id: string
     clientId: string
@@ -81,14 +84,40 @@ export interface CalendarEvent {
     date: string
     type: 'checkin'
     isUrgent: boolean
-    /** Whether this is a projected recurring event vs an actual checkin */
+    status: CalendarEventStatus
     projected?: boolean
-    /** Status for color-coding */
-    status: 'completed' | 'pending_review' | 'upcoming' | 'overdue'
-    /** ID of the actual checkin if one exists */
     checkinId?: string
-    /** Review status if a review exists */
+    reviewId?: string
     reviewStatus?: 'draft' | 'approved' | 'rejected' | null
+    checkinStatus?: 'pending' | 'reviewed' | 'archived' | null
+    submittedAt?: string | null
+    expectedDate?: string | null
+    source?: 'scheduled' | 'submitted'
+    checkinSource?: string | null
+    weightKg?: number | null
+    trainingAdherencePct?: number | null
+    nutritionAdherencePct?: number | null
+    sleepAvgH?: number | null
+    aiStatus?: 'idle' | 'pending' | 'completed' | 'failed' | null
+    rawMetricCount?: number
+    rawResponseCount?: number
+}
+
+export interface CalendarNote {
+    id: string
+    date: string
+    kind: CalendarNoteKind
+    content: string
+    clientId: string | null
+    clientName: string | null
+    createdAt: string
+    updatedAt: string
+}
+
+export interface CalendarData {
+    events: CalendarEvent[]
+    notes: CalendarNote[]
+    notesEnabled: boolean
 }
 
 export interface CoachStats {

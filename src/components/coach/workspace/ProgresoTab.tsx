@@ -1,11 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import {
-    LineChart as ReLineChart,
-    Line,
     XAxis,
     YAxis,
     Tooltip,
@@ -18,9 +15,7 @@ import {
     Scale,
     Footprints,
     Moon,
-    Dumbbell,
     Apple,
-    Activity,
     TrendingDown,
     TrendingUp,
     Minus,
@@ -262,7 +257,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                     ) : (
                         <>
                             {/* KPI Cards */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
                                 <KpiCard
                                     icon={Scale}
                                     label="Peso medio"
@@ -273,27 +268,25 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     color="blue"
                                 />
                                 <KpiCard
-                                    icon={Dumbbell}
-                                    label="Adherencia entreno"
-                                    value={kpis?.trainingAdherence != null ? `${kpis.trainingAdherence}%` : null}
-                                    subValue={kpis?.totalWorkouts
-                                        ? `${kpis.completedWorkouts}/${kpis.totalWorkouts} sesiones`
-                                        : undefined
-                                    }
-                                    color="blue"
+                                    icon={Footprints}
+                                    label="Pasos"
+                                    value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
+                                    subValue="Media diaria"
+                                    color="violet"
+                                />
+                                <KpiCard
+                                    icon={Moon}
+                                    label="Sueño"
+                                    value={kpis?.avgSleep != null ? `${kpis.avgSleep}h` : null}
+                                    subValue="Media por noche"
+                                    color="indigo"
                                 />
                                 <KpiCard
                                     icon={Apple}
-                                    label="Adherencia dieta"
+                                    label="Dieta"
                                     value={kpis?.avgDietAdherence != null ? `${kpis.avgDietAdherence}%` : null}
+                                    subValue="Adherencia media"
                                     color="green"
-                                />
-                                <KpiCard
-                                    icon={Footprints}
-                                    label="Pasos / día"
-                                    value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
-                                    subValue={kpis?.avgSleep != null ? `Sueño: ${kpis.avgSleep}h` : undefined}
-                                    color="violet"
                                 />
                             </div>
 
@@ -313,8 +306,9 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
 
 const COLOR_MAP: Record<string, { bg: string; icon: string; ring: string }> = {
     blue: { bg: 'bg-blue-500/10', icon: 'text-blue-500', ring: 'ring-blue-500/20' },
-    green: { bg: 'bg-green-500/10', icon: 'text-green-500', ring: 'ring-green-500/20' },
+    green: { bg: 'bg-emerald-500/10', icon: 'text-emerald-500', ring: 'ring-emerald-500/20' },
     violet: { bg: 'bg-violet-500/10', icon: 'text-violet-500', ring: 'ring-violet-500/20' },
+    indigo: { bg: 'bg-indigo-500/10', icon: 'text-indigo-500', ring: 'ring-indigo-500/20' },
 }
 
 function KpiCard({
@@ -337,40 +331,34 @@ function KpiCard({
     const c = COLOR_MAP[color] || COLOR_MAP.blue
 
     return (
-        <Card className="relative overflow-hidden">
-            <CardContent className="p-4">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className={cn("p-2 rounded-lg ring-1", c.bg, c.ring)}>
-                        <Icon className={cn("h-4 w-4", c.icon)} />
+        <Card className="h-full rounded-xl border bg-card px-3 py-2.5 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                    <div className={cn('flex h-6 w-6 items-center justify-center rounded-md ring-1', c.bg, c.ring)}>
+                        <Icon className={cn('h-3 w-3', c.icon)} />
                     </div>
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                         {label}
-                    </span>
+                    </p>
                 </div>
-                <div className="flex items-end justify-between">
-                    <div>
-                        <p className="text-2xl font-bold tracking-tight">
-                            {value ?? '—'}
-                        </p>
-                        {subValue && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{subValue}</p>
-                        )}
+                {delta != null && (
+                    <div className={cn(
+                        'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[10px] font-semibold',
+                        delta < 0 && 'border-blue-500/20 bg-blue-500/10 text-blue-600',
+                        delta > 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500',
+                        delta === 0 && 'border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
+                    )}>
+                        {delta < 0 ? <TrendingDown className="h-2.5 w-2.5" /> : delta > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
+                        {delta > 0 ? '+' : ''}{delta.toFixed(1)}{deltaUnit ? ` ${deltaUnit}` : ''}
                     </div>
-                    {delta != null && (
-                        <div className={cn(
-                            "flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full",
-                            delta < 0
-                                ? "text-blue-600 bg-blue-500/10"
-                                : delta > 0
-                                    ? "text-red-500 bg-red-500/10"
-                                    : "text-muted-foreground bg-muted"
-                        )}>
-                            {delta < 0 ? <TrendingDown className="h-3 w-3" /> : delta > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                            {delta > 0 ? '+' : ''}{delta.toFixed(1)}{deltaUnit ? ` ${deltaUnit}` : ''}
-                        </div>
-                    )}
-                </div>
-            </CardContent>
+                )}
+            </div>
+            <p className="mt-1.5 text-lg font-semibold leading-none tracking-tight">
+                {value ?? '—'}
+            </p>
+            {subValue && (
+                <p className="mt-1 text-[11px] font-medium text-muted-foreground">{subValue}</p>
+            )}
         </Card>
     )
 }

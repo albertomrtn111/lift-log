@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import { getCalendarEvents } from '@/data/calendar'
+import { getCalendarDataForMonth } from '@/data/calendar'
 import { CalendarView } from '@/components/coach/CalendarView'
-import { Badge } from '@/components/ui/badge'
 import { Calendar } from 'lucide-react'
 
 interface CalendarPageProps {
@@ -23,10 +22,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     const year = params.year ? parseInt(params.year) : now.getFullYear()
     const month = params.month ? parseInt(params.month) : now.getMonth()
 
-    const events = await getCalendarEvents(coachId, year, month)
-
-    const completedCount = events.filter(e => e.status === 'completed').length
-    const overdueCount = events.filter(e => e.status === 'overdue').length
+    const calendarData = await getCalendarDataForMonth(coachId, year, month)
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -38,17 +34,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                         </div>
                         <div>
                             <h1 className="text-xl font-bold">Calendario</h1>
-                            <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="secondary">{events.length} check-ins</Badge>
-                                {completedCount > 0 && (
-                                    <Badge className="bg-green-500/10 text-green-700 border-green-500/20" variant="outline">
-                                        {completedCount} completados
-                                    </Badge>
-                                )}
-                                {overdueCount > 0 && (
-                                    <Badge variant="destructive">{overdueCount} atrasados</Badge>
-                                )}
-                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Herramienta operativa para seguir check-ins reales, reviews y carga semanal.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -56,7 +44,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
             <div className="px-4 lg:px-8 pt-6">
                 <CalendarView
-                    events={events}
+                    coachId={coachId}
+                    initialData={calendarData}
                     initialYear={year}
                     initialMonth={month}
                 />

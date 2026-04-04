@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import { createClient } from '@/lib/supabase/server'
+import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 
 const RequestSchema = z.object({
     type: z.enum(['onboarding', 'checkin']),
     prompt: z.string().min(5).max(1200),
 })
+
+// Coerce a value that might be a number, a numeric string, null or undefined → number | null
+function coerceNullableNum(v: unknown): number | null | undefined {
+    if (v === null || v === undefined) return v as null | undefined
+    if (typeof v === 'number') return isNaN(v) ? null : v
+    if (typeof v === 'string') {
+        const n = parseFloat(v)
+        return isNaN(n) ? null : n
+    }
+    return null
+}
 
 const GeneratedFieldSchema = z
     .object({
@@ -19,11 +33,20 @@ const GeneratedFieldSchema = z
             'multi_choice',
             'date',
         ]),
-        required: z.boolean().default(false),
-        helpText: z.string().max(240).nullish().default(null),
-        min: z.number().nullable().optional(),
-        max: z.number().nullable().optional(),
-        step: z.number().nullable().optional(),
+        // Gemini may return required as boolean or as string "true"/"false"
+        required: z.preprocess(
+            (v) => (typeof v === 'string' ? v === 'true' || v === '1' : Boolean(v)),
+            z.boolean()
+        ).default(false),
+        // Empty string is normalised to null
+        helpText: z.preprocess(
+            (v) => (v === '' || v === undefined ? null : v),
+            z.string().max(240).nullable()
+        ).default(null),
+        // min / max / step may arrive as numeric strings
+        min: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
+        max: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
+        step: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
         options: z.array(z.string().min(1).max(80)).max(8).optional(),
     })
     .superRefine((field, ctx) => {
@@ -67,9 +90,13 @@ const GeneratedFieldSchema = z
     })
 
 const GeneratedFormSchema = z.object({
-    formType: z.enum(['onboarding', 'checkin']),
+    // Tolerate minor case/spacing variations from the model
+    formType: z.preprocess(
+        (v) => (typeof v === 'string' ? v.toLowerCase().trim().replace(/[^a-z]/g, '') : v),
+        z.enum(['onboarding', 'checkin'])
+    ),
     title: z.string().min(3).max(120),
-    fields: z.array(GeneratedFieldSchema).min(4).max(20),
+    fields: z.array(GeneratedFieldSchema).min(3).max(20),
 })
 
 function buildFormPrompt(type: 'onboarding' | 'checkin', userPrompt: string): string {
@@ -131,34 +158,80 @@ Reglas estrictas:
 Solicitud del usuario: ${userPrompt}`
 }
 
+/**
+ * Extract the first valid JSON object from a raw string.
+ * Strategy: find the first '{', then walk forward counting braces to find the
+ * matching closing '}'. This is more reliable than greedy regex when there is
+ * trailing text after the JSON.
+ */
 function extractJson(rawText: string): string {
+    // 1. Try fenced code block first (```json ... ``` or ``` ... ```)
     const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
     if (fenceMatch) return fenceMatch[1].trim()
 
-    const objMatch = rawText.match(/(\{[\s\S]*\})/)
-    if (objMatch) return objMatch[1].trim()
+    // 2. Walk the string to find the outermost balanced JSON object
+    const start = rawText.indexOf('{')
+    if (start !== -1) {
+        let depth = 0
+        let inString = false
+        let escape = false
+        for (let i = start; i < rawText.length; i++) {
+            const ch = rawText[i]
+            if (escape) { escape = false; continue }
+            if (ch === '\\' && inString) { escape = true; continue }
+            if (ch === '"') { inString = !inString; continue }
+            if (inString) continue
+            if (ch === '{') depth++
+            else if (ch === '}') {
+                depth--
+                if (depth === 0) return rawText.slice(start, i + 1).trim()
+            }
+        }
+    }
 
     return rawText.trim()
 }
 
 function parseAndValidate(rawText: string, expectedType: 'onboarding' | 'checkin') {
+    // Always log the raw response to make debugging easier
+    console.log('[AI generate-form] Raw response length:', rawText.length)
+    console.log('[AI generate-form] Raw response (first 600 chars):', rawText.slice(0, 600))
+
     const cleaned = extractJson(rawText)
 
     let parsed: unknown
     try {
         parsed = JSON.parse(cleaned)
-    } catch {
-        throw new Error('La IA devolvió un JSON inválido. Inténtalo de nuevo.')
+    } catch (jsonErr) {
+        console.error('[AI generate-form] JSON.parse failed')
+        console.error('[AI generate-form] Cleaned string (first 400 chars):', cleaned.slice(0, 400))
+        throw new Error('La IA devolvió un JSON malformado. Inténtalo de nuevo.')
     }
 
     const result = GeneratedFormSchema.safeParse(parsed)
     if (!result.success) {
-        console.error('[AI generate-form] Validation error:', result.error.flatten())
-        throw new Error('La IA devolvió un formulario con una estructura no válida. Inténtalo de nuevo.')
+        const flat = result.error.flatten()
+        console.error('[AI generate-form] Validation failed — field errors:', JSON.stringify(flat.fieldErrors, null, 2))
+        console.error('[AI generate-form] Validation failed — form errors:', flat.formErrors)
+        console.error('[AI generate-form] Parsed top-level keys:', Object.keys((parsed as Record<string, unknown>) ?? {}))
+
+        // Surface a specific, actionable error when possible
+        const parsedObj = parsed as Record<string, unknown> | null
+        const fieldCount = Array.isArray(parsedObj?.fields) ? (parsedObj!.fields as unknown[]).length : 0
+        if (fieldCount < 3) {
+            throw new Error(`La IA generó muy pocas preguntas (${fieldCount}). Describe mejor el formulario e inténtalo de nuevo.`)
+        }
+        if (flat.fieldErrors.formType) {
+            throw new Error(`La IA devolvió un tipo de formulario no reconocido: "${parsedObj?.formType}".`)
+        }
+        if (flat.fieldErrors.fields) {
+            throw new Error('Alguna pregunta generada tiene un formato incorrecto. Inténtalo de nuevo.')
+        }
+        throw new Error('La IA devolvió una estructura de formulario incompleta. Inténtalo de nuevo.')
     }
 
     if (result.data.formType !== expectedType) {
-        throw new Error('La IA devolvió un tipo de formulario distinto al solicitado. Inténtalo de nuevo.')
+        throw new Error(`La IA devolvió tipo "${result.data.formType}" pero se esperaba "${expectedType}". Inténtalo de nuevo.`)
     }
 
     return result.data
@@ -166,6 +239,11 @@ function parseAndValidate(rawText: string, expectedType: 'onboarding' | 'checkin
 
 export async function POST(req: NextRequest) {
     try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const coachContext = await getCoachAIProfileContext(coachId)
+
         const body = await req.json()
         const input = RequestSchema.safeParse(body)
 
@@ -177,9 +255,10 @@ export async function POST(req: NextRequest) {
         }
 
         const { type, prompt } = input.data
-        const rawText = await callGemini(buildFormPrompt(type, prompt), {
+        const rawText = await callGemini(coachContext + buildFormPrompt(type, prompt), {
             maxOutputTokens: 8192,
             thinkingBudget: 0,
+            responseMimeType: 'application/json',
         })
         const form = parseAndValidate(rawText, type)
 

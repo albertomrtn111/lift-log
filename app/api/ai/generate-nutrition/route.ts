@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import { createClient } from '@/lib/supabase/server'
+import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
 
 // ============================================================================
@@ -307,6 +310,11 @@ function parseAndValidate(rawText: string, type: 'macros' | 'options_diet'): AIN
 
 export async function POST(req: NextRequest) {
     try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const coachContext = await getCoachAIProfileContext(coachId)
+
         const body = await req.json()
         const input = RequestSchema.safeParse(body)
 
@@ -322,9 +330,11 @@ export async function POST(req: NextRequest) {
         const weightSummary = buildWeightSummary(context.weightHistory)
         const macrosSummary = buildCurrentMacrosSummary(context.activeMacroPlan ?? null)
 
-        const fullPrompt = type === 'macros'
+        const taskPrompt = type === 'macros'
             ? buildMacrosPrompt(objective, prompt, weightSummary, macrosSummary)
             : buildDietPrompt(objective, prompt, weightSummary, macrosSummary, context.activeDietPlanText)
+
+        const fullPrompt = coachContext + taskPrompt
 
         const rawText = await callGemini(fullPrompt, {
             maxOutputTokens: 16384,

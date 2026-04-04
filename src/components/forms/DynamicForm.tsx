@@ -169,7 +169,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
                 // Redirect to client dashboard after onboarding
                 if (result.isOnboarding) {
                     setTimeout(() => {
-                        router.push('/routine')
+                        router.push('/planning')
                     }, 2000)
                 }
             } else {

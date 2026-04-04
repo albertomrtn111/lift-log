@@ -49,14 +49,14 @@ export async function sendReviewAction(
     if (!template) {
         return {
             success: false,
-            error: 'No tienes una plantilla de revisión disponible para este cliente. Asigna una en Formularios o define una por defecto.',
+            error: 'No tienes una plantilla de revisión asignada a este cliente. Asígnala desde su perfil en Clientes o desde Formularios.',
         }
     }
 
-    // 4) Cancel existing pending review checkins for this client
+    // 4) Archive existing pending review checkins for this client
     await supabase
         .from('checkins')
-        .update({ status: 'cancelled' })
+        .update({ status: 'archived' })
         .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('type', 'checkin')

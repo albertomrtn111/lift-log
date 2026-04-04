@@ -131,7 +131,7 @@ export async function resolveFormTemplateForClient(params: {
 
     const { data: templates, error } = await supabase
         .from('form_templates')
-        .select('id, title, assigned_client_ids, is_default, created_at')
+        .select('id, title, assigned_client_ids, created_at')
         .eq('coach_id', coachId)
         .eq('type', type)
         .eq('is_active', true)
@@ -148,12 +148,7 @@ export async function resolveFormTemplateForClient(params: {
         normalizeAssignedClientIds(template.assigned_client_ids as string[] | undefined).includes(clientId)
     )
 
-    if (assignedTemplate) {
-        return { id: assignedTemplate.id, title: assignedTemplate.title }
-    }
-
-    const defaultTemplate = templates.find((template) => template.is_default)
-    return defaultTemplate ? { id: defaultTemplate.id, title: defaultTemplate.title } : null
+    return assignedTemplate ? { id: assignedTemplate.id, title: assignedTemplate.title } : null
 }
 
 export async function resolveCheckinTemplateForClient(params: {
@@ -185,7 +180,6 @@ export async function getFormTemplates(
         .from('form_templates')
         .select('*')
         .eq('coach_id', coachId)
-        .order('is_default', { ascending: false })
         .order('created_at', { ascending: false })
 
     if (type) query = query.eq('type', type)
@@ -221,7 +215,6 @@ export async function createFormTemplate(
             schema: finalSchema,
             assigned_client_ids: assignedClientIds,
             is_active: true,
-            is_default: false,
         })
         .select()
         .single()
@@ -327,57 +320,10 @@ export async function duplicateFormTemplate(
             schema: duplicatedSchema,
             assigned_client_ids: [],
             is_active: original.is_active,
-            is_default: false,
         })
 
     if (error) {
         console.error('[duplicateFormTemplate] Error:', error)
-        return { success: false, error: error.message }
-    }
-
-    revalidatePath('/coach/forms')
-    revalidatePath('/coach/members')
-    return { success: true }
-}
-
-export async function setFormTemplateDefault(
-    templateId: string
-): Promise<{ success: boolean; error?: string }> {
-    const { supabase, coachId } = await requireActiveCoachId()
-
-    // Get the template to know its type
-    const { data: template, error: fetchErr } = await supabase
-        .from('form_templates')
-        .select('type, is_active')
-        .eq('id', templateId)
-        .eq('coach_id', coachId)
-        .single()
-
-    if (fetchErr || !template) {
-        return { success: false, error: 'Template not found' }
-    }
-
-    if (!template.is_active) {
-        return { success: false, error: 'Cannot set inactive template as default' }
-    }
-
-    // Unset current default for this coach+type
-    await supabase
-        .from('form_templates')
-        .update({ is_default: false })
-        .eq('coach_id', coachId)
-        .eq('type', template.type)
-        .eq('is_default', true)
-
-    // Set new default
-    const { error } = await supabase
-        .from('form_templates')
-        .update({ is_default: true })
-        .eq('id', templateId)
-        .eq('coach_id', coachId)
-
-    if (error) {
-        console.error('[setFormTemplateDefault] Error:', error)
         return { success: false, error: error.message }
     }
 
@@ -393,18 +339,13 @@ export async function toggleFormTemplateActive(
 
     const { data: template, error: fetchErr } = await supabase
         .from('form_templates')
-        .select('is_active, is_default')
+        .select('is_active')
         .eq('id', templateId)
         .eq('coach_id', coachId)
         .single()
 
     if (fetchErr || !template) {
         return { success: false, error: 'Template not found' }
-    }
-
-    // Block deactivation of default template
-    if (template.is_active && template.is_default) {
-        return { success: false, error: 'Default template cannot be deactivated' }
     }
 
     const { error } = await supabase
@@ -427,22 +368,6 @@ export async function deleteFormTemplate(
     templateId: string
 ): Promise<{ success: boolean; error?: string }> {
     const { supabase, coachId } = await requireActiveCoachId()
-
-    // Check if it's default
-    const { data: template, error: fetchErr } = await supabase
-        .from('form_templates')
-        .select('is_default')
-        .eq('id', templateId)
-        .eq('coach_id', coachId)
-        .single()
-
-    if (fetchErr || !template) {
-        return { success: false, error: 'Template not found' }
-    }
-
-    if (template.is_default) {
-        return { success: false, error: 'Cannot delete default template. Remove default status first.' }
-    }
 
     const { error } = await supabase
         .from('form_templates')

@@ -25,7 +25,7 @@ export default async function HomePage() {
     }
 
     if (modeResolution === 'client') {
-        redirect('/routine')
+        redirect(getModeRedirectPath('client'))
     }
 
     if (modeResolution === 'both') {
@@ -41,7 +41,7 @@ export default async function HomePage() {
         }
 
         // Default for dual users is Client view
-        redirect('/routine')
+        redirect(getModeRedirectPath('client'))
     }
 
     // Fallback

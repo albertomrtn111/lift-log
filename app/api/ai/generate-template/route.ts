@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import { createClient } from '@/lib/supabase/server'
+import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import type { AIStrengthTemplate, AICardioTemplate, AIGeneratedTemplate } from '@/types/ai-template'
 
 // ============================================================================
@@ -169,6 +172,11 @@ function parseAndValidate(rawText: string, type: 'strength' | 'cardio'): AIGener
 
 export async function POST(req: NextRequest) {
     try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const coachContext = await getCoachAIProfileContext(coachId)
+
         const body = await req.json()
         const input = RequestSchema.safeParse(body)
 
@@ -181,9 +189,11 @@ export async function POST(req: NextRequest) {
 
         const { type, prompt } = input.data
 
-        const fullPrompt = type === 'strength'
+        const taskPrompt = type === 'strength'
             ? buildStrengthPrompt(prompt)
             : buildCardioPrompt(prompt)
+
+        const fullPrompt = coachContext + taskPrompt
 
         const rawText = await callGemini(fullPrompt, {
             maxOutputTokens: 16384,

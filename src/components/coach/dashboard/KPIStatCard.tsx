@@ -10,6 +10,7 @@ interface KPIStatCardProps {
     icon: ReactNode
     variant?: 'default' | 'warning' | 'danger' | 'success' | 'muted'
     subtitle?: string
+    className?: string
     /** If provided, makes the card a clickable link/anchor */
     href?: string
     /** HTML id for scroll anchoring */
@@ -22,6 +23,7 @@ export function KPIStatCard({
     icon,
     variant = 'default',
     subtitle,
+    className,
     href,
     id,
 }: KPIStatCardProps) {
@@ -37,17 +39,18 @@ export function KPIStatCard({
         <Card
             id={id}
             className={cn(
-                'p-4 transition-all',
+                'h-full min-h-[128px] p-4 transition-all',
                 href && 'cursor-pointer hover:shadow-md hover:border-primary/20',
-                variant === 'muted' && 'opacity-60'
+                variant === 'muted' && 'opacity-60',
+                className
             )}
         >
-            <div className="flex items-start justify-between">
-                <div>
+            <div className="flex h-full items-start justify-between gap-4">
+                <div className="flex min-h-[88px] flex-1 flex-col justify-between">
                     <p className="text-sm text-muted-foreground">{title}</p>
-                    <p className="text-2xl font-bold mt-1">{value}</p>
+                    <p className="mt-2 text-2xl font-bold leading-none">{value}</p>
                     {subtitle && (
-                        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+                        <p className="mt-3 text-xs text-muted-foreground">{subtitle}</p>
                     )}
                 </div>
                 <div className={cn(

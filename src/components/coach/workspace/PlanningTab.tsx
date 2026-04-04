@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay } from 'date-fns'
 import { parseLocalDate } from '@/lib/date-utils'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy, Moon, FileText, Timer } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getWeeklySchedule, deleteCardioSession, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession, duplicateStrengthSession, duplicateCardioSession } from '@/app/(coach)/coach/workspace/planning-actions'
-import { UnifiedCalendarItem } from '@/types/planning'
+import { UnifiedCalendarItem, PlanningSnapshot, PlanningDayContext } from '@/types/planning'
 import { CardioStructure } from '@/types/templates'
 import { useToast } from '@/hooks/use-toast'
 import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
@@ -21,13 +21,18 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 // DnD Kit
 import {
@@ -53,6 +58,22 @@ const toLocalDateStr = (d: Date) => {
     const day = String(d.getDate()).padStart(2, '0')
     return `${y}-${m}-${day}`
 }
+
+const cardioTypeLabels: Record<string, string> = {
+    rodaje: 'Rodaje',
+    series: 'Series',
+    tempo: 'Tempo',
+    progressive: 'Progresivo',
+    fartlek: 'Fartlek',
+    hybrid: 'Híbrido',
+}
+
+
+function getCardioTypeLabel(type?: string) {
+    if (!type) return 'Cardio'
+    return cardioTypeLabels[type] || `${type.charAt(0).toUpperCase()}${type.slice(1)}`
+}
+
 
 // ---------------------------------------------------------------------------
 // Draggable wrapper
@@ -143,6 +164,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
     const [currentDate, setCurrentDate] = useState(new Date())
     const [loading, setLoading] = useState(true)
     const [schedule, setSchedule] = useState<UnifiedCalendarItem[]>([])
+    const [planningSnapshot, setPlanningSnapshot] = useState<PlanningSnapshot | null>(null)
     const [editingSession, setEditingSession] = useState<UnifiedCalendarItem | null>(null)
     const [activeItem, setActiveItem] = useState<UnifiedCalendarItem | null>(null)
     const [viewMode, setViewMode] = useState<'week' | 'month'>('week')
@@ -185,16 +207,21 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         try {
             const fetchStart = viewMode === 'week' ? startDate : monthStart
             const fetchEnd = viewMode === 'week' ? endDate : monthEnd
-            const result = await getWeeklySchedule(clientId, fetchStart, fetchEnd)
+            const result = await getWeeklySchedule(clientId, fetchStart, fetchEnd, currentDate)
             if (result.success && result.data) {
-                setSchedule(result.data)
+                setPlanningSnapshot(result.data)
+                setSchedule(result.data.items)
             } else {
+                setPlanningSnapshot(null)
+                setSchedule([])
                 if (result.error) {
                     toast({ title: "Info", description: "No se pudieron cargar datos (Mostrando vacío)" })
                 }
             }
         } catch (e) {
             console.error("Critical error in PlanningTab fetch:", e)
+            setPlanningSnapshot(null)
+            setSchedule([])
             toast({ title: "Error crítico", description: "Fallo al cargar calendario.", variant: "destructive" })
         } finally {
             setLoading(false)
@@ -418,10 +445,15 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         return schedule.filter(item => isSameDay(parseLocalDate(item.date), date))
     }
 
+    const getDayContext = (date: Date): PlanningDayContext | undefined => {
+        const dateStr = toLocalDateStr(date)
+        return planningSnapshot?.dayContexts.find((day) => day.date === dateStr)
+    }
+
     const getCardioSummary = (item: UnifiedCalendarItem & { type: 'cardio' }) => {
         const parts = []
-        let distance = item.distance_km
-        let duration = item.duration_minutes
+        let distance = item.distance_km ?? item.target_distance_km
+        let duration = item.duration_minutes ?? item.target_duration_min
         if (!distance && !duration && item.structure?.blocks) {
             const continuousBlock = item.structure.blocks.find(b => b.type === 'continuous')
             if (continuousBlock) {
@@ -435,6 +467,9 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
     }
 
     const isToday = (date: Date) => isSameDay(date, new Date())
+    const selectedLabel = viewMode === 'week'
+        ? `${format(startDate, 'd MMM', { locale: es })} - ${format(endDate, 'd MMM', { locale: es })}`
+        : format(currentDate, 'MMMM yyyy', { locale: es })
 
     // -----------------------------------------------------------------------
     // Render
@@ -449,12 +484,17 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         >
             <div className="flex flex-col h-full space-y-4 p-4">
                 {/* Controls */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-2xl font-bold capitalize">
-                            {format(currentDate, 'MMMM yyyy', { locale: es })}
-                        </h2>
-                        <div className="flex items-center rounded-md border bg-background shadow-sm ml-4">
+                        <div>
+                            <h2 className="text-2xl font-bold capitalize">
+                                {format(currentDate, 'MMMM yyyy', { locale: es })}
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                {viewMode === 'week' ? `Vista operativa de la semana · ${selectedLabel}` : `Mapa general del bloque · ${selectedLabel}`}
+                            </p>
+                        </div>
+                        <div className="flex items-center rounded-md border bg-background shadow-sm ml-0 lg:ml-4">
                             <Button variant="ghost" size="icon" onClick={handlePrevious}>
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
@@ -488,33 +528,84 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
 
                 {/* Weekly Grid */}
                 {viewMode === 'week' && (
-                    <div className="grid grid-cols-7 gap-4 h-full min-h-[600px]">
+                    <TooltipProvider delayDuration={200}>
+                    <div className="grid grid-cols-1 xl:grid-cols-7 gap-4 h-full min-h-[600px]">
                         {weekDays.map((day) => {
                             const items = getItemsForDay(day)
                             const isTodayDate = isToday(day)
                             const dayDateStr = toLocalDateStr(day)
+                            const dayContext = getDayContext(day)
+                            const noteCount = dayContext?.noteCount ?? 0
 
                             return (
                                 <div key={day.toISOString()} className={cn(
-                                    "flex flex-col gap-2 rounded-xl border p-2 bg-muted/20",
+                                    "flex flex-col gap-3 rounded-2xl border p-3 transition-colors",
+                                    dayContext?.state === 'planned_rest' && "border-emerald-200/80 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20",
+                                    dayContext?.state === 'empty' && "border-dashed bg-muted/20",
+                                    dayContext?.state === 'scheduled' && "bg-card",
                                     isTodayDate && "ring-2 ring-primary bg-primary/5"
                                 )}>
                                     {/* Day Header */}
-                                    <div className="flex items-center justify-between pb-2 border-b mb-2">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-medium text-muted-foreground uppercase">
-                                                {format(day, 'EEE', { locale: es })}
-                                            </span>
-                                            <span className={cn("text-lg font-bold", isTodayDate && "text-primary")}>
-                                                {format(day, 'd')}
-                                            </span>
+                                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 border-b pb-3">
+                                        <div className="min-w-0 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                                                    {format(day, 'EEE', { locale: es })}
+                                                </span>
+                                            </div>
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex h-10 min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl bg-background/80 px-2 text-2xl font-bold leading-none tabular-nums",
+                                                        isTodayDate && "bg-primary text-primary-foreground"
+                                                    )}
+                                                >
+                                                    {format(day, 'd')}
+                                                </span>
+                                                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                                                    {items.length > 0 && (
+                                                        <Badge variant="outline" className="shrink-0 bg-background/80 whitespace-nowrap">
+                                                            {items.length} ses.
+                                                        </Badge>
+                                                    )}
+                                                    {dayContext?.state === 'planned_rest' && (
+                                                        <Badge className="shrink-0 whitespace-nowrap bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-100 border border-emerald-200 dark:border-emerald-800">
+                                                            Descanso
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <PlanningAddSessionDialog
-                                            clientId={clientId}
-                                            coachId={coachId}
-                                            date={toLocalDateStr(day)}
-                                            onSessionAdded={fetchSchedule}
-                                        />
+                                        <div className="justify-self-end shrink-0">
+                                            <PlanningAddSessionDialog
+                                                clientId={clientId}
+                                                coachId={coachId}
+                                                date={toLocalDateStr(day)}
+                                                onSessionAdded={fetchSchedule}
+                                            />
+                                        </div>
+                                        {noteCount > 0 && (
+                                            <div className="col-span-2">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex w-fit max-w-full items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-100"
+                                                        >
+                                                            <FileText className="h-3 w-3 shrink-0" />
+                                                            <span className="truncate">
+                                                                {noteCount} nota{noteCount === 1 ? '' : 's'}
+                                                            </span>
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" className="max-w-xs text-xs space-y-1">
+                                                        {dayContext?.notes.map((note) => (
+                                                            <p key={note.id}>{note.content}</p>
+                                                        ))}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Droppable Items Area */}
@@ -526,8 +617,25 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                         ) : (
                                             <>
                                                 {items.length === 0 && (
-                                                    <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground/30 font-medium select-none py-8">
-                                                        Descanso
+                                                    <div className={cn(
+                                                        "flex min-h-[100px] items-start justify-start rounded-xl border p-3",
+                                                        dayContext?.state === 'planned_rest'
+                                                            ? "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30"
+                                                            : "border-dashed border-border/40 bg-muted/10"
+                                                    )}>
+                                                        {dayContext?.state === 'planned_rest' && (
+                                                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100/80 dark:bg-emerald-900/40">
+                                                                    <Moon className="h-4 w-4 opacity-70" />
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block text-xs font-semibold uppercase tracking-wide">Descanso</span>
+                                                                    <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                                                                        Día planificado sin sesión.
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                                 {items.map((item) => (
@@ -555,10 +663,28 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                             </>
                                         )}
                                     </DroppableDay>
+
+                                    {dayContext?.notes?.length ? (
+                                        <div className="space-y-2 pt-1">
+                                            {dayContext.notes.slice(0, 2).map((note) => (
+                                                <div
+                                                    key={note.id}
+                                                    className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-50"
+                                                >
+                                                    <div className="flex items-center gap-1.5 font-medium mb-1">
+                                                        <FileText className="h-3 w-3" />
+                                                        Nota del planner
+                                                    </div>
+                                                    <p className="line-clamp-2">{note.content}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : null}
                                 </div>
                             )
                         })}
                     </div>
+                    </TooltipProvider>
                 )}
 
                 {/* Monthly Grid */}
@@ -592,6 +718,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                             const isCurrentMonth = day.getMonth() === currentDate.getMonth()
                                             const isTodayDate = isToday(day)
                                             const items = getItemsForDay(day)
+                                            const dayContext = getDayContext(day)
                                             const visible = items.slice(0, 3)
                                             const overflow = items.length - visible.length
 
@@ -599,10 +726,12 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                 <div
                                                     key={day.toISOString()}
                                                     className={cn(
-                                                        "rounded-xl border p-2 min-h-[88px] transition-colors",
+                                                        "rounded-xl border p-2 min-h-[96px] transition-colors",
                                                         isCurrentMonth
                                                             ? "bg-card hover:bg-muted/30"
                                                             : "bg-muted/5 opacity-40",
+                                                        dayContext?.state === 'planned_rest' && isCurrentMonth && "border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/15",
+                                                        dayContext?.state === 'empty' && isCurrentMonth && items.length === 0 && "border-dashed",
                                                         isTodayDate && "ring-2 ring-primary border-primary/40 bg-primary/5 hover:bg-primary/8",
                                                         items.length > 0 && isCurrentMonth && !isTodayDate && "border-border/80 shadow-sm"
                                                     )}
@@ -618,9 +747,16 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         )}>
                                                             {format(day, 'd')}
                                                         </span>
-                                                        {items.length > 0 && isCurrentMonth && !isTodayDate && (
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-primary/40 flex-shrink-0" />
-                                                        )}
+                                                        <div className="flex items-center gap-1">
+                                                            {dayContext?.noteCount ? (
+                                                                <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-100">
+                                                                    {dayContext.noteCount}
+                                                                </span>
+                                                            ) : null}
+                                                            {items.length > 0 && isCurrentMonth && !isTodayDate && (
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-primary/40 flex-shrink-0" />
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <div className="space-y-0.5">
                                                         {visible.map(item => {
@@ -719,6 +855,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         {overflow > 0 && (
                                                             <div className="text-[10px] text-muted-foreground/70 pl-1 mt-0.5 font-medium">
                                                                 +{overflow} más
+                                                            </div>
+                                                        )}
+                                                        {items.length === 0 && isCurrentMonth && dayContext?.state === 'planned_rest' && (
+                                                            <div className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium pl-1">
+                                                                Descanso
                                                             </div>
                                                         )}
                                                     </div>
@@ -822,29 +963,19 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
     onDelete?: (e: React.MouseEvent) => void
 }) {
     const isVirtual = item.id.startsWith('virtual-')
-    const isProgramAuto = isVirtual || (item as any).is_program_auto === true
     const programId = (item as any).training_program_id
-    const canDelete = !isVirtual // Only real DB rows can be deleted
+    const canDelete = !isVirtual
 
     return (
         <Card className="border-red-500 text-white shadow-md transition-colors group relative overflow-hidden cursor-pointer bg-red-600 dark:bg-red-700 hover:bg-red-500 dark:hover:bg-red-600">
             <div className="absolute top-0 left-0 w-1 h-full bg-red-200/50" />
             <CardContent className="p-3">
-                <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-1">
-                        <Badge variant="secondary" className="text-[10px] bg-white/20 hover:bg-white/30 text-white px-1 py-0 h-4 border-none">
-                            Fuerza
-                        </Badge>
-                        {isProgramAuto && (
-                            <Badge className="text-[9px] bg-white/10 hover:bg-white/15 text-white/80 px-1 py-0 h-4 border border-white/20 font-medium tracking-wider">
-                                AUTO
-                            </Badge>
-                        )}
-                    </div>
+                <div className="flex items-start justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px] bg-white/20 hover:bg-white/30 text-white px-1.5 py-0 h-5 border-none">
+                        Fuerza
+                    </Badge>
                     <div className="flex items-center gap-1">
                         {(item as any).is_completed && <CheckCircle2 className="h-3 w-3 text-white" />}
-
-                        {/* 3-dot menu */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button
@@ -880,19 +1011,15 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-
                         <GripVertical className="h-3 w-3 text-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                 </div>
-                <div className="flex items-center gap-2 mb-1">
-                    <Dumbbell className="h-4 w-4 text-white/90" />
-                    <span className="font-bold text-sm line-clamp-1 text-white">
-                        {(item as any).training_days?.order_index ? `Día ${(item as any).training_days.order_index}: ` : ''}{(item as any).training_days?.name || 'Día sin nombre'}
+                <div className="flex items-center gap-2">
+                    <Dumbbell className="h-4 w-4 text-white/90 shrink-0" />
+                    <span className="font-bold text-sm line-clamp-2 text-white leading-snug">
+                        {(item as any).training_days?.name || 'Sesión de fuerza'}
                     </span>
                 </div>
-                <p className="text-[10px] text-white/70 line-clamp-1">
-                    {(item as any).training_programs?.name}
-                </p>
             </CardContent>
         </Card>
     )
@@ -915,6 +1042,7 @@ function CardioCard({
 }) {
     const structure = item.structure as any
     const type = structure?.trainingType || 'rodaje'
+    const summaryLine = item.summary_line || getCardioSummary(item)
 
     return (
         <Card className={cn("border-none shadow-sm hover:opacity-80 transition-opacity cursor-pointer relative overflow-hidden group",
@@ -927,10 +1055,15 @@ function CardioCard({
                     type === 'series' ? "bg-yellow-500" : "bg-blue-500"
             )} />
             <CardContent className="p-3">
-                <div className="flex items-start justify-between mb-1">
-                    <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-white/50 dark:bg-black/20 backdrop-blur-sm">
-                        Cardio
-                    </Badge>
+                <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 bg-white/50 dark:bg-black/20 backdrop-blur-sm">
+                            Cardio
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] h-5 bg-white/40 dark:bg-black/15 border-transparent">
+                            {getCardioTypeLabel(type)}
+                        </Badge>
+                    </div>
                     <div className="flex items-center gap-1">
                         {item.is_completed && <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400" />}
 
@@ -972,13 +1105,11 @@ function CardioCard({
 
                 <h4 className="font-bold text-sm mb-1 leading-snug">{item.name}</h4>
 
-                <p className="text-xs text-muted-foreground opacity-90 line-clamp-2 mt-1 whitespace-pre-line leading-relaxed">
-                    {item.description || "Sin detalles"}
-                </p>
-                {structure?.notes && (
-                    <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-2 line-clamp-1 italic border-t border-black/5 pt-1">
-                        📝 {structure.notes}
-                    </p>
+                {summaryLine && (
+                    <div className="inline-flex items-center gap-1 rounded-md bg-white/50 dark:bg-black/15 px-2 py-1 text-[10px] font-medium">
+                        <Timer className="h-3 w-3" />
+                        {summaryLine}
+                    </div>
                 )}
             </CardContent>
         </Card>

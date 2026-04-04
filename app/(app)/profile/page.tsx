@@ -69,8 +69,8 @@ export default function ProfilePage() {
     // Loading state
     if (isLoading) {
         return (
-            <div className="min-h-screen pb-4">
-                <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <div className="app-mobile-page min-h-screen pb-4">
+                <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                     <div className="px-4 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -97,8 +97,8 @@ export default function ProfilePage() {
     // Error state
     if (error || !client) {
         return (
-            <div className="min-h-screen pb-4">
-                <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <div className="app-mobile-page min-h-screen pb-4">
+                <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                     <div className="px-4 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
@@ -142,9 +142,9 @@ export default function ProfilePage() {
     const modeLabel = currentMode === 'coach' ? 'Modo Coach' : 'Modo Cliente'
 
     return (
-        <div className="min-h-screen pb-4">
+        <div className="app-mobile-page min-h-screen pb-4">
             {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">

@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { PaymentRecord, BillingDashboardData, YearTotal } from '@/types/billing'
+import type { PaymentRecord, BillingDashboardData, YearTotal, BillingClientOption } from '@/types/billing'
 
 // Re-export types so existing imports from '@/data/billing' keep working
-export type { PaymentRecord, BillingSummary, YearTotal, BillingDashboardData } from '@/types/billing'
+export type { PaymentRecord, BillingSummary, YearTotal, BillingDashboardData, BillingClientOption } from '@/types/billing'
 
 // ----------------------------------------------------------------------------
 // Core Read Operations
@@ -129,6 +129,27 @@ export async function getAnnualComparison(coachId: string, year: number) {
     }
 }
 
+export async function listBillingClients(coachId: string): Promise<BillingClientOption[]> {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('clients')
+        .select('id, full_name, email, status, payment_amount')
+        .eq('coach_id', coachId)
+        .order('status', { ascending: true })
+        .order('full_name', { ascending: true })
+
+    if (error || !data) return []
+
+    return data.map((client) => ({
+        id: client.id,
+        full_name: client.full_name || 'Cliente',
+        email: client.email || '',
+        status: client.status,
+        payment_amount: client.payment_amount != null ? Number(client.payment_amount) : null,
+    }))
+}
+
 // ----------------------------------------------------------------------------
 // Mutations — kept here for server-only callers (page.tsx etc.)
 // For client components use billing-actions.ts instead
@@ -206,4 +227,111 @@ export async function updatePaymentStatus(recordId: string, status: 'paid' | 'pe
 
     revalidatePath('/coach/billing')
     return { success: true }
+}
+
+export async function createManualPaymentRecord(input: {
+    coachId: string
+    clientId: string
+    year: number
+    month: number
+    amount: number
+    status: 'pending' | 'paid' | 'overdue' | 'waived'
+    paymentMethod?: string | null
+    paidAt?: string | null
+    notes?: string | null
+}) {
+    const supabase = await createClient()
+
+    const payload = {
+        coach_id: input.coachId,
+        client_id: input.clientId,
+        year: input.year,
+        month: input.month,
+        amount: input.amount,
+        status: input.status,
+        payment_method: input.status === 'paid' ? input.paymentMethod ?? null : null,
+        paid_at: input.status === 'paid' ? (input.paidAt || new Date().toISOString()) : null,
+        notes: input.notes ?? null,
+    }
+
+    const { error } = await supabase
+        .from('payment_records')
+        .insert(payload)
+
+    if (error) {
+        if (error.code === '23505') {
+            return { success: false, error: 'Ya existe un registro para ese cliente y ese periodo.' }
+        }
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/coach/billing')
+    return { success: true }
+}
+
+export async function markVisibleMonthRecordsPaid(input: {
+    coachId: string
+    year: number
+    month: number
+    search?: string
+    statusFilter?: 'all' | 'pending' | 'overdue'
+    paymentMethod?: string | null
+}) {
+    const supabase = await createClient()
+
+    const normalizedSearch = input.search?.trim().toLowerCase() ?? ''
+    const allowedStatuses = input.statusFilter === 'overdue'
+        ? ['overdue']
+        : input.statusFilter === 'pending'
+            ? ['pending']
+            : ['pending', 'overdue']
+
+    const { data: records, error } = await supabase
+        .from('payment_records')
+        .select(`
+            id,
+            status,
+            clients (
+                full_name,
+                email
+            )
+        `)
+        .eq('coach_id', input.coachId)
+        .eq('year', input.year)
+        .eq('month', input.month)
+        .in('status', allowedStatuses)
+
+    if (error) {
+        return { success: false, error: error.message }
+    }
+
+    const filteredIds = (records ?? [])
+        .filter((record: any) => {
+            if (!normalizedSearch) return true
+            const fullName = (record.clients?.full_name || '').toLowerCase()
+            const email = (record.clients?.email || '').toLowerCase()
+            return fullName.includes(normalizedSearch) || email.includes(normalizedSearch)
+        })
+        .map((record: any) => record.id)
+
+    if (filteredIds.length === 0) {
+        return { success: true, updatedCount: 0 }
+    }
+
+    const { error: updateError } = await supabase
+        .from('payment_records')
+        .update({
+            status: 'paid',
+            paid_at: new Date().toISOString(),
+            payment_method: input.paymentMethod ?? null,
+            updated_at: new Date().toISOString(),
+        })
+        .in('id', filteredIds)
+
+    if (updateError) {
+        return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/coach/billing')
+    return { success: true, updatedCount: filteredIds.length }
 }

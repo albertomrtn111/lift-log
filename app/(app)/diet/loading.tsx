@@ -2,9 +2,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export default function DietLoading() {
     return (
-        <div className="min-h-screen">
+        <div className="app-mobile-page min-h-screen">
             {/* Header skeleton */}
-            <header className="sticky top-0 z-40 bg-background border-b border-border">
+            <header className="app-mobile-header bg-background border-b border-border">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3">
                         <Skeleton className="w-10 h-10 rounded-xl" />

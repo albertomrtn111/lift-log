@@ -56,6 +56,7 @@ interface NewClientWorkspaceProps {
     activeProgram: TrainingProgram | null
     programs: TrainingProgram[]
     coachId: string
+    metrics: Awaited<ReturnType<typeof import('@/data/workspace').getClientMetrics>>
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
 }
@@ -73,6 +74,7 @@ export function NewClientWorkspace({
     activeProgram,
     programs,
     coachId,
+    metrics,
     metricDefinitions,
     formTemplates,
 }: NewClientWorkspaceProps) {
@@ -327,10 +329,12 @@ export function NewClientWorkspace({
                                 <ResumenTab
                                     coachId={coachId}
                                     clientId={selectedClient.id}
+                                    client={selectedClient}
                                     clientStatus={clientStatus}
                                     latestCheckin={latestCheckin}
                                     activeMacroPlan={activeMacroPlan}
                                     activeProgram={activeProgram}
+                                    metrics={metrics}
                                     onRefresh={handleRefresh}
                                     onSwitchTab={handleSwitchTab}
                                     metricDefinitions={metricDefinitions}
