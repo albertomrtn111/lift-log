@@ -55,10 +55,6 @@ function eachDateBetween(startDate: Date, endDate: Date) {
     return days;
 }
 
-function getWeekdayNumber(value: Date) {
-    return ((value.getDay() + 6) % 7) + 1;
-}
-
 function getProgramWeekForDate(date: Date, effectiveFrom: string, totalWeeks: number) {
     const programStart = startOfLocalWeek(parseLocalDate(effectiveFrom));
     const targetWeek = startOfLocalWeek(date);
@@ -79,9 +75,9 @@ function derivePhaseLabel(currentWeek: number | null, totalWeeks: number | null)
     return 'Desarrollo';
 }
 
-function deriveWeeklyObjective(strengthSessions: number, cardioSessions: number, plannedRestDays: number) {
+function deriveWeeklyObjective(strengthSessions: number, cardioSessions: number) {
     if (strengthSessions === 0 && cardioSessions === 0) return 'Semana sin sesiones programadas';
-    if (strengthSessions > 0 && cardioSessions > 0) return `Microciclo híbrido con ${plannedRestDays} día${plannedRestDays === 1 ? '' : 's'} de descarga`;
+    if (strengthSessions > 0 && cardioSessions > 0) return 'Microciclo híbrido con trabajo de fuerza y cardio';
     if (strengthSessions > cardioSessions) return 'Microciclo orientado a fuerza';
     if (cardioSessions > strengthSessions) return 'Microciclo orientado a resistencia';
     return 'Semana equilibrada';
@@ -386,26 +382,11 @@ export async function getWeeklySchedule(
             itemsByDate.set(item.date, list);
         }
 
-        const programWeekdays = new Set(
-            (activeProgram?.training_days || [])
-                .map((day) => day.default_weekday)
-                .filter((day): day is number => day != null)
-        );
-
         const dayContexts = eachDateBetween(startDate, endDate).map((date) => {
             const dateStr = toLocalDateStr(date);
             const dayItems = itemsByDate.get(dateStr) || [];
             const dayNotes = notesByDate.get(dateStr) || [];
-            const weekIndex = activeProgram?.effective_from
-                ? getProgramWeekForDate(date, activeProgram.effective_from, totalWeeks)
-                : null;
-
-            let state: PlanningDayState = 'empty';
-            if (dayItems.length > 0) {
-                state = 'scheduled';
-            } else if (weekIndex && !programWeekdays.has(getWeekdayNumber(date))) {
-                state = 'planned_rest';
-            }
+            const state: PlanningDayState = dayItems.length > 0 ? 'scheduled' : 'empty';
 
             return {
                 date: dateStr,
@@ -418,7 +399,7 @@ export async function getWeeklySchedule(
         const anchorWeek = activeProgram?.effective_from
             ? getProgramWeekForDate(anchorDate, activeProgram.effective_from, totalWeeks)
             : null;
-        const plannedRestDays = dayContexts.filter((day) => day.state === 'planned_rest').length;
+        const plannedRestDays = 0;
         const emptyDays = dayContexts.filter((day) => day.state === 'empty').length;
         const strengthSessions = allItems.filter((item) => item.type === 'strength').length;
         const cardioSessions = allItems.filter((item) => item.type === 'cardio').length;
@@ -433,7 +414,7 @@ export async function getWeeklySchedule(
                     currentWeek: anchorWeek,
                     totalWeeks: activeProgram ? totalWeeks : null,
                     phaseLabel: derivePhaseLabel(anchorWeek, activeProgram ? totalWeeks : null),
-                    weeklyObjective: deriveWeeklyObjective(strengthSessions, cardioSessions, plannedRestDays),
+                    weeklyObjective: deriveWeeklyObjective(strengthSessions, cardioSessions),
                     strengthSessions,
                     cardioSessions,
                     plannedRestDays,

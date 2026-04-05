@@ -131,11 +131,11 @@ export default async function CoachDashboardPage() {
                                     )}
                                 </div>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Mensajes nuevos y check-ins recibidos recientemente.
+                                    Mensajes nuevos, check-ins recientes y tareas operativas vencidas o de hoy.
                                 </p>
                             </div>
                         </div>
-                        <NotificationsList notifications={dashboard.notifications} />
+                        <NotificationsList notifications={dashboard.notifications} coachId={coachId} />
                     </Card>
 
                     <Card className="overflow-hidden">

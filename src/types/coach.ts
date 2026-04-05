@@ -76,6 +76,8 @@ export interface Review {
 
 export type CalendarEventStatus = 'completed' | 'pending_review' | 'scheduled' | 'missing'
 export type CalendarNoteKind = 'note' | 'reminder' | 'alert'
+export type CalendarTaskStatus = 'pending' | 'completed'
+export type CalendarTaskPriority = 'normal' | 'high'
 
 export interface CalendarEvent {
     id: string
@@ -114,10 +116,27 @@ export interface CalendarNote {
     updatedAt: string
 }
 
+export interface CalendarTask {
+    id: string
+    date: string
+    title: string
+    description: string | null
+    status: CalendarTaskStatus
+    priority: CalendarTaskPriority
+    clientId: string | null
+    clientName: string | null
+    createdAt: string
+    updatedAt: string
+    completedAt: string | null
+}
+
 export interface CalendarData {
     events: CalendarEvent[]
     notes: CalendarNote[]
+    tasks: CalendarTask[]
     notesEnabled: boolean
+    tasksEnabled: boolean
+    clientOptions: Array<{ id: string; name: string }>
 }
 
 export interface CoachStats {

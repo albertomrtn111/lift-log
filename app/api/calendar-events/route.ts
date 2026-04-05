@@ -14,12 +14,12 @@ export async function GET(request: NextRequest) {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
-            return NextResponse.json({ events: [], notes: [], notesEnabled: false })
+            return NextResponse.json({ events: [], notes: [], tasks: [], notesEnabled: false, tasksEnabled: false, clientOptions: [] })
         }
 
         const coachId = await getCoachIdForUser(user.id)
         if (!coachId) {
-            return NextResponse.json({ events: [], notes: [], notesEnabled: false })
+            return NextResponse.json({ events: [], notes: [], tasks: [], notesEnabled: false, tasksEnabled: false, clientOptions: [] })
         }
 
         const data = start && end
@@ -28,6 +28,6 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json(data)
     } catch {
-        return NextResponse.json({ events: [], notes: [], notesEnabled: false })
+        return NextResponse.json({ events: [], notes: [], tasks: [], notesEnabled: false, tasksEnabled: false, clientOptions: [] })
     }
 }

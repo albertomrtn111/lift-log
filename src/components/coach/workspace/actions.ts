@@ -719,6 +719,10 @@ export async function completeReviewAction(input: {
             return { success: false, error: 'No se pudo cargar o crear la revisión.' }
         }
 
+        if (review.ai_status === 'pending' && !review.ai_summary && !review.analysis) {
+            void generateCheckinAnalysis(input.checkinId, review.id)
+        }
+
         const isAlreadyApproved = review.status === 'approved'
 
         if (!isAlreadyApproved) {

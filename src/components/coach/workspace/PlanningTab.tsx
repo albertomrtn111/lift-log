@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay } from 'date-fns'
 import { parseLocalDate } from '@/lib/date-utils'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy, Moon, FileText, Timer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy, FileText, Timer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -540,7 +540,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             return (
                                 <div key={day.toISOString()} className={cn(
                                     "flex flex-col gap-3 rounded-2xl border p-3 transition-colors",
-                                    dayContext?.state === 'planned_rest' && "border-emerald-200/80 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20",
                                     dayContext?.state === 'empty' && "border-dashed bg-muted/20",
                                     dayContext?.state === 'scheduled' && "bg-card",
                                     isTodayDate && "ring-2 ring-primary bg-primary/5"
@@ -566,11 +565,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                     {items.length > 0 && (
                                                         <Badge variant="outline" className="shrink-0 bg-background/80 whitespace-nowrap">
                                                             {items.length} ses.
-                                                        </Badge>
-                                                    )}
-                                                    {dayContext?.state === 'planned_rest' && (
-                                                        <Badge className="shrink-0 whitespace-nowrap bg-emerald-100 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-100 border border-emerald-200 dark:border-emerald-800">
-                                                            Descanso
                                                         </Badge>
                                                     )}
                                                 </div>
@@ -619,23 +613,8 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                 {items.length === 0 && (
                                                     <div className={cn(
                                                         "flex min-h-[100px] items-start justify-start rounded-xl border p-3",
-                                                        dayContext?.state === 'planned_rest'
-                                                            ? "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30"
-                                                            : "border-dashed border-border/40 bg-muted/10"
+                                                        "border-dashed border-border/40 bg-muted/10"
                                                     )}>
-                                                        {dayContext?.state === 'planned_rest' && (
-                                                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-                                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100/80 dark:bg-emerald-900/40">
-                                                                    <Moon className="h-4 w-4 opacity-70" />
-                                                                </div>
-                                                                <div>
-                                                                    <span className="block text-xs font-semibold uppercase tracking-wide">Descanso</span>
-                                                                    <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
-                                                                        Día planificado sin sesión.
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 )}
                                                 {items.map((item) => (
@@ -730,7 +709,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         isCurrentMonth
                                                             ? "bg-card hover:bg-muted/30"
                                                             : "bg-muted/5 opacity-40",
-                                                        dayContext?.state === 'planned_rest' && isCurrentMonth && "border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/15",
                                                         dayContext?.state === 'empty' && isCurrentMonth && items.length === 0 && "border-dashed",
                                                         isTodayDate && "ring-2 ring-primary border-primary/40 bg-primary/5 hover:bg-primary/8",
                                                         items.length > 0 && isCurrentMonth && !isTodayDate && "border-border/80 shadow-sm"
@@ -855,11 +833,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         {overflow > 0 && (
                                                             <div className="text-[10px] text-muted-foreground/70 pl-1 mt-0.5 font-medium">
                                                                 +{overflow} más
-                                                            </div>
-                                                        )}
-                                                        {items.length === 0 && isCurrentMonth && dayContext?.state === 'planned_rest' && (
-                                                            <div className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium pl-1">
-                                                                Descanso
                                                             </div>
                                                         )}
                                                     </div>

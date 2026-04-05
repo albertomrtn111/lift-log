@@ -102,7 +102,7 @@ export interface ActivityItem {
 
 export interface DashboardNotification {
     id: string
-    type: 'chat_message' | 'checkin_received'
+    type: 'chat_message' | 'checkin_received' | 'coach_task'
     client_id: string
     client_name: string
     title: string
@@ -110,6 +110,7 @@ export interface DashboardNotification {
     timestamp: string
     href: string
     ctaLabel: string
+    task_id?: string
 }
 
 export interface CoachDashboardData {
@@ -173,6 +174,17 @@ interface MessageRecord {
     created_at: string
     message_type: 'chat' | 'review_feedback'
     read_at: string | null
+}
+
+interface CoachTaskRecord {
+    id: string
+    task_date: string
+    title: string
+    description: string | null
+    status: 'pending' | 'completed'
+    priority: 'normal' | 'high'
+    client_id: string | null
+    created_at: string
 }
 
 const ATTENTION_PRIORITY: Record<AttentionReasonCode, number> = {
@@ -560,6 +572,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         metricsResult,
         programsResult,
         messagesResult,
+        tasksResult,
     ] = await Promise.all([
         supabase
             .from('checkins')
@@ -590,6 +603,15 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .in('client_id', clientIds)
             .order('created_at', { ascending: false })
             .limit(20),
+        supabase
+            .from('coach_tasks')
+            .select('id, task_date, title, description, status, priority, client_id, created_at')
+            .eq('coach_id', coachId)
+            .eq('status', 'pending')
+            .lte('task_date', todayKey)
+            .order('task_date', { ascending: true })
+            .order('created_at', { ascending: false })
+            .limit(20),
     ])
 
     const checkins = (checkinsResult.data ?? []) as CheckinRecord[]
@@ -607,11 +629,13 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     if (programsResult.error) console.error('Error fetching dashboard programs:', programsResult.error)
     if (reviewsResult.error) console.error('Error fetching dashboard reviews:', reviewsResult.error)
     if (messagesResult.error) console.error('Error fetching dashboard messages:', messagesResult.error)
+    if (tasksResult.error) console.error('Error fetching dashboard tasks:', tasksResult.error)
 
     const reviews = (reviewsResult.data ?? []) as ReviewRecord[]
     const metrics = (metricsResult.data ?? []) as MetricRecord[]
     const programs = (programsResult.data ?? []) as ProgramRecord[]
     const messages = (messagesResult.data ?? []) as MessageRecord[]
+    const tasks = (tasksResult.data ?? []) as CoachTaskRecord[]
 
     const checkinsByClient = new Map<string, CheckinRecord[]>()
     for (const checkin of checkins) {
@@ -767,7 +791,27 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             }
         })
 
-    const notifications: DashboardNotification[] = [...chatNotifications, ...checkinNotifications]
+    const taskNotifications: DashboardNotification[] = tasks.map((task) => {
+        const client = task.client_id ? clientsById.get(task.client_id) : null
+        const clientName = client?.full_name || client?.email || 'Agenda del coach'
+        const isOverdue = task.task_date < todayKey
+        const taskDate = `${task.task_date}T09:00:00`
+
+        return {
+            id: `task-${task.id}`,
+            type: 'coach_task' as const,
+            client_id: task.client_id ?? '',
+            client_name: client?.full_name || '',
+            title: isOverdue ? `Tarea vencida: ${task.title}` : `Tarea de hoy: ${task.title}`,
+            preview: task.description || (task.client_id ? `Asociada a ${clientName}` : 'Recordatorio operativo del coach'),
+            timestamp: taskDate,
+            href: `/coach/calendar?year=${new Date(taskDate).getFullYear()}&month=${new Date(taskDate).getMonth()}`,
+            ctaLabel: 'Ver agenda',
+            task_id: task.id,
+        }
+    })
+
+    const notifications: DashboardNotification[] = [...taskNotifications, ...chatNotifications, ...checkinNotifications]
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 10)
 

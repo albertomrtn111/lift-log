@@ -23,11 +23,23 @@ import {
     AlertTriangle,
     Loader2,
     MoreVertical,
+    ClipboardList,
+    Check,
+    Copy,
 } from 'lucide-react'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
 import { toggleClientStatusAction } from './actions'
 import { resendInviteAction } from '../invite-actions'
+import { sendOnboardingAction } from '../onboarding-actions'
+import { sendReviewAction } from '../review-actions'
 import { EditClientModal } from '../EditClientModal'
 import { useToast } from '@/hooks/use-toast'
 import { format } from 'date-fns'
@@ -45,6 +57,9 @@ interface WorkspaceHeaderProps {
 export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, onClientUpdated }: WorkspaceHeaderProps) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
+    const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
+    const [reviewLinkModal, setReviewLinkModal] = useState<{ url: string } | null>(null)
+    const [copied, setCopied] = useState(false)
     const { displayName, initials } = getClientDisplayIdentity(client)
     const { toast } = useToast()
 
@@ -78,6 +93,66 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
             }
             onClientUpdated()
         })
+    }
+
+    const handleSendOnboarding = () => {
+        startTransition(async () => {
+            const result = await sendOnboardingAction(client.id, coachId)
+            if (result.success && result.form_url) {
+                toast({
+                    title: 'Onboarding enviado ✓',
+                    description: `Onboarding creado para ${client.full_name}`,
+                })
+                setOnboardingLinkModal({ url: result.form_url })
+            } else {
+                toast({
+                    title: 'Error al enviar onboarding',
+                    description: result.error || 'Error desconocido',
+                    variant: 'destructive',
+                })
+            }
+        })
+    }
+
+    const handleSendReview = () => {
+        startTransition(async () => {
+            const result = await sendReviewAction(client.id, coachId)
+            if (result.success && result.form_url) {
+                toast({
+                    title: 'Revisión enviada ✓',
+                    description: `Revisión creada para ${client.full_name}`,
+                })
+                setReviewLinkModal({ url: result.form_url })
+            } else {
+                toast({
+                    title: 'Error al enviar revisión',
+                    description: result.error || 'Error desconocido',
+                    variant: 'destructive',
+                })
+            }
+        })
+    }
+
+    const handleCopyOnboardingLink = async () => {
+        if (!onboardingLinkModal) return
+        try {
+            await navigator.clipboard.writeText(onboardingLinkModal.url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch {
+            toast({ title: 'Error al copiar', description: 'No se pudo copiar el enlace', variant: 'destructive' })
+        }
+    }
+
+    const handleCopyReviewLink = async () => {
+        if (!reviewLinkModal) return
+        try {
+            await navigator.clipboard.writeText(reviewLinkModal.url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch {
+            toast({ title: 'Error al copiar', description: 'No se pudo copiar el enlace', variant: 'destructive' })
+        }
     }
 
     // Format next_checkin_date
@@ -180,6 +255,29 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
+                                    onClick={handleSendOnboarding}
+                                    disabled={isPending}
+                                >
+                                    {isPending ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <ClipboardList className="h-4 w-4 mr-2" />
+                                    )}
+                                    Enviar onboarding
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={handleSendReview}
+                                    disabled={isPending}
+                                >
+                                    {isPending ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="h-4 w-4 mr-2" />
+                                    )}
+                                    Enviar revisión
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
                                     onClick={handleToggleStatus}
                                     disabled={isPending}
                                     className={cn(
@@ -187,9 +285,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                                         client.status === 'inactive' && 'text-success focus:text-success'
                                     )}
                                 >
-                                    {isPending ? (
-                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                    ) : client.status === 'active' ? (
+                                    {client.status === 'active' ? (
                                         <UserX className="h-4 w-4 mr-2" />
                                     ) : (
                                         <UserCheck className="h-4 w-4 mr-2" />
@@ -209,6 +305,64 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                 onOpenChange={setEditModalOpen}
                 onSuccess={onClientUpdated}
             />
+
+            {/* Onboarding Link Modal */}
+            <Dialog open={!!onboardingLinkModal} onOpenChange={(v) => { if (!v) { setOnboardingLinkModal(null); setCopied(false) } }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Onboarding creado</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            Comparte este enlace con el cliente para que complete su onboarding:
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                readOnly
+                                value={onboardingLinkModal?.url ?? ''}
+                                className="text-xs font-mono"
+                            />
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={handleCopyOnboardingLink}
+                                className="shrink-0"
+                            >
+                                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Review Link Modal */}
+            <Dialog open={!!reviewLinkModal} onOpenChange={(v) => { if (!v) { setReviewLinkModal(null); setCopied(false) } }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Revisión creada</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            Comparte este enlace con el cliente para que complete su revisión:
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                readOnly
+                                value={reviewLinkModal?.url ?? ''}
+                                className="text-xs font-mono"
+                            />
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={handleCopyReviewLink}
+                                className="shrink-0"
+                            >
+                                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </>
     )
 }

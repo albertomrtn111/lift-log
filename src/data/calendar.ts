@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CalendarData, CalendarEvent, CalendarNote } from '@/types/coach'
+import type { CalendarData, CalendarEvent, CalendarNote, CalendarTask } from '@/types/coach'
 import { toLocalDateStr, parseLocalDate } from '@/lib/date-utils'
 
 type ClientRecord = {
@@ -41,6 +41,19 @@ type CalendarNoteRecord = {
     client_id: string | null
     created_at: string
     updated_at: string
+}
+
+type CoachTaskRecord = {
+    id: string
+    task_date: string
+    title: string
+    description: string | null
+    status: CalendarTask['status']
+    priority: CalendarTask['priority']
+    client_id: string | null
+    created_at: string
+    updated_at: string
+    completed_at: string | null
 }
 
 interface CalendarRangeInput {
@@ -167,6 +180,25 @@ function mapCalendarNote(
     }
 }
 
+function mapCoachTask(
+    task: CoachTaskRecord,
+    clientName: string | null
+): CalendarTask {
+    return {
+        id: task.id,
+        date: task.task_date,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        clientId: task.client_id,
+        clientName,
+        createdAt: task.created_at,
+        updatedAt: task.updated_at,
+        completedAt: task.completed_at,
+    }
+}
+
 export async function getCalendarData(
     coachId: string,
     range: CalendarRangeInput
@@ -184,6 +216,9 @@ export async function getCalendarData(
             events: [],
             notes: [],
             notesEnabled: false,
+            tasks: [],
+            tasksEnabled: false,
+            clientOptions: [],
         }
     }
 
@@ -191,6 +226,9 @@ export async function getCalendarData(
     const activeClients = allClients.filter((client) => client.status === 'active')
     const clientNameById = new Map(allClients.map((client) => [client.id, client.full_name]))
     const activeClientById = new Map(activeClients.map((client) => [client.id, client]))
+    const clientOptions = activeClients
+        .map((client) => ({ id: client.id, name: client.full_name }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'es'))
 
     const { data: submittedCheckins } = await supabase
         .from('checkins')
@@ -306,6 +344,26 @@ export async function getCalendarData(
         )
     }
 
+    let tasksEnabled = true
+    let tasks: CalendarTask[] = []
+
+    const { data: taskRows, error: tasksError } = await supabase
+        .from('coach_tasks')
+        .select('id, task_date, title, description, status, priority, client_id, created_at, updated_at, completed_at')
+        .eq('coach_id', coachId)
+        .gte('task_date', range.startDate)
+        .lte('task_date', range.endDate)
+        .order('task_date', { ascending: true })
+        .order('created_at', { ascending: true })
+
+    if (tasksError) {
+        tasksEnabled = false
+    } else {
+        tasks = ((taskRows ?? []) as CoachTaskRecord[]).map((task) =>
+            mapCoachTask(task, task.client_id ? clientNameById.get(task.client_id) || 'Cliente' : null)
+        )
+    }
+
     return {
         events: events.sort((left, right) => {
             const dateDiff = left.date.localeCompare(right.date)
@@ -313,7 +371,10 @@ export async function getCalendarData(
             return compareEvents(left, right)
         }),
         notes,
+        tasks,
         notesEnabled,
+        tasksEnabled,
+        clientOptions,
     }
 }
 

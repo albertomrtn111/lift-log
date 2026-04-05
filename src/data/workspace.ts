@@ -378,7 +378,9 @@ export async function createReviewForCheckin(
             client_id: clientId,
             checkin_id: checkinId,
             status: 'draft',
-            ai_status: 'idle',
+            // Use "pending" for compatibility with older DB constraints that
+            // were created before "idle" was added to the allowed values.
+            ai_status: 'pending',
             created_by: createdBy,
         })
         .select()

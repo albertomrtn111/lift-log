@@ -1,7 +1,7 @@
 import { TrainingProgram } from "./training";
 import { CardioStructure } from "./templates";
 
-export type PlanningDayState = 'scheduled' | 'planned_rest' | 'empty';
+export type PlanningDayState = 'scheduled' | 'empty';
 export type StrengthSessionSourceKind = 'program_auto' | 'adjusted' | 'manual';
 
 export interface PlanningNote {
