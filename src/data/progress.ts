@@ -27,25 +27,23 @@ export type ClientMetricInput = {
 async function getClientContext() {
     try {
         const supabase = createClient()
-        let { data: { user }, error: authError } = await supabase.auth.getUser()
+        const {
+            data: { user: initialUser },
+            error: authError,
+        } = await supabase.auth.getUser()
+        let user = initialUser
 
         // If no user, attempt a silent token refresh before giving up.
         // This handles PWA / long-idle sessions where the access token has
         // expired but the refresh token is still valid.
         if (!user || authError) {
-            console.warn('[getClientContext] No user or auth error, attempting session refresh...')
+            console.warn('[getClientContext] No user or auth error, attempting session refresh...', authError ?? null)
             const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
             if (refreshError || !refreshData.user) {
                 console.error('[getClientContext] Refresh failed:', refreshError?.message ?? 'no user after refresh')
                 return null
             }
             user = refreshData.user
-            authError = null
-        }
-
-        if (authError) {
-            console.error('[getClientContext] Auth error:', authError.message)
-            return null
         }
         if (!user) {
             console.warn('[getClientContext] No user in session — session may be expired')
