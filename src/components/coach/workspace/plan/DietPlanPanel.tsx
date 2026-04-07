@@ -235,7 +235,7 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
 
             {/* DEV DEBUG */}
             {process.env.NODE_ENV === 'development' && (
-                <Card className="p-4 mt-4 bg-slate-950 text-slate-200 text-xs font-mono">
+                <Card className="mt-4 border-border/70 bg-card/95 p-4 font-mono text-xs text-card-foreground">
                     <p className="font-bold text-yellow-400 mb-2">DEBUG: Diet Plan Status</p>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1">
                         <span>Resolved Active ID:</span>
@@ -255,7 +255,7 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
                         <span>Counts (All Plans):</span>
                         <span>{(allPlans || []).length}</span>
 
-                        <div className="col-span-2 border-t border-slate-800 my-1"></div>
+                        <div className="col-span-2 my-1 border-t border-border/70"></div>
 
                         <span>• Active count:</span>
                         <span>{(allPlans || []).filter(p => p.status === 'active').length}</span>

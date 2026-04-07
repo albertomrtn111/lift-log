@@ -27,6 +27,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
 
 interface StrengthTemplateEditorProps {
     template: TrainingTemplate
@@ -52,11 +60,22 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
     }, [days.length, activeDayId])
 
     const handleSave = async () => {
+        const normalizedStructure: StrengthStructure = {
+            ...structure,
+            days: days.map((day) => ({
+                ...day,
+                exercises: (day.exercises || []).map((exercise) => ({
+                    ...exercise,
+                    muscle_group: normalizeMuscleGroup(exercise.muscle_group),
+                })),
+            })),
+        }
+
         setIsSaving(true)
         const res = await updateTemplate(template.id, {
             name: template.name,
             description: template.description,
-            structure: template.structure
+            structure: normalizedStructure
         })
 
         if (res.success) {
@@ -348,6 +367,7 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
             id: crypto.randomUUID(),
             exercise_name: '',
             order: exercises.length + 1,
+            muscle_group: 'otros' as MuscleGroup,
             sets: 3,
             reps: '10-12',
             rir: '',
@@ -414,6 +434,23 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
                                             placeholder="Nombre del ejercicio"
                                             className="h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50 font-medium"
                                         />
+                                    </div>
+                                    <div className="pl-8 pt-2">
+                                        <Select
+                                            value={normalizeMuscleGroup(ex.muscle_group)}
+                                            onValueChange={(value) => updateExercise(ex.id, 'muscle_group', normalizeMuscleGroup(value as MuscleGroup))}
+                                        >
+                                            <SelectTrigger className="h-8 w-[180px] text-xs font-medium bg-muted/20">
+                                                <SelectValue placeholder="Grupo muscular" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {MUSCLE_GROUPS.map((group) => (
+                                                    <SelectItem key={group} value={group}>
+                                                        {MUSCLE_GROUP_LABELS[group]}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </td>
                                 <td className="p-2">

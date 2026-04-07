@@ -39,6 +39,8 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { addExerciseAction, deleteExerciseAction, reorderExerciseAction } from '../actions'
+import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+import { cn } from '@/lib/utils'
 
 interface TrainingProgramWizardProps {
     programId: string | null
@@ -255,6 +257,7 @@ export function TrainingProgramWizard({
                     id: crypto.randomUUID(),
                     day_id: newDayId,
                     exercise_name: ex.exercise_name || '',
+                    muscle_group: normalizeMuscleGroup(ex.muscle_group),
                     order_index: ex.order ?? eIdx + 1,
                     sets: ex.sets ?? 3,
                     reps: ex.reps ?? '10',
@@ -295,6 +298,7 @@ export function TrainingProgramWizard({
                     coach_id: resolvedCoachId,
                     day_id: e.day_id,
                     exercise_name: e.exercise_name,
+                    muscle_group: normalizeMuscleGroup(e.muscle_group),
                     order_index: e.order_index,
                     sets: e.sets,
                     reps: e.reps,
@@ -345,6 +349,7 @@ export function TrainingProgramWizard({
                         id: crypto.randomUUID(),
                         day_id: newDayId,
                         exercise_name: ex.exercise_name || '',
+                        muscle_group: normalizeMuscleGroup(ex.muscle_group),
                         order_index: ex.order ?? eIdx + 1,
                         sets: ex.sets ?? 3,
                         reps: ex.reps ?? '10',
@@ -398,6 +403,7 @@ export function TrainingProgramWizard({
                     coach_id: program.coach_id,
                     day_id: e.day_id,
                     exercise_name: e.exercise_name,
+                    muscle_group: normalizeMuscleGroup(e.muscle_group),
                     order_index: e.order_index,
                     sets: e.sets,
                     reps: e.reps,
@@ -1097,15 +1103,20 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
+        const normalizedFields = {
+            ...fields,
+            muscle_group: normalizeMuscleGroup(fields.muscle_group ?? exercise.muscle_group),
+        }
+
         const { error } = await supabase
             .from('training_exercises')
-            .update({ ...fields, updated_at: new Date().toISOString() })
+            .update({ ...normalizedFields, updated_at: new Date().toISOString() })
             .eq('id', exercise.id)
 
         if (error) {
             toast({ title: 'Error', description: error.message, variant: 'destructive' })
         } else {
-            onUpdate({ ...exercise, ...fields })
+            onUpdate({ ...exercise, ...normalizedFields })
         }
     }
 
@@ -1165,6 +1176,25 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
                                 onBlur={e => updateExerciseFields({ rest_seconds: parseInt(e.target.value) || 0 })}
                             />
                         </div>
+                        <Select
+                            value={normalizeMuscleGroup(exercise.muscle_group)}
+                            onValueChange={(value) => {
+                                const muscleGroup = normalizeMuscleGroup(value as MuscleGroup)
+                                onUpdate({ ...exercise, muscle_group: muscleGroup })
+                                void updateExerciseFields({ muscle_group: muscleGroup })
+                            }}
+                        >
+                            <SelectTrigger className="h-8 min-w-[170px] bg-muted/30 border-primary/5 text-xs font-medium">
+                                <SelectValue placeholder="Grupo muscular" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {MUSCLE_GROUPS.map((group) => (
+                                    <SelectItem key={group} value={group}>
+                                        {MUSCLE_GROUP_LABELS[group]}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
             </td>

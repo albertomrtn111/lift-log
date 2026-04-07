@@ -272,8 +272,20 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                 <FormLabel className="text-base font-semibold">Detalles del Entrenamiento</FormLabel>
                                 <FormControl>
                                     <Textarea
-                                        placeholder="Ej: 10 min suaves + 4x1000m a ritmo 4:00 rec 2' + 10 min suaves. &#10;Sensaciones esperadas: RPE 7/10."
-                                        className="min-h-[150px] resize-none text-base"
+                                        placeholder={`Ej:
+Calentamiento:
+- 10 min suaves
+- movilidad dinámica y 3 progresiones
+
+Bloque principal:
+- 4 x 1000 m a ritmo 10K
+
+Recuperación:
+- 2 min de trote suave
+
+Vuelta a la calma:
+- 10 min suaves`}
+                                        className="min-h-[150px] resize-none text-base leading-relaxed"
                                         {...field}
                                     />
                                 </FormControl>

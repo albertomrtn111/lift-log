@@ -9,9 +9,7 @@ import {
     Users,
     Calendar,
     UserCog,
-    ChevronLeft,
-    ChevronRight,
-    Dumbbell,
+    Settings2,
     User,
     LogOut,
     FileText,
@@ -50,10 +48,9 @@ const navSections = [
     {
         title: 'CONFIGURACIÓN',
         items: [
-            { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
             { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
-            { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
             { href: '/coach/metrics', icon: BarChart2, label: 'Métricas' },
+            { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
         ]
     }
 ]
@@ -61,6 +58,7 @@ const navSections = [
 const accountSection = {
     title: 'CUENTA',
     items: [
+        { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
         { href: '/coach/profile', icon: User, label: 'Perfil' }
     ]
 }
@@ -68,14 +66,13 @@ const accountSection = {
 const allNavItems: NavItem[] = [
     ...navSections[0].items,
     ...navSections[1].items,
-    ...accountSection.items
+    { href: '/coach/profile', icon: User, label: 'Perfil' }
 ]
 
 
 export function CoachSidebar() {
     const pathname = usePathname()
     const router = useRouter()
-    const [collapsed, setCollapsed] = useState(false)
     const [loggingOut, setLoggingOut] = useState(false)
     const [badges, setBadges] = useState<Record<string, number>>({})
 
@@ -117,17 +114,14 @@ export function CoachSidebar() {
             {/* Sidebar */}
             <aside
                 className={cn(
-                    'fixed left-0 top-0 z-50 h-full bg-card border-r border-border transition-all duration-300',
-                    collapsed ? 'w-16' : 'w-64',
+                    'fixed left-0 top-0 z-50 h-full border-r border-sidebar-border/80 bg-sidebar/95 text-sidebar-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.28)] backdrop-blur-xl transition-all duration-300 dark:border-white/10 dark:shadow-[0_28px_70px_-36px_rgba(2,6,23,0.95)]',
+                    'w-64',
                     'hidden lg:block'
                 )}
             >
                 <div className="flex flex-col h-full">
                     {/* Logo */}
-                    <div className={cn(
-                        'flex items-center gap-3 p-4 border-b border-border',
-                        collapsed && 'justify-center'
-                    )}>
+                    <div className="flex items-center gap-3 border-b border-border p-4">
                         <div className="w-10 h-10 flex items-center justify-center shrink-0">
                             <Image
                                 src="/Logo_nexttrain.png"
@@ -138,23 +132,19 @@ export function CoachSidebar() {
                                 priority
                             />
                         </div>
-                        {!collapsed && (
-                            <div>
-                                <h1 className="font-bold text-lg">NexTrain</h1>
-                                <p className="text-xs text-muted-foreground">Coach Portal</p>
-                            </div>
-                        )}
+                        <div>
+                            <h1 className="font-bold text-lg">NexTrain</h1>
+                            <p className="text-xs text-muted-foreground">Coach Portal</p>
+                        </div>
                     </div>
 
                     {/* Navigation - Scrollable Area */}
                     <div className="flex-1 overflow-y-auto py-4">
                         {navSections.map((section, idx) => (
                             <div key={section.title} className={cn("px-3", idx > 0 ? "mt-6 pt-4 border-t border-border/50" : "")}>
-                                {!collapsed && (
-                                    <h3 className="px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                                        {section.title}
-                                    </h3>
-                                )}
+                                <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {section.title}
+                                </h3>
                                 <nav className="space-y-1">
                                     {section.items.map((item) => {
                                         const isActive = pathname?.startsWith(item.href)
@@ -168,10 +158,8 @@ export function CoachSidebar() {
                                                 className={cn(
                                                     'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
                                                     'hover:bg-muted/50',
-                                                    isActive && 'bg-primary/10 text-primary font-medium',
-                                                    collapsed && 'justify-center px-2'
+                                                    isActive && 'bg-primary/10 text-primary font-medium'
                                                 )}
-                                                title={collapsed ? item.label : undefined}
                                             >
                                                 <div className="relative shrink-0">
                                                     <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
@@ -181,7 +169,7 @@ export function CoachSidebar() {
                                                         </span>
                                                     )}
                                                 </div>
-                                                {!collapsed && <span>{item.label}</span>}
+                                                <span>{item.label}</span>
                                             </Link>
                                         )
                                     })}
@@ -191,12 +179,10 @@ export function CoachSidebar() {
                     </div>
 
                     {/* Account Section & Bottom Actions (Sticky) */}
-                    <div className="mt-auto border-t border-border pt-4 pb-2 px-3 bg-card">
-                        {!collapsed && (
-                            <h3 className="px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                                {accountSection.title}
-                            </h3>
-                        )}
+                    <div className="mt-auto border-t border-sidebar-border/70 bg-sidebar/90 px-3 pb-2 pt-4 backdrop-blur-xl">
+                        <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {accountSection.title}
+                        </h3>
                         <nav className="space-y-1 mb-2">
                             {accountSection.items.map((item) => {
                                 const isActive = pathname?.startsWith(item.href)
@@ -209,13 +195,11 @@ export function CoachSidebar() {
                                         className={cn(
                                             'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
                                             'hover:bg-muted/50',
-                                            isActive && 'bg-primary/10 text-primary font-medium',
-                                            collapsed && 'justify-center px-2'
+                                            isActive && 'bg-primary/10 text-primary font-medium'
                                         )}
-                                        title={collapsed ? item.label : undefined}
                                     >
                                         <item.icon className={cn('h-5 w-5 shrink-0', isActive && 'text-primary')} />
-                                        {!collapsed && <span>{item.label}</span>}
+                                        <span>{item.label}</span>
                                     </Link>
                                 )
                             })}
@@ -224,43 +208,33 @@ export function CoachSidebar() {
                         {/* Mode Switch (only if user has both roles) */}
                         {userRole === 'both' && (
                             <div className="pt-2 border-t border-border/50 mt-2">
-                                {collapsed ? (
-                                    <ModeSwitch role={userRole} currentMode="coach" variant="compact" />
-                                ) : (
-                                    <ModeSwitch role={userRole} currentMode="coach" variant="toggle" />
-                                )}
+                                <ModeSwitch role={userRole} currentMode="coach" variant="toggle" />
                             </div>
                         )}
 
-                        {/* Collapse & Logout buttons */}
+                        {/* Settings & Logout buttons */}
                         <div className="pt-2 border-t border-border/50 mt-2 flex flex-col gap-1">
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={cn('w-full', collapsed && 'px-2')}
-                                onClick={() => setCollapsed(!collapsed)}
-                                title={collapsed ? "Expandir" : undefined}
+                                className="w-full justify-start"
+                                asChild
                             >
-                                {collapsed ? (
-                                    <ChevronRight className="h-4 w-4" />
-                                ) : (
-                                    <>
-                                        <ChevronLeft className="h-4 w-4 mr-2" />
-                                        Colapsar
-                                    </>
-                                )}
+                                <Link href="/coach/settings" prefetch={true}>
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Ajustes
+                                </Link>
                             </Button>
 
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={cn('w-full text-destructive hover:text-destructive hover:bg-destructive/10', collapsed && 'px-2')}
+                                className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={handleLogout}
                                 disabled={loggingOut}
-                                title={collapsed ? "Cerrar sesión" : undefined}
                             >
-                                <LogOut className={cn('h-4 w-4', !collapsed && 'mr-2')} />
-                                {!collapsed && (loggingOut ? 'Saliendo...' : 'Cerrar sesión')}
+                                <LogOut className="mr-2 h-4 w-4" />
+                                {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
                             </Button>
                         </div>
                     </div>

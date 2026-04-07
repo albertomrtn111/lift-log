@@ -491,6 +491,7 @@ export async function addExerciseAction(dayId: string, exerciseName: string, ord
             coach_id: dayData.coach_id,
             program_id: dayData.program_id,
             exercise_name: exerciseName,
+            muscle_group: 'otros',
             order_index: order, // Usar order_index que es el nombre en la BBDD
         })
         .select()

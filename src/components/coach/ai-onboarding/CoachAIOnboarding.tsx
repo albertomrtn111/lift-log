@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { saveOnboardingStep, approveCoachAIProfile } from './actions'
 import type { CoachAIProfileOutput } from '@/lib/ai/generate-coach-profile'
+import type { CoachAIProfile } from '@/data/coach-ai-profile'
 import {
     Loader2,
     ChevronRight,
@@ -163,6 +164,35 @@ const INITIAL: FormState = {
     checkin_priorities: '', adjustment_signals: '', metrics_vs_feelings: '',
     review_structure_preference: '', alert_types: '',
     communication_tone: '', response_style: [], free_notes: '', final_description: '',
+}
+
+function toInitialForm(profile?: CoachAIProfile | null): FormState {
+    if (!profile) return INITIAL
+
+    return {
+        specialty: profile.specialty ?? [],
+        client_types: profile.client_types ?? [],
+        athlete_level: profile.athlete_level ?? [],
+        training_philosophy: profile.training_philosophy ?? '',
+        training_priorities: profile.training_priorities ?? [],
+        progression_style: profile.progression_style ?? '',
+        training_avoid: profile.training_avoid ?? '',
+        exercise_preferences: profile.exercise_preferences ?? '',
+        nutrition_approach: profile.nutrition_approach ?? '',
+        macro_or_options: profile.macro_or_options ?? '',
+        nutrition_adjustment_priority: profile.nutrition_adjustment_priority ?? '',
+        nutrition_no_progress_action: profile.nutrition_no_progress_action ?? '',
+        nutrition_rules: profile.nutrition_rules ?? '',
+        checkin_priorities: profile.checkin_priorities ?? '',
+        adjustment_signals: profile.adjustment_signals ?? '',
+        metrics_vs_feelings: profile.metrics_vs_feelings ?? '',
+        review_structure_preference: profile.review_structure_preference ?? '',
+        alert_types: profile.alert_types ?? '',
+        communication_tone: profile.communication_tone ?? '',
+        response_style: profile.response_style ?? [],
+        free_notes: profile.free_notes ?? '',
+        final_description: profile.final_description ?? '',
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -711,16 +741,38 @@ function Stepper({ step }: { step: number }) {
 // Main component
 // ─────────────────────────────────────────────
 
-export function CoachAIOnboarding() {
+export function CoachAIOnboarding({ initialProfile }: { initialProfile?: CoachAIProfile | null }) {
     const router = useRouter()
     const { toast } = useToast()
 
     const [step, setStep] = useState(1)
-    const [form, setForm] = useState<FormState>(INITIAL)
+    const [form, setForm] = useState<FormState>(() => toInitialForm(initialProfile))
     const [isSaving, setIsSaving] = useState(false)
     const [isGenerating, setIsGenerating] = useState(false)
     const [isApproving, setIsApproving] = useState(false)
-    const [generatedOutput, setGeneratedOutput] = useState<CoachAIProfileOutput | null>(null)
+    const [generatedOutput, setGeneratedOutput] = useState<CoachAIProfileOutput | null>(() => {
+        const raw = initialProfile?.generated_profile_json
+        if (!raw) return null
+
+        const parsed = raw as Partial<CoachAIProfileOutput>
+        if (
+            typeof parsed.professional_summary === 'string' &&
+            parsed.methodology &&
+            typeof parsed.methodology.training === 'string' &&
+            typeof parsed.methodology.nutrition === 'string' &&
+            typeof parsed.methodology.reviews === 'string' &&
+            typeof parsed.communication_style === 'string' &&
+            parsed.master_rules &&
+            Array.isArray(parsed.master_rules.always_do) &&
+            Array.isArray(parsed.master_rules.never_do) &&
+            Array.isArray(parsed.master_rules.decision_criteria) &&
+            typeof parsed.system_prompt === 'string'
+        ) {
+            return parsed as CoachAIProfileOutput
+        }
+
+        return null
+    })
 
     const currentConfig = STEP_CONFIG[step - 1]
     const StepIcon = currentConfig.icon

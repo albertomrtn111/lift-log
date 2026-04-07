@@ -14,6 +14,7 @@ import { CardioStructure } from '@/types/templates'
 import { useToast } from '@/hooks/use-toast'
 import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
 import { CardioSessionForm } from './CardioSessionForm'
+import { PlanningAIWeeklyDialog } from './plan/PlanningAIWeeklyDialog'
 import {
     Dialog,
     DialogContent,
@@ -33,6 +34,84 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip'
+
+// ---------------------------------------------------------------------------
+// Metrics helpers
+// ---------------------------------------------------------------------------
+
+interface PlanningMetricsData {
+    strength: { sessions: number; totalExercises: number; avgExercises: number }
+    cardio: { sessions: number; totalKm: number }
+    hybrid: { sessions: number; totalMin: number }
+}
+
+function getCardioDistance(item: UnifiedCalendarItem & { type: 'cardio' }): number {
+    if (item.target_distance_km) return item.target_distance_km
+    const blocks = item.structure?.blocks
+    if (!blocks?.length) return 0
+    return blocks.reduce((sum, b) => sum + (b.distance ?? 0), 0)
+}
+
+function getCardioDuration(item: UnifiedCalendarItem & { type: 'cardio' }): number {
+    if (item.target_duration_min) return item.target_duration_min
+    const blocks = item.structure?.blocks
+    if (!blocks?.length) return 0
+    return blocks.reduce((sum, b) => {
+        const work = (b.duration ?? 0) + (b.workDuration ?? 0) * (b.sets ?? 1)
+        const rest = (b.restDuration ?? 0) * (b.sets ?? 1)
+        return sum + work + rest
+    }, 0)
+}
+
+function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number): PlanningMetricsData {
+    const strengthSessions = items.filter(i => i.type === 'strength')
+    const cardioSessions = items.filter(
+        i => i.type === 'cardio' && (i as any).structure?.trainingType !== 'hybrid'
+    ) as Array<UnifiedCalendarItem & { type: 'cardio' }>
+    const hybridSessions = items.filter(
+        i => i.type === 'cardio' && (i as any).structure?.trainingType === 'hybrid'
+    ) as Array<UnifiedCalendarItem & { type: 'cardio' }>
+
+    const strengthCount = strengthSessions.length
+    const totalExercises = strengthSessions.reduce((sum, s) => sum + ((s as any).exercise_count ?? 0), 0)
+    const avgExercises = strengthCount > 0 ? Math.round((totalExercises / strengthCount) * 10) / 10 : 0
+
+    const cardioCount = cardioSessions.length
+    const totalKm = cardioSessions.reduce((sum, s) => sum + getCardioDistance(s), 0)
+
+    const hybridCount = hybridSessions.length
+    const totalMin = hybridSessions.reduce((sum, s) => sum + getCardioDuration(s), 0)
+
+    if (weekCount <= 1) {
+        return {
+            strength: { sessions: strengthCount, totalExercises, avgExercises },
+            cardio: { sessions: cardioCount, totalKm: Math.round(totalKm * 10) / 10 },
+            hybrid: { sessions: hybridCount, totalMin: Math.round(totalMin) },
+        }
+    }
+
+    // Monthly: return per-week averages (1 decimal for fractional sessions)
+    const r1 = (n: number) => Math.round((n / weekCount) * 10) / 10
+    return {
+        strength: {
+            sessions: r1(strengthCount),
+            totalExercises: r1(totalExercises),
+            avgExercises,           // avg exercises/session stays the same regardless of view
+        },
+        cardio: {
+            sessions: r1(cardioCount),
+            totalKm: Math.round((totalKm / weekCount) * 10) / 10,
+        },
+        hybrid: {
+            sessions: r1(hybridCount),
+            totalMin: Math.round(totalMin / weekCount),
+        },
+    }
+}
+
+function fmtNum(n: number): string {
+    return Number.isInteger(n) ? String(n) : n.toFixed(1)
+}
 
 // DnD Kit
 import {
@@ -66,6 +145,8 @@ const cardioTypeLabels: Record<string, string> = {
     progressive: 'Progresivo',
     fartlek: 'Fartlek',
     hybrid: 'Híbrido',
+    bike: 'Bicicleta',
+    swim: 'Natación',
 }
 
 
@@ -445,6 +526,12 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         return schedule.filter(item => isSameDay(parseLocalDate(item.date), date))
     }
 
+    // Metrics: week count for monthly averages = number of calendar rows that include a current-month day
+    const weekCount = viewMode === 'month'
+        ? monthWeeks.filter(week => week.some(d => d.getMonth() === currentDate.getMonth())).length
+        : 1
+    const planningMetrics = computePlanningMetrics(schedule, weekCount)
+
     const getDayContext = (date: Date): PlanningDayContext | undefined => {
         const dateStr = toLocalDateStr(date)
         return planningSnapshot?.dayContexts.find((day) => day.date === dateStr)
@@ -506,25 +593,44 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             </Button>
                         </div>
                     </div>
-                    <div className="flex items-center rounded-md border bg-background shadow-sm">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setViewMode('week')}
-                            className={cn("px-3", viewMode === 'week' && "bg-muted font-semibold")}
-                        >
-                            Semana
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setViewMode('month')}
-                            className={cn("px-3", viewMode === 'month' && "bg-muted font-semibold")}
-                        >
-                            Mes
-                        </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center rounded-md border bg-background shadow-sm">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('week')}
+                                className={cn("px-3", viewMode === 'week' && "bg-muted font-semibold")}
+                            >
+                                Semana
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('month')}
+                                className={cn("px-3", viewMode === 'month' && "bg-muted font-semibold")}
+                            >
+                                Mes
+                            </Button>
+                        </div>
+                        <PlanningAIWeeklyDialog
+                            clientId={clientId}
+                            coachId={coachId}
+                            weekStart={toLocalDateStr(startDate)}
+                            weekEnd={toLocalDateStr(endDate)}
+                            disabled={viewMode !== 'week'}
+                            onApplied={fetchSchedule}
+                        />
                     </div>
                 </div>
+
+                {/* Metrics */}
+                {!loading && (
+                    <PlanningMetrics
+                        metrics={planningMetrics}
+                        isMonthly={viewMode === 'month'}
+                        hasData={schedule.length > 0}
+                    />
+                )}
 
                 {/* Weekly Grid */}
                 {viewMode === 'week' && (
@@ -1086,5 +1192,119 @@ function CardioCard({
                 )}
             </CardContent>
         </Card>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// PlanningMetrics
+// ---------------------------------------------------------------------------
+
+function MetricItem({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
+    return (
+        <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide truncate">{label}</span>
+            <span className="text-sm font-bold tabular-nums leading-tight">
+                {value}{unit && <span className="text-xs font-medium text-muted-foreground ml-0.5">{unit}</span>}
+            </span>
+        </div>
+    )
+}
+
+function PlanningMetrics({ metrics, isMonthly, hasData }: {
+    metrics: PlanningMetricsData
+    isMonthly: boolean
+    hasData: boolean
+}) {
+    if (!hasData) return null
+
+    const prefix = isMonthly ? 'Media / sem' : ''
+    const sessionLabel = isMonthly ? 'ses/sem' : 'sesiones'
+
+    const noStrength = metrics.strength.sessions === 0
+    const noCardio = metrics.cardio.sessions === 0
+    const noHybrid = metrics.hybrid.sessions === 0
+
+    if (noStrength && noCardio && noHybrid) return null
+
+    return (
+        <div className="grid grid-cols-3 gap-3">
+            {/* Fuerza */}
+            <div className={cn(
+                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
+                noStrength
+                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
+                    : "bg-red-50/60 dark:bg-red-950/20 border-red-200/60 dark:border-red-900/40"
+            )}>
+                <div className="flex items-center gap-2">
+                    <Dumbbell className={cn("h-3.5 w-3.5 shrink-0", noStrength ? "text-muted-foreground" : "text-red-600 dark:text-red-400")} />
+                    <span className={cn("text-xs font-semibold", noStrength ? "text-muted-foreground" : "text-red-700 dark:text-red-300")}>
+                        Fuerza{isMonthly && !noStrength && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
+                    </span>
+                </div>
+                {noStrength ? (
+                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
+                ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                        <MetricItem label={sessionLabel} value={fmtNum(metrics.strength.sessions)} />
+                        <MetricItem label="ejercicios" value={fmtNum(metrics.strength.totalExercises)} />
+                        <MetricItem label="ej/sesión" value={fmtNum(metrics.strength.avgExercises)} />
+                    </div>
+                )}
+            </div>
+
+            {/* Cardio */}
+            <div className={cn(
+                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
+                noCardio
+                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
+                    : "bg-green-50/60 dark:bg-green-950/20 border-green-200/60 dark:border-green-900/40"
+            )}>
+                <div className="flex items-center gap-2">
+                    <Activity className={cn("h-3.5 w-3.5 shrink-0", noCardio ? "text-muted-foreground" : "text-green-600 dark:text-green-400")} />
+                    <span className={cn("text-xs font-semibold", noCardio ? "text-muted-foreground" : "text-green-700 dark:text-green-300")}>
+                        Cardio{isMonthly && !noCardio && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
+                    </span>
+                </div>
+                {noCardio ? (
+                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
+                ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                        <MetricItem label={sessionLabel} value={fmtNum(metrics.cardio.sessions)} />
+                        <MetricItem
+                            label="distancia"
+                            value={metrics.cardio.totalKm > 0 ? fmtNum(metrics.cardio.totalKm) : '—'}
+                            unit={metrics.cardio.totalKm > 0 ? 'km' : undefined}
+                        />
+                    </div>
+                )}
+            </div>
+
+            {/* Híbridos */}
+            <div className={cn(
+                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
+                noHybrid
+                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
+                    : "bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-900/40"
+            )}>
+                <div className="flex items-center gap-2">
+                    <Timer className={cn("h-3.5 w-3.5 shrink-0", noHybrid ? "text-muted-foreground" : "text-blue-600 dark:text-blue-400")} />
+                    <span className={cn("text-xs font-semibold", noHybrid ? "text-muted-foreground" : "text-blue-700 dark:text-blue-300")}>
+                        Híbridos{isMonthly && !noHybrid && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
+                    </span>
+                </div>
+                {noHybrid ? (
+                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
+                ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                        <MetricItem label={sessionLabel} value={fmtNum(metrics.hybrid.sessions)} />
+                        <MetricItem
+                            label="duración"
+                            value={metrics.hybrid.totalMin > 0 ? fmtNum(metrics.hybrid.totalMin) : '—'}
+                            unit={metrics.hybrid.totalMin > 0 ? 'min' : undefined}
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
     )
 }

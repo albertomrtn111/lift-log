@@ -86,3 +86,61 @@ export interface PlanningSnapshot {
     dayContexts: PlanningDayContext[];
     notesEnabled: boolean;
 }
+
+export type PlanningAICardioType =
+    | 'rodaje'
+    | 'series'
+    | 'tempo'
+    | 'fartlek'
+    | 'progressive'
+    | 'bike'
+    | 'swim';
+
+export interface PlanningAIStrengthAssignment {
+    ref: string;
+    title: string;
+    sourceDate: string;
+    targetDate: string;
+    action: 'keep' | 'move';
+    sourceKind: StrengthSessionSourceKind;
+}
+
+export interface PlanningAINewCardioSession {
+    kind: 'cardio';
+    trainingType: PlanningAICardioType;
+    title: string;
+    distanceKm?: number | null;
+    durationMin?: number | null;
+    details: string;
+    notes?: string;
+}
+
+export interface PlanningAINewHybridSession {
+    kind: 'hybrid';
+    title: string;
+    durationMin?: number | null;
+    details: string;
+    notes?: string;
+}
+
+export type PlanningAIPlannedSession =
+    | PlanningAINewCardioSession
+    | PlanningAINewHybridSession;
+
+export interface PlanningAIProposalDay {
+    date: string;
+    weekdayLabel: string;
+    summary: string;
+    strengthAssignments: PlanningAIStrengthAssignment[];
+    newSessions: PlanningAIPlannedSession[];
+}
+
+export interface WeeklyPlanningAIProposal {
+    coachPrompt: string;
+    overview: string;
+    rationale: string;
+    existingCardioPolicy: string;
+    assumptions: string[];
+    warnings: string[];
+    days: PlanningAIProposalDay[];
+}

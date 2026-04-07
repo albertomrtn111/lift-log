@@ -128,7 +128,7 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
                             <button
                                 onClick={(e) => handleDownload(e, photo.path)}
-                                className="bg-white/90 hover:bg-white text-black rounded-md p-1.5 transition-colors"
+                                className="rounded-md border border-white/20 bg-background/90 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background"
                                 title="Descargar foto"
                             >
                                 <Download className="h-4 w-4" />

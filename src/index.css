@@ -11,129 +11,131 @@
     --safe-area-left: env(safe-area-inset-left, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
     --app-bottom-nav-height: 4.5rem;
+    color-scheme: light;
 
     /* Core backgrounds */
-    --background: 210 20% 98%;
-    --foreground: 220 25% 10%;
+    --background: 214 45% 98%;
+    --foreground: 222 47% 11%;
 
     /* Cards and surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 220 25% 10%;
+    --card-foreground: 222 47% 11%;
 
     /* Popovers */
     --popover: 0 0% 100%;
-    --popover-foreground: 220 25% 10%;
+    --popover-foreground: 222 47% 11%;
 
-    /* Primary - Vibrant Blue */
-    --primary: 217 91% 60%;
+    /* Primary - Premium cold blue */
+    --primary: 220 91% 56%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Soft blue-gray */
-    --secondary: 210 20% 94%;
-    --secondary-foreground: 220 20% 25%;
+    /* Secondary surfaces */
+    --secondary: 214 30% 94%;
+    --secondary-foreground: 222 30% 20%;
 
-    /* Muted - For read-only coach cells */
-    --muted: 210 15% 92%;
-    --muted-foreground: 220 10% 45%;
+    /* Muted */
+    --muted: 214 22% 92%;
+    --muted-foreground: 218 14% 43%;
 
-    /* Accent - Coral/Orange for highlights */
-    --accent: 16 85% 60%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - subtle blue surface */
+    --accent: 214 36% 92%;
+    --accent-foreground: 222 47% 13%;
 
     /* Success - For saved states */
-    --success: 152 60% 42%;
+    --success: 155 60% 40%;
     --success-foreground: 0 0% 100%;
 
     /* Warning - For pending states */
     --warning: 38 92% 50%;
-    --warning-foreground: 220 25% 10%;
+    --warning-foreground: 222 47% 11%;
 
     /* Destructive */
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 54%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders and inputs */
-    --border: 214 20% 88%;
-    --input: 214 20% 88%;
-    --ring: 217 91% 60%;
+    --border: 214 25% 87%;
+    --input: 214 25% 90%;
+    --ring: 220 91% 56%;
 
     --radius: 0.75rem;
 
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 20% 25%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-foreground: 222 24% 22%;
+    --sidebar-primary: 220 91% 56%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 20% 96%;
-    --sidebar-accent-foreground: 220 20% 25%;
-    --sidebar-border: 214 20% 92%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 214 35% 95%;
+    --sidebar-accent-foreground: 222 24% 20%;
+    --sidebar-border: 214 24% 91%;
+    --sidebar-ring: 220 91% 56%;
 
     /* Coach cell styling */
-    --coach-cell: 210 15% 95%;
-    --coach-cell-foreground: 220 10% 40%;
+    --coach-cell: 214 20% 95%;
+    --coach-cell-foreground: 218 12% 38%;
 
     /* Client editable cell */
     --client-cell: 0 0% 100%;
-    --client-cell-border: 217 60% 70%;
+    --client-cell-border: 220 70% 66%;
 
     /* Progress colors */
-    --progress-empty: 210 15% 90%;
-    --progress-filled: 217 91% 60%;
+    --progress-empty: 214 22% 89%;
+    --progress-filled: 220 91% 56%;
   }
 
   .dark {
-    --background: 220 25% 8%;
-    --foreground: 210 20% 96%;
+    color-scheme: dark;
+    --background: 222 47% 7%;
+    --foreground: 214 32% 93%;
 
-    --card: 220 20% 12%;
-    --card-foreground: 210 20% 96%;
+    --card: 223 34% 11%;
+    --card-foreground: 214 30% 94%;
 
-    --popover: 220 20% 12%;
-    --popover-foreground: 210 20% 96%;
+    --popover: 223 34% 12%;
+    --popover-foreground: 214 30% 94%;
 
-    --primary: 217 91% 65%;
-    --primary-foreground: 220 25% 8%;
+    --primary: 215 96% 68%;
+    --primary-foreground: 222 47% 8%;
 
-    --secondary: 220 15% 18%;
-    --secondary-foreground: 210 20% 90%;
+    --secondary: 223 24% 16%;
+    --secondary-foreground: 214 24% 89%;
 
-    --muted: 220 15% 20%;
-    --muted-foreground: 210 10% 60%;
+    --muted: 223 22% 15%;
+    --muted-foreground: 217 14% 66%;
 
-    --accent: 16 85% 55%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 31% 19%;
+    --accent-foreground: 214 32% 94%;
 
-    --success: 152 60% 45%;
+    --success: 154 55% 46%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 220 25% 10%;
+    --warning: 40 96% 62%;
+    --warning-foreground: 222 47% 9%;
 
-    --destructive: 0 62% 45%;
+    --destructive: 0 72% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 22%;
-    --input: 220 15% 22%;
-    --ring: 217 91% 65%;
+    --border: 222 23% 22%;
+    --input: 222 22% 18%;
+    --ring: 215 96% 68%;
 
-    --sidebar-background: 220 20% 10%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-primary: 217 91% 65%;
-    --sidebar-primary-foreground: 220 25% 8%;
-    --sidebar-accent: 220 15% 16%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 217 91% 65%;
+    --sidebar-background: 223 41% 9%;
+    --sidebar-foreground: 215 22% 90%;
+    --sidebar-primary: 215 96% 68%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 222 27% 14%;
+    --sidebar-accent-foreground: 215 24% 90%;
+    --sidebar-border: 223 23% 18%;
+    --sidebar-ring: 215 96% 68%;
 
-    --coach-cell: 220 15% 16%;
-    --coach-cell-foreground: 210 10% 65%;
+    --coach-cell: 222 21% 15%;
+    --coach-cell-foreground: 216 16% 70%;
 
-    --client-cell: 220 20% 14%;
-    --client-cell-border: 217 60% 50%;
+    --client-cell: 223 24% 14%;
+    --client-cell-border: 215 76% 58%;
 
-    --progress-empty: 220 15% 18%;
-    --progress-filled: 217 91% 65%;
+    --progress-empty: 223 22% 17%;
+    --progress-filled: 215 96% 68%;
   }
 }
 
@@ -147,12 +149,28 @@
     font-feature-settings: "cv11", "ss01";
     min-height: 100vh;
     min-height: 100dvh;
+    background-image:
+      radial-gradient(circle at top, rgba(59, 130, 246, 0.08), transparent 34%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 22%);
   }
 
   /* Smooth scrolling */
   html {
     scroll-behavior: smooth;
     min-height: 100%;
+    background-color: hsl(var(--background));
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 30%),
+      radial-gradient(circle at 20% 0%, rgba(14, 165, 233, 0.12), transparent 28%),
+      linear-gradient(180deg, rgba(8, 15, 34, 0.9), rgba(4, 8, 18, 1));
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
   }
 
   /* Custom scrollbar */
@@ -234,6 +252,20 @@
   .macro-card {
     @apply bg-card rounded-xl p-4 shadow-sm border border-border;
     @apply flex flex-col items-center justify-center text-center;
+  }
+
+  .workspace-tabs-list {
+    @apply mb-8 flex w-full min-w-0 items-stretch justify-start gap-2 overflow-x-auto rounded-none border-b border-border/70 bg-transparent p-0 scrollbar-hide;
+  }
+
+  .workspace-tab-trigger {
+    @apply min-w-[3.75rem] justify-center gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 pb-3 text-muted-foreground shadow-none transition-colors sm:min-w-[8.5rem] sm:px-5;
+    @apply hover:text-foreground;
+    @apply data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none;
+  }
+
+  .subtle-panel {
+    @apply rounded-2xl border border-border/70 bg-card/80 backdrop-blur-xl;
   }
 
   /* Navigation item */

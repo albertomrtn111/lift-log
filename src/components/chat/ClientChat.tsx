@@ -9,6 +9,7 @@ import { Message } from '@/types/messages'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { createClient } from '@/lib/supabase/client'
 import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
+import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 
 export function ClientChat() {
     const { client, isLoading: contextLoading } = useClientAppContext()
@@ -45,7 +46,7 @@ export function ClientChat() {
                 .limit(50)
 
             if (!cancelled && data) {
-                setMessages((data as Message[]).reverse())
+                setMessages(mergeUniqueMessages((data as Message[]).reverse()))
             }
             if (error) console.error('Error loading messages:', error)
 
@@ -85,10 +86,7 @@ export function ClientChat() {
             }, (payload) => {
                 const newMsg = payload.new as Message
                 if (newMsg.coach_id === coachId) {
-                    setMessages(prev => {
-                        if (prev.some(m => m.id === newMsg.id)) return prev
-                        return [...prev, newMsg]
-                    })
+                    setMessages(prev => mergeUniqueMessages([...prev, newMsg]))
                     // If it's a coach message, mark as read
                     if (newMsg.sender_role === 'coach') {
                         supabase
@@ -147,7 +145,7 @@ export function ClientChat() {
 
         if (data) {
             setMessages(prev =>
-                prev.map(m => m.id === optimisticMsg.id ? (data as Message) : m)
+                reconcileOptimisticMessage(prev, optimisticMsg.id, data as Message)
             )
         } else {
             console.error('Error sending message:', error)

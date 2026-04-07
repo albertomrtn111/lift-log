@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Client } from '@/types/coach'
+import { AthleteAIProfile } from '@/types/athlete-profile'
 import {
     ClientStatus,
     CheckinWithReview,
@@ -27,9 +28,11 @@ import {
     ChevronLeft,
     ChevronRight,
     MessageSquare,
+    UserRound,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
+import { AthleteProfileTab } from './workspace/AthleteProfileTab'
 import { ResumenTab } from './workspace/ResumenTab'
 import { CheckinsTab } from './workspace/CheckinsTab'
 import { PlanningTab } from './workspace/PlanningTab'
@@ -59,6 +62,7 @@ interface NewClientWorkspaceProps {
     metrics: Awaited<ReturnType<typeof import('@/data/workspace').getClientMetrics>>
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
+    athleteProfile: AthleteAIProfile | null
 }
 
 export function NewClientWorkspace({
@@ -77,6 +81,7 @@ export function NewClientWorkspace({
     metrics,
     metricDefinitions,
     formTemplates,
+    athleteProfile,
 }: NewClientWorkspaceProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -107,13 +112,24 @@ export function NewClientWorkspace({
         }
     }, [selectedClientId])
 
+    useEffect(() => {
+        const nextTab = searchParams.get('tab') || 'resumen'
+        setActiveTab(prev => (prev === nextTab ? prev : nextTab))
+    }, [searchParams])
+
     const handleRefresh = useCallback(() => {
         router.refresh()
     }, [router])
 
     const handleSwitchTab = useCallback((tab: string) => {
         setActiveTab(tab)
-    }, [])
+
+        if (selectedClientId) {
+            router.replace(`/coach/clients?client=${selectedClientId}&tab=${tab}`)
+        } else {
+            router.replace(`/coach/clients?tab=${tab}`)
+        }
+    }, [router, selectedClientId])
 
     const handleClientChange = (clientId: string) => {
         router.push(`/coach/clients?client=${clientId}&tab=${activeTab}`)
@@ -257,54 +273,61 @@ export function NewClientWorkspace({
                     />
 
                     {/* NEW TAB STRUCTURE */}
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-6 mb-8 bg-transparent p-0 border-b border-zinc-800">
-                            <TabsTrigger
-                                value="onboarding"
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
-                            >
+                    <Tabs value={activeTab} onValueChange={handleSwitchTab} className="w-full">
+                    <TabsList className="workspace-tabs-list gap-2.5 sm:gap-3">
+                        <TabsTrigger
+                            value="athlete-profile"
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[10.5rem]"
+                        >
+                                <UserRound className="h-4 w-4" />
+                                <span className="hidden sm:inline">Perfil del atleta</span>
+                            </TabsTrigger>
+                        <TabsTrigger
+                            value="onboarding"
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem]"
+                        >
                                 <ClipboardList className="h-4 w-4" />
                                 <span className="hidden sm:inline">Onboarding</span>
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="resumen"
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
-                            >
+                        <TabsTrigger
+                            value="resumen"
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem]"
+                        >
                                 <LayoutDashboard className="h-4 w-4" />
                                 <span className="hidden sm:inline">Resumen</span>
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="plan"
-                                disabled={isPendingSignup}
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
+                        <TabsTrigger
+                            value="plan"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                                 <CalendarDays className="h-4 w-4" />
                                 <span className="hidden sm:inline">Plan</span>
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="checkins"
-                                disabled={isPendingSignup}
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
+                        <TabsTrigger
+                            value="checkins"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                                 <FileText className="h-4 w-4" />
                                 <span className="hidden sm:inline">Revisiones</span>
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="progreso"
-                                disabled={isPendingSignup}
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
+                        <TabsTrigger
+                            value="progreso"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                                 <TrendingUp className="h-4 w-4" />
                                 <span className="hidden sm:inline">Progreso</span>
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="chat"
-                                disabled={isPendingSignup}
-                                className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
+                        <TabsTrigger
+                            value="chat"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.25rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                                 <MessageSquare className="h-4 w-4" />
                                 <span className="hidden sm:inline">Chat</span>
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
@@ -317,6 +340,15 @@ export function NewClientWorkspace({
                         </TabsList>
 
                         <div className="mt-4 min-h-[500px]">
+                            <TabsContent value="athlete-profile">
+                                <AthleteProfileTab
+                                    key={`${selectedClient.id}:${athleteProfile?.updated_at ?? 'new'}`}
+                                    clientId={selectedClient.id}
+                                    clientName={selectedClient.full_name || 'Atleta'}
+                                    athleteProfile={athleteProfile}
+                                />
+                            </TabsContent>
+
                             <TabsContent value="onboarding">
                                 <OnboardingTab
                                     clientId={selectedClient.id}

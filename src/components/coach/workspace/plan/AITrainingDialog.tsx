@@ -74,6 +74,7 @@ function proposalToStrengthStructure(proposal: AITrainingProposal): StrengthStru
                 id: crypto.randomUUID(),
                 exercise_name: ex.exercise_name,
                 order: eIdx + 1,
+                muscle_group: 'otros',
                 sets: ex.sets,
                 reps: ex.reps,
                 rir: ex.rir || undefined,

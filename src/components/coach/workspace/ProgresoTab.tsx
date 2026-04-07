@@ -179,7 +179,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     return (
         <div className="space-y-6">
             {/* Sub-tab toggle */}
-            <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+            <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
                 {[
                     { key: 'general' as SubTab, label: 'General' },
                     { key: 'training' as SubTab, label: 'Entrenamiento' },
@@ -191,7 +191,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                         className={cn(
                             "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
                             subTab === tab.key
-                                ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                ? "bg-background text-foreground shadow-sm dark:bg-card"
                                 : "text-muted-foreground hover:text-foreground"
                         )}
                     >
@@ -205,7 +205,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
             ) : subTab === 'cardio' ? (
                 <>
                     {/* Range Selector */}
-                    <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+                    <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
                         {RANGE_OPTIONS.map(opt => (
                             <button
                                 key={opt.key}
@@ -213,7 +213,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                 className={cn(
                                     "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
                                     range === opt.key
-                                        ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                        ? "bg-background text-foreground shadow-sm dark:bg-card"
                                         : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
@@ -233,7 +233,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
             ) : (
                 <>
                     {/* Range Selector */}
-                    <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-lg p-1 w-fit">
+                    <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
                         {RANGE_OPTIONS.map(opt => (
                             <button
                                 key={opt.key}
@@ -241,7 +241,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                 className={cn(
                                     "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
                                     range === opt.key
-                                        ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
+                                        ? "bg-background text-foreground shadow-sm dark:bg-card"
                                         : "text-muted-foreground hover:text-foreground"
                                 )}
                             >

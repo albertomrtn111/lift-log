@@ -1,9 +1,10 @@
 'use server'
 
 import { createClient } from "@/lib/supabase/server";
-import { UnifiedCalendarItem, PlanningSnapshot, PlanningNote, PlanningDayState } from "@/types/planning";
+import { UnifiedCalendarItem, PlanningSnapshot, PlanningNote, PlanningDayState, WeeklyPlanningAIProposal } from "@/types/planning";
 import { CardioStructure } from "@/types/templates";
 import { requireActiveCoachId } from "@/lib/auth/require-coach";
+import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
 
 type TrainingDayRow = {
     id: string;
@@ -114,6 +115,22 @@ function getCardioSummaryLine(cardio: any) {
     if (duration) parts.push(`${duration} min`);
     if (cardio.target_pace) parts.push(cardio.target_pace);
     return parts.join(' · ');
+}
+
+function getWeekEndFromStart(weekStart: string) {
+    const start = parseLocalDate(weekStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return end;
+}
+
+function buildCardioStructureForPlanning(session: { kind: 'cardio' | 'hybrid'; details: string; notes?: string; trainingType?: string }): CardioStructure {
+    return {
+        trainingType: session.kind === 'hybrid' ? 'hybrid' : session.trainingType || 'rodaje',
+        description: session.details,
+        notes: session.notes,
+        blocks: [],
+    };
 }
 
 // ----------------------------------------------------------------------
@@ -428,6 +445,158 @@ export async function getWeeklySchedule(
     } catch (error: any) {
         console.error('[getWeeklySchedule] Error:', error);
         return { success: false, error: error.message };
+    }
+}
+
+type GenerateWeeklyPlanningAIInput = {
+    clientId: string;
+    coachId: string;
+    weekStart: string;
+    prompt: string;
+}
+
+export async function generateWeeklyPlanningAIAction({
+    clientId,
+    coachId,
+    weekStart,
+    prompt,
+}: GenerateWeeklyPlanningAIInput) {
+    try {
+        const trimmedPrompt = prompt.trim();
+        if (!trimmedPrompt) {
+            return { success: false, error: 'Escribe una instrucción para generar la planificación semanal.' };
+        }
+
+        const weekStartDate = parseLocalDate(weekStart);
+        const weekEndDate = getWeekEndFromStart(weekStart);
+        const weekEnd = toLocalDateStr(weekEndDate);
+
+        const scheduleResult = await getWeeklySchedule(clientId, weekStartDate, weekEndDate, weekStartDate);
+        if (!scheduleResult.success || !scheduleResult.data) {
+            return { success: false, error: scheduleResult.error || 'No se pudo cargar la semana visible.' };
+        }
+
+        return await generateWeeklyPlanningProposal({
+            coachId,
+            clientId,
+            weekStart,
+            weekEnd,
+            prompt: trimmedPrompt,
+            items: scheduleResult.data.items,
+            overview: scheduleResult.data.overview,
+        });
+    } catch (error: any) {
+        return { success: false, error: error.message || 'No se pudo generar la planificación con IA.' };
+    }
+}
+
+type ApplyWeeklyPlanningAIInput = {
+    clientId: string;
+    coachId: string;
+    weekStart: string;
+    proposal: WeeklyPlanningAIProposal;
+}
+
+export async function applyWeeklyPlanningAIAction({
+    clientId,
+    coachId,
+    weekStart,
+    proposal,
+}: ApplyWeeklyPlanningAIInput) {
+    try {
+        const weekStartDate = parseLocalDate(weekStart);
+        const weekEndDate = getWeekEndFromStart(weekStart);
+
+        const scheduleResult = await getWeeklySchedule(clientId, weekStartDate, weekEndDate, weekStartDate);
+        if (!scheduleResult.success || !scheduleResult.data) {
+            return { success: false, error: scheduleResult.error || 'No se pudo recargar la semana antes de aplicar la propuesta.' };
+        }
+
+        const strengthItems = scheduleResult.data.items.filter(
+            (item): item is Extract<UnifiedCalendarItem, { type: 'strength' }> => item.type === 'strength'
+        );
+
+        const strengthByRef = new Map(
+            strengthItems.map((item) => [
+                item.id.startsWith('virtual-') ? `virtual:${item.training_day_id}` : `scheduled:${item.id}`,
+                item,
+            ])
+        );
+
+        const handledStrength = new Set<string>();
+        let movedStrength = 0;
+        let createdCardio = 0;
+        let createdHybrid = 0;
+
+        for (const day of proposal.days) {
+            for (const assignment of day.strengthAssignments) {
+                if (handledStrength.has(assignment.ref)) continue;
+                handledStrength.add(assignment.ref);
+
+                const current = strengthByRef.get(assignment.ref);
+                if (!current) continue;
+                if (current.date === day.date) continue;
+
+                if (current.id.startsWith('virtual-')) {
+                    const programId = current.training_program_id;
+                    const dayId = current.training_day_id;
+
+                    if (!programId || !dayId) {
+                        return { success: false, error: `No se pudo mover la sesión de fuerza ${assignment.title}.` };
+                    }
+
+                    const materializeResult = await materializeVirtualSession(clientId, programId, dayId, day.date);
+                    if (!materializeResult.success) {
+                        return { success: false, error: materializeResult.error || `No se pudo mover la fuerza a ${day.date}.` };
+                    }
+                } else {
+                    const moveResult = await moveSession(current.id, 'strength', day.date);
+                    if (!moveResult.success) {
+                        return { success: false, error: moveResult.error || `No se pudo mover la fuerza a ${day.date}.` };
+                    }
+                }
+
+                movedStrength += 1;
+            }
+
+            for (const session of day.newSessions) {
+                const createResult = await scheduleCardioSession({
+                    clientId,
+                    coachId,
+                    date: day.date,
+                    name: session.title,
+                    description: session.details,
+                    notes: session.notes,
+                    structure: buildCardioStructureForPlanning({
+                        kind: session.kind,
+                        details: session.details,
+                        notes: session.notes,
+                        trainingType: session.kind === 'cardio' ? session.trainingType : undefined,
+                    }),
+                    targetDistanceKm: session.kind === 'cardio' ? session.distanceKm ?? undefined : undefined,
+                    targetDurationMin: session.durationMin ?? undefined,
+                    targetPace: undefined,
+                });
+
+                if (!createResult.success) {
+                    return { success: false, error: createResult.error || `No se pudo crear la sesión del ${day.date}.` };
+                }
+
+                if (session.kind === 'hybrid') createdHybrid += 1;
+                else createdCardio += 1;
+            }
+        }
+
+        return {
+            success: true,
+            counts: {
+                movedStrength,
+                createdCardio,
+                createdHybrid,
+            },
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message || 'No se pudo aplicar la planificación con IA.' };
     }
 }
 

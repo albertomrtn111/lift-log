@@ -4,8 +4,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendReviewEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
 import { resolveCheckinTemplateForClient } from '@/data/form-templates'
-
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+import { getFormUrl } from '@/lib/app-url'
 
 interface SendReviewResult {
     success: boolean
@@ -83,7 +82,7 @@ export async function sendReviewAction(
     }
 
     const checkinId = newCheckin.id
-    const formUrl = `${BASE_URL}/forms/${checkinId}`
+    const formUrl = getFormUrl(checkinId)
 
     // 6) Call n8n webhook (non-blocking, just sends the email)
     const webhookResult = await sendReviewEmail({

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, TrainingCell, TrainingProgramFull, ExerciseSet } from '@/types/training'
+import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 
 export interface DBTrainingProgram {
     id: string
@@ -105,8 +106,9 @@ export async function getTrainingExercises(dayId: string): Promise<TrainingExerc
     return data.map(e => ({
         id: e.id,
         dayId: e.day_id,
-        name: e.name,
-        order: e.order,
+        name: e.exercise_name,
+        order: e.order_index,
+        muscleGroup: normalizeMuscleGroup(e.muscle_group),
     }))
 }
 
@@ -317,7 +319,8 @@ export async function getTrainingProgramFull(programId: string): Promise<Trainin
             id: e.id,
             dayId: e.day_id,
             name: e.exercise_name,
-            order: e.order_index
+            order: e.order_index,
+            muscleGroup: normalizeMuscleGroup(e.muscle_group),
         })),
         cells: (cells || []).map(c => ({
             id: c.id,

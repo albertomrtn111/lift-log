@@ -1,3 +1,5 @@
+import type { MuscleGroup } from '@/lib/training/muscle-groups'
+
 // Training data types for the client portal
 
 export interface TrainingProgram {
@@ -30,6 +32,7 @@ export interface TrainingExercise {
   dayId: string;
   name: string;
   order: number;
+  muscleGroup?: MuscleGroup | null;
   sets?: number;
   reps?: string;
   rir?: string;

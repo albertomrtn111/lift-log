@@ -13,6 +13,7 @@ import {
 } from './chat-actions'
 import { createClient } from '@/lib/supabase/client'
 import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
+import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 
 interface ChatTabProps {
     coachId: string
@@ -42,7 +43,7 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
             setLoading(true)
             const msgs = await getMessagesAction(coachId, clientId)
             if (!cancelled) {
-                setMessages(msgs)
+                setMessages(mergeUniqueMessages(msgs))
                 setLoading(false)
                 onUnreadChange?.(0)
             }
@@ -74,11 +75,7 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
             }, (payload) => {
                 const newMsg = payload.new as Message
                 if (newMsg.client_id === clientId) {
-                    setMessages(prev => {
-                        // Avoid duplicates (from optimistic insert)
-                        if (prev.some(m => m.id === newMsg.id)) return prev
-                        return [...prev, newMsg]
-                    })
+                    setMessages(prev => mergeUniqueMessages([...prev, newMsg]))
                     // If it's a client message, mark as read immediately
                     if (newMsg.sender_role === 'client') {
                         markMessagesReadAction(coachId, clientId)
@@ -123,9 +120,8 @@ export function ChatTab({ coachId, clientId, clientName, onUnreadChange }: ChatT
         startTransition(async () => {
             const result = await sendMessageAction(coachId, clientId, content)
             if (result.success && result.message) {
-                // Replace optimistic message with real one
                 setMessages(prev =>
-                    prev.map(m => m.id === optimisticMsg.id ? result.message! : m)
+                    reconcileOptimisticMessage(prev, optimisticMsg.id, result.message!)
                 )
             } else {
                 // Remove optimistic message on error

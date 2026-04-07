@@ -67,6 +67,7 @@ function aiStrengthToStructure(template: AIStrengthTemplate): StrengthStructure 
             id: crypto.randomUUID(),
             exercise_name: row.ejercicio,
             order: idx + 1,
+            muscle_group: 'otros',
             sets: row.series,
             reps: row.reps,
             rir: row.rir || undefined,

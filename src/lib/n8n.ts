@@ -19,7 +19,7 @@ const N8N_INVITE_URL =
 
 const N8N_REVIEW_URL =
     process.env.N8N_REVIEW_WEBHOOK_URL ||
-    'https://n8n.ascenttech.cloud/webhook/send-review'
+    'https://n8n.ascenttech.cloud/webhook/send-review-manual'
 
 const N8N_USER = process.env.N8N_BASIC_AUTH_USER || ''
 const N8N_PASS = process.env.N8N_BASIC_AUTH_PASS || ''

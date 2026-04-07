@@ -1,3 +1,5 @@
+import type { MuscleGroup } from '@/lib/training/muscle-groups'
+
 // Training Templates Types
 // Based on public.training_templates table
 
@@ -78,6 +80,7 @@ export interface TemplateExercise {
     id: string
     exercise_name: string
     order: number
+    muscle_group?: MuscleGroup | null
     sets: number
     reps: string
     rir?: string

@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { UserCog } from 'lucide-react'
 import {
+    getAthleteAIProfile,
+} from '@/data/athlete-ai-profile'
+import {
     getClientsForSelector,
     getClientForWorkspace,
     getClientStatus,
@@ -60,6 +63,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     let metrics: Awaited<ReturnType<typeof getClientMetrics>> = []
     let metricDefinitions: Awaited<ReturnType<typeof getMetricDefinitions>> = []
     let formTemplates: Awaited<ReturnType<typeof getFormTemplates>> = []
+    let athleteProfile: Awaited<ReturnType<typeof getAthleteAIProfile>> = null
 
     if (selectedClientId) {
         // Fetch all data in parallel
@@ -77,6 +81,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             metricsData,
             metricDefinitionsData,
             formTemplatesData,
+            athleteProfileData,
         ] = await Promise.all([
             getClientForWorkspace(coachId, selectedClientId),
             getClientStatus(coachId, selectedClientId),
@@ -91,6 +96,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             getClientMetrics(coachId, selectedClientId, 90),
             getMetricDefinitions(),
             getFormTemplates(),
+            getAthleteAIProfile(coachId, selectedClientId),
         ])
 
         selectedClient = clientData
@@ -106,6 +112,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         metrics = metricsData
         metricDefinitions = metricDefinitionsData
         formTemplates = formTemplatesData
+        athleteProfile = athleteProfileData
     }
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -141,6 +148,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     metrics={metrics}
                     metricDefinitions={metricDefinitions}
                     formTemplates={formTemplates}
+                    athleteProfile={athleteProfile}
                 />
             </div>
         </div>

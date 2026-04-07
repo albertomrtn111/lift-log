@@ -15,18 +15,18 @@ export function DietTab({ clientId, coachId }: DietTabProps) {
     return (
         <Tabs defaultValue="macros" className="w-full">
             {/* Header row: tabs + AI button */}
-            <div className="flex items-end justify-between border-b border-zinc-800 mb-6">
-                <TabsList className="bg-transparent p-0 border-none gap-0 h-auto">
+            <div className="mb-6 flex items-end justify-between border-b border-border/70">
+                <TabsList className="h-auto gap-0 border-none bg-transparent p-0">
                     <TabsTrigger
                         value="macros"
-                        className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                        className="workspace-tab-trigger"
                     >
                         <Target className="h-4 w-4" />
                         Objetivos &amp; Macros
                     </TabsTrigger>
                     <TabsTrigger
                         value="options"
-                        className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                        className="workspace-tab-trigger"
                     >
                         <Utensils className="h-4 w-4" />
                         Dieta por Opciones

@@ -4,8 +4,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendOnboardingEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
 import { resolveOnboardingTemplateForClient } from '@/data/form-templates'
-
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+import { getFormUrl } from '@/lib/app-url'
 
 interface SendOnboardingResult {
     success: boolean
@@ -93,7 +92,7 @@ export async function sendOnboardingAction(
     const checkinId = newCheckin.id
 
     // 6) Build URL
-    const formUrl = `${BASE_URL}/forms/${checkinId}`
+    const formUrl = getFormUrl(checkinId)
 
     // 7) Call n8n (non-blocking)
     const webhookResult = await sendOnboardingEmail({

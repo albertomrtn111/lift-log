@@ -133,7 +133,7 @@ export default async function CoachProfilePage() {
                                 </div>
                             </div>
                             <Link
-                                href="/coach/ai-onboarding"
+                                href={isApproved ? '/coach/ai-onboarding?reconfigure=1' : '/coach/ai-onboarding'}
                                 className="inline-flex items-center justify-center rounded-xl border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted shrink-0"
                             >
                                 {isApproved ? 'Reconfigurar' : 'Configurar'}

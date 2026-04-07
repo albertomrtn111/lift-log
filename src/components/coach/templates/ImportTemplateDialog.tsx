@@ -131,6 +131,7 @@ function buildStructure(grouped: Map<string, ParsedExercise[]>): StrengthStructu
             id: crypto.randomUUID(),
             exercise_name: ex.exercise_name,
             order: idx + 1,
+            muscle_group: 'otros',
             sets: ex.sets,
             reps: ex.reps,
             rir: ex.rir || undefined,

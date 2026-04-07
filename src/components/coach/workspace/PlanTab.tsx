@@ -26,7 +26,6 @@ import {
 import {
     Dumbbell,
     Plus,
-    Calendar,
     Utensils,
     FlaskConical,
     Settings2,
@@ -34,6 +33,8 @@ import {
     MoreVertical,
     Archive,
     Loader2 as Loader2Icon,
+    BarChart3,
+    Layers3,
 } from 'lucide-react'
 import { activateTrainingProgramAction, archiveTrainingProgramAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
@@ -46,6 +47,194 @@ import { PlanningTab } from './PlanningTab'
 import { DietTab } from '../tabs/DietTab'
 import type { StrengthStructure } from '@/types/templates'
 import { SupplementsPanel } from './plan/SupplementsPanel'
+import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+
+type ProgramSummaryDetail = {
+    days: Array<{ id: string; name: string }>
+    exercises: Array<{ id: string; day_id: string; muscle_group?: string | null; sets?: number | null }>
+    columns: Array<{ id: string; key?: string | null; label?: string | null }>
+    cells: Array<{ exercise_id: string; column_id: string; week_index: number; value: any }>
+}
+
+function MuscleVolumeSummary({
+    totalWeeks,
+    activeWeek,
+    onWeekChange,
+    metrics,
+}: {
+    totalWeeks: number
+    activeWeek: number
+    onWeekChange: (week: number) => void
+    metrics: MuscleVolumeMetric[]
+}) {
+    return (
+        <div className="space-y-4 rounded-2xl border border-primary/10 bg-background p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-primary/10 p-2.5">
+                        <BarChart3 className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                        <h4 className="font-semibold">Volumen muscular semanal</h4>
+                        <p className="text-sm text-muted-foreground">
+                            Series y frecuencia por grupo muscular en la semana activa del programa.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Semana visible
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: Math.max(totalWeeks, 1) }).map((_, index) => {
+                            const week = index + 1
+                            return (
+                                <Button
+                                    key={week}
+                                    type="button"
+                                    variant={activeWeek === week ? 'default' : 'outline'}
+                                    size="sm"
+                                    className="h-8 rounded-full px-3"
+                                    onClick={() => onWeekChange(week)}
+                                >
+                                    W{week}
+                                </Button>
+                            )
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {metrics.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                    {metrics.map((metric) => (
+                        <Card key={metric.group} className="border-primary/10 shadow-sm">
+                            <div className="flex items-start justify-between gap-3 p-4">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Grupo muscular
+                                    </p>
+                                    <h5 className="mt-2 text-lg font-semibold">{MUSCLE_GROUP_LABELS[metric.group]}</h5>
+                                </div>
+                                <div className="rounded-xl bg-primary/10 p-2">
+                                    <Layers3 className="h-4 w-4 text-primary" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 border-t px-4 py-4">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Series
+                                    </p>
+                                    <p className="mt-2 text-2xl font-bold tabular-nums">{metric.totalSets}</p>
+                                    <p className="text-xs text-muted-foreground">Totales en la semana</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                        Frecuencia
+                                    </p>
+                                    <p className="mt-2 text-2xl font-bold tabular-nums">{metric.frequency}x</p>
+                                    <p className="text-xs text-muted-foreground">Días diferentes / semana</p>
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                <div className="rounded-2xl border border-dashed px-4 py-8 text-center">
+                    <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted/60">
+                        <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium">Sin volumen clasificable en esta semana</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Si esta semana no tiene series cargadas, el bloque se mantiene limpio. Los ejercicios sin grupo se normalizan como “Otros”.
+                    </p>
+                </div>
+            )}
+        </div>
+    )
+}
+
+type MuscleVolumeMetric = {
+    group: MuscleGroup
+    totalSets: number
+    frequency: number
+}
+
+function getDerivedProgramWeek(effectiveFrom: string | null | undefined, totalWeeks: number) {
+    if (!effectiveFrom || totalWeeks <= 1) return 1
+
+    const start = new Date(`${effectiveFrom}T12:00:00`)
+    const now = new Date()
+    const mondayOffset = (start.getDay() + 6) % 7
+    start.setDate(start.getDate() - mondayOffset)
+
+    const today = new Date(now)
+    const todayOffset = (today.getDay() + 6) % 7
+    today.setDate(today.getDate() - todayOffset)
+
+    const diffMs = today.getTime() - start.getTime()
+    const week = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7)) + 1
+    return Math.min(Math.max(week, 1), totalWeeks)
+}
+
+function getCellScalarValue(value: any) {
+    if (value == null) return null
+    if (typeof value === 'object' && 'value' in value) return value.value
+    return value
+}
+
+function parseSeriesValue(value: unknown) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+        const normalized = value.replace(',', '.').trim()
+        if (!normalized) return 0
+        const parsed = Number(normalized)
+        if (Number.isFinite(parsed)) return parsed
+    }
+    return 0
+}
+
+function buildMuscleVolumeMetrics(detail: ProgramSummaryDetail | null, weekIndex: number): MuscleVolumeMetric[] {
+    if (!detail) return []
+
+    const setsColumn = detail.columns.find((column) => column.key === 'sets')
+        ?? detail.columns.find((column) => column.label?.toLowerCase() === 'series')
+
+    const cellsByExercise = new Map<string, Map<string, any>>()
+    for (const cell of detail.cells) {
+        if (cell.week_index !== weekIndex) continue
+        const current = cellsByExercise.get(cell.exercise_id) || new Map<string, any>()
+        current.set(cell.column_id, getCellScalarValue(cell.value))
+        cellsByExercise.set(cell.exercise_id, current)
+    }
+
+    const metricsMap = new Map<MuscleGroup, { totalSets: number; dayIds: Set<string> }>()
+
+    for (const exercise of detail.exercises) {
+        const group = normalizeMuscleGroup(exercise.muscle_group)
+        const cellValue = setsColumn ? cellsByExercise.get(exercise.id)?.get(setsColumn.id) : null
+        const totalSets = parseSeriesValue(cellValue ?? exercise.sets ?? 0)
+
+        if (totalSets <= 0) continue
+
+        const bucket = metricsMap.get(group) || { totalSets: 0, dayIds: new Set<string>() }
+        bucket.totalSets += totalSets
+        bucket.dayIds.add(exercise.day_id)
+        metricsMap.set(group, bucket)
+    }
+
+    return Array.from(metricsMap.entries())
+        .map(([group, value]) => ({
+            group,
+            totalSets: value.totalSets,
+            frequency: value.dayIds.size,
+        }))
+        .sort((a, b) => {
+            if (b.totalSets !== a.totalSets) return b.totalSets - a.totalSets
+            return MUSCLE_GROUP_LABELS[a.group].localeCompare(MUSCLE_GROUP_LABELS[b.group], 'es')
+        })
+}
 
 interface PlanTabProps {
     coachId: string
@@ -66,31 +255,31 @@ export function PlanTab({
 
     return (
         <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-            <TabsList className="flex w-full justify-start gap-8 mb-6 bg-transparent p-0 border-b border-zinc-800 overflow-x-auto pb-px">
+            <TabsList className="workspace-tabs-list gap-3 sm:gap-4 pb-px">
                 <TabsTrigger
                     value="schedule"
-                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                    className="workspace-tab-trigger sm:min-w-[9.5rem]"
                 >
                     <CalendarDays className="h-4 w-4" />
                     Planificación
                 </TabsTrigger>
                 <TabsTrigger
                     value="training"
-                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                    className="workspace-tab-trigger sm:min-w-[8rem]"
                 >
                     <Dumbbell className="h-4 w-4" />
                     Fuerza
                 </TabsTrigger>
                 <TabsTrigger
                     value="diet"
-                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                    className="workspace-tab-trigger sm:min-w-[8.5rem]"
                 >
                     <Utensils className="h-4 w-4" />
                     Nutrición
                 </TabsTrigger>
                 <TabsTrigger
                     value="supplements"
-                    className="gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-400 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 data-[state=active]:shadow-none text-zinc-400 hover:text-white transition-all pb-3"
+                    className="workspace-tab-trigger sm:min-w-[10rem]"
                 >
                     <FlaskConical className="h-4 w-4" />
                     Suplementación
@@ -168,6 +357,8 @@ function EntrenoSubtab({
     // AI state
     const [pendingAIStructure, setPendingAIStructure] = useState<StrengthStructure | null>(null)
     const [pendingAIName, setPendingAIName] = useState<string | null>(null)
+    const [programSummaryDetail, setProgramSummaryDetail] = useState<ProgramSummaryDetail | null>(null)
+    const [summaryWeek, setSummaryWeek] = useState(1)
     const [existingExercises, setExistingExercises] = useState<Array<{
         dayName: string; exerciseName: string; sets?: number | null
         reps?: string | null; rir?: string | null; restSeconds?: number | null; notes?: string | null
@@ -175,12 +366,20 @@ function EntrenoSubtab({
 
     // Load existing exercises for AI context when active program changes
     useEffect(() => {
-        if (!activeProgram) { setExistingExercises([]); return }
+        if (!activeProgram) {
+            setExistingExercises([])
+            setProgramSummaryDetail(null)
+            setSummaryWeek(1)
+            return
+        }
         const supabase = createClient()
         Promise.all([
             supabase.from('training_days').select('id, name').eq('program_id', activeProgram.id),
             supabase.from('training_exercises').select('day_id, exercise_name, sets, reps, rir, rest_seconds, notes').eq('program_id', activeProgram.id).order('order_index'),
-        ]).then(([{ data: days }, { data: exs }]) => {
+            supabase.from('training_exercises').select('id, day_id, muscle_group, sets').eq('program_id', activeProgram.id).order('order_index'),
+            supabase.from('training_columns').select('id, key, label').eq('program_id', activeProgram.id),
+            supabase.from('training_cells').select('exercise_id, column_id, week_index, value').eq('program_id', activeProgram.id),
+        ]).then(([{ data: days }, { data: exs }, { data: exerciseSummary }, { data: columns }, { data: cells }]) => {
             if (!days || !exs) return
             const dayMap = new Map(days.map((d: any) => [d.id, d.name]))
             setExistingExercises(exs.map((e: any) => ({
@@ -192,9 +391,33 @@ function EntrenoSubtab({
                 restSeconds: e.rest_seconds,
                 notes: e.notes,
             })))
+            setProgramSummaryDetail({
+                days: (days || []).map((day: any) => ({ id: day.id, name: day.name || 'Día' })),
+                exercises: (exerciseSummary || []).map((exercise: any) => ({
+                    id: exercise.id,
+                    day_id: exercise.day_id,
+                    muscle_group: exercise.muscle_group,
+                    sets: exercise.sets,
+                })),
+                columns: (columns || []).map((column: any) => ({
+                    id: column.id,
+                    key: column.key,
+                    label: column.label,
+                })),
+                cells: (cells || []).map((cell: any) => ({
+                    exercise_id: cell.exercise_id,
+                    column_id: cell.column_id,
+                    week_index: cell.week_index,
+                    value: cell.value,
+                })),
+            })
+            setSummaryWeek(getDerivedProgramWeek(activeProgram.effective_from, activeProgram.total_weeks))
         })
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeProgram?.id])
+
+    const clampedSummaryWeek = Math.min(Math.max(summaryWeek, 1), Math.max(activeProgram?.total_weeks || 1, 1))
+    const muscleVolumeMetrics = buildMuscleVolumeMetrics(programSummaryDetail, clampedSummaryWeek)
 
     function handleAIConfirm(structure: StrengthStructure, name: string, weeks: number) {
         setPendingAIStructure({ ...structure, weeks })
@@ -335,6 +558,13 @@ function EntrenoSubtab({
                                 </DropdownMenu>
                             </div>
                         </div>
+
+                        <MuscleVolumeSummary
+                            totalWeeks={activeProgram.total_weeks}
+                            activeWeek={clampedSummaryWeek}
+                            onWeekChange={setSummaryWeek}
+                            metrics={muscleVolumeMetrics}
+                        />
 
                         <Button
                             variant="outline"
