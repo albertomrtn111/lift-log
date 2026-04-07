@@ -122,13 +122,13 @@ export function CoachSidebar() {
                 <div className="flex flex-col h-full">
                     {/* Logo */}
                     <div className="flex items-center gap-3 border-b border-border p-4">
-                        <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 flex items-center justify-center shrink-0 overflow-hidden rounded-lg">
                             <Image
                                 src="/Logo_nexttrain.png"
                                 alt="NexTrain"
                                 width={40}
                                 height={40}
-                                className="object-contain"
+                                className="rounded-lg object-contain"
                                 priority
                             />
                         </div>

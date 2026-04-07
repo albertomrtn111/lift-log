@@ -48,13 +48,13 @@ export default function LoginPage() {
     return (
         <Card className="w-full max-w-md p-8">
             <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 flex items-center justify-center mb-4">
+                <div className="w-16 h-16 flex items-center justify-center mb-4 overflow-hidden rounded-lg">
                     <Image
                         src="/Logo_nexttrain.png"
                         alt="NexTrain"
                         width={64}
                         height={64}
-                        className="object-contain"
+                        className="rounded-lg object-contain"
                         priority
                     />
                 </div>

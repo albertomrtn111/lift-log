@@ -29,8 +29,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 lg:px-8 py-6">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
-                            <Calendar className="h-5 w-5 text-success" />
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <Calendar className="h-5 w-5 text-primary" />
                         </div>
                         <div>
                             <h1 className="text-xl font-bold">Calendario</h1>
