@@ -19,26 +19,21 @@ import {
     FileText,
     Filter,
     Loader2,
-    Plus,
     Scale,
     Sparkles,
-    Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
     CalendarData,
     CalendarEvent,
     CalendarEventStatus,
-    CalendarNote,
-    CalendarNoteKind,
     CalendarTask,
     CalendarTaskPriority,
 } from '@/types/coach'
 import {
     completeCoachTaskAction,
-    createCalendarNoteAction,
     createCoachTaskAction,
-    deleteCalendarNoteAction,
+    snoozeCoachTaskAction,
 } from '@/components/coach/calendar-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -92,7 +87,7 @@ const STATUS_LABELS: Record<CalendarEventStatus, string> = {
     completed: 'Completado',
     pending_review: 'Review pendiente',
     scheduled: 'Programado',
-    missing: 'No recibido',
+    missing: 'No recibido real',
 }
 
 const STATUS_BADGE_VARIANTS: Record<CalendarEventStatus, string> = {
@@ -109,24 +104,11 @@ const STATUS_DOT_COLORS: Record<CalendarEventStatus, string> = {
     missing: 'bg-red-500',
 }
 
-const NOTE_KIND_LABELS: Record<CalendarNoteKind, string> = {
-    note: 'Nota',
-    reminder: 'Recordatorio',
-    alert: 'Aviso',
-}
-
-const NOTE_KIND_STYLES: Record<CalendarNoteKind, string> = {
-    note: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20',
-    reminder: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20',
-    alert: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20',
-}
-
 const TASK_PRIORITY_STYLES: Record<CalendarTaskPriority, string> = {
     normal: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
     high: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20',
 }
 
-const GENERAL_NOTE_VALUE = '__general__'
 const GENERAL_TASK_VALUE = '__general_task__'
 
 function toDateAtNoon(dateStr: string) {
@@ -196,12 +178,6 @@ function getCompactEventLine(event: CalendarEvent) {
     return STATUS_LABELS[event.status]
 }
 
-function NoteKindIcon({ kind }: { kind: CalendarNoteKind }) {
-    if (kind === 'reminder') return <Bell className="h-3.5 w-3.5" />
-    if (kind === 'alert') return <AlertCircle className="h-3.5 w-3.5" />
-    return <FileText className="h-3.5 w-3.5" />
-}
-
 function StatusIcon({ status }: { status: CalendarEventStatus }) {
     switch (status) {
         case 'completed':
@@ -259,9 +235,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
     const [year, setYear] = useState(initialYear)
     const [month, setMonth] = useState(initialMonth)
     const [events, setEvents] = useState<CalendarEvent[]>(sortEvents(initialData.events))
-    const [notes, setNotes] = useState<CalendarNote[]>(initialData.notes)
     const [tasks, setTasks] = useState<CalendarTask[]>(initialData.tasks)
-    const [notesEnabled, setNotesEnabled] = useState(initialData.notesEnabled)
     const [tasksEnabled, setTasksEnabled] = useState(initialData.tasksEnabled)
     const [clientOptions, setClientOptions] = useState(initialData.clientOptions)
     const [loading, setLoading] = useState(false)
@@ -269,9 +243,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
     const [selectedDate, setSelectedDate] = useState<string | null>(null)
     const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
     const [activeFilter, setActiveFilter] = useState<CalendarFilter>('all')
-    const [noteKind, setNoteKind] = useState<CalendarNoteKind>('note')
-    const [noteContent, setNoteContent] = useState('')
-    const [noteClientId, setNoteClientId] = useState(GENERAL_NOTE_VALUE)
     const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
     const [taskDate, setTaskDate] = useState(() => formatDateKey(new Date()))
     const [taskTitle, setTaskTitle] = useState('')
@@ -279,11 +250,12 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
     const [taskPriority, setTaskPriority] = useState<CalendarTaskPriority>('normal')
     const [taskClientId, setTaskClientId] = useState(GENERAL_TASK_VALUE)
     const [completingTaskId, setCompletingTaskId] = useState<string | null>(null)
-    const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null)
-    const [isSavingNote, startSavingNote] = useTransition()
+    const [snoozeDialogOpen, setSnoozeDialogOpen] = useState(false)
+    const [snoozeTargetTaskId, setSnoozeTargetTaskId] = useState<string | null>(null)
+    const [snoozeDate, setSnoozeDate] = useState('')
     const [isSavingTask, startSavingTask] = useTransition()
     const [isCompletingTask, startCompletingTask] = useTransition()
-    const [isDeletingNote, startDeletingNote] = useTransition()
+    const [isSnoozingTask, startSnoozingTask] = useTransition()
 
     const now = new Date()
     const todayStr = formatDateKey(now)
@@ -328,13 +300,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         }, {})
     }, [tasks])
 
-    const notesByDate = useMemo(() => {
-        return notes.reduce<Record<string, CalendarNote[]>>((grouped, note) => {
-            grouped[note.date] = grouped[note.date] ? [...grouped[note.date], note] : [note]
-            return grouped
-        }, {})
-    }, [notes])
-
     const filteredEvents = useMemo(() => {
         if (activeFilter === 'all') return events
         return events.filter((event) => event.status === activeFilter)
@@ -365,19 +330,8 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         })
     }, [events])
 
-    const selectedDateEvents = selectedDate ? (allEventsByDate[selectedDate] || []) : []
-    const selectedDateNotes = selectedDate ? (notesByDate[selectedDate] || []) : []
+    const selectedDateEvents = selectedDate ? (filteredEventsByDate[selectedDate] || []) : []
     const selectedDateTasks = selectedDate ? (tasksByDate[selectedDate] || []) : []
-    const selectedDateClientOptions = selectedDateEvents.map((event) => ({
-        id: event.clientId,
-        name: event.clientName,
-    })).filter((option, index, array) => array.findIndex((candidate) => candidate.id === option.id) === index)
-
-    useEffect(() => {
-        setNoteKind('note')
-        setNoteContent('')
-        setNoteClientId(GENERAL_NOTE_VALUE)
-    }, [selectedDate])
 
     useEffect(() => {
         if (!selectedDate) return
@@ -387,9 +341,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
 
     const applyData = useCallback((data: CalendarData) => {
         setEvents(sortEvents(data.events || []))
-        setNotes(data.notes || [])
         setTasks(data.tasks || [])
-        setNotesEnabled(Boolean(data.notesEnabled))
         setTasksEnabled(Boolean(data.tasksEnabled))
         setClientOptions(data.clientOptions || [])
     }, [])
@@ -491,35 +443,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         void loadMonth(year, month)
     }
 
-    const createNote = () => {
-        if (!selectedDate) return
-
-        startSavingNote(async () => {
-            const result = await createCalendarNoteAction({
-                coachId,
-                date: selectedDate,
-                kind: noteKind,
-                content: noteContent,
-                clientId: noteClientId === GENERAL_NOTE_VALUE ? null : noteClientId,
-            })
-
-            if (!result.success || !result.note) {
-                toast.error(result.error || 'No se pudo guardar la nota.')
-                return
-            }
-
-            setNotes((current) => [...current, result.note!].sort((left, right) => {
-                const dateDiff = left.date.localeCompare(right.date)
-                if (dateDiff !== 0) return dateDiff
-                return left.createdAt.localeCompare(right.createdAt)
-            }))
-            setNoteContent('')
-            setNoteKind('note')
-            setNoteClientId(GENERAL_NOTE_VALUE)
-            toast.success('Nota guardada en el calendario.')
-        })
-    }
-
     const resetTaskForm = useCallback(() => {
         setTaskDate(selectedDate || todayStr)
         setTaskTitle('')
@@ -589,25 +512,33 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         })
     }
 
-    const deleteNote = (noteId: string) => {
-        setDeletingNoteId(noteId)
-        startDeletingNote(async () => {
-            const result = await deleteCalendarNoteAction(noteId, coachId)
+    const openSnoozeDialog = (taskId: string) => {
+        const tomorrow = new Date()
+        tomorrow.setDate(tomorrow.getDate() + 1)
+        setSnoozeDate(formatDateKey(tomorrow))
+        setSnoozeTargetTaskId(taskId)
+        setSnoozeDialogOpen(true)
+    }
+
+    const snoozeTask = () => {
+        if (!snoozeTargetTaskId || !snoozeDate) return
+
+        startSnoozingTask(async () => {
+            const result = await snoozeCoachTaskAction(snoozeTargetTaskId, coachId, snoozeDate)
             if (!result.success) {
-                toast.error(result.error || 'No se pudo eliminar la nota.')
-                setDeletingNoteId(null)
+                toast.error(result.error || 'No se pudo aplazar la tarea.')
                 return
             }
 
-            setNotes((current) => current.filter((note) => note.id !== noteId))
-            setDeletingNoteId(null)
-            toast.success('Nota eliminada.')
+            setTasks((current) => current.map((task) =>
+                task.id === snoozeTargetTaskId
+                    ? { ...task, date: snoozeDate, updatedAt: new Date().toISOString() }
+                    : task
+            ))
+            setSnoozeDialogOpen(false)
+            setSnoozeTargetTaskId(null)
+            toast.success('Tarea aplazada al ' + snoozeDate + '.')
         })
-    }
-
-    const prefillNoteForClient = (event: CalendarEvent) => {
-        setSelectedDate(event.date)
-        setNoteClientId(event.clientId)
     }
 
     const prefillTaskForClient = (event: CalendarEvent) => {
@@ -617,7 +548,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         setIsTaskDialogOpen(true)
     }
 
-    const receivedCount = countsByStatus.completed + countsByStatus.pending_review
+    const receivedCount = events.filter((event) => event.source === 'submitted').length
     const panelActionCount = selectedDateEvents.filter((event) => event.status === 'missing' || event.status === 'pending_review').length
     const panelCompletedCount = selectedDateEvents.filter((event) => event.status === 'completed').length
 
@@ -791,11 +722,12 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
 
                             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
                             const dayEvents = filteredEventsByDate[dateStr] || []
-                            const allDayEvents = allEventsByDate[dateStr] || []
-                            const dayNotes = notesByDate[dateStr] || []
                             const dayTasks = tasksByDate[dateStr] || []
-                            const hasUrgent = allDayEvents.some((event) => event.status === 'missing' || event.status === 'pending_review')
+                            const hasUrgent = dayEvents.some((event) => event.status === 'missing' || event.status === 'pending_review')
                             const isToday = dateStr === todayStr
+                            const visibleDayEvents = dayEvents.slice(0, 2)
+                            const visibleDayTasks = dayTasks.slice(0, Math.max(0, 3 - visibleDayEvents.length))
+                            const hiddenDayItems = (dayEvents.length + dayTasks.length) - (visibleDayEvents.length + visibleDayTasks.length)
 
                             return (
                                 <button
@@ -819,17 +751,11 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                     {dayTasks.length}
                                                 </span>
                                             )}
-                                            {dayNotes.length > 0 && (
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                                                    <FileText className="h-3 w-3" />
-                                                    {dayNotes.length}
-                                                </span>
-                                            )}
                                         </div>
                                     </div>
 
                                     <div className="mt-2 space-y-1">
-                                        {dayEvents.slice(0, 2).map((event) => (
+                                        {visibleDayEvents.map((event) => (
                                             <div
                                                 key={event.id}
                                                 className={cn(
@@ -847,7 +773,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                             </div>
                                         ))}
 
-                                        {dayTasks.slice(0, Math.max(0, 3 - Math.min(dayEvents.length, 2))).map((task) => (
+                                        {visibleDayTasks.map((task) => (
                                             <div
                                                 key={task.id}
                                                 className={cn(
@@ -869,19 +795,13 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                             </div>
                                         ))}
 
-                                        {(dayEvents.length + dayTasks.length) > 3 && (
+                                        {hiddenDayItems > 0 && (
                                             <span className="block text-[11px] text-muted-foreground">
-                                                +{dayEvents.length + dayTasks.length - 3} más
+                                                +{hiddenDayItems} más
                                             </span>
                                         )}
 
-                                        {dayEvents.length === 0 && dayTasks.length === 0 && dayNotes.length > 0 && (
-                                            <span className="block text-[11px] text-muted-foreground">
-                                                {dayNotes.length} nota{dayNotes.length !== 1 ? 's' : ''} guardada{dayNotes.length !== 1 ? 's' : ''}
-                                            </span>
-                                        )}
-
-                                        {dayEvents.length === 0 && dayTasks.length === 0 && dayNotes.length === 0 && (
+                                        {dayEvents.length === 0 && dayTasks.length === 0 && (
                                             <span className="block text-[11px] text-muted-foreground/60">
                                                 Libre
                                             </span>
@@ -898,11 +818,9 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                 <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-7">
                     {weekDays.map(({ date, dateStr }) => {
                         const dayEvents = filteredEventsByDate[dateStr] || []
-                        const allDayEvents = allEventsByDate[dateStr] || []
-                        const dayNotes = notesByDate[dateStr] || []
                         const dayTasks = tasksByDate[dateStr] || []
                         const isToday = dateStr === todayStr
-                        const urgentCount = allDayEvents.filter((event) => event.status === 'missing' || event.status === 'pending_review').length
+                        const urgentCount = dayEvents.filter((event) => event.status === 'missing' || event.status === 'pending_review').length
 
                         return (
                             <Card
@@ -931,11 +849,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                     {urgentCount} acción
                                                 </Badge>
                                             )}
-                                            {dayNotes.length > 0 && (
-                                                <Badge variant="outline" className="bg-muted/70">
-                                                    {dayNotes.length} nota{dayNotes.length !== 1 ? 's' : ''}
-                                                </Badge>
-                                            )}
                                             {dayTasks.length > 0 && (
                                                 <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
                                                     {dayTasks.length} tarea{dayTasks.length !== 1 ? 's' : ''}
@@ -944,12 +857,10 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                         </div>
                                     </div>
                                     <p className="mt-2 text-xs text-muted-foreground">
-                                        {allDayEvents.length > 0
-                                            ? `${allDayEvents.length} item${allDayEvents.length !== 1 ? 's' : ''} en el día`
+                                        {dayEvents.length > 0
+                                            ? `${dayEvents.length} item${dayEvents.length !== 1 ? 's' : ''} en el día`
                                             : dayTasks.length > 0
                                                 ? `${dayTasks.length} tarea${dayTasks.length !== 1 ? 's' : ''} operativa${dayTasks.length !== 1 ? 's' : ''}`
-                                                : dayNotes.length > 0
-                                                ? 'Día sin check-ins, con contexto guardado'
                                                 : 'Sin carga planificada'}
                                     </p>
                                 </div>
@@ -1054,15 +965,9 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                             </div>
                                         ))}
 
-                                        {dayEvents.length === 0 && dayTasks.length === 0 && dayNotes.length === 0 && (
+                                        {dayEvents.length === 0 && dayTasks.length === 0 && (
                                             <div className="rounded-lg border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
                                                 Libre. Sin check-ins ni incidencias reales.
-                                            </div>
-                                        )}
-
-                                        {dayEvents.length === 0 && dayTasks.length === 0 && dayNotes.length > 0 && (
-                                            <div className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-                                                Día sin check-ins. Hay notas guardadas para contexto.
                                             </div>
                                         )}
                                     </div>
@@ -1105,7 +1010,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
 
                             <div className="flex flex-wrap gap-2">
                                 <Badge variant="secondary">
-                                    {selectedDateEvents.length + selectedDateTasks.length + selectedDateNotes.length} item{selectedDateEvents.length + selectedDateTasks.length + selectedDateNotes.length !== 1 ? 's' : ''} del día
+                                    {selectedDateEvents.length + selectedDateTasks.length} item{selectedDateEvents.length + selectedDateTasks.length !== 1 ? 's' : ''} del día
                                 </Badge>
                                 {panelActionCount > 0 && (
                                     <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
@@ -1115,11 +1020,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                 {panelCompletedCount > 0 && (
                                     <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
                                         {panelCompletedCount} completado{panelCompletedCount !== 1 ? 's' : ''}
-                                    </Badge>
-                                )}
-                                {selectedDateNotes.length > 0 && (
-                                    <Badge variant="outline" className="bg-muted/70">
-                                        {selectedDateNotes.length} nota{selectedDateNotes.length !== 1 ? 's' : ''}
                                     </Badge>
                                 )}
                                 {selectedDateTasks.length > 0 && (
@@ -1147,11 +1047,6 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                     tone="success"
                                 />
                                 <SummaryCard
-                                    label="Notas"
-                                    value={selectedDateNotes.length}
-                                    helper="Contexto añadido por el coach."
-                                />
-                                <SummaryCard
                                     label="Tareas"
                                     value={selectedDateTasks.filter((task) => task.status === 'pending').length}
                                     helper="Recordatorios pendientes del coach."
@@ -1173,11 +1068,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                     </Button>
                                 </div>
 
-                                {!tasksEnabled ? (
-                                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                        Las tareas aún no están disponibles en este entorno.
-                                    </div>
-                                ) : selectedDateTasks.length > 0 ? (
+                                {selectedDateTasks.length > 0 ? (
                                     <div className="space-y-3">
                                         {selectedDateTasks.map((task) => (
                                             <div key={task.id} className="rounded-xl border p-4">
@@ -1212,157 +1103,34 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                     </div>
 
                                                     {task.status === 'pending' && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => completeTask(task.id)}
-                                                            disabled={isCompletingTask}
-                                                        >
-                                                            {isCompletingTask && completingTaskId === task.id ? (
-                                                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <Check className="mr-1 h-4 w-4" />
-                                                            )}
-                                                            Completar
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                        Sin tareas todavía para este día.
-                                    </div>
-                                )}
-                            </section>
-
-                            <Separator />
-
-                            <section className="space-y-4">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <h3 className="font-semibold">Notas y avisos</h3>
-                                        <p className="text-sm text-muted-foreground">
-                                            Guarda contexto general del día o una observación vinculada a un cliente.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {!notesEnabled ? (
-                                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                        Las notas no están disponibles todavía en este entorno. La vista del calendario sigue funcionando con normalidad.
-                                    </div>
-                                ) : (
-                                    <div className="rounded-xl border bg-muted/20 p-4">
-                                        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                                            <div className="space-y-2">
-                                                <Label>Observación</Label>
-                                                <Textarea
-                                                    value={noteContent}
-                                                    onChange={(event) => setNoteContent(event.target.value)}
-                                                    placeholder="Ej. Priorizar nuevos, revisar adherencia o comentar una incidencia."
-                                                    className="min-h-[96px] bg-background"
-                                                />
-                                            </div>
-
-                                            <div className="space-y-4 sm:w-[220px]">
-                                                <div className="space-y-2">
-                                                    <Label>Tipo</Label>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {(['note', 'reminder', 'alert'] as CalendarNoteKind[]).map((kind) => (
-                                                            <button
-                                                                key={kind}
-                                                                onClick={() => setNoteKind(kind)}
-                                                                className={cn(
-                                                                    'inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-colors',
-                                                                    noteKind === kind
-                                                                        ? NOTE_KIND_STYLES[kind]
-                                                                        : 'border-border bg-background text-muted-foreground'
-                                                                )}
+                                                        <div className="flex shrink-0 gap-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => openSnoozeDialog(task.id)}
+                                                                disabled={isCompletingTask || isSnoozingTask}
                                                             >
-                                                                <NoteKindIcon kind={kind} />
-                                                                {NOTE_KIND_LABELS[kind]}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label>Cliente</Label>
-                                                    <Select value={noteClientId} onValueChange={setNoteClientId}>
-                                                        <SelectTrigger className="bg-background">
-                                                            <SelectValue placeholder="Nota general del día" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value={GENERAL_NOTE_VALUE}>General del día</SelectItem>
-                                                            {selectedDateClientOptions.map((option) => (
-                                                                <SelectItem key={option.id} value={option.id}>
-                                                                    {option.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-
-                                                <Button
-                                                    onClick={createNote}
-                                                    disabled={isSavingNote || !noteContent.trim() || !selectedDate}
-                                                    className="w-full"
-                                                >
-                                                    {isSavingNote ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <Plus className="h-4 w-4" />
-                                                    )}
-                                                    Añadir nota
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {selectedDateNotes.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {selectedDateNotes.map((note) => (
-                                            <div key={note.id} className="rounded-xl border p-4">
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <Badge variant="outline" className={cn('text-xs', NOTE_KIND_STYLES[note.kind])}>
-                                                                <span className="inline-flex items-center gap-1">
-                                                                    <NoteKindIcon kind={note.kind} />
-                                                                    {NOTE_KIND_LABELS[note.kind]}
-                                                                </span>
-                                                            </Badge>
-                                                            {note.clientName && (
-                                                                <Badge variant="secondary" className="text-xs">
-                                                                    {note.clientName}
-                                                                </Badge>
-                                                            )}
+                                                                {isSnoozingTask && snoozeTargetTaskId === task.id ? (
+                                                                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Clock className="mr-1 h-4 w-4" />
+                                                                )}
+                                                                Aplazar
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => completeTask(task.id)}
+                                                                disabled={isCompletingTask || isSnoozingTask}
+                                                            >
+                                                                {isCompletingTask && completingTaskId === task.id ? (
+                                                                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Check className="mr-1 h-4 w-4" />
+                                                                )}
+                                                                Completar
+                                                            </Button>
                                                         </div>
-                                                        <p className="mt-3 whitespace-pre-wrap text-sm text-foreground">
-                                                            {note.content}
-                                                        </p>
-                                                        <p className="mt-2 text-xs text-muted-foreground">
-                                                            Actualizada el {format(new Date(note.updatedAt), "d MMM, HH:mm", { locale: es })}
-                                                        </p>
-                                                    </div>
-
-                                                    {notesEnabled && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => deleteNote(note.id)}
-                                                            disabled={isDeletingNote && deletingNoteId === note.id}
-                                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                                        >
-                                                            {isDeletingNote && deletingNoteId === note.id ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <Trash2 className="h-4 w-4" />
-                                                            )}
-                                                        </Button>
                                                     )}
                                                 </div>
                                             </div>
@@ -1370,7 +1138,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                     </div>
                                 ) : (
                                     <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                        Sin notas todavía para este día.
+                                        Sin tareas para este día.
                                     </div>
                                 )}
                             </section>
@@ -1457,24 +1225,13 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                             <ArrowUpRight className="h-4 w-4" />
                                                         </Link>
                                                     </Button>
-                                                    {notesEnabled && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => prefillNoteForClient(event)}
-                                                        >
-                                                            Añadir nota
-                                                        </Button>
-                                                    )}
-                                                    {tasksEnabled && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => prefillTaskForClient(event)}
-                                                        >
-                                                            Crear tarea
-                                                        </Button>
-                                                    )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => prefillTaskForClient(event)}
+                                                    >
+                                                        Crear tarea
+                                                    </Button>
                                                 </div>
                                             </div>
                                         ))}
@@ -1495,83 +1252,109 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                         </DialogDescription>
                     </DialogHeader>
 
-                    {!tasksEnabled ? (
-                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                            Las tareas aún no están disponibles en este entorno.
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="task-title">Título</Label>
+                            <Input
+                                id="task-title"
+                                value={taskTitle}
+                                onChange={(event) => setTaskTitle(event.target.value)}
+                                placeholder="Ej. Llamar a Carlos"
+                            />
                         </div>
-                    ) : (
-                        <div className="space-y-4">
+
+                        <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="task-title">Título</Label>
+                                <Label htmlFor="task-date">Fecha</Label>
                                 <Input
-                                    id="task-title"
-                                    value={taskTitle}
-                                    onChange={(event) => setTaskTitle(event.target.value)}
-                                    placeholder="Ej. Llamar a Carlos"
+                                    id="task-date"
+                                    type="date"
+                                    value={taskDate}
+                                    onChange={(event) => setTaskDate(event.target.value)}
                                 />
                             </div>
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="task-date">Fecha</Label>
-                                    <Input
-                                        id="task-date"
-                                        type="date"
-                                        value={taskDate}
-                                        onChange={(event) => setTaskDate(event.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Prioridad</Label>
-                                    <Select value={taskPriority} onValueChange={(value) => setTaskPriority(value as CalendarTaskPriority)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="normal">Normal</SelectItem>
-                                            <SelectItem value="high">Alta</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
                             <div className="space-y-2">
-                                <Label>Cliente asociado</Label>
-                                <Select value={taskClientId} onValueChange={setTaskClientId}>
+                                <Label>Prioridad</Label>
+                                <Select value={taskPriority} onValueChange={(value) => setTaskPriority(value as CalendarTaskPriority)}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Sin cliente asociado" />
+                                        <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value={GENERAL_TASK_VALUE}>General del coach</SelectItem>
-                                        {clientOptions.map((option) => (
-                                            <SelectItem key={option.id} value={option.id}>
-                                                {option.name}
-                                            </SelectItem>
-                                        ))}
+                                        <SelectItem value="normal">Normal</SelectItem>
+                                        <SelectItem value="high">Alta</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="task-description">Descripción opcional</Label>
-                                <Textarea
-                                    id="task-description"
-                                    value={taskDescription}
-                                    onChange={(event) => setTaskDescription(event.target.value)}
-                                    placeholder="Ej. Preguntar por la molestia de rodilla y revisar si hace falta ajustar la sesión."
-                                    className="min-h-[96px]"
-                                />
-                            </div>
                         </div>
-                    )}
+
+                        <div className="space-y-2">
+                            <Label>Cliente asociado</Label>
+                            <Select value={taskClientId} onValueChange={setTaskClientId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Sin cliente asociado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={GENERAL_TASK_VALUE}>General del coach</SelectItem>
+                                    {clientOptions.map((option) => (
+                                        <SelectItem key={option.id} value={option.id}>
+                                            {option.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="task-description">Descripción opcional</Label>
+                            <Textarea
+                                id="task-description"
+                                value={taskDescription}
+                                onChange={(event) => setTaskDescription(event.target.value)}
+                                placeholder="Ej. Preguntar por la molestia de rodilla y revisar si hace falta ajustar la sesión."
+                                className="min-h-[96px]"
+                            />
+                        </div>
+                    </div>
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsTaskDialogOpen(false)} disabled={isSavingTask}>
                             Cancelar
                         </Button>
-                        <Button onClick={createTask} disabled={isSavingTask || !taskTitle.trim() || !taskDate || !tasksEnabled}>
+                        <Button onClick={createTask} disabled={isSavingTask || !taskTitle.trim() || !taskDate}>
                             {isSavingTask ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
                             Guardar tarea
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={snoozeDialogOpen} onOpenChange={(open) => { if (!open) setSnoozeDialogOpen(false) }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Aplazar tarea</DialogTitle>
+                        <DialogDescription>
+                            Elige una nueva fecha para esta tarea. Desaparecerá del día actual y aparecerá en el nuevo día seleccionado.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="snooze-date">Nueva fecha</Label>
+                        <Input
+                            id="snooze-date"
+                            type="date"
+                            value={snoozeDate}
+                            onChange={(event) => setSnoozeDate(event.target.value)}
+                            min={formatDateKey(new Date())}
+                        />
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setSnoozeDialogOpen(false)} disabled={isSnoozingTask}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={snoozeTask} disabled={isSnoozingTask || !snoozeDate}>
+                            {isSnoozingTask ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
+                            Aplazar al {snoozeDate ? format(new Date(snoozeDate + 'T12:00:00'), "d MMM", { locale: es }) : '...'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -237,6 +237,7 @@ export function TrainingProgramWizard({
      * Writes days + exercises directly to DB using explicit IDs.
      * Used by the AI flow where we have the real programId immediately —
      * avoids the React state closure issue with currentProgramId.
+     * Throws on any DB error so the caller can block progression.
      */
     async function applyStructureToDB(
         programId: string,
@@ -257,6 +258,8 @@ export function TrainingProgramWizard({
                     id: crypto.randomUUID(),
                     day_id: newDayId,
                     exercise_name: ex.exercise_name || '',
+                    // Double-normalize: already normalized in proposalToStrengthStructure,
+                    // but guard here too in case structure comes from another source.
                     muscle_group: normalizeMuscleGroup(ex.muscle_group),
                     order_index: ex.order ?? eIdx + 1,
                     sets: ex.sets ?? 3,
@@ -286,7 +289,7 @@ export function TrainingProgramWizard({
         )
         if (daysError) {
             toast({ title: 'Error al cargar días de la IA', description: daysError.message, variant: 'destructive' })
-            return
+            throw new Error(daysError.message)
         }
 
         // Insert exercises
@@ -309,7 +312,7 @@ export function TrainingProgramWizard({
             )
             if (exError) {
                 toast({ title: 'Error al cargar ejercicios de la IA', description: exError.message, variant: 'destructive' })
-                return
+                throw new Error(exError.message)
             }
         }
 
@@ -488,9 +491,18 @@ export function TrainingProgramWizard({
                             onCreated={async (newId) => {
                                 setCurrentProgramId(newId)
 
-                                // Auto-import AI structure BEFORE loadAllData so Step 2 shows the exercises
+                                // Auto-import AI structure BEFORE loadAllData so Step 2 shows the exercises.
+                                // If applyStructureToDB throws, loadAllData still runs (program exists)
+                                // but the step stays on 1 — user sees the error toast and can retry.
                                 if (pendingAIStructure) {
-                                    await applyStructureToDB(newId, coachId ?? '', pendingAIStructure)
+                                    try {
+                                        await applyStructureToDB(newId, coachId ?? '', pendingAIStructure)
+                                    } catch {
+                                        // Error already shown via toast inside applyStructureToDB.
+                                        // Load the (empty) program so the wizard is usable.
+                                        await loadAllData(newId)
+                                        return
+                                    }
                                 }
 
                                 await loadAllData(newId)

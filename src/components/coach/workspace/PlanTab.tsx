@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { TrainingProgram } from '@/data/workspace'
 import { TrainingProgramsHistory } from './plan/TrainingProgramsHistory'
 import {
@@ -500,12 +501,9 @@ function EntrenoSubtab({
                             }
                             onConfirm={handleAIConfirm}
                             trigger={
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors font-medium"
-                                >
-                                    ✦ Generar con IA
-                                </button>
+                                <AIActionButton size="sm">
+                                    Generar con IA
+                                </AIActionButton>
                             }
                         />
                         <Button

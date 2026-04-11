@@ -4,6 +4,7 @@ import { callGemini } from '@/lib/ai/gemini'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
+import { getAthleteAIProfile } from '@/data/athlete-ai-profile'
 import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
 
 // ============================================================================
@@ -29,7 +30,9 @@ const MacroPlanContextSchema = z.object({
 }).nullable()
 
 const RequestSchema = z.object({
+    clientId: z.string().uuid(),
     type: z.enum(['macros', 'options_diet']),
+    mode: z.enum(['generate', 'modify']),
     objective: z.string().min(2).max(200),
     prompt: z.string().min(5).max(800),
     context: z.object({
@@ -45,6 +48,7 @@ const RequestSchema = z.object({
 
 const AIMacrosProposalSchema = z.object({
     type: z.literal('macros'),
+    mode: z.enum(['generate', 'modify']),
     kcal: z.number().int().min(800).max(8000),
     protein_g: z.number().int().min(50).max(600),
     carbs_g: z.number().int().min(0).max(1000),
@@ -52,6 +56,7 @@ const AIMacrosProposalSchema = z.object({
     steps: z.number().int().min(0).max(50000).nullable().optional(),
     notes: z.string().default(''),
     explanation: z.string().min(1),
+    change_summary: z.array(z.string().min(1)).max(6).default([]),
 })
 
 const DietItemSchema = z.object({
@@ -79,9 +84,12 @@ const DietMealSchema = z.object({
 
 const AIDietProposalSchema = z.object({
     type: z.literal('options_diet'),
+    mode: z.enum(['generate', 'modify']),
     name: z.string().min(1),
     meals: z.array(DietMealSchema).min(1),
     explanation: z.string().min(1),
+    change_summary: z.array(z.string().min(1)).max(8).default([]),
+    structure_strategy: z.enum(['maintain', 'adjust', 'rebuild']),
 })
 
 // ============================================================================
@@ -127,19 +135,55 @@ function buildCurrentMacrosSummary(plan: z.infer<typeof MacroPlanContextSchema>)
     ].filter(Boolean).join('\n')
 }
 
+function buildAthleteNutritionContext(
+    athleteProfile: Awaited<ReturnType<typeof getAthleteAIProfile>>
+): string {
+    if (!athleteProfile) {
+        return 'Sin perfil del atleta generado. Usa solo el contexto de peso, macros, dieta y prompt del entrenador.'
+    }
+
+    const generated = athleteProfile.generated_profile_json
+    const answers = athleteProfile.answers_json
+
+    return [
+        `Perfil del atleta disponible (${athleteProfile.profile_status}):`,
+        generated?.athlete_summary ? `- Resumen: ${generated.athlete_summary}` : '',
+        generated?.goals_and_calendar ? `- Objetivos y calendario: ${generated.goals_and_calendar}` : '',
+        generated?.nutrition_and_body_context ? `- Nutrición y composición: ${generated.nutrition_and_body_context}` : '',
+        answers.bodyCompositionGoal ? `- Objetivo corporal: ${answers.bodyCompositionGoal}` : '',
+        answers.nutritionContext ? `- Contexto nutricional adicional: ${answers.nutritionContext}` : '',
+        answers.recoveryContext ? `- Recuperación: ${answers.recoveryContext}` : '',
+    ].filter(Boolean).join('\n')
+}
+
 // ============================================================================
 // Prompt builders
 // ============================================================================
 
 function buildMacrosPrompt(
+    mode: 'generate' | 'modify',
     objective: string,
     userPrompt: string,
     weightSummary: string,
     currentMacros: string,
+    athleteContext: string,
 ): string {
+    const modeInstruction = mode === 'modify'
+        ? `Estás en modo MODIFICAR. Existe una configuración actual y debes AJUSTARLA, no rehacerla desde cero salvo que el contexto lo obligue claramente.
+
+Prioridades:
+- Parte de los macros actuales como base
+- Haz cambios proporcionales y justificados
+- Si el entrenador pide un cambio pequeño, mantenlo pequeño
+- Explica qué cambias respecto a lo actual`
+        : `Estás en modo GENERAR. Debes proponer una nueva configuración de macros coherente con el contexto del atleta, aunque puedes usar el plan actual como referencia si existe.`
+
     return `Eres un nutricionista deportivo experto. Genera una propuesta de macros nutricionales para un atleta basándote en el contexto real y las indicaciones del entrenador.
 
 ## Contexto del atleta
+
+### Perfil del atleta
+${athleteContext}
 
 ### Evolución del peso
 ${weightSummary}
@@ -157,21 +201,26 @@ ${userPrompt}
 
 ## Tu tarea
 
+${modeInstruction}
+
 Genera una propuesta de macros ajustada al contexto y objetivo.
 
 Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
 {
   "type": "macros",
+  "mode": "${mode}",
   "kcal": 2200,
   "protein_g": 160,
   "carbs_g": 240,
   "fat_g": 70,
   "steps": 8000,
   "notes": "Notas breves para el atleta (opcional, puede ser vacío)",
-  "explanation": "Explicación clara de por qué propones estos valores y qué cambias respecto al plan actual. Máximo 3 frases."
+  "explanation": "Explicación clara de por qué propones estos valores y qué cambias respecto al plan actual. Máximo 3 frases.",
+  "change_summary": ["Bajo 150 kcal", "Mantengo proteína alta", "Recorto carbohidratos de forma moderada"]
 }
 
 Reglas:
+- "mode" debe ser "${mode}"
 - "kcal": entero entre 800 y 8000
 - "protein_g": entero, mínimo 50
 - "carbs_g": entero, mínimo 0
@@ -179,23 +228,39 @@ Reglas:
 - "steps": entero o null
 - "notes": string (puede ser vacío "")
 - "explanation": obligatorio, en español, referenciando la evolución del peso si es relevante
+- "change_summary": array breve de 2-5 cambios concretos. En modo modify debe comparar claramente con lo actual
 - Usa español para todos los textos`
 }
 
 function buildDietPrompt(
+    mode: 'generate' | 'modify',
     objective: string,
     userPrompt: string,
     weightSummary: string,
     currentMacros: string,
     currentDietText: string | null | undefined,
+    athleteContext: string,
 ): string {
     const dietContext = currentDietText
         ? `### Dieta por opciones actual\n${currentDietText}`
         : '### Dieta por opciones actual\nNo existe dieta por opciones configurada. Crea una desde cero.'
 
+    const modeInstruction = mode === 'modify'
+        ? `Estás en modo MODIFICAR. Debes ajustar la dieta actual usando su estructura como base siempre que tenga sentido.
+
+Prioridades:
+- Mantén la estructura actual si el entrenador no pide rehacerla
+- Aclara qué bloques/comidas mantienes y cuáles ajustas
+- Si haces cambios parciales, deben ser realmente parciales
+- Solo usa "rebuild" si el cambio necesita rehacer la dieta`
+        : `Estás en modo GENERAR. Debes crear una dieta por opciones coherente con el objetivo y el contexto del atleta.`
+
     return `Eres un nutricionista deportivo experto. Genera una dieta por opciones estructurada para un atleta basándote en el contexto real y las indicaciones del entrenador.
 
 ## Contexto del atleta
+
+### Perfil del atleta
+${athleteContext}
 
 ### Evolución del peso
 ${weightSummary}
@@ -215,12 +280,17 @@ ${userPrompt}
 
 ## Tu tarea
 
+${modeInstruction}
+
 Genera una dieta por opciones completa, estructurada en comidas del día.
 
 Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
 {
   "type": "options_diet",
+  "mode": "${mode}",
   "name": "Nombre descriptivo de la dieta",
+  "structure_strategy": "adjust",
+  "change_summary": ["Mantengo desayuno y cena", "Bajo cantidades en almuerzo y merienda", "Refuerzo alimentos saciantes"],
   "meals": [
     {
       "day_type": "default",
@@ -251,12 +321,15 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
 }
 
 Reglas estrictas:
+- "mode" debe ser "${mode}"
+- "structure_strategy" solo puede ser "maintain", "adjust" o "rebuild"
 - "day_type": solo puede ser "default", "training" o "rest". Usa "default" para el día estándar
 - Genera al menos 4-5 comidas principales (desayuno, media mañana, almuerzo, merienda, cena)
 - Cada comida debe tener al menos 2 opciones (Opción A y Opción B) para dar variedad
 - "item_type": usa "food" para alimentos concretos, "free_text" para reglas o explicaciones libres
 - "quantity_value": número (puede ser null si no aplica)
 - "quantity_unit": "g", "ml", "uds", "rbn" (rebanadas), "cdas" (cucharadas), etc.
+- "change_summary": array breve de 2-6 puntos. En modo modify debe dejar claro qué mantienes y qué cambias
 - Usa español para todos los textos
 - La dieta debe ser coherente con el objetivo nutricional indicado`
 }
@@ -325,14 +398,16 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const { type, objective, prompt, context } = input.data
+        const { clientId, type, mode, objective, prompt, context } = input.data
 
         const weightSummary = buildWeightSummary(context.weightHistory)
         const macrosSummary = buildCurrentMacrosSummary(context.activeMacroPlan ?? null)
+        const athleteProfile = coachId ? await getAthleteAIProfile(coachId, clientId) : null
+        const athleteContext = buildAthleteNutritionContext(athleteProfile)
 
         const taskPrompt = type === 'macros'
-            ? buildMacrosPrompt(objective, prompt, weightSummary, macrosSummary)
-            : buildDietPrompt(objective, prompt, weightSummary, macrosSummary, context.activeDietPlanText)
+            ? buildMacrosPrompt(mode, objective, prompt, weightSummary, macrosSummary, athleteContext)
+            : buildDietPrompt(mode, objective, prompt, weightSummary, macrosSummary, context.activeDietPlanText, athleteContext)
 
         const fullPrompt = coachContext + taskPrompt
 

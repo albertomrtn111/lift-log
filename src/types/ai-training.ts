@@ -1,5 +1,6 @@
 export interface AITrainingExerciseProposal {
     exercise_name: string
+    muscle_group: string
     sets: number
     reps: string
     rir: string

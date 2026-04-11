@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -49,6 +50,7 @@ import type { DayType, DietPlan, DietPlanWithStructure } from '@/data/nutrition/
 import { DietOptionsWizard } from './DietOptionsWizard'
 import { DietCsvImportWizard } from './DietCsvImportWizard'
 import { DietPlansHistory } from './DietPlansHistory'
+import { AINutritionDialog } from './AINutritionDialog'
 
 interface DietPlanPanelProps {
     coachId: string
@@ -162,6 +164,14 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-lg">Dieta por opciones</h3>
                     <div className="flex gap-2">
+                        <AINutritionDialog
+                            coachId={coachId}
+                            clientId={clientId}
+                            nutritionType="options_diet"
+                            trigger={
+                                <AIActionButton size="sm">IA Dieta</AIActionButton>
+                            }
+                        />
                         {activePlan && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

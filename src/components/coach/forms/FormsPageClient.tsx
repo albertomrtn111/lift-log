@@ -15,6 +15,7 @@ import {
 } from '@/data/form-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import {
@@ -217,13 +218,9 @@ export function FormsPageClient({ templates, activeClients }: FormsPageClientPro
                             defaultType={activeTab === 'general' ? 'onboarding' : activeTab}
                             onGenerated={handleGeneratedDraft}
                             trigger={
-                                <Button
-                                    variant="outline"
-                                    className="gap-2 shrink-0 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary"
-                                >
-                                    <Sparkles className="h-4 w-4" />
+                                <AIActionButton>
                                     Generar con IA
-                                </Button>
+                                </AIActionButton>
                             }
                         />
                         <Button onClick={handleCreate} className="gap-1.5 shrink-0">

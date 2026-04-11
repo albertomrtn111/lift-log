@@ -34,8 +34,15 @@ const RequestSchema = z.object({
 // Output Schema
 // ============================================================================
 
+const VALID_MUSCLE_GROUPS = [
+    'hombro', 'pecho', 'espalda', 'abdomen',
+    'cuádriceps', 'femorales', 'gemelos', 'tríceps',
+    'bíceps', 'glúteo', 'aductores', 'otros',
+] as const
+
 const AIExerciseSchema = z.object({
     exercise_name: z.string().min(1),
+    muscle_group: z.enum(VALID_MUSCLE_GROUPS).default('otros'),
     sets: z.number().int().min(1).max(10),
     reps: z.string().min(1),
     rir: z.string().default(''),
@@ -80,6 +87,7 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin bloques markdown):
       "exercises": [
         {
           "exercise_name": "Press Banca",
+          "muscle_group": "pecho",
           "sets": 4,
           "reps": "6-8",
           "rir": "2",
@@ -101,6 +109,7 @@ Reglas estrictas:
 - "rest_seconds": entero en segundos (45 a 300)
 - "notes": string, puede ser vacío ""
 - "changes": array vacío [] para generación nueva
+- "muscle_group": DEBE ser exactamente uno de: hombro, pecho, espalda, abdomen, cuádriceps, femorales, gemelos, tríceps, bíceps, glúteo, aductores, otros
 - Organiza ejercicios de mayor a menor demanda neuromuscular dentro de cada día
 - Incluye al menos 4 ejercicios por día
 - Usa español para todos los textos`
@@ -145,6 +154,7 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin bloques markdown):
       "exercises": [
         {
           "exercise_name": "Press Banca",
+          "muscle_group": "pecho",
           "sets": 4,
           "reps": "6-8",
           "rir": "2",
@@ -164,6 +174,7 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin bloques markdown):
 Reglas estrictas:
 - Devuelve el programa COMPLETO, no solo los cambios
 - "changes": lista de strings describiendo cada cambio realizado (qué cambió y por qué). Imprescindible para que el entrenador pueda revisar las diferencias.
+- "muscle_group": DEBE ser exactamente uno de: hombro, pecho, espalda, abdomen, cuádriceps, femorales, gemelos, tríceps, bíceps, glúteo, aductores, otros
 - Si no hay cambios en un día, inclúyelo igualmente sin modificaciones
 - Usa español para todos los textos`
 }

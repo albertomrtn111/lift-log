@@ -26,6 +26,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -199,16 +200,13 @@ export function PlanningAIWeeklyDialog({
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <Button
+                <AIActionButton
                     type="button"
-                    variant="outline"
                     size="sm"
                     disabled={disabled}
-                    className="gap-2"
                 >
-                    <Sparkles className="h-4 w-4 text-primary" />
                     Planificación con IA
-                </Button>
+                </AIActionButton>
             </DialogTrigger>
             <DialogContent className="flex w-[min(960px,calc(100vw-1.5rem))] max-h-[88vh] flex-col overflow-hidden p-0 sm:max-w-[860px]">
                 <div className="flex min-h-0 flex-1 flex-col">

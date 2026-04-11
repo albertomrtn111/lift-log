@@ -22,6 +22,7 @@ import {
     UserRound,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -692,10 +693,9 @@ export function AthleteProfileTab({
                         </div>
                     </div>
 
-                    <Button className="gap-2 shrink-0" onClick={startWizard}>
-                        <Sparkles className="h-4 w-4" />
+                    <AIActionButton onClick={startWizard}>
                         Configurar perfil del atleta
-                    </Button>
+                    </AIActionButton>
                 </div>
             </Card>
         )
@@ -1112,9 +1112,9 @@ export function AthleteProfileTab({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={startWizard}>
+                        <AIActionButton onClick={startWizard}>
                             Reconfigurar
-                        </Button>
+                        </AIActionButton>
                         <Button
                             variant="outline"
                             className="gap-2"

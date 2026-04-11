@@ -61,7 +61,7 @@ interface CalendarRangeInput {
     endDate: string
 }
 
-const IGNORED_CHECKIN_STATUSES = new Set(['cancelled', 'archived'])
+const IGNORED_CHECKIN_STATUSES = new Set(['cancelled'])
 
 function countPrefixedValues(
     payload: Record<string, unknown> | null,
@@ -98,7 +98,7 @@ function buildSubmittedEvent(
 
     const date = checkin.submitted_at.split('T')[0]
     const status: CalendarEvent['status'] =
-        review?.status === 'approved' || checkin.status === 'archived'
+        review?.status === 'approved'
             ? 'completed'
             : 'pending_review'
 
@@ -275,9 +275,25 @@ export async function getCalendarData(
 
     const filteredSubmittedCheckins = ((submittedCheckins ?? []) as CheckinRecord[])
         .filter((checkin) => !IGNORED_CHECKIN_STATUSES.has(checkin.status ?? ''))
+        .filter((checkin) => activeClientById.has(checkin.client_id))
+        .filter((checkin) => checkin.status !== 'pending')
+
+    const latestSubmittedAtByClient = new Map<string, string>()
+    for (const checkin of filteredSubmittedCheckins) {
+        if (!checkin.submitted_at) continue
+        const current = latestSubmittedAtByClient.get(checkin.client_id)
+        if (!current || checkin.submitted_at > current) {
+            latestSubmittedAtByClient.set(checkin.client_id, checkin.submitted_at)
+        }
+    }
 
     const filteredPendingCheckins = ((pendingCheckins ?? []) as CheckinRecord[])
         .filter((checkin) => activeClientById.has(checkin.client_id))
+        .filter((checkin) => {
+            const latestSubmittedAt = latestSubmittedAtByClient.get(checkin.client_id)
+            if (!latestSubmittedAt) return true
+            return latestSubmittedAt < checkin.created_at
+        })
 
     const reviewIds = filteredSubmittedCheckins.map((checkin) => checkin.id)
     let reviewsByCheckinId = new Map<string, ReviewRecord>()

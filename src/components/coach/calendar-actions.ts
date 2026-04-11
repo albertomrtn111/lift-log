@@ -258,9 +258,7 @@ export async function completeCoachTaskAction(
         if (error) {
             return {
                 success: false,
-                error: error.message?.includes('coach_tasks')
-                    ? 'Las tareas aún no están disponibles en este entorno.'
-                    : (error.message || 'No se pudo completar la tarea.'),
+                error: error.message || 'No se pudo completar la tarea.',
             }
         }
 
@@ -268,6 +266,43 @@ export async function completeCoachTaskAction(
         return { success: true }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo completar la tarea.'
+        return { success: false, error: message }
+    }
+}
+
+export async function snoozeCoachTaskAction(
+    taskId: string,
+    coachId: string,
+    newDate: string
+): Promise<{ success: boolean; error?: string }> {
+    if (!newDate) {
+        return { success: false, error: 'Debes elegir una nueva fecha para aplazar la tarea.' }
+    }
+
+    try {
+        const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+
+        const { error } = await supabase
+            .from('coach_tasks')
+            .update({
+                task_date: newDate,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', taskId)
+            .eq('coach_id', validatedCoachId)
+            .eq('status', 'pending')
+
+        if (error) {
+            return {
+                success: false,
+                error: error.message || 'No se pudo aplazar la tarea.',
+            }
+        }
+
+        revalidateCalendarSurfaces()
+        return { success: true }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo aplazar la tarea.'
         return { success: false, error: message }
     }
 }

@@ -11,6 +11,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -394,10 +395,9 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
                 {trigger ?? (
-                    <Button variant="outline" className="gap-2">
-                        <Sparkles className="h-4 w-4" />
+                    <AIActionButton>
                         Generar con IA
-                    </Button>
+                    </AIActionButton>
                 )}
             </DialogTrigger>
 

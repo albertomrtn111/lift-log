@@ -1,5 +1,8 @@
+export type AINutritionMode = 'generate' | 'modify'
+
 export interface AIMacrosProposal {
     type: 'macros'
+    mode: AINutritionMode
     kcal: number
     protein_g: number
     carbs_g: number
@@ -7,6 +10,7 @@ export interface AIMacrosProposal {
     steps?: number | null
     notes: string
     explanation: string
+    change_summary: string[]
 }
 
 export interface AIDietItemProposal {
@@ -34,9 +38,12 @@ export interface AIDietMealProposal {
 
 export interface AIDietProposal {
     type: 'options_diet'
+    mode: AINutritionMode
     name: string
     meals: AIDietMealProposal[]
     explanation: string
+    change_summary: string[]
+    structure_strategy: 'maintain' | 'adjust' | 'rebuild'
 }
 
 export type AINutritionProposal = AIMacrosProposal | AIDietProposal

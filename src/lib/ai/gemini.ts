@@ -3,12 +3,12 @@
  *
  * To change model or API version, update the env vars — never touch this file:
  *   GEMINI_API_KEY   — required
- *   GEMINI_MODEL     — optional, defaults to gemini-2.0-flash
+ *   GEMINI_MODEL     — optional, defaults to gemini-3-flash-preview
  *   GEMINI_API_VER   — optional, defaults to v1beta
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com'
-const DEFAULT_MODEL = 'gemini-2.0-flash'
+const DEFAULT_MODEL = 'gemini-3-flash-preview'
 const DEFAULT_API_VER = 'v1beta'
 
 export interface GeminiCallOptions {

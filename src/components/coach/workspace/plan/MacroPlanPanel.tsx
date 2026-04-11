@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,6 +39,7 @@ import { es } from 'date-fns/locale'
 import { useActiveMacroPlan, useUpsertMacroPlan } from '@/hooks/useMacroPlan'
 import type { MacroPlan, MacroDayTypeConfig, MacroDayTypeValues } from '@/data/nutrition/types'
 import { cn } from '@/lib/utils'
+import { AINutritionDialog } from './AINutritionDialog'
 
 // ============================================================================
 // TYPES
@@ -273,6 +275,14 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-lg">Macros activos</h3>
                     <div className="flex gap-2">
+                        <AINutritionDialog
+                            coachId={coachId}
+                            clientId={clientId}
+                            nutritionType="macros"
+                            trigger={
+                                <AIActionButton size="sm">IA Macros</AIActionButton>
+                            }
+                        />
                         {activePlan && (
                             <Button variant="outline" size="sm" onClick={handleEdit}>
                                 <Pencil className="h-4 w-4 mr-1" />

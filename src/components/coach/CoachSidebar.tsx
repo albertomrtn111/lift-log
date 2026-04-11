@@ -121,20 +121,22 @@ export function CoachSidebar() {
             >
                 <div className="flex flex-col h-full">
                     {/* Logo */}
-                    <div className="flex items-center gap-3 border-b border-border p-4">
-                        <div className="w-10 h-10 flex items-center justify-center shrink-0 overflow-hidden rounded-lg">
+                    <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
+                        <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-white">
                             <Image
                                 src="/Logo_nexttrain.png"
                                 alt="NexTrain"
-                                width={40}
-                                height={40}
-                                className="rounded-lg object-contain"
+                                fill
+                                sizes="36px"
+                                className="object-cover"
                                 priority
                             />
                         </div>
-                        <div>
-                            <h1 className="font-bold text-lg">NexTrain</h1>
-                            <p className="text-xs text-muted-foreground">Coach Portal</p>
+                        <div className="min-w-0 leading-none">
+                            <h1 className="text-[1.0625rem] font-bold tracking-tight text-foreground">NexTrain</h1>
+                            <p className="mt-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground/90">
+                                Coach Portal
+                            </p>
                         </div>
                     </div>
 

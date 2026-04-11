@@ -3,6 +3,22 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import {
+    AlertCircle,
+    CheckCircle2,
+    ChevronRight,
+    Loader2,
+    Minus,
+    RotateCcw,
+    Scale,
+    SlidersHorizontal,
+    Sparkles,
+    Target,
+    TrendingDown,
+    TrendingUp,
+    Utensils,
+    Wand2,
+} from 'lucide-react'
+import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -11,34 +27,23 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-    Sparkles,
-    Loader2,
-    Target,
-    Utensils,
-    RotateCcw,
-    CheckCircle2,
-    AlertCircle,
-    ChevronRight,
-    TrendingUp,
-    TrendingDown,
-    Minus,
-} from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useActiveMacroPlan, useUpsertMacroPlan } from '@/hooks/useMacroPlan'
 import { useActiveDietPlan, useCreateDietPlan, useDietPlanStructure } from '@/hooks/useDietOptions'
-import type { MacroPlan, DietPlanWithStructure } from '@/data/nutrition/types'
-import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
-
-// ============================================================================
-// Types
-// ============================================================================
+import type { DietPlanWithStructure, MacroPlan } from '@/data/nutrition/types'
+import type {
+    AIDietProposal,
+    AIMacrosProposal,
+    AINutritionMode,
+    AINutritionProposal,
+} from '@/types/ai-nutrition'
 
 type NutritionType = 'macros' | 'options_diet'
 type Step = 'input' | 'loading' | 'preview'
@@ -47,7 +52,7 @@ interface AINutritionDialogProps {
     trigger?: React.ReactNode
     coachId: string
     clientId: string
-    defaultType?: NutritionType
+    nutritionType: NutritionType
 }
 
 interface WeightEntry {
@@ -55,12 +60,72 @@ interface WeightEntry {
     weight_kg: number
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
+const OBJECTIVE_EXAMPLES = [
+    'Bajar de peso',
+    'Subir de peso',
+    'Mantener peso',
+    'Ganar masa muscular',
+    'Definir sin perder músculo',
+    'Mejorar adherencia',
+]
+
+const MODE_COPY: Record<
+    NutritionType,
+    Record<AINutritionMode, { title: string; description: string; placeholder: string; suggestions: string[] }>
+> = {
+    macros: {
+        generate: {
+            title: 'Generar macros',
+            description: 'Crear una propuesta nueva de calorías y macronutrientes usando peso, contexto y objetivo.',
+            placeholder:
+                'Ej: atleta en fase de definición, quiero una propuesta base conservadora con proteína alta y un objetivo de pasos asumible…',
+            suggestions: [
+                'Nueva base para pérdida de grasa',
+                'Pasar a mantenimiento',
+                'Subir calorías para volumen controlado',
+            ],
+        },
+        modify: {
+            title: 'Modificar macros',
+            description: 'Ajustar los macros actuales sin rehacerlos por completo salvo que el contexto lo requiera.',
+            placeholder:
+                'Ej: lleva dos semanas sin bajar, quiero reducir calorías ligeramente y subir proteína sin rehacer todo…',
+            suggestions: [
+                'Estancado dos semanas, ajuste pequeño',
+                'La pérdida va demasiado rápida',
+                'Bajar kcal y subir proteína',
+            ],
+        },
+    },
+    options_diet: {
+        generate: {
+            title: 'Generar dieta por opciones',
+            description: 'Crear una dieta nueva por opciones apoyada en macros, contexto del atleta y objetivo.',
+            placeholder:
+                'Ej: quiero una dieta sencilla, alta en proteína, con opciones fáciles de preparar y buena adherencia…',
+            suggestions: [
+                'Crear dieta simple y adherente',
+                'Más variedad con estructura clara',
+                'Priorizar saciedad y practicidad',
+            ],
+        },
+        modify: {
+            title: 'Modificar dieta por opciones',
+            description: 'Ajustar la dieta actual manteniendo estructura siempre que el cambio no requiera rehacerla.',
+            placeholder:
+                'Ej: mantén la estructura pero baja kcal, ajusta cantidades y sube saciedad en almuerzo y cena…',
+            suggestions: [
+                'Mantener estructura y bajar kcal',
+                'Subir carbos en días activos',
+                'Cambiar solo algunas comidas',
+            ],
+        },
+    },
+}
 
 function dietStructureToText(plan: DietPlanWithStructure): string {
     const lines: string[] = [`Nombre del plan: ${plan.name}`]
+
     for (const meal of plan.meals) {
         lines.push(`\n${meal.name} (${meal.day_type}):`)
         for (const option of meal.options) {
@@ -73,35 +138,40 @@ function dietStructureToText(plan: DietPlanWithStructure): string {
             }
         }
     }
+
     return lines.join('\n')
 }
 
 function calcWeightTrend(history: WeightEntry[]): { trend: 'up' | 'down' | 'stable'; diff: number } | null {
     if (history.length < 2) return null
+
     const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date))
     const diff = sorted[sorted.length - 1].weight_kg - sorted[0].weight_kg
+
     return {
         trend: diff > 0.3 ? 'up' : diff < -0.3 ? 'down' : 'stable',
         diff,
     }
 }
 
-// ============================================================================
-// Context summary card
-// ============================================================================
-
 function ContextSummary({
+    type,
     weightHistory,
     activeMacroPlan,
+    activeDietName,
+    hasDietStructure,
     isLoadingContext,
 }: {
+    type: NutritionType
     weightHistory: WeightEntry[]
     activeMacroPlan: MacroPlan | null | undefined
+    activeDietName: string | null
+    hasDietStructure: boolean
     isLoadingContext: boolean
 }) {
     if (isLoadingContext) {
         return (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Cargando contexto del atleta…
             </div>
@@ -114,18 +184,18 @@ function ContextSummary({
         : null
 
     return (
-        <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Contexto que verá la IA
             </p>
+
             <div className="flex flex-wrap gap-3 text-xs">
-                {/* Weight */}
                 <div className="flex items-center gap-1.5">
                     {trend ? (
                         trend.trend === 'up' ? (
                             <TrendingUp className="h-3.5 w-3.5 text-orange-400" />
                         ) : trend.trend === 'down' ? (
-                            <TrendingDown className="h-3.5 w-3.5 text-green-400" />
+                            <TrendingDown className="h-3.5 w-3.5 text-emerald-400" />
                         ) : (
                             <Minus className="h-3.5 w-3.5 text-blue-400" />
                         )
@@ -139,7 +209,6 @@ function ContextSummary({
                     </span>
                 </div>
 
-                {/* Macros */}
                 <div className="flex items-center gap-1.5">
                     <Target className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-muted-foreground">
@@ -149,35 +218,84 @@ function ContextSummary({
                     </span>
                 </div>
 
-                {/* Weight count */}
+                <div className="flex items-center gap-1.5">
+                    <Utensils className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                        {activeDietName
+                            ? `${activeDietName}${hasDietStructure ? ' · estructura cargada' : ''}`
+                            : 'Sin dieta por opciones activa'}
+                    </span>
+                </div>
+
                 {weightHistory.length > 0 && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
                         {weightHistory.length} registros de peso
                     </Badge>
                 )}
+
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                    {type === 'macros' ? 'Módulo IA Macros' : 'Módulo IA Dieta'}
+                </Badge>
             </div>
         </div>
     )
 }
 
-// ============================================================================
-// Preview: Macros
-// ============================================================================
+function MacrosPreview({
+    proposal,
+    currentPlan,
+}: {
+    proposal: AIMacrosProposal
+    currentPlan: MacroPlan | null | undefined
+}) {
+    const comparisonRows = currentPlan && !currentPlan.day_type_config
+        ? [
+            { label: 'Calorías', current: currentPlan.kcal, next: proposal.kcal, suffix: ' kcal' },
+            { label: 'Proteínas', current: currentPlan.protein_g, next: proposal.protein_g, suffix: 'g' },
+            { label: 'Carbohidratos', current: currentPlan.carbs_g, next: proposal.carbs_g, suffix: 'g' },
+            { label: 'Grasas', current: currentPlan.fat_g, next: proposal.fat_g, suffix: 'g' },
+        ]
+        : []
 
-function MacrosPreview({ proposal }: { proposal: AIMacrosProposal }) {
     return (
         <div className="space-y-4">
+            {proposal.mode === 'modify' && comparisonRows.length > 0 && (
+                <Card className="border-border/60 bg-muted/20">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Comparativa con los macros actuales</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 pt-0">
+                        {comparisonRows.map((row) => {
+                            const delta = row.next - row.current
+                            return (
+                                <div key={row.label} className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">{row.label}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span>{row.current}{row.suffix}</span>
+                                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="font-medium">{row.next}{row.suffix}</span>
+                                        <Badge variant="outline" className="text-[10px]">
+                                            {delta > 0 ? '+' : ''}{delta}{row.suffix}
+                                        </Badge>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </CardContent>
+                </Card>
+            )}
+
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                     { label: 'Calorías', value: `${proposal.kcal} kcal`, color: 'text-orange-400' },
                     { label: 'Proteínas', value: `${proposal.protein_g}g`, color: 'text-blue-400' },
-                    { label: 'Carbohidratos', value: `${proposal.carbs_g}g`, color: 'text-green-400' },
+                    { label: 'Carbohidratos', value: `${proposal.carbs_g}g`, color: 'text-emerald-400' },
                     { label: 'Grasas', value: `${proposal.fat_g}g`, color: 'text-yellow-400' },
                 ].map(({ label, value, color }) => (
                     <Card key={label} className="border-border/60">
                         <CardContent className="pt-3 pb-3 text-center">
                             <p className={cn('text-lg font-bold', color)}>{value}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
                         </CardContent>
                     </Card>
                 ))}
@@ -189,10 +307,26 @@ function MacrosPreview({ proposal }: { proposal: AIMacrosProposal }) {
                 </div>
             )}
 
+            {proposal.change_summary.length > 0 && (
+                <Card className="border-border/60">
+                    <CardContent className="pt-3 pb-3">
+                        <p className="mb-2 text-xs font-medium text-muted-foreground">Qué cambia</p>
+                        <ul className="space-y-1.5">
+                            {proposal.change_summary.map((item, index) => (
+                                <li key={`${item}-${index}`} className="flex items-start gap-2 text-sm">
+                                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+            )}
+
             {proposal.notes && (
                 <Card className="border-border/60 bg-muted/20">
                     <CardContent className="pt-3 pb-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Notas para el atleta</p>
+                        <p className="mb-1 text-xs font-medium text-muted-foreground">Notas para el atleta</p>
                         <p className="text-sm">{proposal.notes}</p>
                     </CardContent>
                 </Card>
@@ -200,7 +334,7 @@ function MacrosPreview({ proposal }: { proposal: AIMacrosProposal }) {
 
             <Card className="border-primary/20 bg-primary/5">
                 <CardContent className="pt-3 pb-3">
-                    <p className="text-xs font-medium text-primary mb-1">Razonamiento de la IA</p>
+                    <p className="mb-1 text-xs font-medium text-primary">Razonamiento de la IA</p>
                     <p className="text-sm leading-relaxed">{proposal.explanation}</p>
                 </CardContent>
             </Card>
@@ -208,34 +342,54 @@ function MacrosPreview({ proposal }: { proposal: AIMacrosProposal }) {
     )
 }
 
-// ============================================================================
-// Preview: Options Diet
-// ============================================================================
-
 function DietPreview({ proposal }: { proposal: AIDietProposal }) {
     const [expandedMeal, setExpandedMeal] = useState<number | null>(0)
+    const strategyLabel = proposal.structure_strategy === 'maintain'
+        ? 'Mantiene estructura'
+        : proposal.structure_strategy === 'adjust'
+            ? 'Ajusta estructura'
+            : 'Rehace estructura'
 
     return (
         <div className="space-y-4">
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-semibold">{proposal.name}</h3>
+                <Badge variant="outline">{strategyLabel}</Badge>
             </div>
+
+            {proposal.change_summary.length > 0 && (
+                <Card className="border-border/60 bg-muted/20">
+                    <CardContent className="pt-3 pb-3">
+                        <p className="mb-2 text-xs font-medium text-muted-foreground">
+                            {proposal.mode === 'modify' ? 'Qué mantiene y qué cambia' : 'Claves de la propuesta'}
+                        </p>
+                        <ul className="space-y-1.5">
+                            {proposal.change_summary.map((item, index) => (
+                                <li key={`${item}-${index}`} className="flex items-start gap-2 text-sm">
+                                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="space-y-2">
                 {proposal.meals.map((meal, mealIdx) => (
-                    <Card key={mealIdx} className="border-border/60">
+                    <Card key={`${meal.name}-${mealIdx}`} className="border-border/60">
                         <button
                             type="button"
                             className="w-full text-left"
                             onClick={() => setExpandedMeal(expandedMeal === mealIdx ? null : mealIdx)}
                         >
-                            <CardHeader className="py-2 px-3">
-                                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                            <CardHeader className="px-3 py-2">
+                                <CardTitle className="flex items-center justify-between text-sm font-medium">
                                     <span className="flex items-center gap-2">
                                         <Utensils className="h-3.5 w-3.5 text-primary" />
                                         {meal.name}
                                     </span>
-                                    <span className="text-xs text-muted-foreground font-normal">
+                                    <span className="text-xs font-normal text-muted-foreground">
                                         {meal.options.length} opción{meal.options.length !== 1 ? 'es' : ''}
                                     </span>
                                 </CardTitle>
@@ -243,16 +397,16 @@ function DietPreview({ proposal }: { proposal: AIDietProposal }) {
                         </button>
 
                         {expandedMeal === mealIdx && (
-                            <CardContent className="px-3 pb-3 pt-0 space-y-3">
-                                {meal.options.map((option, optIdx) => (
-                                    <div key={optIdx}>
-                                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                            <CardContent className="space-y-3 px-3 pb-3 pt-0">
+                                {meal.options.map((option, optionIdx) => (
+                                    <div key={`${option.name}-${optionIdx}`}>
+                                        <p className="mb-1 text-xs font-medium text-muted-foreground">
                                             {option.name}
                                             {option.notes && <span className="ml-1 font-normal">— {option.notes}</span>}
                                         </p>
                                         <ul className="space-y-0.5">
                                             {option.items.map((item, itemIdx) => (
-                                                <li key={itemIdx} className="text-xs flex items-baseline gap-1">
+                                                <li key={`${item.name}-${itemIdx}`} className="flex items-baseline gap-1 text-xs">
                                                     <span className="text-muted-foreground">•</span>
                                                     <span>{item.name}</span>
                                                     {item.quantity_value != null && (
@@ -276,7 +430,7 @@ function DietPreview({ proposal }: { proposal: AIDietProposal }) {
 
             <Card className="border-primary/20 bg-primary/5">
                 <CardContent className="pt-3 pb-3">
-                    <p className="text-xs font-medium text-primary mb-1">Razonamiento de la IA</p>
+                    <p className="mb-1 text-xs font-medium text-primary">Razonamiento de la IA</p>
                     <p className="text-sm leading-relaxed">{proposal.explanation}</p>
                 </CardContent>
             </Card>
@@ -284,23 +438,15 @@ function DietPreview({ proposal }: { proposal: AIDietProposal }) {
     )
 }
 
-// ============================================================================
-// Objective examples
-// ============================================================================
-
-const OBJECTIVE_EXAMPLES = [
-    'Bajar de peso', 'Subir de peso', 'Mantener peso',
-    'Ganar masa muscular', 'Definir sin perder músculo', 'Mejorar adherencia',
-]
-
-// ============================================================================
-// Main component
-// ============================================================================
-
-export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'macros' }: AINutritionDialogProps) {
+export function AINutritionDialog({
+    trigger,
+    coachId,
+    clientId,
+    nutritionType,
+}: AINutritionDialogProps) {
     const [open, setOpen] = useState(false)
     const [step, setStep] = useState<Step>('input')
-    const [type, setType] = useState<NutritionType>(defaultType)
+    const [mode, setMode] = useState<AINutritionMode>('generate')
     const [objective, setObjective] = useState('')
     const [prompt, setPrompt] = useState('')
     const [proposal, setProposal] = useState<AINutritionProposal | null>(null)
@@ -310,19 +456,18 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
     const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([])
 
     const { toast } = useToast()
-
-    // Existing nutrition data hooks
     const { data: activeMacroPlan, isLoading: loadingMacros } = useActiveMacroPlan(coachId, clientId)
     const { data: activeDietPlan, isLoading: loadingDiet } = useActiveDietPlan(coachId, clientId)
     const { data: dietStructure } = useDietPlanStructure(activeDietPlan?.id ?? null)
-
-    // Mutation hooks
     const upsertMacros = useUpsertMacroPlan(coachId, clientId)
     const createDiet = useCreateDietPlan(coachId, clientId)
 
     const isLoadingContext = loadingMacros || loadingDiet || isLoadingWeight
+    const activeDietText = dietStructure ? dietStructureToText(dietStructure as DietPlanWithStructure) : null
+    const hasCurrentBase = nutritionType === 'macros' ? !!activeMacroPlan : !!dietStructure
+    const modeCopy = MODE_COPY[nutritionType][mode]
+    const moduleTitle = nutritionType === 'macros' ? 'IA Macros' : 'IA Dieta'
 
-    // Fetch weight history when dialog opens
     async function fetchWeightHistory() {
         setIsLoadingWeight(true)
         try {
@@ -337,14 +482,14 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
 
             if (data) {
                 setWeightHistory(
-                    data.map((d: { metric_date: string; weight_kg: number }) => ({
-                        date: d.metric_date,
-                        weight_kg: d.weight_kg,
+                    data.map((entry: { metric_date: string; weight_kg: number }) => ({
+                        date: entry.metric_date,
+                        weight_kg: entry.weight_kg,
                     }))
                 )
             }
-        } catch (e) {
-            console.warn('Could not fetch weight history:', e)
+        } catch (fetchError) {
+            console.warn('[AINutritionDialog] Could not fetch weight history:', fetchError)
         } finally {
             setIsLoadingWeight(false)
         }
@@ -352,6 +497,7 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
 
     function resetDialog() {
         setStep('input')
+        setMode('generate')
         setObjective('')
         setPrompt('')
         setProposal(null)
@@ -369,31 +515,31 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
 
     async function handleGenerate() {
         if (!objective.trim() || !prompt.trim()) return
+
         setError(null)
         setIsGenerating(true)
         setStep('loading')
 
         try {
-            // Build context for the API
-            const activeDietText = dietStructure
-                ? dietStructureToText(dietStructure as DietPlanWithStructure)
+            const macroContext = activeMacroPlan
+                ? {
+                    kcal: activeMacroPlan.kcal,
+                    protein_g: activeMacroPlan.protein_g,
+                    carbs_g: activeMacroPlan.carbs_g,
+                    fat_g: activeMacroPlan.fat_g,
+                    steps: activeMacroPlan.steps ?? null,
+                    notes: activeMacroPlan.notes ?? '',
+                    day_type_config: activeMacroPlan.day_type_config ?? null,
+                }
                 : null
 
-            const macroContext = activeMacroPlan ? {
-                kcal: activeMacroPlan.kcal,
-                protein_g: activeMacroPlan.protein_g,
-                carbs_g: activeMacroPlan.carbs_g,
-                fat_g: activeMacroPlan.fat_g,
-                steps: activeMacroPlan.steps ?? null,
-                notes: activeMacroPlan.notes ?? '',
-                day_type_config: activeMacroPlan.day_type_config ?? null,
-            } : null
-
-            const res = await fetch('/api/ai/generate-nutrition', {
+            const response = await fetch('/api/ai/generate-nutrition', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type,
+                    clientId,
+                    type: nutritionType,
+                    mode,
                     objective: objective.trim(),
                     prompt: prompt.trim(),
                     context: {
@@ -404,16 +550,17 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
                 }),
             })
 
-            const data = await res.json()
-
-            if (!res.ok || data.error) {
+            const data = await response.json()
+            if (!response.ok || data.error) {
                 throw new Error(data.error ?? 'Error desconocido generando la propuesta.')
             }
 
             setProposal(data.proposal)
             setStep('preview')
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Error inesperado. Inténtalo de nuevo.'
+        } catch (generationError: unknown) {
+            const message = generationError instanceof Error
+                ? generationError.message
+                : 'Error inesperado. Inténtalo de nuevo.'
             setError(message)
             setStep('input')
         } finally {
@@ -451,11 +598,11 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
                         day_type: meal.day_type,
                         name: meal.name,
                         order_index: meal.order_index,
-                        options: meal.options.map((opt) => ({
-                            name: opt.name,
-                            order_index: opt.order_index,
-                            notes: opt.notes || '',
-                            items: opt.items.map((item) => ({
+                        options: meal.options.map((option) => ({
+                            name: option.name,
+                            order_index: option.order_index,
+                            notes: option.notes || '',
+                            items: option.items.map((item) => ({
                                 item_type: item.item_type,
                                 name: item.name,
                                 quantity_value: item.quantity_value ?? null,
@@ -470,8 +617,14 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
 
             setOpen(false)
             resetDialog()
+            toast({
+                title: proposal.type === 'macros' ? 'Macros aplicados' : 'Dieta aplicada',
+                description: proposal.mode === 'modify'
+                    ? 'Se han guardado los ajustes propuestos por la IA.'
+                    : 'Se ha guardado la propuesta generada por la IA.',
+            })
         } catch {
-            // Toast is already shown by the mutation hooks
+            // Los hooks de mutación ya muestran el toast de error
         }
     }
 
@@ -481,130 +634,185 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
                 {trigger ?? (
-                    <Button variant="outline" className="gap-2">
-                        <Sparkles className="h-4 w-4" />
-                        Generar con IA
-                    </Button>
+                    <AIActionButton>
+                        {moduleTitle}
+                    </AIActionButton>
                 )}
             </DialogTrigger>
 
-            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5 text-primary" />
-                        Asistente de Nutrición IA
+                        {moduleTitle}
                     </DialogTitle>
                     <DialogDescription>
-                        {step === 'input' && 'La IA analizará el contexto del atleta y generará una propuesta revisable.'}
-                        {step === 'loading' && 'Analizando contexto y generando propuesta nutricional…'}
+                        {step === 'input' && 'Elige si quieres generar una propuesta nueva o modificar la base actual de este módulo.'}
+                        {step === 'loading' && 'La IA está analizando el contexto nutricional del atleta…'}
                         {step === 'preview' && 'Revisa la propuesta antes de aplicarla. Puedes regenerarla o volver a editarla.'}
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* ── Step: Input ── */}
                 {step === 'input' && (
-                    <div className="flex flex-col gap-4 overflow-y-auto flex-1 pr-1">
-                        {/* Context summary */}
+                    <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
                         <ContextSummary
+                            type={nutritionType}
                             weightHistory={weightHistory}
                             activeMacroPlan={activeMacroPlan}
+                            activeDietName={activeDietPlan?.name ?? null}
+                            hasDietStructure={!!dietStructure}
                             isLoadingContext={isLoadingContext}
                         />
 
-                        {/* Type selector */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">¿Qué quieres generar?</label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <label className="text-sm font-medium">¿Qué quieres hacer con la IA?</label>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <button
                                     type="button"
-                                    onClick={() => setType('macros')}
+                                    onClick={() => setMode('generate')}
                                     className={cn(
-                                        'flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors',
-                                        type === 'macros'
+                                        'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                                        mode === 'generate'
                                             ? 'border-primary bg-primary/5 text-primary'
                                             : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
                                     )}
                                 >
-                                    <Target className="h-4 w-4" />
-                                    Macros / Calorías
+                                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <Wand2 className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium">Generar</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Crear una propuesta nueva con el contexto disponible.
+                                        </p>
+                                    </div>
                                 </button>
+
                                 <button
                                     type="button"
-                                    onClick={() => setType('options_diet')}
+                                    onClick={() => setMode('modify')}
+                                    disabled={!hasCurrentBase}
                                     className={cn(
-                                        'flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors',
-                                        type === 'options_diet'
+                                        'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                                        mode === 'modify'
                                             ? 'border-primary bg-primary/5 text-primary'
                                             : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
                                     )}
                                 >
-                                    <Utensils className="h-4 w-4" />
-                                    Dieta por Opciones
+                                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <SlidersHorizontal className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium">Modificar</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Ajustar la base actual sin regenerarla por completo.
+                                        </p>
+                                    </div>
                                 </button>
                             </div>
+                            {!hasCurrentBase && (
+                                <p className="text-xs text-muted-foreground">
+                                    Aún no existe una base actual en este módulo, así que por ahora solo puedes generar.
+                                </p>
+                            )}
                         </div>
 
-                        {/* Objective */}
+                        <Card className="border-border/60 bg-card/70">
+                            <CardContent className="space-y-2 pt-4 pb-4">
+                                <div className="flex items-center gap-2">
+                                    {nutritionType === 'macros' ? (
+                                        <Scale className="h-4 w-4 text-primary" />
+                                    ) : (
+                                        <Utensils className="h-4 w-4 text-primary" />
+                                    )}
+                                    <p className="text-sm font-medium">{modeCopy.title}</p>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{modeCopy.description}</p>
+                            </CardContent>
+                        </Card>
+
+                        {mode === 'modify' && hasCurrentBase && (
+                            <Card className="border-primary/20 bg-primary/5">
+                                <CardContent className="pt-3 pb-3">
+                                    <p className="mb-1 text-xs font-medium text-primary">Base actual que se usará para modificar</p>
+                                    <p className="text-sm">
+                                        {nutritionType === 'macros'
+                                            ? 'La IA tomará los macros activos como punto de partida y propondrá ajustes comparables.'
+                                            : 'La IA usará la dieta por opciones actual para mantener o ajustar su estructura según tu instrucción.'}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <div className="space-y-2">
                             <label className="text-sm font-medium">
                                 Objetivo nutricional
-                                <span className="ml-1 text-xs text-muted-foreground font-normal">(¿qué quieres conseguir?)</span>
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">(qué quieres conseguir)</span>
                             </label>
                             <Input
                                 value={objective}
-                                onChange={(e) => setObjective(e.target.value)}
-                                placeholder="Ej: bajar de peso, ganar masa muscular, mantener peso…"
+                                onChange={(event) => setObjective(event.target.value)}
+                                placeholder="Ej: bajar de peso, ganar masa muscular, mantenimiento…"
                                 maxLength={200}
                             />
                             <div className="flex flex-wrap gap-1.5">
-                                {OBJECTIVE_EXAMPLES.map((ex) => (
+                                {OBJECTIVE_EXAMPLES.map((example) => (
                                     <button
-                                        key={ex}
+                                        key={example}
                                         type="button"
-                                        onClick={() => setObjective(ex)}
-                                        className="text-xs px-2.5 py-1 rounded-full border border-border hover:border-primary/60 hover:bg-primary/5 transition-colors"
+                                        onClick={() => setObjective(example)}
+                                        className="rounded-full border border-border px-2.5 py-1 text-xs transition-colors hover:border-primary/60 hover:bg-primary/5"
                                     >
-                                        {ex}
+                                        {example}
                                     </button>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Prompt */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Ideas rápidas</label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {modeCopy.suggestions.map((suggestion) => (
+                                    <button
+                                        key={suggestion}
+                                        type="button"
+                                        onClick={() => setPrompt(suggestion)}
+                                        className="rounded-full border border-border px-2.5 py-1 text-xs transition-colors hover:border-primary/60 hover:bg-primary/5"
+                                    >
+                                        {suggestion}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                             <label className="text-sm font-medium">
                                 Instrucciones adicionales
-                                <span className="ml-1 text-xs text-muted-foreground font-normal">(explica qué quieres hacer)</span>
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">(explica qué quieres hacer)</span>
                             </label>
                             <Textarea
                                 value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
-                                placeholder={
-                                    type === 'macros'
-                                        ? 'Ej: lleva dos semanas sin bajar, quiero reducir calorías ligeramente y subir proteína…'
-                                        : 'Ej: quiero una dieta sencilla, alta en proteína, con opciones fáciles de preparar y variadas…'
-                                }
+                                onChange={(event) => setPrompt(event.target.value)}
+                                placeholder={modeCopy.placeholder}
                                 className="min-h-[90px] resize-none"
                                 maxLength={800}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                        e.preventDefault()
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                                        event.preventDefault()
                                         handleGenerate()
                                     }
                                 }}
                             />
-                            <p className="text-xs text-muted-foreground text-right">{prompt.length}/800</p>
+                            <p className="text-right text-xs text-muted-foreground">{prompt.length}/800</p>
                         </div>
 
-                        {/* Error */}
                         {error && (
-                            <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
-                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                                 {error}
                             </div>
                         )}
 
-                        {/* Actions */}
                         <div className="flex justify-end gap-2 pt-1">
                             <Button variant="outline" onClick={() => setOpen(false)}>
                                 Cancelar
@@ -615,43 +823,43 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
                                 className="gap-2"
                             >
                                 <Sparkles className="h-4 w-4" />
-                                Generar propuesta
+                                {mode === 'generate' ? 'Generar propuesta' : 'Proponer ajuste'}
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
                 )}
 
-                {/* ── Step: Loading ── */}
                 {step === 'loading' && (
-                    <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <div className="flex flex-col items-center justify-center gap-4 py-16">
                         <div className="relative">
-                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Sparkles className="h-7 w-7 text-primary animate-pulse" />
+                            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                                <Sparkles className="h-7 w-7 animate-pulse text-primary" />
                             </div>
-                            <Loader2 className="h-16 w-16 text-primary/30 animate-spin absolute inset-0" />
+                            <Loader2 className="absolute inset-0 h-16 w-16 animate-spin text-primary/30" />
                         </div>
-                        <div className="text-center space-y-1">
+                        <div className="space-y-1 text-center">
                             <p className="font-medium">Analizando contexto…</p>
                             <p className="text-sm text-muted-foreground">
-                                La IA está revisando peso, macros y dieta actual
+                                {mode === 'generate'
+                                    ? 'La IA está construyendo una propuesta nueva con el contexto disponible'
+                                    : 'La IA está revisando la base actual para proponer un ajuste real'}
                             </p>
                         </div>
                     </div>
                 )}
 
-                {/* ── Step: Preview ── */}
                 {step === 'preview' && proposal && (
-                    <div className="flex flex-col gap-4 overflow-y-auto flex-1">
+                    <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
                         <div className="flex-1 overflow-y-auto pr-1">
                             {proposal.type === 'macros' ? (
-                                <MacrosPreview proposal={proposal} />
+                                <MacrosPreview proposal={proposal} currentPlan={activeMacroPlan} />
                             ) : (
                                 <DietPreview proposal={proposal} />
                             )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+                        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
                             <Button
                                 variant="outline"
                                 onClick={handleRegenerate}
@@ -661,6 +869,7 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
                                 <RotateCcw className="h-4 w-4" />
                                 Regenerar
                             </Button>
+
                             <div className="flex gap-2">
                                 <Button
                                     variant="outline"
@@ -679,7 +888,11 @@ export function AINutritionDialog({ trigger, coachId, clientId, defaultType = 'm
                                     ) : (
                                         <CheckCircle2 className="h-4 w-4" />
                                     )}
-                                    {isConfirming ? 'Guardando…' : 'Confirmar y aplicar'}
+                                    {isConfirming
+                                        ? 'Guardando…'
+                                        : proposal.type === 'macros'
+                                            ? 'Aplicar macros'
+                                            : 'Aplicar dieta'}
                                 </Button>
                             </div>
                         </div>

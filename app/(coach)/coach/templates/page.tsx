@@ -6,6 +6,7 @@ import { CardioTemplateDialog } from '@/components/coach/templates/CardioTemplat
 import { ImportTemplateDialog } from '@/components/coach/templates/ImportTemplateDialog'
 import { FileText, Dumbbell, Heart, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AITemplateDialog } from '@/components/coach/templates/AITemplateDialog'
@@ -61,9 +62,9 @@ export default async function TemplatesPage() {
                             <AITemplateDialog
                                 defaultType="strength"
                                 trigger={
-                                    <Button variant="outline" className="gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary">
-                                        ✦ Generar con IA
-                                    </Button>
+                                    <AIActionButton>
+                                        Generar con IA
+                                    </AIActionButton>
                                 }
                             />
                             <ImportTemplateDialog
@@ -91,9 +92,9 @@ export default async function TemplatesPage() {
                             <AITemplateDialog
                                 defaultType="cardio"
                                 trigger={
-                                    <Button variant="outline" className="gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary">
-                                        ✦ Generar con IA
-                                    </Button>
+                                    <AIActionButton>
+                                        Generar con IA
+                                    </AIActionButton>
                                 }
                             />
                             <CardioTemplateDialog
