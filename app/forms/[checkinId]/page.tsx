@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { DynamicForm } from '@/components/forms/DynamicForm'
 import { Card } from '@/components/ui/card'
@@ -19,8 +20,10 @@ export default async function FormPage({ params }: PageProps) {
         redirect(`/login?redirect=/forms/${checkinId}`)
     }
 
-    // 2. Load checkin + template
-    const { data: checkin, error: checkinErr } = await supabase
+    // 2. Load checkin + template via admin client so RLS does not block the read.
+    //    The checkin is public to anyone with the link — ownership is verified in step 3.
+    const admin = createAdminClient()
+    const { data: checkin, error: checkinErr } = await admin
         .from('checkins')
         .select(`
             id,
@@ -57,8 +60,10 @@ export default async function FormPage({ params }: PageProps) {
         )
     }
 
-    // 3. Verify ownership — client's auth_user_id must match current user
-    const { data: client } = await supabase
+    // 3. Verify ownership — use admin to read clients table (clients have no SELECT RLS policy
+    //    for their own record). This is safe because we immediately compare against the
+    //    authenticated user's ID from Supabase Auth.
+    const { data: client } = await admin
         .from('clients')
         .select('auth_user_id')
         .eq('id', checkin.client_id)
