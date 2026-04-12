@@ -19,7 +19,7 @@ export function getAppUrl(): string {
 
     // Hard-coded production fallback — safe to use because any valid deployment
     // should have NEXT_PUBLIC_APP_URL set; this just prevents silent localhost leaks.
-    const PRODUCTION_URL = 'https://nexttrain.ascenttech.com'
+    const PRODUCTION_URL = 'https://nexttrain.ascenttech.cloud'
 
     if (process.env.NODE_ENV !== 'production') {
         // In local development, warn loudly so developers know to set the var
