@@ -42,6 +42,7 @@ import {
     saveAthleteProfileStep,
     updateGeneratedAthleteProfileSections,
 } from './athlete-profile-actions'
+import { importOnboardingToAthleteProfile } from './import-onboarding-action'
 
 type ViewMode = 'empty' | 'wizard' | 'review' | 'approved' | 'generating'
 
@@ -500,6 +501,47 @@ export function AthleteProfileTab({
     const [isSavingGeneratedEdit, setIsSavingGeneratedEdit] = useState(false)
     const [generatedDraft, setGeneratedDraft] = useState<AthleteAIProfileOutput | null>(persistedGeneratedProfile)
     const [error, setError] = useState<string | null>(athleteProfile?.generation_error || null)
+    const [isImportingOnboarding, setIsImportingOnboarding] = useState(false)
+
+    const handleImportOnboarding = async () => {
+        setIsImportingOnboarding(true)
+        setError(null)
+
+        try {
+            const result = await importOnboardingToAthleteProfile(clientId, clientName)
+
+            if (!result.success) {
+                if (result.noOnboarding) {
+                    toast({
+                        title: 'Sin formulario de onboarding',
+                        description: result.error,
+                        variant: 'destructive',
+                    })
+                } else {
+                    setError(result.error || 'Error desconocido')
+                    toast({
+                        title: 'Error al generar el perfil',
+                        description: result.error,
+                        variant: 'destructive',
+                    })
+                }
+                return
+            }
+
+            if (result.output) {
+                setGeneratedProfile(result.output)
+                setGeneratedDraft(result.output)
+            }
+            setMode('review')
+            toast({
+                title: 'Perfil generado desde onboarding',
+                description: `Revisa el perfil de ${clientName} y apruébalo cuando esté listo.`,
+            })
+            router.refresh()
+        } finally {
+            setIsImportingOnboarding(false)
+        }
+    }
 
     const startWizard = () => {
         setForm(normalizeAnswers(athleteProfile?.answers_json))
@@ -671,33 +713,67 @@ export function AthleteProfileTab({
 
     if (mode === 'empty') {
         return (
-            <Card className="rounded-2xl border border-dashed border-border bg-card p-8 shadow-sm">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex items-start gap-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shrink-0">
-                            <UserRound className="h-5 w-5" />
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
+            <div className="space-y-4">
+                {/* Option 1: Import from onboarding */}
+                <Card className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex items-start gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shrink-0">
+                                <Sparkles className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-1">
                                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                                    Perfil del atleta
+                                    Opción recomendada
                                 </p>
-                                <Badge variant="secondary">Pendiente</Badge>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold tracking-tight">Configura el contexto real de {clientName}</h3>
-                                <p className="mt-1 text-sm leading-relaxed text-muted-foreground max-w-2xl">
-                                    Documenta objetivos, limitaciones, hábitos y condicionantes del atleta para generar un perfil estructurado y reutilizable en futuras decisiones del coach.
+                                <h3 className="text-base font-semibold tracking-tight">Generar perfil desde el onboarding</h3>
+                                <p className="text-sm leading-relaxed text-muted-foreground max-w-xl">
+                                    Si {clientName} ya completó el formulario de onboarding, la IA puede generar el perfil directamente desde sus respuestas sin que tengas que rellenar nada.
                                 </p>
                             </div>
                         </div>
+                        <AIActionButton
+                            onClick={handleImportOnboarding}
+                            disabled={isImportingOnboarding}
+                            className="shrink-0"
+                        >
+                            {isImportingOnboarding ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Generando perfil...
+                                </>
+                            ) : (
+                                'Importar desde onboarding'
+                            )}
+                        </AIActionButton>
                     </div>
+                    {error && (
+                        <div className="mt-4 flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+                            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                            <p className="text-sm text-destructive">{error}</p>
+                        </div>
+                    )}
+                </Card>
 
-                    <AIActionButton onClick={startWizard}>
-                        Configurar perfil del atleta
-                    </AIActionButton>
-                </div>
-            </Card>
+                {/* Option 2: Manual wizard */}
+                <Card className="rounded-2xl border border-dashed border-border bg-card p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex items-start gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground shrink-0">
+                                <UserRound className="h-5 w-5" />
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-base font-semibold tracking-tight">Configurar manualmente</h3>
+                                <p className="text-sm leading-relaxed text-muted-foreground max-w-xl">
+                                    Rellena el perfil tú mismo con el asistente guiado de 6 pasos. Útil si el atleta no hizo onboarding o quieres añadir contexto más detallado.
+                                </p>
+                            </div>
+                        </div>
+                        <Button variant="outline" onClick={startWizard} className="shrink-0">
+                            Configurar perfil manualmente
+                        </Button>
+                    </div>
+                </Card>
+            </div>
         )
     }
 

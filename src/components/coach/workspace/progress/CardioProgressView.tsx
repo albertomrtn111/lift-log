@@ -9,17 +9,21 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
     Activity,
     AlertTriangle,
+    Bike,
     CalendarDays,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
     ClipboardList,
+    Dumbbell,
     Heart,
     MapPin,
     MessageSquareText,
     Route as RouteIcon,
     Timer,
     TrendingUp,
+    Waves,
+    Zap,
 } from 'lucide-react'
 import {
     Area,
@@ -34,13 +38,95 @@ import { cn } from '@/lib/utils'
 import type {
     CardioProgressData,
     CardioSessionProgress,
+    CardioWeekData,
 } from '@/app/(coach)/coach/workspace/progress-actions'
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 type MetricMode = 'km' | 'horas'
+type DisciplineFilter = 'all' | 'running' | 'bicicleta' | 'natacion' | 'hibrido'
 
 interface CardioProgressViewProps {
     data: CardioProgressData
 }
+
+// ---------------------------------------------------------------------------
+// Discipline normalization
+// ---------------------------------------------------------------------------
+
+const DISCIPLINE_MAP: Record<string, DisciplineFilter> = {
+    // Running
+    rodaje: 'running',
+    series: 'running',
+    tempo: 'running',
+    fartlek: 'running',
+    progressive: 'running',
+    progresivo: 'running',
+    run: 'running',
+    running: 'running',
+    carrera: 'running',
+    // Bicicleta
+    bike: 'bicicleta',
+    bici: 'bicicleta',
+    bicicleta: 'bicicleta',
+    cycling: 'bicicleta',
+    ciclismo: 'bicicleta',
+    // Natación
+    swim: 'natacion',
+    swimming: 'natacion',
+    natacion: 'natacion',
+    natación: 'natacion',
+    // Híbrido
+    hybrid: 'hibrido',
+    hibrido: 'hibrido',
+    híbrido: 'hibrido',
+    hyrox: 'hibrido',
+    mixed: 'hibrido',
+}
+
+function getDiscipline(trainingType: string | null): Exclude<DisciplineFilter, 'all'> {
+    if (!trainingType) return 'running'
+    const key = trainingType.toLowerCase().trim()
+    return (DISCIPLINE_MAP[key] as Exclude<DisciplineFilter, 'all'>) ?? 'running'
+}
+
+const DISCIPLINE_META: Record<Exclude<DisciplineFilter, 'all'>, {
+    label: string
+    icon: React.ElementType
+    badgeClass: string
+    filterClass: string
+}> = {
+    running: {
+        label: 'Running',
+        icon: RouteIcon,
+        badgeClass: 'border-teal-500/20 bg-teal-500/10 text-teal-700 dark:text-teal-400',
+        filterClass: 'data-[active=true]:bg-teal-500/10 data-[active=true]:text-teal-700 data-[active=true]:border-teal-500/30',
+    },
+    bicicleta: {
+        label: 'Bicicleta',
+        icon: Bike,
+        badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+        filterClass: 'data-[active=true]:bg-amber-500/10 data-[active=true]:text-amber-700 data-[active=true]:border-amber-500/30',
+    },
+    natacion: {
+        label: 'Natación',
+        icon: Waves,
+        badgeClass: 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400',
+        filterClass: 'data-[active=true]:bg-blue-500/10 data-[active=true]:text-blue-700 data-[active=true]:border-blue-500/30',
+    },
+    hibrido: {
+        label: 'Híbrido',
+        icon: Zap,
+        badgeClass: 'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-400',
+        filterClass: 'data-[active=true]:bg-violet-500/10 data-[active=true]:text-violet-700 data-[active=true]:border-violet-500/30',
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
 
 const cardioTypeLabels: Record<string, string> = {
     rodaje: 'Rodaje',
@@ -48,7 +134,14 @@ const cardioTypeLabels: Record<string, string> = {
     tempo: 'Tempo',
     fartlek: 'Fartlek',
     progressive: 'Progresivo',
+    progresivo: 'Progresivo',
     hybrid: 'Híbrido',
+    hibrido: 'Híbrido',
+    bike: 'Bicicleta',
+    bicicleta: 'Bicicleta',
+    swim: 'Natación',
+    natacion: 'Natación',
+    natación: 'Natación',
 }
 
 function formatHours(min: number) {
@@ -91,8 +184,8 @@ function clampProgress(value: number | null) {
 }
 
 function getTrainingTypeLabel(trainingType: string | null) {
-    if (!trainingType) return 'Cardio'
-    return cardioTypeLabels[trainingType] || `${trainingType.charAt(0).toUpperCase()}${trainingType.slice(1)}`
+    if (!trainingType) return null
+    return cardioTypeLabels[trainingType.toLowerCase()] || `${trainingType.charAt(0).toUpperCase()}${trainingType.slice(1)}`
 }
 
 function getStructureLines(structure: unknown): string[] {
@@ -142,6 +235,56 @@ function getStructureLines(structure: unknown): string[] {
     return []
 }
 
+// ---------------------------------------------------------------------------
+// Week re-aggregation (client-side, for filtered views)
+// ---------------------------------------------------------------------------
+
+function reaggregateWeeks(
+    baseWeeks: CardioWeekData[],
+    sessions: CardioSessionProgress[]
+): CardioWeekData[] {
+    const weekMap = new Map<string, CardioWeekData>(
+        baseWeeks.map(w => [
+            w.weekStart,
+            {
+                ...w,
+                distanceKm: 0,
+                durationMin: 0,
+                sessionsCount: 0,
+                plannedDistanceKm: 0,
+                plannedDurationMin: 0,
+                plannedSessionsCount: 0,
+            },
+        ])
+    )
+
+    for (const s of sessions) {
+        const d = new Date(s.scheduledDate + 'T12:00:00')
+        const dow = (d.getDay() + 6) % 7
+        d.setDate(d.getDate() - dow)
+        const key = d.toISOString().split('T')[0]
+
+        if (weekMap.has(key)) {
+            const w = weekMap.get(key)!
+            w.plannedSessionsCount += 1
+            w.plannedDistanceKm += s.targetDistanceKm ?? 0
+            w.plannedDurationMin += s.targetDurationMin ?? 0
+            const hasActualWork = (s.actualDistanceKm ?? 0) > 0 || (s.actualDurationMin ?? 0) > 0
+            if (hasActualWork || s.isCompleted) {
+                w.distanceKm += s.actualDistanceKm ?? 0
+                w.durationMin += s.actualDurationMin ?? 0
+                w.sessionsCount += 1
+            }
+        }
+    }
+
+    return Array.from(weekMap.values())
+}
+
+// ---------------------------------------------------------------------------
+// Tooltip
+// ---------------------------------------------------------------------------
+
 function WeekTooltip({ active, payload, label, mode }: any) {
     if (!active || !payload?.length) return null
     const week = payload[0]?.payload
@@ -171,6 +314,10 @@ function WeekTooltip({ active, payload, label, mode }: any) {
         </div>
     )
 }
+
+// ---------------------------------------------------------------------------
+// Session helpers
+// ---------------------------------------------------------------------------
 
 function getSessionStatusMeta(session: CardioSessionProgress) {
     if (session.completionStatus === 'completed') {
@@ -237,6 +384,10 @@ function getDisplayMetric(session: CardioSessionProgress) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
 function StatCard({
     icon: Icon,
     label,
@@ -286,6 +437,18 @@ function SessionMetricCard({
     )
 }
 
+function DisciplineBadge({ trainingType }: { trainingType: string | null }) {
+    const discipline = getDiscipline(trainingType)
+    const meta = DISCIPLINE_META[discipline]
+    const Icon = meta.icon
+    return (
+        <Badge variant="outline" className={cn('gap-1', meta.badgeClass)}>
+            <Icon className="h-3 w-3" />
+            {meta.label}
+        </Badge>
+    )
+}
+
 function SessionCard({ session }: { session: CardioSessionProgress }) {
     const [open, setOpen] = useState(false)
     const statusMeta = getSessionStatusMeta(session)
@@ -294,6 +457,9 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
     const structureLines = useMemo(() => getStructureLines(session.plannedStructure), [session.plannedStructure])
     const progressPct = displayMetric.progressPct
     const overTarget = progressPct !== null && progressPct > 100
+    const subtypeLabel = getTrainingTypeLabel(session.trainingType)
+    const discipline = getDiscipline(session.trainingType)
+    const disciplineMeta = DISCIPLINE_META[discipline]
 
     return (
         <Collapsible open={open} onOpenChange={setOpen}>
@@ -301,10 +467,11 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                 <div className="p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-3">
+                            {/* Jerarquía: disciplina → estado → fecha */}
                             <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-                                    {getTrainingTypeLabel(session.trainingType)}
-                                </Badge>
+                                {/* Nivel 1: Tipo de disciplina (Running / Bicicleta / Natación / Híbrido) */}
+                                <DisciplineBadge trainingType={session.trainingType} />
+                                {/* Nivel 2: Estado */}
                                 <Badge variant="outline" className={statusMeta.className}>
                                     <StatusIcon className="mr-1 h-3.5 w-3.5" />
                                     {statusMeta.label}
@@ -313,6 +480,14 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                             </div>
                             <div>
                                 <h4 className="text-base font-semibold text-foreground">{session.title}</h4>
+                                {/* Subtipo solo si es distinto al título y existe */}
+                                {subtypeLabel && subtypeLabel.toLowerCase() !== session.title.toLowerCase() && (
+                                    <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+                                        <span className={cn('inline-flex items-center gap-1', disciplineMeta.badgeClass.split(' ').find(c => c.startsWith('text-')))}>
+                                            {subtypeLabel}
+                                        </span>
+                                    </p>
+                                )}
                                 <p className="mt-1 text-sm text-muted-foreground">{displayMetric.summary}</p>
                             </div>
                         </div>
@@ -407,7 +582,7 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                                         <SessionMetricCard
                                             label="Duración objetivo"
                                             value={session.targetDurationMin !== null ? formatHours(session.targetDurationMin) : '—'}
-                                            hint={session.trainingType ? getTrainingTypeLabel(session.trainingType) : null}
+                                            hint={subtypeLabel ?? undefined}
                                         />
                                     </div>
                                     {session.description ? (
@@ -559,48 +734,172 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Discipline filter pills
+// ---------------------------------------------------------------------------
+
+const FILTER_OPTIONS: { value: DisciplineFilter; label: string; icon: React.ElementType }[] = [
+    { value: 'all', label: 'Todos', icon: Activity },
+    { value: 'running', label: 'Running', icon: RouteIcon },
+    { value: 'bicicleta', label: 'Bicicleta', icon: Bike },
+    { value: 'natacion', label: 'Natación', icon: Waves },
+    { value: 'hibrido', label: 'Híbrido', icon: Zap },
+]
+
+function DisciplineFilterBar({
+    value,
+    onChange,
+    sessionCounts,
+}: {
+    value: DisciplineFilter
+    onChange: (v: DisciplineFilter) => void
+    sessionCounts: Record<DisciplineFilter, number>
+}) {
+    return (
+        <div className="flex flex-wrap gap-2">
+            {FILTER_OPTIONS.map((opt) => {
+                const isActive = value === opt.value
+                const count = sessionCounts[opt.value]
+                const disciplineMeta = opt.value !== 'all' ? DISCIPLINE_META[opt.value] : null
+                const Icon = opt.icon
+
+                return (
+                    <button
+                        key={opt.value}
+                        onClick={() => onChange(opt.value)}
+                        data-active={isActive}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                            'border-border/70 text-muted-foreground hover:text-foreground hover:border-border',
+                            isActive && opt.value === 'all' && 'border-foreground/20 bg-foreground/5 text-foreground',
+                            isActive && disciplineMeta && disciplineMeta.badgeClass,
+                        )}
+                    >
+                        <Icon className="h-3.5 w-3.5" />
+                        {opt.label}
+                        {count > 0 && (
+                            <span className={cn(
+                                'ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                                isActive ? 'bg-current/10' : 'bg-muted text-muted-foreground'
+                            )}>
+                                {count}
+                            </span>
+                        )}
+                    </button>
+                )
+            })}
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export function CardioProgressView({ data }: CardioProgressViewProps) {
     const [mode, setMode] = useState<MetricMode>('km')
+    const [disciplineFilter, setDisciplineFilter] = useState<DisciplineFilter>('all')
+
+    // Count sessions per discipline (for filter pill badges)
+    const sessionCounts = useMemo((): Record<DisciplineFilter, number> => {
+        const counts: Record<DisciplineFilter, number> = {
+            all: data.sessions.length,
+            running: 0,
+            bicicleta: 0,
+            natacion: 0,
+            hibrido: 0,
+        }
+        for (const s of data.sessions) {
+            const d = getDiscipline(s.trainingType)
+            counts[d] += 1
+        }
+        return counts
+    }, [data.sessions])
+
+    // Filter sessions by discipline
+    const filteredSessions = useMemo(() =>
+        disciplineFilter === 'all'
+            ? data.sessions
+            : data.sessions.filter(s => getDiscipline(s.trainingType) === disciplineFilter),
+        [data.sessions, disciplineFilter]
+    )
+
+    // Recalculate week data from filtered sessions
+    const filteredWeeks = useMemo(() =>
+        disciplineFilter === 'all'
+            ? data.weeks
+            : reaggregateWeeks(data.weeks, filteredSessions),
+        [data.weeks, filteredSessions, disciplineFilter]
+    )
+
+    // Recalculate KPIs from filtered data
+    const kpis = useMemo(() => {
+        const totalDistanceKm = filteredWeeks.reduce((a, w) => a + w.distanceKm, 0)
+        const totalDurationMin = filteredWeeks.reduce((a, w) => a + w.durationMin, 0)
+        const totalSessions = filteredSessions.length
+        const completedSessions = filteredSessions.filter(s => s.completionStatus === 'completed').length
+        const weeksWithData = filteredWeeks.filter(w => w.plannedSessionsCount > 0 || w.sessionsCount > 0).length || 1
+        return {
+            totalDistanceKm,
+            totalDurationMin,
+            totalSessions,
+            completedSessions,
+            avgDistanceKmPerWeek: totalDistanceKm / weeksWithData,
+            avgDurationMinPerWeek: totalDurationMin / weeksWithData,
+        }
+    }, [filteredWeeks, filteredSessions])
+
+    const chartHasActualData = filteredWeeks.some((week) =>
+        mode === 'km' ? week.distanceKm > 0 : week.durationMin > 0
+    )
+
+    const activeFilterLabel = disciplineFilter === 'all'
+        ? null
+        : DISCIPLINE_META[disciplineFilter].label
 
     const statCards = [
         {
             icon: MapPin,
             label: 'Total km',
-            value: `${data.totalDistanceKm.toFixed(1)} km`,
-            hint: `${data.completedSessions} sesiones con trabajo registrado`,
+            value: `${kpis.totalDistanceKm.toFixed(1)} km`,
+            hint: `${kpis.completedSessions} sesiones con trabajo registrado`,
             color: 'bg-primary/10 text-primary ring-primary/20',
         },
         {
             icon: Timer,
             label: 'Total tiempo',
-            value: formatHours(data.totalDurationMin),
+            value: formatHours(kpis.totalDurationMin),
             hint: 'Volumen real del periodo',
             color: 'bg-sky-500/10 text-sky-600 ring-sky-500/20',
         },
         {
             icon: Activity,
             label: 'Sesiones',
-            value: String(data.totalSessions),
-            hint: `${data.completedSessions} completadas · ${data.totalSessions - data.completedSessions} con margen de mejora`,
+            value: String(kpis.totalSessions),
+            hint: `${kpis.completedSessions} completadas · ${kpis.totalSessions - kpis.completedSessions} con margen de mejora`,
             color: 'bg-emerald-500/10 text-emerald-600 ring-emerald-500/20',
         },
         {
             icon: TrendingUp,
             label: 'Media/semana',
             value: mode === 'km'
-                ? `${data.avgDistanceKmPerWeek.toFixed(1)} km`
-                : formatHours(data.avgDurationMinPerWeek),
+                ? `${kpis.avgDistanceKmPerWeek.toFixed(1)} km`
+                : formatHours(kpis.avgDurationMinPerWeek),
             hint: 'Promedio sobre semanas activas del rango',
             color: 'bg-amber-500/10 text-amber-600 ring-amber-500/20',
         },
     ]
 
-    const chartHasActualData = data.weeks.some((week) =>
-        mode === 'km' ? week.distanceKm > 0 : week.durationMin > 0
-    )
-
     return (
         <div className="space-y-6">
+            {/* Filter pills */}
+            <DisciplineFilterBar
+                value={disciplineFilter}
+                onChange={setDisciplineFilter}
+                sessionCounts={sessionCounts}
+            />
+
+            {/* KPI Cards — recalculated with filter */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {statCards.map((card) => (
                     <StatCard
@@ -614,13 +913,21 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                 ))}
             </div>
 
+            {/* Chart — recalculated with filter */}
             <Card className="overflow-hidden border-border/70">
                 <div className="border-b border-border/70 bg-muted/10 px-5 py-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
                                 <Activity className="h-5 w-5 text-primary" />
-                                <h3 className="font-semibold text-foreground">Carga semanal</h3>
+                                <h3 className="font-semibold text-foreground">
+                                    Carga semanal
+                                    {activeFilterLabel && (
+                                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                                            · {activeFilterLabel}
+                                        </span>
+                                    )}
+                                </h3>
                             </div>
                             <p className="max-w-2xl text-sm text-muted-foreground">
                                 Evolución real del trabajo aeróbico semana a semana, con referencia al volumen planificado en el tooltip.
@@ -654,20 +961,46 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                 </div>
 
                 <CardContent className="p-5">
-                    {!data.totalSessions ? (
+                    {!kpis.totalSessions ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-                            <Activity className="mb-3 h-10 w-10 opacity-30" />
-                            <p className="text-sm">No hay sesiones de cardio en este período.</p>
+                            {activeFilterLabel
+                                ? (() => {
+                                    const Icon = disciplineFilter !== 'all' ? DISCIPLINE_META[disciplineFilter].icon : Activity
+                                    return (
+                                        <>
+                                            <Icon className="mb-3 h-10 w-10 opacity-30" />
+                                            <p className="text-sm">No hay sesiones de {activeFilterLabel.toLowerCase()} en este período.</p>
+                                            <button
+                                                onClick={() => setDisciplineFilter('all')}
+                                                className="mt-3 text-xs text-primary hover:underline"
+                                            >
+                                                Ver todas las disciplinas
+                                            </button>
+                                        </>
+                                    )
+                                })()
+                                : (
+                                    <>
+                                        <Activity className="mb-3 h-10 w-10 opacity-30" />
+                                        <p className="text-sm">No hay sesiones de cardio en este período.</p>
+                                    </>
+                                )
+                            }
                         </div>
                     ) : !chartHasActualData ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
                             <ClipboardList className="mb-3 h-10 w-10 opacity-30" />
-                            <p className="text-sm">Hay cardio planificado, pero todavía no hay carga real registrada para dibujar la tendencia.</p>
+                            <p className="text-sm">
+                                {activeFilterLabel
+                                    ? `Hay cardio de ${activeFilterLabel.toLowerCase()} planificado, pero todavía no hay carga real registrada.`
+                                    : 'Hay cardio planificado, pero todavía no hay carga real registrada para dibujar la tendencia.'
+                                }
+                            </p>
                         </div>
                     ) : (
                         <div className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={data.weeks} margin={{ top: 10, right: 8, left: -12, bottom: 4 }}>
+                                <AreaChart data={filteredWeeks} margin={{ top: 10, right: 8, left: -12, bottom: 4 }}>
                                     <defs>
                                         <linearGradient id={`cardioGradient-${mode}`} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor={mode === 'km' ? '#14b8a6' : '#3b82f6'} stopOpacity={0.28} />
@@ -713,27 +1046,55 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                 </CardContent>
             </Card>
 
+            {/* Sessions list — filtered */}
             <section className="space-y-4">
                 <div className="flex flex-col gap-1">
-                    <h3 className="text-lg font-semibold text-foreground">Sesiones de cardio</h3>
+                    <h3 className="text-lg font-semibold text-foreground">
+                        Sesiones de cardio
+                        {activeFilterLabel && (
+                            <span className="ml-2 text-sm font-normal text-muted-foreground">· {activeFilterLabel}</span>
+                        )}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
                         Compara lo planificado con lo realizado sesión a sesión y abre el detalle cuando necesites contexto adicional.
                     </p>
                 </div>
 
-                {data.sessions.length === 0 ? (
+                {filteredSessions.length === 0 ? (
                     <Card className="border-dashed border-border/70 p-8 text-center">
                         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
-                            <ClipboardList className="h-5 w-5 text-muted-foreground" />
+                            {disciplineFilter !== 'all'
+                                ? (() => {
+                                    const Icon = DISCIPLINE_META[disciplineFilter].icon
+                                    return <Icon className="h-5 w-5 text-muted-foreground" />
+                                })()
+                                : <ClipboardList className="h-5 w-5 text-muted-foreground" />
+                            }
                         </div>
-                        <h4 className="font-semibold text-foreground">Sin sesiones en el rango</h4>
+                        <h4 className="font-semibold text-foreground">
+                            {activeFilterLabel
+                                ? `Sin sesiones de ${activeFilterLabel.toLowerCase()}`
+                                : 'Sin sesiones en el rango'
+                            }
+                        </h4>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Cuando haya cardio planificado o registrado en este período, aparecerá aquí.
+                            {activeFilterLabel
+                                ? `No hay sesiones de ${activeFilterLabel.toLowerCase()} en este período.`
+                                : 'Cuando haya cardio planificado o registrado en este período, aparecerá aquí.'
+                            }
                         </p>
+                        {activeFilterLabel && (
+                            <button
+                                onClick={() => setDisciplineFilter('all')}
+                                className="mt-3 text-xs text-primary hover:underline"
+                            >
+                                Ver todas las disciplinas
+                            </button>
+                        )}
                     </Card>
                 ) : (
                     <div className="space-y-4">
-                        {data.sessions.map((session) => (
+                        {filteredSessions.map((session) => (
                             <SessionCard key={session.id} session={session} />
                         ))}
                     </div>

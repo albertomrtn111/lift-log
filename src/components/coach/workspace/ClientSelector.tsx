@@ -122,59 +122,65 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                         <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                         {activeClients.length > 0 && (
                             <CommandGroup heading="Activos">
-                                {activeClients.map(client => (
-                                    <CommandItem
-                                        key={client.id}
-                                        value={client.id}
-                                        onSelect={() => handleSelect(client.id)}
-                                        className="cursor-pointer"
-                                    >
-                                        <div className="flex items-center gap-2 flex-1">
-                                            <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
-                                                {getClientDisplayIdentity(client).initials}
+                                {activeClients.map(client => {
+                                    const { displayName, initials } = getClientDisplayIdentity(client)
+                                    return (
+                                        <CommandItem
+                                            key={client.id}
+                                            value={`${displayName} ${client.email} ${client.id}`}
+                                            onSelect={() => handleSelect(client.id)}
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
+                                                    {initials}
+                                                </div>
+                                                <UrgencyDot client={client} />
+                                                <div className="truncate">
+                                                    <p className="text-sm font-medium truncate">{displayName}</p>
+                                                    <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                                                </div>
                                             </div>
-                                            <UrgencyDot client={client} />
-                                            <div className="truncate">
-                                                <p className="text-sm font-medium truncate">{getClientDisplayIdentity(client).displayName}</p>
-                                                <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                                            </div>
-                                        </div>
-                                        <Check
-                                            className={cn(
-                                                'h-4 w-4',
-                                                selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
-                                            )}
-                                        />
-                                    </CommandItem>
-                                ))}
+                                            <Check
+                                                className={cn(
+                                                    'h-4 w-4',
+                                                    selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
+                                                )}
+                                            />
+                                        </CommandItem>
+                                    )
+                                })}
                             </CommandGroup>
                         )}
                         {inactiveClients.length > 0 && (
                             <CommandGroup heading="Inactivos / Otros">
-                                {inactiveClients.map(client => (
-                                    <CommandItem
-                                        key={client.id}
-                                        value={client.id}
-                                        onSelect={() => handleSelect(client.id)}
-                                        className="cursor-pointer opacity-60"
-                                    >
-                                        <div className="flex items-center gap-2 flex-1">
-                                            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
-                                                {getClientDisplayIdentity(client).initials}
+                                {inactiveClients.map(client => {
+                                    const { displayName, initials } = getClientDisplayIdentity(client)
+                                    return (
+                                        <CommandItem
+                                            key={client.id}
+                                            value={`${displayName} ${client.email} ${client.id}`}
+                                            onSelect={() => handleSelect(client.id)}
+                                            className="cursor-pointer opacity-60"
+                                        >
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+                                                    {initials}
+                                                </div>
+                                                <div className="truncate">
+                                                    <p className="text-sm font-medium truncate">{displayName}</p>
+                                                    <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                                                </div>
                                             </div>
-                                            <div className="truncate">
-                                                <p className="text-sm font-medium truncate">{getClientDisplayIdentity(client).displayName}</p>
-                                                <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                                            </div>
-                                        </div>
-                                        <Check
-                                            className={cn(
-                                                'h-4 w-4',
-                                                selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
-                                            )}
-                                        />
-                                    </CommandItem>
-                                ))}
+                                            <Check
+                                                className={cn(
+                                                    'h-4 w-4',
+                                                    selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
+                                                )}
+                                            />
+                                        </CommandItem>
+                                    )
+                                })}
                             </CommandGroup>
                         )}
                     </CommandList>

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,11 +28,27 @@ export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBa
     return initial;
   });
 
+  useEffect(() => {
+    setData(prev => {
+      const next: Record<string, ProgressBackfillData> = {};
+
+      days.forEach(day => {
+        const dateKey = format(day, 'yyyy-MM-dd');
+        next[dateKey] = prev[dateKey]
+          ? { ...prev[dateKey], date: prev[dateKey].date || dateKey }
+          : { date: dateKey };
+      });
+
+      return next;
+    });
+  }, [days]);
+
   const updateField = (dateKey: string, field: keyof ProgressBackfillData, value: string) => {
     setData(prev => ({
       ...prev,
       [dateKey]: {
         ...prev[dateKey],
+        date: prev[dateKey]?.date || dateKey,
         [field]: field === 'notes' ? value : value ? parseFloat(value) : undefined,
       }
     }));
@@ -45,6 +61,7 @@ export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBa
         ...prev,
         [dateKey]: {
           ...prev[dateKey],
+          date: prev[dateKey]?.date || dateKey,
           weight: prevData.weight,
         }
       }));
@@ -73,13 +90,18 @@ export function ProgressBackfillContent({ days, onClose, onSuccess }: ProgressBa
   const handleSaveAll = async () => {
     setSaveStatus('saving')
     try {
-      const inputs: ClientMetricInput[] = Object.values(data).map(d => ({
-        metric_date: d.date,
-        weight_kg: d.weight !== undefined && !isNaN(d.weight) ? d.weight : undefined,
-        steps: d.steps !== undefined && !isNaN(d.steps) ? d.steps : undefined,
-        sleep_h: d.sleepHours !== undefined && !isNaN(d.sleepHours) ? d.sleepHours : undefined,
-        notes: d.notes || undefined
-      }))
+      const inputs: ClientMetricInput[] = days.map(day => {
+        const dateKey = format(day, 'yyyy-MM-dd');
+        const entry = data[dateKey] || { date: dateKey };
+
+        return {
+          metric_date: dateKey,
+          weight_kg: entry.weight !== undefined && !isNaN(entry.weight) ? entry.weight : undefined,
+          steps: entry.steps !== undefined && !isNaN(entry.steps) ? entry.steps : undefined,
+          sleep_h: entry.sleepHours !== undefined && !isNaN(entry.sleepHours) ? entry.sleepHours : undefined,
+          notes: entry.notes || undefined
+        }
+      })
 
       const result = await saveClientMetricsBulk(inputs)
 

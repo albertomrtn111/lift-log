@@ -179,7 +179,8 @@ function revalidateReviewSurfaces() {
 
 async function advanceClientNextCheckinDate(
     supabase: SupabaseClient,
-    clientId: string
+    clientId: string,
+    checkinId?: string
 ) {
     const { data: clientData } = await supabase
         .from('clients')
@@ -189,10 +190,23 @@ async function advanceClientNextCheckinDate(
 
     if (!clientData) return
 
+    let scheduledAnchorDate: string | null = null
+    if (checkinId) {
+        const { data: checkinData } = await supabase
+            .from('checkins')
+            .select('period_end')
+            .eq('id', checkinId)
+            .single()
+
+        scheduledAnchorDate = checkinData?.period_end ?? null
+    }
+
     const freqDays = clientData.checkin_frequency_days ?? 14
-    const baseDate = clientData.next_checkin_date
-        ? new Date(clientData.next_checkin_date + 'T12:00:00')
-        : new Date()
+    const baseDate = scheduledAnchorDate
+        ? new Date(`${scheduledAnchorDate}T12:00:00`)
+        : clientData.next_checkin_date
+            ? new Date(`${clientData.next_checkin_date}T12:00:00`)
+            : new Date()
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -233,7 +247,7 @@ async function finalizeApprovedReview(
         return { success: false as const, error: checkinError.message || 'No se pudo cerrar el check-in.' }
     }
 
-    await advanceClientNextCheckinDate(supabase, clientId)
+    await advanceClientNextCheckinDate(supabase, clientId, checkinId)
 
     return { success: true as const }
 }

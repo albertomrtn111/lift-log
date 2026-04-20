@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import * as SliderPrimitive from '@radix-ui/react-slider'
 import { Card } from '@/components/ui/card'
 import {
     XAxis,
@@ -20,6 +21,7 @@ import {
     TrendingUp,
     Minus,
     Loader2,
+    CalendarDays,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProgressData, getCardioProgressData, ProgressData, CardioProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
@@ -30,21 +32,186 @@ import { CardioProgressView } from './progress/CardioProgressView'
 // Types
 // ---------------------------------------------------------------------------
 
-type RangeKey = '7d' | '15d' | '30d' | '3m' | '6m' | '12m'
 type SubTab = 'general' | 'training' | 'cardio'
 
-const RANGE_OPTIONS: { key: RangeKey; label: string; days: number }[] = [
-    { key: '7d', label: '7 días', days: 7 },
-    { key: '15d', label: '15 días', days: 15 },
-    { key: '30d', label: '30 días', days: 30 },
-    { key: '3m', label: '3 meses', days: 90 },
-    { key: '6m', label: '6 meses', days: 180 },
-    { key: '12m', label: '12 meses', days: 365 },
-]
+// Slider works in "days since (today - MAX_DAYS_BACK)"
+// 0 = MAX_DAYS_BACK days ago, MAX_DAYS_BACK = today
+const MAX_DAYS_BACK = 365
 
 interface ProgresoTabProps {
     clientId: string
     coachId: string
+}
+
+// ---------------------------------------------------------------------------
+// Date helpers
+// ---------------------------------------------------------------------------
+
+function offsetToDate(offset: number): Date {
+    const d = new Date()
+    d.setHours(12, 0, 0, 0)
+    d.setDate(d.getDate() - (MAX_DAYS_BACK - offset))
+    return d
+}
+
+function toDateStr(d: Date) {
+    return d.toISOString().split('T')[0]
+}
+
+function formatLabel(d: Date) {
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// Default: last 30 days → offsets [335, 365]
+const DEFAULT_OFFSETS: [number, number] = [MAX_DAYS_BACK - 30, MAX_DAYS_BACK]
+
+// Quick presets (days back → convert to offsets)
+const PRESETS: { label: string; days: number }[] = [
+    { label: '7d', days: 7 },
+    { label: '15d', days: 15 },
+    { label: '30d', days: 30 },
+    { label: '3m', days: 90 },
+    { label: '6m', days: 180 },
+    { label: '1 año', days: 365 },
+]
+
+// ---------------------------------------------------------------------------
+// DateRangeSlider
+// ---------------------------------------------------------------------------
+
+function DateRangeSlider({
+    value,
+    onChange,
+}: {
+    value: [number, number]
+    onChange: (v: [number, number]) => void
+}) {
+    const [localValue, setLocalValue] = useState<[number, number]>(value)
+
+    // Sync external value changes (preset buttons)
+    useEffect(() => {
+        setLocalValue(value)
+    }, [value])
+
+    const dateFrom = offsetToDate(localValue[0])
+    const dateTo = offsetToDate(localValue[1])
+    const totalDays = localValue[1] - localValue[0]
+
+    const handleChange = (vals: number[]) => {
+        const next: [number, number] = [vals[0], vals[1]]
+        setLocalValue(next)
+    }
+
+    const handleCommit = (vals: number[]) => {
+        const next: [number, number] = [vals[0], vals[1]]
+        onChange(next)
+    }
+
+    // Left thumb label position (as % across the track)
+    const leftPct = (localValue[0] / MAX_DAYS_BACK) * 100
+    const rightPct = (localValue[1] / MAX_DAYS_BACK) * 100
+
+    return (
+        <div className="space-y-4">
+            {/* Slider track */}
+            <div className="relative px-2.5">
+                <SliderPrimitive.Root
+                    min={0}
+                    max={MAX_DAYS_BACK}
+                    step={1}
+                    value={localValue}
+                    onValueChange={handleChange}
+                    onValueCommit={handleCommit}
+                    className="relative flex w-full touch-none select-none items-center"
+                    minStepsBetweenThumbs={1}
+                >
+                    <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-muted">
+                        <SliderPrimitive.Range className="absolute h-full bg-primary" />
+                    </SliderPrimitive.Track>
+                    <SliderPrimitive.Thumb
+                        className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
+                        aria-label="Fecha de inicio"
+                    />
+                    <SliderPrimitive.Thumb
+                        className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
+                        aria-label="Fecha de fin"
+                    />
+                </SliderPrimitive.Root>
+
+                {/* Floating date labels under each thumb */}
+                <div className="relative mt-3 h-5 select-none pointer-events-none">
+                    <span
+                        className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-primary"
+                        style={{ left: `${leftPct}%` }}
+                    >
+                        {formatLabel(dateFrom)}
+                    </span>
+                    <span
+                        className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-primary"
+                        style={{ left: `${rightPct}%` }}
+                    >
+                        {formatLabel(dateTo)}
+                    </span>
+                </div>
+            </div>
+
+            {/* Range summary pill */}
+            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarDays className="h-3.5 w-3.5" />
+                <span>
+                    {totalDays === 0
+                        ? 'Selecciona un rango'
+                        : `${totalDays} día${totalDays !== 1 ? 's' : ''} seleccionado${totalDays !== 1 ? 's' : ''}`
+                    }
+                </span>
+            </div>
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// DateRangeFilter — slider + preset pills together
+// ---------------------------------------------------------------------------
+
+function DateRangeFilter({
+    value,
+    onChange,
+}: {
+    value: [number, number]
+    onChange: (v: [number, number]) => void
+}) {
+    const activePreset = PRESETS.find(
+        p => value[1] === MAX_DAYS_BACK && value[0] === MAX_DAYS_BACK - p.days
+    )
+
+    return (
+        <Card className="p-4 border-border/70 space-y-4">
+            {/* Preset pills */}
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground mr-1">Rápido:</span>
+                {PRESETS.map(preset => {
+                    const isActive = activePreset?.label === preset.label
+                    return (
+                        <button
+                            key={preset.label}
+                            onClick={() => onChange([MAX_DAYS_BACK - preset.days, MAX_DAYS_BACK])}
+                            className={cn(
+                                'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                                isActive
+                                    ? 'border-primary/30 bg-primary/10 text-primary'
+                                    : 'border-border/70 text-muted-foreground hover:border-border hover:text-foreground'
+                            )}
+                        >
+                            {preset.label}
+                        </button>
+                    )
+                })}
+            </div>
+
+            {/* Dual-handle slider */}
+            <DateRangeSlider value={value} onChange={onChange} />
+        </Card>
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -53,55 +220,50 @@ interface ProgresoTabProps {
 
 export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [subTab, setSubTab] = useState<SubTab>('general')
-    const [range, setRange] = useState<RangeKey>('30d')
+    const [offsets, setOffsets] = useState<[number, number]>(DEFAULT_OFFSETS)
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<ProgressData | null>(null)
     const [cardioData, setCardioData] = useState<CardioProgressData | null>(null)
     const [cardioLoading, setCardioLoading] = useState(false)
 
-    const rangeDays = RANGE_OPTIONS.find(r => r.key === range)!.days
+    const dateFrom = useMemo(() => toDateStr(offsetToDate(offsets[0])), [offsets])
+    const dateTo = useMemo(() => toDateStr(offsetToDate(offsets[1])), [offsets])
 
-    const fetchData = useCallback(async () => {
+    // Debounce ref so rapid slider drags don't spam requests
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const fetchGeneral = useCallback(async (from: string, to: string) => {
         setLoading(true)
-        const dateTo = new Date()
-        const dateFrom = new Date()
-        dateFrom.setDate(dateFrom.getDate() - rangeDays)
-
-        const result = await getProgressData(
-            clientId,
-            dateFrom.toISOString().split('T')[0],
-            dateTo.toISOString().split('T')[0]
-        )
-
-        if (result.success && result.data) {
-            setData(result.data)
-        } else {
-            setData({ metrics: [], dietAdherence: [], workoutLogs: [] })
-        }
+        const result = await getProgressData(clientId, from, to)
+        setData(result.success && result.data ? result.data : { metrics: [], dietAdherence: [], workoutLogs: [] })
         setLoading(false)
-    }, [clientId, rangeDays])
+    }, [clientId])
 
+    const fetchCardio = useCallback(async (from: string, to: string) => {
+        setCardioLoading(true)
+        const result = await getCardioProgressData(clientId, from, to)
+        if (result.success && result.data) setCardioData(result.data)
+        setCardioLoading(false)
+    }, [clientId])
+
+    // Fetch general on mount and when dates change
     useEffect(() => {
-        fetchData()
-    }, [fetchData])
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => {
+            fetchGeneral(dateFrom, dateTo)
+        }, 300)
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    }, [fetchGeneral, dateFrom, dateTo])
 
+    // Fetch cardio when on cardio tab and dates change
     useEffect(() => {
         if (subTab !== 'cardio') return
-        const fetchCardio = async () => {
-            setCardioLoading(true)
-            const dateTo = new Date()
-            const dateFrom = new Date()
-            dateFrom.setDate(dateFrom.getDate() - rangeDays)
-            const result = await getCardioProgressData(
-                clientId,
-                dateFrom.toISOString().split('T')[0],
-                dateTo.toISOString().split('T')[0]
-            )
-            if (result.success && result.data) setCardioData(result.data)
-            setCardioLoading(false)
-        }
-        fetchCardio()
-    }, [subTab, range, clientId, rangeDays])
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => {
+            fetchCardio(dateFrom, dateTo)
+        }, 300)
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    }, [subTab, fetchCardio, dateFrom, dateTo])
 
     // -----------------------------------------------------------------------
     // Computed KPIs
@@ -110,56 +272,33 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const kpis = useMemo(() => {
         if (!data) return null
 
-        // Weight
         const weights = data.metrics.filter(m => m.weight_kg !== null).map(m => m.weight_kg!)
-        const avgWeight = weights.length > 0
-            ? (weights.reduce((a, b) => a + b, 0) / weights.length)
-            : null
+        const avgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null
         const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null
         const firstWeight = weights.length > 1 ? weights[0] : null
         const weightDelta = lastWeight && firstWeight ? lastWeight - firstWeight : null
 
-        // Training adherence
         const totalWorkouts = data.workoutLogs.length
         const completedWorkouts = data.workoutLogs.filter(w => w.completed).length
-        const trainingAdherence = totalWorkouts > 0
-            ? Math.round((completedWorkouts / totalWorkouts) * 100)
-            : null
+        const trainingAdherence = totalWorkouts > 0 ? Math.round((completedWorkouts / totalWorkouts) * 100) : null
 
-        // Diet adherence
         const dietValues = data.dietAdherence.map(d => d.adherence_pct)
         const avgDietAdherence = dietValues.length > 0
             ? Math.round(dietValues.reduce((a, b) => a + b, 0) / dietValues.length)
             : null
 
-        // Steps
         const stepsValues = data.metrics.filter(m => m.steps !== null).map(m => m.steps!)
         const avgSteps = stepsValues.length > 0
             ? Math.round(stepsValues.reduce((a, b) => a + b, 0) / stepsValues.length)
             : null
 
-        // Sleep
         const sleepValues = data.metrics.filter(m => m.sleep_h !== null).map(m => m.sleep_h!)
         const avgSleep = sleepValues.length > 0
             ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
             : null
 
-        return {
-            avgWeight,
-            lastWeight,
-            weightDelta,
-            trainingAdherence,
-            completedWorkouts,
-            totalWorkouts,
-            avgDietAdherence,
-            avgSteps,
-            avgSleep,
-        }
+        return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep }
     }, [data])
-
-    // -----------------------------------------------------------------------
-    // Chart data
-    // -----------------------------------------------------------------------
 
     const weightChartData = useMemo(() => {
         if (!data) return []
@@ -204,24 +343,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 <TrainingProgressView clientId={clientId} coachId={coachId} />
             ) : subTab === 'cardio' ? (
                 <>
-                    {/* Range Selector */}
-                    <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
-                        {RANGE_OPTIONS.map(opt => (
-                            <button
-                                key={opt.key}
-                                onClick={() => setRange(opt.key)}
-                                className={cn(
-                                    "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                                    range === opt.key
-                                        ? "bg-background text-foreground shadow-sm dark:bg-card"
-                                        : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-
+                    <DateRangeFilter value={offsets} onChange={setOffsets} />
                     {cardioLoading ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -232,31 +354,13 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 </>
             ) : (
                 <>
-                    {/* Range Selector */}
-                    <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
-                        {RANGE_OPTIONS.map(opt => (
-                            <button
-                                key={opt.key}
-                                onClick={() => setRange(opt.key)}
-                                className={cn(
-                                    "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
-                                    range === opt.key
-                                        ? "bg-background text-foreground shadow-sm dark:bg-card"
-                                        : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-
+                    <DateRangeFilter value={offsets} onChange={setOffsets} />
                     {loading ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
                     ) : (
                         <>
-                            {/* KPI Cards */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
                                 <KpiCard
                                     icon={Scale}
@@ -289,8 +393,6 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     color="green"
                                 />
                             </div>
-
-                            {/* Weight Evolution Chart */}
                             <WeightChart data={weightChartData} />
                         </>
                     )}

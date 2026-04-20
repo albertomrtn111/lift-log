@@ -5,6 +5,7 @@ import { sendReviewEmail } from '@/lib/n8n'
 import { revalidatePath } from 'next/cache'
 import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
+import { toLocalDateStr } from '@/lib/date-utils'
 
 interface SendReviewResult {
     success: boolean
@@ -28,7 +29,7 @@ export async function sendReviewAction(
     // 2) Fetch client
     const { data: client, error: clientErr } = await supabase
         .from('clients')
-        .select('id, email, full_name')
+        .select('id, email, full_name, next_checkin_date, checkin_frequency_days')
         .eq('id', clientId)
         .eq('coach_id', validatedCoachId)
         .single()
@@ -52,6 +53,15 @@ export async function sendReviewAction(
         }
     }
 
+    const scheduledCheckinDate = client.next_checkin_date ?? null
+    const periodStart = scheduledCheckinDate
+        ? (() => {
+            const start = new Date(`${scheduledCheckinDate}T12:00:00`)
+            start.setDate(start.getDate() - (client.checkin_frequency_days ?? 14))
+            return toLocalDateStr(start)
+        })()
+        : null
+
     // 4) Archive existing pending review checkins for this client
     await supabase
         .from('checkins')
@@ -69,6 +79,8 @@ export async function sendReviewAction(
             client_id: clientId,
             type: 'checkin',
             status: 'pending',
+            period_start: periodStart,
+            period_end: scheduledCheckinDate,
             form_template_id: template.id,
             source: 'coach_portal',
             raw_payload: {},
