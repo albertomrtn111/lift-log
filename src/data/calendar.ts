@@ -16,6 +16,7 @@ type CheckinRecord = {
     client_id: string
     submitted_at: string | null
     created_at: string
+    period_end: string | null
     status: string | null
     source: string | null
     raw_payload: Record<string, unknown> | null
@@ -134,7 +135,7 @@ function buildScheduledEvent(
     client: ClientRecord,
     today: string
 ): CalendarEvent {
-    const dueDate = client.next_checkin_date || checkin.created_at.split('T')[0]
+    const dueDate = getCheckinDueDate(checkin, client)
     const status: CalendarEvent['status'] = dueDate < today ? 'missing' : 'scheduled'
 
     return {
@@ -162,6 +163,46 @@ function buildScheduledEvent(
         rawMetricCount: 0,
         rawResponseCount: 0,
     }
+}
+
+function buildScheduledEventFromClient(
+    client: ClientRecord,
+    today: string
+): CalendarEvent | null {
+    const dueDate = client.next_checkin_date
+    if (!dueDate) return null
+
+    const status: CalendarEvent['status'] = dueDate < today ? 'missing' : 'scheduled'
+
+    return {
+        id: `scheduled-client-${client.id}-${dueDate}`,
+        clientId: client.id,
+        clientName: client.full_name,
+        date: dueDate,
+        type: 'checkin',
+        isUrgent: status === 'missing',
+        projected: false,
+        status,
+        checkinId: undefined,
+        reviewId: undefined,
+        reviewStatus: null,
+        checkinStatus: null,
+        submittedAt: null,
+        expectedDate: dueDate,
+        source: 'scheduled',
+        checkinSource: null,
+        weightKg: null,
+        trainingAdherencePct: null,
+        nutritionAdherencePct: null,
+        sleepAvgH: null,
+        aiStatus: null,
+        rawMetricCount: 0,
+        rawResponseCount: 0,
+    }
+}
+
+function getCheckinDueDate(checkin: CheckinRecord, client: ClientRecord): string {
+    return checkin.period_end || client.next_checkin_date || checkin.created_at.split('T')[0]
 }
 
 function mapCalendarNote(
@@ -237,6 +278,7 @@ export async function getCalendarData(
             client_id,
             submitted_at,
             created_at,
+            period_end,
             status,
             source,
             raw_payload,
@@ -259,6 +301,7 @@ export async function getCalendarData(
             client_id,
             submitted_at,
             created_at,
+            period_end,
             status,
             source,
             raw_payload,
@@ -324,20 +367,45 @@ export async function getCalendarData(
 
     const latestPendingByClient = new Map<string, CheckinRecord>()
     for (const checkin of filteredPendingCheckins) {
+        const client = activeClientById.get(checkin.client_id)
+        if (!client) continue
+        const dueDate = getCheckinDueDate(checkin, client)
+        if (dueDate !== client.next_checkin_date) continue
         if (!latestPendingByClient.has(checkin.client_id)) {
             latestPendingByClient.set(checkin.client_id, checkin)
         }
     }
 
-    for (const [clientId, checkin] of latestPendingByClient.entries()) {
-        const client = activeClientById.get(clientId)
-        if (!client) continue
+    const currentSubmittedDatesByClient = new Map<string, string>()
+    for (const checkin of filteredSubmittedCheckins) {
+        const client = activeClientById.get(checkin.client_id)
+        if (!client || !client.next_checkin_date) continue
+        if (!checkin.period_end) continue
+        if (checkin.period_end === client.next_checkin_date) {
+            currentSubmittedDatesByClient.set(checkin.client_id, checkin.period_end)
+        }
+    }
 
-        const dueDate = client.next_checkin_date || checkin.created_at.split('T')[0]
+    for (const client of activeClients) {
+        const dueDate = client.next_checkin_date
+        if (!dueDate) continue
         if (dueDate < range.startDate || dueDate > range.endDate) continue
         if (client.start_date && dueDate < client.start_date) continue
 
-        events.push(buildScheduledEvent(checkin, client, today))
+        const pendingCheckin = latestPendingByClient.get(client.id)
+        if (pendingCheckin) {
+            events.push(buildScheduledEvent(pendingCheckin, client, today))
+            continue
+        }
+
+        if (currentSubmittedDatesByClient.has(client.id)) {
+            continue
+        }
+
+        const fallbackScheduledEvent = buildScheduledEventFromClient(client, today)
+        if (fallbackScheduledEvent) {
+            events.push(fallbackScheduledEvent)
+        }
     }
 
     let notesEnabled = true

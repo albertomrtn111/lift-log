@@ -276,7 +276,13 @@ export async function duplicateTrainingProgramClient(programId: string) {
                                 day_id: newDay.id,
                                 exercise_name: ex.exercise_name,
                                 order_index: ex.order_index,
-                                exercise_order: ex.exercise_order
+                                exercise_order: ex.exercise_order,
+                                muscle_group: ex.muscle_group,
+                                sets: ex.sets,
+                                reps: ex.reps,
+                                rir: ex.rir,
+                                rest_seconds: ex.rest_seconds,
+                                notes: ex.notes,
                             })
                             .select()
                             .single()
