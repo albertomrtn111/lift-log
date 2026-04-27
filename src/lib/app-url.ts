@@ -9,18 +9,35 @@
  * the real production domain. This prevents form links from going out with
  * localhost URLs when the env var is not configured.
  */
+const PRODUCTION_URL = 'https://nexttrain.ascenttech.cloud'
+const LEGACY_PRODUCTION_HOST = 'nexttrain.ascenttech.com'
+
+function normalizeAppUrl(raw: string): string {
+    const withoutTrailingSlash = raw.replace(/\/$/, '')
+
+    try {
+        const url = new URL(withoutTrailingSlash)
+        if (url.hostname === LEGACY_PRODUCTION_HOST) {
+            url.hostname = 'nexttrain.ascenttech.cloud'
+            return url.toString().replace(/\/$/, '')
+        }
+    } catch {
+        return withoutTrailingSlash
+    }
+
+    return withoutTrailingSlash
+}
+
 export function getAppUrl(): string {
     const raw = process.env.NEXT_PUBLIC_APP_URL?.trim()
 
     if (raw && raw.length > 0) {
         // Strip any trailing slash for consistency
-        return raw.replace(/\/$/, '')
+        return normalizeAppUrl(raw)
     }
 
     // Hard-coded production fallback — safe to use because any valid deployment
     // should have NEXT_PUBLIC_APP_URL set; this just prevents silent localhost leaks.
-    const PRODUCTION_URL = 'https://nexttrain.ascenttech.cloud'
-
     if (process.env.NODE_ENV !== 'production') {
         // In local development, warn loudly so developers know to set the var
         console.warn(

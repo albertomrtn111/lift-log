@@ -101,7 +101,7 @@ export function MembersTable({ clients, statusFilter, coachId, formTemplates }: 
                         <TableHead>Cliente</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead>Signup</TableHead>
-                        <TableHead>Próximo check-in</TableHead>
+                        <TableHead>Próxima revisión</TableHead>
                         <TableHead className="hidden lg:table-cell">Frecuencia</TableHead>
                         <TableHead className="hidden lg:table-cell">Inicio</TableHead>
                         <TableHead className="w-[60px]"></TableHead>

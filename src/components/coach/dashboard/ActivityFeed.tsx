@@ -26,7 +26,7 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             <div className="p-6 text-center">
                 <p className="font-medium">Sin actividad reciente</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Cuando entren check-ins, se aprueben reviews o actives programas aparecerán aquí.
+                    Cuando entren revisiones de clientes, envíes feedback o actives programas aparecerán aquí.
                 </p>
             </div>
         )

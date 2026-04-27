@@ -85,7 +85,7 @@ export async function createReviewAction(
         const review = await ensureReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
 
         if (!review) {
-            return { success: false, error: 'Error al crear review' }
+            return { success: false, error: 'Error al crear la revisión' }
         }
 
         if (review.ai_status !== 'completed' || !review.ai_summary) {
@@ -107,7 +107,7 @@ export async function createReviewAction(
         revalidatePath('/coach/clients')
         return { success: true, review }
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'No se pudo crear la review'
+        const message = error instanceof Error ? error.message : 'No se pudo crear la revisión'
         return { success: false, error: message }
     }
 }
@@ -163,7 +163,7 @@ export async function updateReviewAction(
     const success = await updateReview(reviewId, updates)
 
     if (!success) {
-        return { success: false, error: 'Error al actualizar review' }
+        return { success: false, error: 'Error al actualizar la revisión' }
     }
 
     revalidatePath('/coach/clients')
@@ -244,7 +244,7 @@ async function finalizeApprovedReview(
         .eq('id', checkinId)
 
     if (checkinError) {
-        return { success: false as const, error: checkinError.message || 'No se pudo cerrar el check-in.' }
+        return { success: false as const, error: checkinError.message || 'No se pudo cerrar la revisión.' }
     }
 
     await advanceClientNextCheckinDate(supabase, clientId, checkinId)
@@ -279,7 +279,7 @@ export async function revertReviewToDraftAction(reviewId: string) {
     })
 
     if (!success) {
-        return { success: false, error: 'Error al revertir review' }
+        return { success: false, error: 'Error al revertir la revisión' }
     }
 
     revalidatePath('/coach/clients')

@@ -100,7 +100,7 @@ const GeneratedFormSchema = z.object({
 })
 
 function buildFormPrompt(type: 'onboarding' | 'checkin', userPrompt: string): string {
-    const typeLabel = type === 'onboarding' ? 'onboarding' : 'check-in'
+    const typeLabel = type === 'onboarding' ? 'onboarding' : 'revisión'
     const defaultTopics = type === 'onboarding'
         ? [
             'objetivos',

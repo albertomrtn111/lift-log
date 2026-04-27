@@ -212,14 +212,14 @@ function getFollowUpSummary(clientStatus: ClientStatus | null) {
     if (clientStatus.daysUntilCheckin < 0) {
         return {
             label: `Atrasado ${Math.abs(clientStatus.daysUntilCheckin)}d`,
-            description: 'El siguiente check-in ya debería haberse recibido.',
+            description: 'La siguiente revisión ya debería haberse recibido.',
             tone: 'danger' as const,
         }
     }
 
     if (clientStatus.daysUntilCheckin === 0) {
         return {
-            label: 'Check-in hoy',
+            label: 'Revisión hoy',
             description: 'Conviene revisar si entra durante el día.',
             tone: 'warning' as const,
         }
@@ -590,8 +590,8 @@ function FollowUpActionBanner({
             const result = await forceAdvanceCheckinAction(clientId)
             if (result.success) {
                 toast({
-                    title: 'Check-in avanzado',
-                    description: 'El próximo check-in se ha programado correctamente.',
+                    title: 'Revisión avanzada',
+                    description: 'La próxima revisión se ha programado correctamente.',
                 })
                 onRefresh()
             } else {
@@ -618,7 +618,7 @@ function FollowUpActionBanner({
                                 ? latestCheckin?.review?.status === 'approved'
                                     ? 'La revisión ya está aprobada. Si quieres, todavía puedes enviar el feedback desde aquí.'
                                     : 'Hay una revisión pendiente de cerrar antes de avanzar el siguiente ciclo.'
-                                : 'No hay un check-in pendiente de revisión. Puedes avanzar el ciclo manualmente si corresponde.'}
+                                : 'No hay una revisión pendiente. Puedes avanzar el ciclo manualmente si corresponde.'}
                         </p>
                     </div>
                     <Button
@@ -635,7 +635,7 @@ function FollowUpActionBanner({
                         ) : (
                             <FastForward className="h-4 w-4" />
                         )}
-                        {hasReviewableCheckin ? getReviewActionLabel(latestCheckin) : 'Avanzar check-in'}
+                        {hasReviewableCheckin ? getReviewActionLabel(latestCheckin) : 'Avanzar revisión'}
                     </Button>
                 </div>
             </Card>
@@ -675,9 +675,9 @@ function ReviewCard({
         return (
             <Card className="p-6 text-center">
                 <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <h3 className="font-semibold">Sin check-ins</h3>
+                <h3 className="font-semibold">Sin revisiones</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                    El cliente aún no ha enviado ningún check-in
+                    El cliente aún no ha enviado ninguna revisión
                 </p>
             </Card>
         )
@@ -764,7 +764,7 @@ function ReviewCard({
                     <div className="flex items-center gap-2">
                         <FileText className="h-5 w-5 text-primary" />
                         <div>
-                            <h3 className="font-semibold">Último check-in</h3>
+                            <h3 className="font-semibold">Última revisión</h3>
                             <p className="text-sm text-muted-foreground">
                                 Lectura rápida del último formulario recibido y del resumen IA.
                             </p>
@@ -789,7 +789,7 @@ function ReviewCard({
                                 Métricas y estado
                             </p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Vista compacta del último check-in recibido.
+                                Vista compacta de la última revisión recibida.
                             </p>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-right">
@@ -841,7 +841,7 @@ function ReviewCard({
                         </div>
                     ) : (
                         <div className="rounded-lg border border-dashed bg-background/70 px-4 py-6 text-sm text-muted-foreground text-center">
-                            No hay métricas registradas en este check-in.
+                            No hay métricas registradas en esta revisión.
                         </div>
                     )}
 
@@ -860,7 +860,7 @@ function ReviewCard({
                                 <p className="text-sm font-semibold">Assistant IA del coach</p>
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Lectura rápida del check-in para acelerar la revisión.
+                                Lectura rápida de la revisión para acelerar el feedback.
                             </p>
                         </div>
                         <Badge
@@ -889,7 +889,7 @@ function ReviewCard({
                                 El análisis IA se está generando
                             </div>
                             <p className="mt-2 text-sm text-blue-700/90">
-                                El check-in ya está guardado. En breve tendrás el resumen y las propuestas para el coach.
+                                La revisión ya está guardada. En breve tendrás el resumen y las propuestas para el coach.
                             </p>
                         </div>
                     )}
@@ -935,7 +935,7 @@ function ReviewCard({
 
                     {aiStatus === 'idle' && (
                         <div className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                            Este check-in todavía no tiene un análisis IA generado.
+                            Esta revisión todavía no tiene un análisis IA generado.
                         </div>
                     )}
 

@@ -33,7 +33,7 @@ interface ReviewApprovalDialogProps {
 function getReviewStateMeta(checkin: CheckinWithReview | null) {
     if (!checkin?.review) {
         return {
-            label: 'Sin review',
+            label: 'Sin revisión',
             className: 'bg-muted/60 text-muted-foreground border-border',
         }
     }
@@ -90,7 +90,7 @@ export function ReviewApprovalDialog({
         ? format(new Date(checkin.submitted_at), "d MMM yyyy", { locale: es })
         : checkin.period_end
             ? format(new Date(checkin.period_end), "d MMM yyyy", { locale: es })
-            : 'Check-in'
+            : 'Revisión'
     const isAlreadyApproved = checkin.review?.status === 'approved'
     const approveOnlyLabel = isAlreadyApproved ? 'Mantener aprobada' : 'Aprobar sin feedback'
     const sendLabel = isAlreadyApproved ? 'Enviar feedback' : 'Aprobar y enviar'

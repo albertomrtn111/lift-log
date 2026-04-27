@@ -49,9 +49,9 @@ export function ReviewsTab({ clientId }: ReviewsTabProps) {
                 <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                     <FileText className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold mb-2">Sin check-ins</h3>
+                <h3 className="font-semibold mb-2">Sin revisiones</h3>
                 <p className="text-sm text-muted-foreground">
-                    Este cliente aún no ha registrado ningún check-in.
+                    Este cliente aún no ha registrado ninguna revisión.
                 </p>
             </Card>
         )
@@ -62,12 +62,12 @@ export function ReviewsTab({ clientId }: ReviewsTabProps) {
             {/* Generate review button */}
             <Button className="w-full gap-2" variant="outline">
                 <FileText className="h-4 w-4" />
-                Generar borrador de review
+                Generar borrador de revisión
             </Button>
 
-            {/* Check-in history */}
+            {/* Review history */}
             <div className="space-y-3">
-                <h3 className="font-semibold">Últimos check-ins</h3>
+                <h3 className="font-semibold">Últimas revisiones</h3>
 
                 {checkins.map((checkin) => (
                     <Card key={checkin.id} className="p-4">

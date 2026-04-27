@@ -23,10 +23,28 @@ const N8N_REVIEW_URL =
 
 const N8N_USER = process.env.N8N_BASIC_AUTH_USER || ''
 const N8N_PASS = process.env.N8N_BASIC_AUTH_PASS || ''
+const LEGACY_APP_HOST = 'nexttrain.ascenttech.com'
+const CANONICAL_APP_HOST = 'nexttrain.ascenttech.cloud'
 
 function basicAuthHeader(): string {
     const encoded = Buffer.from(`${N8N_USER}:${N8N_PASS}`).toString('base64')
     return `Basic ${encoded}`
+}
+
+function normalizeFormUrl(formUrl?: string): string | undefined {
+    if (!formUrl) return formUrl
+
+    try {
+        const url = new URL(formUrl)
+        if (url.hostname === LEGACY_APP_HOST) {
+            url.hostname = CANONICAL_APP_HOST
+            return url.toString()
+        }
+    } catch {
+        return formUrl.replace(LEGACY_APP_HOST, CANONICAL_APP_HOST)
+    }
+
+    return formUrl
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +112,7 @@ export async function sendOnboardingEmail(params: {
     formUrl?: string
 }): Promise<N8nResult> {
     console.log(`[n8n] Sending onboarding for client=${params.clientId} coach=${params.coachId}`)
+    const formUrl = normalizeFormUrl(params.formUrl)
 
     return callN8n(N8N_ONBOARDING_URL, {
         client_id: params.clientId,
@@ -102,7 +121,7 @@ export async function sendOnboardingEmail(params: {
         client_name: params.clientName,
         checkin_id: params.checkinId,
         form_template_id: params.formTemplateId,
-        form_url: params.formUrl,
+        form_url: formUrl,
     })
 }
 
@@ -134,6 +153,7 @@ export async function sendReviewEmail(params: {
     formUrl?: string
 }): Promise<N8nResult> {
     console.log(`[n8n] Sending review for client=${params.clientId} coach=${params.coachId}`)
+    const formUrl = normalizeFormUrl(params.formUrl)
 
     return callN8n(N8N_REVIEW_URL, {
         client_id: params.clientId,
@@ -142,6 +162,6 @@ export async function sendReviewEmail(params: {
         client_name: params.clientName,
         checkin_id: params.checkinId,
         form_template_id: params.formTemplateId,
-        form_url: params.formUrl,
+        form_url: formUrl,
     })
 }

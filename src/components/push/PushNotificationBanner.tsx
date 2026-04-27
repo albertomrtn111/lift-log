@@ -79,7 +79,7 @@ export function PushNotificationBanner() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                         {needsSync
                             ? 'Las notificaciones no se guardaron correctamente. Pulsa para reintentar.'
-                            : 'Recibe avisos cuando tu entrenador te manda un mensaje o revisa tu check-in.'
+                            : 'Recibe avisos cuando tu entrenador te manda un mensaje o te envía feedback.'
                         }
                     </p>
                     <div className="flex gap-2 mt-3">

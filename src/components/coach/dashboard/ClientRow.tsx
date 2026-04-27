@@ -94,7 +94,7 @@ export function ClientRow({ client, showFrequency = true }: ClientRowProps) {
                         <span>Cliente desde hace {clientSince}</span>
                         {client.hasPendingReview && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-warning/10 text-warning border-warning/30">
-                                Review pendiente
+                                Revisión pendiente
                             </Badge>
                         )}
                     </div>

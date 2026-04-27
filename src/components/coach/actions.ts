@@ -155,7 +155,7 @@ export async function createClientAction(data: {
     if (!checkinAssignment.success) {
         return {
             success: false,
-            error: checkinAssignment.error || 'No se pudo asignar el check-in al cliente',
+            error: checkinAssignment.error || 'No se pudo asignar la revisión al cliente',
         }
     }
 

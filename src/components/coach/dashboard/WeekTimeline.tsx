@@ -29,7 +29,7 @@ export function WeekTimeline({ clients }: WeekTimelineProps) {
     if (clients.length === 0) {
         return (
             <div className="p-6 text-center text-muted-foreground text-sm">
-                No hay check-ins programados para los próximos 7 días
+                No hay revisiones programadas para los próximos 7 días
             </div>
         )
     }

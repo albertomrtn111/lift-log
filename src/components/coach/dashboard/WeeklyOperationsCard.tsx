@@ -30,7 +30,7 @@ export function WeeklyOperationsCard({ weeklyOperations }: WeeklyOperationsCardP
 
                 {weeklyOperations.dueThisWeek.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                        No hay check-ins programados en los próximos 7 días.
+                        No hay revisiones programadas en los próximos 7 días.
                     </div>
                 ) : (
                     <div className="space-y-2">
@@ -44,7 +44,7 @@ export function WeeklyOperationsCard({ weeklyOperations }: WeeklyOperationsCardP
                                 >
                                     <div>
                                         <p className="font-medium">{displayName}</p>
-                                        <p className="text-sm text-muted-foreground">Próximo check-in</p>
+                                        <p className="text-sm text-muted-foreground">Próxima revisión</p>
                                     </div>
                                     <Badge variant="secondary">
                                         {client.daysUntilCheckin === 1 ? 'Mañana' : `${client.daysUntilCheckin} días`}

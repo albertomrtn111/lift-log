@@ -13,6 +13,22 @@ interface CheckinRowProps {
 
 export function CheckinRow({ checkin }: CheckinRowProps) {
     const reviewBadge = () => {
+        if (checkin.checkin_status === 'pending') {
+            return (
+                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                    Enviada
+                </Badge>
+            )
+        }
+
+        if (checkin.checkin_status === 'archived' && !checkin.submitted_at) {
+            return (
+                <Badge variant="outline" className="bg-muted/50 text-muted-foreground">
+                    Reemplazada
+                </Badge>
+            )
+        }
+
         if (checkin.needs_review && checkin.review_ai_status === 'completed') {
             return (
                 <Badge variant="secondary" className="bg-primary/10 text-primary border-0">
@@ -24,7 +40,7 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
         if (!checkin.review_status) {
             return (
                 <Badge variant="outline" className="bg-muted/50">
-                    Sin review
+                    {checkin.submitted_at ? 'Respondida' : 'Sin respuesta'}
                 </Badge>
             )
         }
@@ -53,6 +69,8 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
         return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
     }
 
+    const sentDate = new Date(checkin.sent_at)
+
     return (
         <div className="flex flex-col gap-4 border-b px-4 py-4 transition-colors hover:bg-muted/20 last:border-b-0 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -62,12 +80,21 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
                 <div className="min-w-0">
                     <p className="font-medium truncate">{checkin.client_name}</p>
                     <p className="text-xs text-muted-foreground">
-                        {formatDate(checkin.submitted_at)} · {new Date(checkin.submitted_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                        Enviada {formatDate(checkin.sent_at)} · {sentDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                        {checkin.submitted_at && (
+                            <span> · Respondida {formatDate(checkin.submitted_at)}</span>
+                        )}
                     </p>
                 </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground lg:flex-1 lg:justify-center">
+                {checkin.checkin_status === 'pending' && (
+                    <div className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-blue-600">
+                        <FileText className="h-3.5 w-3.5" />
+                        <span>Pendiente de respuesta</span>
+                    </div>
+                )}
                 {(checkin.weight_kg || checkin.weight_avg_kg) && (
                     <div className="flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
                         <Scale className="h-3.5 w-3.5" />

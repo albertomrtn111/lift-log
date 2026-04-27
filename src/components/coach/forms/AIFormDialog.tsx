@@ -59,13 +59,13 @@ const EXAMPLE_PROMPTS: { type: AIFormType; label: string; prompt: string }[] = [
     },
     {
         type: 'checkin',
-        label: 'Check-in semanal fuerza',
-        prompt: 'Necesito un check-in semanal para clientes de fuerza con preguntas sobre adherencia, energía, sueño, estrés, rendimiento y peso corporal.',
+        label: 'Revisión semanal fuerza',
+        prompt: 'Necesito una revisión semanal para clientes de fuerza con preguntas sobre adherencia, energía, sueño, estrés, rendimiento y peso corporal.',
     },
     {
         type: 'checkin',
-        label: 'Check-in digestión y hambre',
-        prompt: 'Crea un check-in centrado en nutrición con preguntas sobre hambre, digestión, cumplimiento del plan, pasos y sensaciones generales.',
+        label: 'Revisión digestión y hambre',
+        prompt: 'Crea una revisión centrada en nutrición con preguntas sobre hambre, digestión, cumplimiento del plan, pasos y sensaciones generales.',
     },
 ]
 
@@ -184,7 +184,7 @@ export function AIFormDialog({
                     </DialogTitle>
                     <DialogDescription>
                         {step === 'input'
-                            ? 'Elige si quieres un onboarding o un check-in, describe lo que necesitas y prepararemos un borrador editable.'
+                            ? 'Elige si quieres un onboarding o una revisión, describe lo que necesitas y prepararemos un borrador editable.'
                             : 'Estamos preparando un borrador de formulario con las preguntas necesarias.'}
                     </DialogDescription>
                 </DialogHeader>
@@ -218,7 +218,7 @@ export function AIFormDialog({
                                     )}
                                 >
                                     <ClipboardList className="h-4 w-4" />
-                                    Check-in
+                                    Revisión
                                 </button>
                             </div>
                         </div>
@@ -233,7 +233,7 @@ export function AIFormDialog({
                                 placeholder={
                                     type === 'onboarding'
                                         ? 'Ej: Quiero conocer objetivos, lesiones, experiencia previa, disponibilidad semanal, material, hábitos de sueño y alimentación…'
-                                        : 'Ej: Necesito un check-in breve con adherencia, energía, digestión, hambre, rendimiento, pasos y sensaciones generales…'
+                                        : 'Ej: Necesito una revisión breve con adherencia, energía, digestión, hambre, rendimiento, pasos y sensaciones generales…'
                                 }
                                 className="min-h-[120px] resize-none"
                                 maxLength={1200}

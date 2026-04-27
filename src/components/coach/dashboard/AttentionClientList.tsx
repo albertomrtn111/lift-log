@@ -35,7 +35,7 @@ export function AttentionClientList({ clients }: AttentionClientListProps) {
                 </div>
                 <p className="font-medium">Sin clientes críticos ahora mismo</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    No hay casos con reviews pendientes, atraso relevante, baja adherencia o falta de programa activo.
+                    No hay casos con revisiones pendientes, atraso relevante, baja adherencia o falta de programa activo.
                 </p>
             </div>
         )

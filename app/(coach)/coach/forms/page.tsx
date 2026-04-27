@@ -31,7 +31,7 @@ export default async function FormsPage() {
                         <div>
                             <h1 className="text-xl font-bold">Formularios</h1>
                             <p className="text-sm text-muted-foreground">
-                                Gestiona plantillas de check-in, onboarding y formularios generales
+                                Gestiona plantillas de revisión, onboarding y formularios generales
                             </p>
                         </div>
                     </div>

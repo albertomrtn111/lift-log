@@ -226,7 +226,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                                     <span className="hidden sm:inline text-[11px] text-muted-foreground/70">·</span>
                                 )}
                                 {formattedCheckinDate && (
-                                    <span className="hidden sm:inline text-[11px] text-muted-foreground capitalize whitespace-nowrap">Check-in {formattedCheckinDate}</span>
+                                    <span className="hidden sm:inline text-[11px] text-muted-foreground capitalize whitespace-nowrap">Revisión {formattedCheckinDate}</span>
                                 )}
                             </div>
                         </div>

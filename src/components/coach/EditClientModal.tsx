@@ -273,7 +273,7 @@ export function EditClientModal({ client, formTemplates, open, onOpenChange, onS
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="edit_next_checkin">Próximo check-in</Label>
+                        <Label htmlFor="edit_next_checkin">Próxima revisión</Label>
                         <Input
                             id="edit_next_checkin"
                             type="date"
@@ -295,14 +295,14 @@ export function EditClientModal({ client, formTemplates, open, onOpenChange, onS
                             </p>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="edit_checkin_template">Check-in</Label>
+                            <Label htmlFor="edit_checkin_template">Revisión</Label>
                             <Select
                                 value={formData.checkin_template_id}
                                 onValueChange={(value) => setFormData({ ...formData, checkin_template_id: value })}
                                 disabled={isPending}
                             >
                                 <SelectTrigger id="edit_checkin_template">
-                                    <SelectValue placeholder="Selecciona un check-in" />
+                                    <SelectValue placeholder="Selecciona una revisión" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>

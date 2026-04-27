@@ -153,7 +153,7 @@ export function CheckinAIAnalysisSheet({
                         <AIStatusBadge review={review} />
                     </div>
                     <SheetDescription>
-                        Resumen estructurado del check-in para acelerar la revisión del entrenador.
+                        Resumen estructurado de la revisión para acelerar el trabajo del entrenador.
                     </SheetDescription>
                 </SheetHeader>
 
@@ -165,7 +165,7 @@ export function CheckinAIAnalysisSheet({
                                 Generando análisis IA
                             </div>
                             <p className="mt-2 text-blue-700/90">
-                                El check-in ya está guardado. El assistant está preparando el resumen y las propuestas para el coach.
+                                La revisión ya está guardada. El assistant está preparando el resumen y las propuestas para el coach.
                             </p>
                         </div>
                     )}
@@ -217,7 +217,7 @@ export function CheckinAIAnalysisSheet({
 
                     {!analysis && status === 'idle' && (
                         <div className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                            Este check-in todavía no tiene análisis IA generado.
+                            Esta revisión todavía no tiene análisis IA generado.
                         </div>
                     )}
 

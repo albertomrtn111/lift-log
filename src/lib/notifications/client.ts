@@ -32,8 +32,8 @@ export async function sendCoachMessageNotification(clientId: string, message: st
 
 export async function sendReviewApprovedNotification(clientId: string) {
     await sendClientNotification(clientId, {
-        title: '¡Tu revisión ha sido revisada! ✅',
-        body: 'Tu entrenador ha revisado y aprobado tu check-in. Entra para ver los comentarios.',
+        title: '¡Tu revisión ya tiene feedback! ✅',
+        body: 'Tu entrenador ha revisado y aprobado tu revisión. Entra para ver los comentarios.',
         url: '/summary',
         tag: 'review-approved',
     })
@@ -44,7 +44,7 @@ export async function sendReviewFeedbackNotification(clientId: string, feedbackM
     if (!trimmed) return
 
     await sendClientNotification(clientId, {
-        title: '📋 Tu entrenador ha revisado tu check-in',
+        title: '📋 Tu entrenador ha revisado tu revisión',
         body: trimmed.length > 100 ? `${trimmed.substring(0, 97)}...` : trimmed,
         url: '/chat',
         tag: 'review-feedback',

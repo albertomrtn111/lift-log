@@ -207,7 +207,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
         )
     }
 
-    const typeLabel = templateType === 'onboarding' ? 'Onboarding' : templateType === 'checkin' ? 'Check-in' : 'Formulario'
+    const typeLabel = templateType === 'onboarding' ? 'Onboarding' : templateType === 'checkin' ? 'Revisión' : 'Formulario'
 
     return (
         <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-6">

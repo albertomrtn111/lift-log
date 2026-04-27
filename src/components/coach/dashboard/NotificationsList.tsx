@@ -29,7 +29,7 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
                 </div>
                 <p className="font-medium">Sin notificaciones recientes</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Aquí aparecerán mensajes nuevos, check-ins y tareas pendientes del día.
+                    Aquí aparecerán mensajes nuevos, revisiones recibidas y tareas pendientes del día.
                 </p>
             </div>
         )
@@ -49,7 +49,7 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
                         ? 'chat'
                         : notification.type === 'coach_task'
                             ? 'tarea'
-                            : 'check-in'
+                            : 'revisión'
                 const timeAgo = formatDistanceToNow(new Date(notification.timestamp), {
                     addSuffix: true,
                     locale: es,

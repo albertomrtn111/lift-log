@@ -94,7 +94,7 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
             <div className="p-6 border rounded-lg bg-muted/20 text-center">
                 <Camera className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
                 <p className="text-sm font-medium text-muted-foreground">Sin fotos de progreso</p>
-                <p className="text-xs text-muted-foreground mt-1">El cliente no subió fotos en este check-in.</p>
+                <p className="text-xs text-muted-foreground mt-1">El cliente no subió fotos en esta revisión.</p>
             </div>
         )
     }

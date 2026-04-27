@@ -35,7 +35,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                         <div>
                             <h1 className="text-xl font-bold">Calendario</h1>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Herramienta operativa para seguir check-ins reales, reviews y carga semanal.
+                                Herramienta operativa para seguir revisiones reales, feedback y carga semanal.
                             </p>
                         </div>
                     </div>

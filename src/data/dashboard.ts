@@ -60,7 +60,9 @@ export interface RecentCheckin {
     id: string
     client_id: string
     client_name: string
-    submitted_at: string
+    submitted_at: string | null
+    sent_at: string
+    checkin_status: 'pending' | 'reviewed' | 'archived'
     weight_kg: number | null
     weight_avg_kg: number | null
     steps_avg: number | null
@@ -133,6 +135,19 @@ interface CheckinRecord {
     id: string
     client_id: string
     submitted_at: string
+    status: 'pending' | 'reviewed' | 'archived'
+    weight_kg: number | null
+    weight_avg_kg: number | null
+    steps_avg: number | null
+    training_adherence_pct: number | null
+    nutrition_adherence_pct: number | null
+    created_at: string
+}
+
+interface SentReviewRecord {
+    id: string
+    client_id: string
+    submitted_at: string | null
     status: 'pending' | 'reviewed' | 'archived'
     weight_kg: number | null
     weight_avg_kg: number | null
@@ -230,7 +245,7 @@ function getAverageAdherence(checkin: CheckinRecord | null): number | null {
     return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
 }
 
-function getPrimaryWeight(checkin: CheckinRecord | null): number | null {
+function getPrimaryWeight(checkin: { weight_avg_kg: number | null; weight_kg: number | null } | null): number | null {
     if (!checkin) return null
     return checkin.weight_avg_kg ?? checkin.weight_kg ?? null
 }
@@ -285,7 +300,7 @@ function buildAttentionReasons(params: {
         const ageLabel = daysSinceLastCheckin === 0 ? 'recibido hoy' : `recibido ${timeAgoLabel(latestCheckin.submitted_at, today)}`
         reasons.push({
             code: 'pending_review',
-            label: `Check-in pendiente de revisar · ${ageLabel}`,
+            label: `Revisión recibida pendiente de revisar · ${ageLabel}`,
             severity: 'high',
         })
     }
@@ -293,7 +308,7 @@ function buildAttentionReasons(params: {
     if (clientMeta.daysUntilCheckin < -2) {
         reasons.push({
             code: 'overdue_checkin',
-            label: `Check-in atrasado ${Math.abs(clientMeta.daysUntilCheckin)} días`,
+            label: `Revisión atrasada ${Math.abs(clientMeta.daysUntilCheckin)} días`,
             severity: 'high',
         })
     }
@@ -320,14 +335,14 @@ function buildAttentionReasons(params: {
         if (daysSinceStart >= 30) {
             reasons.push({
                 code: 'no_recent_checkin',
-                label: 'Sin ningún check-in reciente',
+                label: 'Sin ninguna revisión reciente',
                 severity: 'medium',
             })
         }
     } else if (daysSinceLastCheckin != null && daysSinceLastCheckin > noRecentThreshold) {
         reasons.push({
             code: 'no_recent_checkin',
-            label: `Sin check-in en ${daysSinceLastCheckin} días`,
+            label: `Sin revisión en ${daysSinceLastCheckin} días`,
             severity: 'medium',
         })
     }
@@ -364,9 +379,9 @@ function buildActionFromAttentionClient(client: AttentionClient, today: Date): D
                 ...common,
                 type: 'pending_review',
                 priority: 'high',
-                title: aiReady ? `Validar borrador IA de ${client.full_name}` : `Revisar check-in de ${client.full_name}`,
+                title: aiReady ? `Validar borrador IA de ${client.full_name}` : `Revisar revisión de ${client.full_name}`,
                 description: aiReady
-                    ? `El borrador IA está listo. Último check-in ${timeAgoLabel(client.lastCheckinAt || today.toISOString(), today)}.`
+                    ? `El borrador IA está listo. Última revisión ${timeAgoLabel(client.lastCheckinAt || today.toISOString(), today)}.`
                     : primaryReason.label,
                 ctaLabel: aiReady ? 'Abrir revisión' : 'Abrir cliente',
             }
@@ -449,6 +464,50 @@ function buildRecentCheckins(
             client_id: checkin.client_id,
             client_name: client?.full_name || client?.email || 'Cliente',
             submitted_at: checkin.submitted_at,
+            sent_at: checkin.created_at,
+            checkin_status: checkin.status,
+            weight_kg: checkin.weight_kg,
+            weight_avg_kg: checkin.weight_avg_kg,
+            steps_avg: checkin.steps_avg,
+            training_adherence_pct: checkin.training_adherence_pct,
+            nutrition_adherence_pct: checkin.nutrition_adherence_pct,
+            weight_delta_kg:
+                currentWeight != null && previousWeight != null
+                    ? Number((currentWeight - previousWeight).toFixed(1))
+                    : null,
+            review_id: review?.id ?? null,
+            review_status: review?.status ?? null,
+            review_ai_status: review?.ai_status ?? null,
+            needs_review: needsReview,
+        }
+    })
+}
+
+function buildRecentSentReviews(
+    sentReviews: SentReviewRecord[],
+    clientsById: Map<string, Client>,
+    receivedCheckinsByClient: Map<string, CheckinRecord[]>,
+    reviewsByCheckinId: Map<string, ReviewRecord>,
+    limit: number,
+): RecentCheckin[] {
+    return sentReviews.slice(0, limit).map((checkin) => {
+        const client = clientsById.get(checkin.client_id)
+        const review = reviewsByCheckinId.get(checkin.id) ?? null
+        const previousReceived = checkin.submitted_at
+            ? (receivedCheckinsByClient.get(checkin.client_id) ?? [])
+                .find((entry) => entry.submitted_at < checkin.submitted_at!)
+            : null
+        const currentWeight = getPrimaryWeight(checkin)
+        const previousWeight = getPrimaryWeight(previousReceived ?? null)
+        const needsReview = Boolean(review?.status === 'draft' || (!review && checkin.status === 'reviewed'))
+
+        return {
+            id: checkin.id,
+            client_id: checkin.client_id,
+            client_name: client?.full_name || client?.email || 'Cliente',
+            submitted_at: checkin.submitted_at,
+            sent_at: checkin.created_at,
+            checkin_status: checkin.status,
             weight_kg: checkin.weight_kg,
             weight_avg_kg: checkin.weight_avg_kg,
             steps_avg: checkin.steps_avg,
@@ -569,6 +628,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
 
     const [
         checkinsResult,
+        sentReviewsResult,
         metricsResult,
         programsResult,
         messagesResult,
@@ -579,9 +639,18 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .select('id, client_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
             .eq('coach_id', coachId)
             .eq('type', 'checkin')
+            .neq('status', 'pending')
             .not('submitted_at', 'is', null)
             .in('client_id', clientIds)
             .order('submitted_at', { ascending: false }),
+        supabase
+            .from('checkins')
+            .select('id, client_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
+            .eq('coach_id', coachId)
+            .eq('type', 'checkin')
+            .in('client_id', clientIds)
+            .order('created_at', { ascending: false })
+            .limit(20),
         supabase
             .from('client_metrics')
             .select('client_id, metric_date, weight_kg, steps, sleep_h')
@@ -615,7 +684,8 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     ])
 
     const checkins = (checkinsResult.data ?? []) as CheckinRecord[]
-    const checkinIds = checkins.map((checkin) => checkin.id)
+    const sentReviews = (sentReviewsResult.data ?? []) as SentReviewRecord[]
+    const checkinIds = Array.from(new Set([...checkins, ...sentReviews].map((checkin) => checkin.id)))
 
     const reviewsResult = checkinIds.length > 0
         ? await supabase
@@ -625,6 +695,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         : { data: [], error: null }
 
     if (checkinsResult.error) console.error('Error fetching dashboard checkins:', checkinsResult.error)
+    if (sentReviewsResult.error) console.error('Error fetching dashboard sent reviews:', sentReviewsResult.error)
     if (metricsResult.error) console.error('Error fetching dashboard metrics:', metricsResult.error)
     if (programsResult.error) console.error('Error fetching dashboard programs:', programsResult.error)
     if (reviewsResult.error) console.error('Error fetching dashboard reviews:', reviewsResult.error)
@@ -722,7 +793,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             priority: 'medium',
             client_id: client.id,
             client_name: client.full_name,
-            title: `Hoy toca check-in de ${client.full_name}`,
+            title: `Hoy toca revisión de ${client.full_name}`,
             description: 'Seguimiento previsto para hoy.',
             href: `/coach/clients?client=${client.id}`,
             ctaLabel: 'Abrir cliente',
@@ -732,8 +803,15 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         .sort(compareActions)
         .slice(0, 8)
 
-    const recentCheckins = buildRecentCheckins(
+    const recentReceivedCheckins = buildRecentCheckins(
         checkins,
+        clientsById,
+        checkinsByClient,
+        reviewsByCheckinId,
+        8
+    )
+    const recentCheckins = buildRecentSentReviews(
+        sentReviews,
         clientsById,
         checkinsByClient,
         reviewsByCheckinId,
@@ -744,7 +822,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         (checkin) => new Date(checkin.submitted_at) >= weekStart
     ).length
 
-    // Build notifications: unread chats (grouped per client) + check-ins received in last 72h
+    // Build notifications: unread chats (grouped per client) + reviews received from clients in the last 72h
     const threeDaysAgo = new Date(today)
     threeDaysAgo.setDate(today.getDate() - 3)
 
@@ -783,7 +861,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
                 type: 'checkin_received' as const,
                 client_id: checkin.client_id,
                 client_name: clientName,
-                title: `Nuevo check-in de ${clientName}`,
+                title: `Nueva revisión recibida de ${clientName}`,
                 preview: null,
                 timestamp: checkin.submitted_at,
                 href: `/coach/clients?client=${checkin.client_id}`,
@@ -841,19 +919,19 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             client_id: checkinRelation?.client_id ?? '',
             client_name: clientName,
             timestamp: review.created_at,
-            title: 'Review aprobada',
+            title: 'Revisión aprobada',
             description: `Feedback enviado a ${clientName}.`,
             href: checkinRelation?.client_id ? `/coach/clients?client=${checkinRelation.client_id}` : '/coach/dashboard',
         }
     })
 
-    const checkinActivities = recentCheckins.slice(0, 5).map((checkin) => ({
+    const checkinActivities = recentReceivedCheckins.slice(0, 5).map((checkin) => ({
         id: `checkin-${checkin.id}`,
         type: 'checkin_received' as const,
         client_id: checkin.client_id,
         client_name: checkin.client_name,
-        timestamp: checkin.submitted_at,
-        title: 'Check-in recibido',
+        timestamp: checkin.submitted_at ?? checkin.sent_at,
+        title: 'Revisión recibida',
         description: `${checkin.client_name} envió su revisión.`,
         href: `/coach/clients?client=${checkin.client_id}`,
     }))
@@ -932,23 +1010,51 @@ export async function getCoachDisplayName(userId: string): Promise<string> {
 export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> {
     const supabase = await createClient()
     const today = toDateKey(new Date())
+    const threeDaysAgo = new Date()
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
 
-    const { count: pendingCount } = await supabase
-        .from('clients')
-        .select('id', { count: 'exact', head: true })
-        .eq('coach_id', coachId)
-        .eq('status', 'active')
-        .lte('next_checkin_date', today)
+    const [
+        receivedReviewsResult,
+        unreadMessagesResult,
+        dueTasksResult,
+        signupResult,
+    ] = await Promise.all([
+        supabase
+            .from('checkins')
+            .select('id', { count: 'exact', head: true })
+            .eq('coach_id', coachId)
+            .eq('type', 'checkin')
+            .neq('status', 'pending')
+            .not('submitted_at', 'is', null)
+            .gte('submitted_at', threeDaysAgo.toISOString()),
+        supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('coach_id', coachId)
+            .eq('sender_role', 'client')
+            .eq('message_type', 'chat')
+            .is('read_at', null),
+        supabase
+            .from('coach_tasks')
+            .select('id', { count: 'exact', head: true })
+            .eq('coach_id', coachId)
+            .eq('status', 'pending')
+            .lte('task_date', today),
+        supabase
+            .from('clients')
+            .select('id', { count: 'exact', head: true })
+            .eq('coach_id', coachId)
+            .is('auth_user_id', null)
+            .eq('status', 'active'),
+    ])
 
-    const { count: signupCount } = await supabase
-        .from('clients')
-        .select('id', { count: 'exact', head: true })
-        .eq('coach_id', coachId)
-        .is('auth_user_id', null)
-        .eq('status', 'active')
+    const pendingCount =
+        (receivedReviewsResult.count ?? 0) +
+        (unreadMessagesResult.count ?? 0) +
+        (dueTasksResult.count ?? 0)
 
     return {
-        dashboardPending: pendingCount ?? 0,
-        membersPendingSignup: signupCount ?? 0,
+        dashboardPending: pendingCount,
+        membersPendingSignup: signupResult.count ?? 0,
     }
 }

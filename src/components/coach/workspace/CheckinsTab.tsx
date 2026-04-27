@@ -41,7 +41,7 @@ interface CheckinsTabProps {
 function getReviewStatusMeta(checkin: CheckinWithReview) {
     if (!checkin.review) {
         return {
-            label: 'Sin review',
+            label: 'Sin revisión',
             className: 'bg-muted/50 text-muted-foreground border-border',
         }
     }
@@ -109,9 +109,9 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
         return (
             <Card className="p-8 text-center">
                 <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg">Sin check-ins</h3>
+                <h3 className="font-semibold text-lg">Sin revisiones</h3>
                 <p className="text-muted-foreground mt-2">
-                    El cliente aún no ha enviado ningún check-in
+                    El cliente aún no ha enviado ninguna revisión
                 </p>
             </Card>
         )
@@ -156,7 +156,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                 <div className="p-4 border-b flex items-center justify-between">
                     <h3 className="font-semibold flex items-center gap-2">
                         <FileText className="h-5 w-5 text-primary" />
-                        Check-ins
+                        Revisiones
                     </h3>
                     <span className="text-sm text-muted-foreground">{checkins.length} registros</span>
                 </div>
@@ -209,7 +209,7 @@ function CheckinRow({
 
     const handleDelete = (e: React.MouseEvent) => {
         e.stopPropagation()
-        if (!confirm('¿Eliminar este check-in? Esta acción no se puede deshacer.')) return
+        if (!confirm('¿Eliminar esta revisión? Esta acción no se puede deshacer.')) return
         startTransition(async () => {
             await deleteCheckinAction(checkin.id, coachId)
             onRefresh()
@@ -405,7 +405,7 @@ function CheckinDetailPanel({
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <FileText className="h-5 w-5 text-primary" />
-                        <h3 className="font-semibold text-xl">Detalle del check-in</h3>
+                        <h3 className="font-semibold text-xl">Detalle de la revisión</h3>
                     </div>
                     <p className="text-sm text-muted-foreground capitalize">
                         {checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}
@@ -444,7 +444,7 @@ function CheckinDetailPanel({
                         </div>
                     ) : (
                         <p className="text-sm text-muted-foreground bg-muted/30 p-6 rounded-xl text-center border border-dashed">
-                            Sin métricas registradas en este check-in
+                            Sin métricas registradas en esta revisión
                         </p>
                     )}
                 </div>
@@ -558,7 +558,7 @@ function CheckinDetailPanel({
                                     </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">
-                                        Este check-in todavía no tiene análisis IA generado.
+                                        Esta revisión todavía no tiene análisis IA generado.
                                     </p>
                                 )}
                             </div>
@@ -600,7 +600,7 @@ function CheckinDetailPanel({
                     ) : (
                         <div className="text-center bg-muted/10 p-8 rounded-xl border border-dashed">
                             <p className="text-sm text-muted-foreground mb-4">
-                                Este check-in aún no ha sido revisado
+                                Esta revisión aún no ha sido revisada
                             </p>
                             <Button onClick={() => onOpenReviewDialog(checkin.id)}>
                                 <CheckCheck className="h-4 w-4 mr-2" />

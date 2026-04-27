@@ -59,7 +59,7 @@ type TabType = 'onboarding' | 'checkin' | 'general'
 
 const TAB_CONFIG: { value: TabType; label: string }[] = [
     { value: 'onboarding', label: 'Onboarding' },
-    { value: 'checkin', label: 'Check-in' },
+    { value: 'checkin', label: 'Revisión' },
     { value: 'general', label: 'General' },
 ]
 

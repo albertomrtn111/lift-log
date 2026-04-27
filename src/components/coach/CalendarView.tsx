@@ -85,9 +85,9 @@ type CalendarFilter = 'all' | CalendarEventStatus
 
 const STATUS_LABELS: Record<CalendarEventStatus, string> = {
     completed: 'Completado',
-    pending_review: 'Review pendiente',
+    pending_review: 'Revisión pendiente',
     scheduled: 'Programado',
-    missing: 'No recibido real',
+    missing: 'No recibido',
 }
 
 const STATUS_BADGE_VARIANTS: Record<CalendarEventStatus, string> = {
@@ -158,16 +158,16 @@ function getEventLead(event: CalendarEvent) {
 
     if (event.status === 'pending_review') {
         const reviewCopy = event.reviewStatus === 'rejected'
-            ? 'Review rechazada, requiere nueva validación.'
+            ? 'Revisión rechazada, requiere nueva validación.'
             : event.reviewStatus === 'draft'
-                ? 'Review en borrador, falta aprobación.'
-                : 'Check-in recibido, falta revisar/aprobar.'
+                ? 'Revisión en borrador, falta aprobación.'
+                : 'Revisión recibida, falta revisar/aprobar.'
 
         return `${reviewCopy}${event.submittedAt ? ` Recibido el ${formatShortDate(event.submittedAt.split('T')[0])}.` : ''}`
     }
 
     return event.submittedAt
-        ? `Check-in recibido y review aprobada el ${formatShortDate(event.submittedAt.split('T')[0])}.`
+        ? `Revisión recibida y aprobada el ${formatShortDate(event.submittedAt.split('T')[0])}.`
         : 'Flujo completado.'
 }
 
@@ -556,13 +556,13 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         {
             label: 'Recibidos',
             value: receivedCount,
-            helper: 'Check-ins que ya entraron de verdad en el rango visible.',
+            helper: 'Revisiones que ya entraron de verdad en el rango visible.',
             tone: 'success' as const,
         },
         {
-            label: 'Reviews pendientes',
+            label: 'Revisiones pendientes',
             value: countsByStatus.pending_review,
-            helper: 'Check-ins recibidos que aún requieren revisión o aprobación.',
+            helper: 'Revisiones recibidas que aún requieren revisión o aprobación.',
             tone: 'warning' as const,
         },
         {
@@ -572,7 +572,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
             tone: 'default' as const,
         },
         {
-            label: 'No recibidos reales',
+            label: 'No recibidos',
             value: countsByStatus.missing,
             helper: 'Solo aparecen cuando existe un formulario real vencido sin respuesta.',
             tone: 'danger' as const,
@@ -967,7 +967,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
 
                                         {dayEvents.length === 0 && dayTasks.length === 0 && (
                                             <div className="rounded-lg border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-                                                Libre. Sin check-ins ni incidencias reales.
+                                                Libre. Sin revisiones ni incidencias reales.
                                             </div>
                                         )}
                                     </div>
@@ -1037,7 +1037,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                 <SummaryCard
                                     label="Acción"
                                     value={panelActionCount}
-                                    helper="No recibidos + reviews pendientes."
+                                    helper="No recibidos + revisiones pendientes."
                                     tone={panelActionCount > 0 ? 'danger' : 'default'}
                                 />
                                 <SummaryCard
@@ -1156,7 +1156,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                 {selectedDateEvents.length === 0 ? (
                                     <div className="rounded-xl border border-dashed py-12 text-center">
                                         <CalendarDays className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-                                        <p className="text-sm text-muted-foreground">Sin check-ins reales programados para este día.</p>
+                                        <p className="text-sm text-muted-foreground">Sin revisiones reales programadas para este día.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -1214,7 +1214,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                     {(event.status === 'completed' || event.status === 'pending_review') && (
                                                         <Button variant="outline" size="sm" asChild>
                                                             <Link href={`/coach/clients?client=${event.clientId}&tab=revisiones`}>
-                                                                Ver review
+                                                                Ver revisión
                                                                 <ArrowUpRight className="h-4 w-4" />
                                                             </Link>
                                                         </Button>

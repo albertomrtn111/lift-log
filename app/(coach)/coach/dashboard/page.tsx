@@ -76,17 +76,17 @@ export default async function CoachDashboardPage() {
                         variant={dashboard.kpis.pendingToday > 0 ? 'warning' : 'default'}
                         subtitle={
                             dashboard.kpis.pendingReviews > 0
-                                ? `${dashboard.kpis.pendingReviews} review${dashboard.kpis.pendingReviews !== 1 ? 's' : ''} abierta${dashboard.kpis.pendingReviews !== 1 ? 's' : ''}`
+                                ? `${dashboard.kpis.pendingReviews} revisión${dashboard.kpis.pendingReviews !== 1 ? 'es' : ''} abierta${dashboard.kpis.pendingReviews !== 1 ? 's' : ''}`
                                 : 'Sin urgencias abiertas'
                         }
                         href="#notificaciones"
                     />
                     <KPIStatCard
-                        title="Check-ins esta semana"
+                        title="Revisiones esta semana"
                         value={dashboard.kpis.checkinsThisWeek}
                         icon={<Calendar className="h-5 w-5" />}
                         variant="default"
-                        subtitle="Enviados por clientes esta semana"
+                        subtitle="Recibidas de clientes esta semana"
                         href="#ultimos-checkins"
                     />
                     <KPIStatCard
@@ -131,7 +131,7 @@ export default async function CoachDashboardPage() {
                                     )}
                                 </div>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Mensajes nuevos, check-ins recientes y tareas operativas vencidas o de hoy.
+                                    Mensajes nuevos, revisiones recibidas y tareas operativas vencidas o de hoy.
                                 </p>
                             </div>
                         </div>
@@ -163,7 +163,7 @@ export default async function CoachDashboardPage() {
                                 )}
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Misma lógica que el KPI superior: reviews pendientes, atraso, adherencia baja o clientes sin programa.
+                                Misma lógica que el KPI superior: revisiones pendientes, atraso, adherencia baja o clientes sin programa.
                             </p>
                         </div>
                     </div>
@@ -176,7 +176,7 @@ export default async function CoachDashboardPage() {
                             <div>
                                 <div className="flex items-center gap-2">
                                     <FileText className="h-5 w-5 text-primary" />
-                                    <h2 className="font-semibold">Últimos check-ins recibidos</h2>
+                                    <h2 className="font-semibold">Últimas Revisiones Enviadas</h2>
                                 </div>
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     Historial reciente con estado de revisión y señales rápidas para priorizar.
@@ -189,7 +189,7 @@ export default async function CoachDashboardPage() {
                                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                                     <FileText className="h-6 w-6 text-muted-foreground" />
                                 </div>
-                                <p className="font-medium">Aún no hay check-ins recibidos</p>
+                                <p className="font-medium">Aún no hay revisiones enviadas</p>
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     Cuando entren formularios aparecerán aquí con su estado de revisión.
                                 </p>

@@ -27,7 +27,7 @@ export default async function MetricsPage() {
                         <div>
                             <h1 className="text-xl font-bold">Métricas</h1>
                             <p className="text-sm text-muted-foreground">
-                                Configura las métricas personalizadas para tus clientes en el check-in.
+                                Configura las métricas personalizadas para tus clientes en la revisión.
                             </p>
                         </div>
                     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay } from 'date-fns'
 import { parseLocalDate } from '@/lib/date-utils'
 import { es } from 'date-fns/locale'
@@ -41,7 +41,7 @@ import {
 
 interface PlanningMetricsData {
     strength: { sessions: number; totalExercises: number; avgExercises: number }
-    cardio: { sessions: number; totalKm: number }
+    cardio: { sessions: number; totalKm: number; totalMin: number }
     hybrid: { sessions: number; totalMin: number }
 }
 
@@ -78,6 +78,7 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
 
     const cardioCount = cardioSessions.length
     const totalKm = cardioSessions.reduce((sum, s) => sum + getCardioDistance(s), 0)
+    const cardioTotalMin = cardioSessions.reduce((sum, s) => sum + getCardioDuration(s), 0)
 
     const hybridCount = hybridSessions.length
     const totalMin = hybridSessions.reduce((sum, s) => sum + getCardioDuration(s), 0)
@@ -85,7 +86,11 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
     if (weekCount <= 1) {
         return {
             strength: { sessions: strengthCount, totalExercises, avgExercises },
-            cardio: { sessions: cardioCount, totalKm: Math.round(totalKm * 10) / 10 },
+            cardio: {
+                sessions: cardioCount,
+                totalKm: Math.round(totalKm * 10) / 10,
+                totalMin: Math.round(cardioTotalMin),
+            },
             hybrid: { sessions: hybridCount, totalMin: Math.round(totalMin) },
         }
     }
@@ -101,6 +106,7 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
         cardio: {
             sessions: r1(cardioCount),
             totalKm: Math.round((totalKm / weekCount) * 10) / 10,
+            totalMin: Math.round(cardioTotalMin / weekCount),
         },
         hybrid: {
             sessions: r1(hybridCount),
@@ -111,6 +117,11 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
 
 function fmtNum(n: number): string {
     return Number.isInteger(n) ? String(n) : n.toFixed(1)
+}
+
+function isItemInDateRange(item: UnifiedCalendarItem, start: Date, end: Date): boolean {
+    const itemDate = parseLocalDate(item.date)
+    return itemDate >= start && itemDate <= end
 }
 
 // DnD Kit
@@ -242,6 +253,7 @@ interface PlanningTabProps {
 
 export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabProps) {
     const { toast } = useToast()
+    const fetchRequestId = useRef(0)
     const [currentDate, setCurrentDate] = useState(new Date())
     const [loading, setLoading] = useState(true)
     const [schedule, setSchedule] = useState<UnifiedCalendarItem[]>([])
@@ -284,11 +296,13 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
     }, [clientId, currentDate, viewMode])
 
     const fetchSchedule = async () => {
+        const requestId = ++fetchRequestId.current
         setLoading(true)
         try {
             const fetchStart = viewMode === 'week' ? startDate : monthStart
             const fetchEnd = viewMode === 'week' ? endDate : monthEnd
             const result = await getWeeklySchedule(clientId, fetchStart, fetchEnd, currentDate)
+            if (requestId !== fetchRequestId.current) return
             if (result.success && result.data) {
                 setPlanningSnapshot(result.data)
                 setSchedule(result.data.items)
@@ -301,11 +315,14 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
             }
         } catch (e) {
             console.error("Critical error in PlanningTab fetch:", e)
+            if (requestId !== fetchRequestId.current) return
             setPlanningSnapshot(null)
             setSchedule([])
             toast({ title: "Error crítico", description: "Fallo al cargar calendario.", variant: "destructive" })
         } finally {
-            setLoading(false)
+            if (requestId === fetchRequestId.current) {
+                setLoading(false)
+            }
         }
     }
 
@@ -522,15 +539,18 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
     }
     const handleToday = () => setCurrentDate(new Date())
 
-    const getItemsForDay = (date: Date) => {
-        return schedule.filter(item => isSameDay(parseLocalDate(item.date), date))
-    }
-
     // Metrics: week count for monthly averages = number of calendar rows that include a current-month day
     const weekCount = viewMode === 'month'
         ? monthWeeks.filter(week => week.some(d => d.getMonth() === currentDate.getMonth())).length
         : 1
-    const planningMetrics = computePlanningMetrics(schedule, weekCount)
+    const visibleStart = viewMode === 'week' ? startDate : monthStart
+    const visibleEnd = viewMode === 'week' ? endDate : monthEnd
+    const visibleSchedule = schedule.filter(item => isItemInDateRange(item, visibleStart, visibleEnd))
+    const planningMetrics = computePlanningMetrics(visibleSchedule, weekCount)
+
+    const getItemsForDay = (date: Date) => {
+        return visibleSchedule.filter(item => isSameDay(parseLocalDate(item.date), date))
+    }
 
     const getDayContext = (date: Date): PlanningDayContext | undefined => {
         const dateStr = toLocalDateStr(date)
@@ -628,7 +648,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                     <PlanningMetrics
                         metrics={planningMetrics}
                         isMonthly={viewMode === 'month'}
-                        hasData={schedule.length > 0}
+                        hasData={visibleSchedule.length > 0}
                     />
                 )}
 
@@ -1268,12 +1288,17 @@ function PlanningMetrics({ metrics, isMonthly, hasData }: {
                 {noCardio ? (
                     <span className="text-xs text-muted-foreground">Sin sesiones</span>
                 ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                         <MetricItem label={sessionLabel} value={fmtNum(metrics.cardio.sessions)} />
                         <MetricItem
                             label="distancia"
                             value={metrics.cardio.totalKm > 0 ? fmtNum(metrics.cardio.totalKm) : '—'}
                             unit={metrics.cardio.totalKm > 0 ? 'km' : undefined}
+                        />
+                        <MetricItem
+                            label="tiempo"
+                            value={metrics.cardio.totalMin > 0 ? fmtNum(metrics.cardio.totalMin) : '—'}
+                            unit={metrics.cardio.totalMin > 0 ? 'min' : undefined}
                         />
                     </div>
                 )}

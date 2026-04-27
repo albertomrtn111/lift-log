@@ -30,10 +30,10 @@ interface ClientSelectorProps {
 
 function UrgencyDot({ client }: { client: ClientSelectorOption }) {
     if (client.hasOverdueCheckin) {
-        return <span className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Check-in atrasado" />
+        return <span className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Revisión atrasada" />
     }
     if (client.hasPendingReview) {
-        return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Review pendiente" />
+        return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Revisión pendiente" />
     }
     return null
 }

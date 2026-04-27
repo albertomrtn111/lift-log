@@ -45,7 +45,7 @@ export function DashboardActionList({ actions }: DashboardActionListProps) {
                 </div>
                 <p className="font-medium">Nada urgente por resolver</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    El tablero está al día. Puedes aprovechar para revisar próximos check-ins o actividad reciente.
+                    El tablero está al día. Puedes aprovechar para revisar próximas revisiones o actividad reciente.
                 </p>
             </div>
         )

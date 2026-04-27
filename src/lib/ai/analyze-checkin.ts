@@ -68,7 +68,7 @@ async function buildContext(checkinId: string) {
         .single()
 
     if (checkinError || !checkin) {
-        throw new Error('Check-in no encontrado')
+        throw new Error('Revisión no encontrada')
     }
 
     const clientId = checkin.client_id
@@ -335,9 +335,9 @@ function buildPrompt(ctx: Awaited<ReturnType<typeof buildContext>>) {
         ctx.metricDefs
     )
 
-    return `Eres el assistant del coach dentro de una plataforma de entrenamiento y nutricion. Analiza el check-in del atleta como lo haria un asistente experto que prepara una revision para el entrenador.
+    return `Eres el assistant del coach dentro de una plataforma de entrenamiento y nutricion. Analiza la revisión del atleta como lo haria un asistente experto que prepara una revision para el entrenador.
 
-## Check-in actual
+## Revisión actual
 Fecha envio: ${ctx.checkin.submitted_at ? new Date(ctx.checkin.submitted_at).toLocaleDateString('es-ES') : 'Desconocida'}
 Periodo: ${ctx.checkin.period_start ?? '—'} -> ${ctx.checkin.period_end ?? '—'}
 Adherencia entrenamiento: ${ctx.checkin.training_adherence_pct != null ? `${ctx.checkin.training_adherence_pct}%` : 'No reportada'}
@@ -348,7 +348,7 @@ Notas del atleta: ${ctx.checkin.notes ?? 'Ninguna'}
 ### Respuestas actuales
 ${currentPayloadLines.join('\n')}
 
-## Check-in anterior
+## Revisión anterior
 ${ctx.previousCheckin
         ? `Fecha: ${ctx.previousCheckin.submitted_at ? new Date(ctx.previousCheckin.submitted_at).toLocaleDateString('es-ES') : '—'}
 Adherencia entrenamiento: ${ctx.previousCheckin.training_adherence_pct != null ? `${ctx.previousCheckin.training_adherence_pct}%` : '—'}
@@ -357,7 +357,7 @@ Sueno medio: ${ctx.previousCheckin.sleep_avg_h != null ? `${ctx.previousCheckin.
 Notas: ${ctx.previousCheckin.notes ?? 'Ninguna'}
 Respuestas:
 ${previousPayloadLines.join('\n')}`
-        : 'No hay check-in anterior disponible'}
+        : 'No hay revisión anterior disponible'}
 
 ## Tendencias recientes
 ${buildMetricTrendText(ctx.metricHistory)}

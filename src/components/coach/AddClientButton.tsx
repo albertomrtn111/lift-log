@@ -267,7 +267,7 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="frequency">Check-in (días)</Label>
+                            <Label htmlFor="frequency">Revisión (días)</Label>
                             <Input
                                 id="frequency"
                                 type="number"
@@ -285,19 +285,19 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                         <div>
                             <Label className="text-sm font-medium">Formularios asignados</Label>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                                Elige qué onboarding y qué check-in tendrá este cliente desde el primer momento.
+                                Elige qué onboarding y qué revisión tendrá este cliente desde el primer momento.
                             </p>
                         </div>
                         <div className="grid grid-cols-1 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="checkin_template_id">Check-in</Label>
+                                <Label htmlFor="checkin_template_id">Revisión</Label>
                                 <Select
                                     value={formData.checkin_template_id}
                                     onValueChange={(value) => setFormData({ ...formData, checkin_template_id: value })}
                                     disabled={isPending}
                                 >
                                     <SelectTrigger id="checkin_template_id">
-                                        <SelectValue placeholder="Selecciona un check-in" />
+                                        <SelectValue placeholder="Selecciona una revisión" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>

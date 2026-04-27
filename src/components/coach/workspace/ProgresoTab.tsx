@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import * as SliderPrimitive from '@radix-ui/react-slider'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import {
     XAxis,
     YAxis,
@@ -22,6 +23,7 @@ import {
     Minus,
     Loader2,
     CalendarDays,
+    Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProgressData, getCardioProgressData, ProgressData, CardioProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
@@ -43,6 +45,28 @@ interface ProgresoTabProps {
     coachId: string
 }
 
+type WeightDetailRow = {
+    date: string
+    dateLabel: string
+    weight: number | null
+    delta: number | null
+    steps: number | null
+    sleep: number | null
+    dietAdherence: number | null
+}
+
+type GeneralKpis = {
+    avgWeight: number | null
+    lastWeight: number | null
+    weightDelta: number | null
+    trainingAdherence: number | null
+    completedWorkouts: number
+    totalWorkouts: number
+    avgDietAdherence: number | null
+    avgSteps: number | null
+    avgSleep: number | null
+}
+
 // ---------------------------------------------------------------------------
 // Date helpers
 // ---------------------------------------------------------------------------
@@ -58,8 +82,112 @@ function toDateStr(d: Date) {
     return d.toISOString().split('T')[0]
 }
 
+function parseDateStr(date: string) {
+    return new Date(`${date}T12:00:00`)
+}
+
+function addDaysToDateStr(date: string, days: number) {
+    const d = parseDateStr(date)
+    d.setDate(d.getDate() + days)
+    return toDateStr(d)
+}
+
 function formatLabel(d: Date) {
     return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatDetailDate(date: string) {
+    return new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    })
+}
+
+function formatCsvNumber(value: number | null) {
+    if (value === null) return ''
+    return value.toFixed(1).replace('.', ',')
+}
+
+function formatCsvInteger(value: number | null) {
+    if (value === null) return ''
+    return String(Math.round(value))
+}
+
+function downloadWeightCsv(rows: WeightDetailRow[], dateFrom: string, dateTo: string) {
+    if (rows.length === 0) return
+
+    const header = ['Fecha', 'Peso (kg)', 'Cambio vs anterior (kg)', 'Pasos', 'Sueño (h)', 'Dieta (%)']
+    const lines = rows.map(row => [
+        row.date,
+        formatCsvNumber(row.weight),
+        formatCsvNumber(row.delta),
+        formatCsvInteger(row.steps),
+        formatCsvNumber(row.sleep),
+        formatCsvInteger(row.dietAdherence),
+    ])
+    const csv = `\uFEFF${[header, ...lines].map(line => line.join(';')).join('\n')}`
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `pesos-${dateFrom}-${dateTo}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+}
+
+function getPeriodComparisonRange(dateFrom: string, selectedDays: number) {
+    return {
+        from: addDaysToDateStr(dateFrom, -selectedDays),
+        to: addDaysToDateStr(dateFrom, -1),
+    }
+}
+
+function calculateGeneralKpis(data: ProgressData | null): GeneralKpis | null {
+    if (!data) return null
+
+    const weights = data.metrics.filter(m => m.weight_kg !== null).map(m => m.weight_kg!)
+    const avgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null
+    const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null
+    const firstWeight = weights.length > 1 ? weights[0] : null
+    const weightDelta = lastWeight !== null && firstWeight !== null ? lastWeight - firstWeight : null
+
+    const totalWorkouts = data.workoutLogs.length
+    const completedWorkouts = data.workoutLogs.filter(w => w.completed).length
+    const trainingAdherence = totalWorkouts > 0 ? Math.round((completedWorkouts / totalWorkouts) * 100) : null
+
+    const dietValues = data.dietAdherence.map(d => d.adherence_pct)
+    const avgDietAdherence = dietValues.length > 0
+        ? Math.round(dietValues.reduce((a, b) => a + b, 0) / dietValues.length)
+        : null
+
+    const stepsValues = data.metrics.filter(m => m.steps !== null).map(m => m.steps!)
+    const avgSteps = stepsValues.length > 0
+        ? Math.round(stepsValues.reduce((a, b) => a + b, 0) / stepsValues.length)
+        : null
+
+    const sleepValues = data.metrics.filter(m => m.sleep_h !== null).map(m => m.sleep_h!)
+    const avgSleep = sleepValues.length > 0
+        ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
+        : null
+
+    return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep }
+}
+
+function getComparisonDelta(current: number | null | undefined, previous: number | null | undefined) {
+    if (current == null || previous == null) return null
+    return current - previous
+}
+
+function formatComparisonDelta(delta: number, unit?: string) {
+    const sign = delta > 0 ? '+' : ''
+    const value = unit === 'pasos'
+        ? Math.round(delta).toLocaleString('es-ES')
+        : delta.toFixed(1).replace('.0', '')
+    return `${sign}${value}${unit ? ` ${unit}` : ''}`
 }
 
 // Default: last 30 days → offsets [335, 365]
@@ -223,21 +351,28 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [offsets, setOffsets] = useState<[number, number]>(DEFAULT_OFFSETS)
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<ProgressData | null>(null)
+    const [previousData, setPreviousData] = useState<ProgressData | null>(null)
     const [cardioData, setCardioData] = useState<CardioProgressData | null>(null)
     const [cardioLoading, setCardioLoading] = useState(false)
 
     const dateFrom = useMemo(() => toDateStr(offsetToDate(offsets[0])), [offsets])
     const dateTo = useMemo(() => toDateStr(offsetToDate(offsets[1])), [offsets])
+    const selectedDays = useMemo(() => Math.max(1, offsets[1] - offsets[0]), [offsets])
 
     // Debounce ref so rapid slider drags don't spam requests
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const fetchGeneral = useCallback(async (from: string, to: string) => {
         setLoading(true)
-        const result = await getProgressData(clientId, from, to)
+        const previousRange = getPeriodComparisonRange(from, selectedDays)
+        const [result, previousResult] = await Promise.all([
+            getProgressData(clientId, from, to),
+            getProgressData(clientId, previousRange.from, previousRange.to),
+        ])
         setData(result.success && result.data ? result.data : { metrics: [], dietAdherence: [], workoutLogs: [] })
+        setPreviousData(previousResult.success && previousResult.data ? previousResult.data : { metrics: [], dietAdherence: [], workoutLogs: [] })
         setLoading(false)
-    }, [clientId])
+    }, [clientId, selectedDays])
 
     const fetchCardio = useCallback(async (from: string, to: string) => {
         setCardioLoading(true)
@@ -270,35 +405,12 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     // -----------------------------------------------------------------------
 
     const kpis = useMemo(() => {
-        if (!data) return null
-
-        const weights = data.metrics.filter(m => m.weight_kg !== null).map(m => m.weight_kg!)
-        const avgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null
-        const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null
-        const firstWeight = weights.length > 1 ? weights[0] : null
-        const weightDelta = lastWeight && firstWeight ? lastWeight - firstWeight : null
-
-        const totalWorkouts = data.workoutLogs.length
-        const completedWorkouts = data.workoutLogs.filter(w => w.completed).length
-        const trainingAdherence = totalWorkouts > 0 ? Math.round((completedWorkouts / totalWorkouts) * 100) : null
-
-        const dietValues = data.dietAdherence.map(d => d.adherence_pct)
-        const avgDietAdherence = dietValues.length > 0
-            ? Math.round(dietValues.reduce((a, b) => a + b, 0) / dietValues.length)
-            : null
-
-        const stepsValues = data.metrics.filter(m => m.steps !== null).map(m => m.steps!)
-        const avgSteps = stepsValues.length > 0
-            ? Math.round(stepsValues.reduce((a, b) => a + b, 0) / stepsValues.length)
-            : null
-
-        const sleepValues = data.metrics.filter(m => m.sleep_h !== null).map(m => m.sleep_h!)
-        const avgSleep = sleepValues.length > 0
-            ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
-            : null
-
-        return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep }
+        return calculateGeneralKpis(data)
     }, [data])
+
+    const previousKpis = useMemo(() => {
+        return calculateGeneralKpis(previousData)
+    }, [previousData])
 
     const weightChartData = useMemo(() => {
         if (!data) return []
@@ -309,6 +421,37 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 rawDate: m.metric_date,
                 weight: m.weight_kg,
             }))
+    }, [data])
+
+    const weightDetailRows = useMemo<WeightDetailRow[]>(() => {
+        if (!data) return []
+        const dietByDate = new Map(data.dietAdherence.map(entry => [entry.log_date, entry.adherence_pct]))
+        const rows = data.metrics
+            .filter(metric =>
+                metric.weight_kg !== null ||
+                metric.steps !== null ||
+                metric.sleep_h !== null ||
+                dietByDate.has(metric.metric_date)
+            )
+
+        let previousWeight: number | null = null
+        return rows.map((metric) => {
+            const currentWeight = metric.weight_kg
+            const delta = currentWeight !== null && previousWeight !== null
+                ? currentWeight - previousWeight
+                : null
+            if (currentWeight !== null) previousWeight = currentWeight
+
+            return {
+                date: metric.metric_date,
+                dateLabel: formatDetailDate(metric.metric_date),
+                weight: currentWeight,
+                delta,
+                steps: metric.steps,
+                sleep: metric.sleep_h,
+                dietAdherence: dietByDate.get(metric.metric_date) ?? null,
+            }
+        })
     }, [data])
 
     // -----------------------------------------------------------------------
@@ -369,6 +512,9 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     subValue={kpis?.lastWeight != null ? `Último: ${kpis.lastWeight.toFixed(1)} kg` : undefined}
                                     delta={kpis?.weightDelta}
                                     deltaUnit="kg"
+                                    comparisonDelta={getComparisonDelta(kpis?.avgWeight, previousKpis?.avgWeight)}
+                                    comparisonUnit="kg"
+                                    comparisonLabel={`vs ${selectedDays}d anteriores`}
                                     color="blue"
                                 />
                                 <KpiCard
@@ -376,6 +522,10 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     label="Pasos"
                                     value={kpis?.avgSteps != null ? kpis.avgSteps.toLocaleString('es-ES') : null}
                                     subValue="Media diaria"
+                                    comparisonDelta={getComparisonDelta(kpis?.avgSteps, previousKpis?.avgSteps)}
+                                    comparisonUnit="pasos"
+                                    comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                    comparisonPositiveIsGood
                                     color="violet"
                                 />
                                 <KpiCard
@@ -383,6 +533,10 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     label="Sueño"
                                     value={kpis?.avgSleep != null ? `${kpis.avgSleep}h` : null}
                                     subValue="Media por noche"
+                                    comparisonDelta={getComparisonDelta(kpis?.avgSleep, previousKpis?.avgSleep)}
+                                    comparisonUnit="h"
+                                    comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                    comparisonPositiveIsGood
                                     color="indigo"
                                 />
                                 <KpiCard
@@ -390,15 +544,129 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     label="Dieta"
                                     value={kpis?.avgDietAdherence != null ? `${kpis.avgDietAdherence}%` : null}
                                     subValue="Adherencia media"
+                                    comparisonDelta={getComparisonDelta(kpis?.avgDietAdherence, previousKpis?.avgDietAdherence)}
+                                    comparisonUnit="pp"
+                                    comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                    comparisonPositiveIsGood
                                     color="green"
                                 />
                             </div>
                             <WeightChart data={weightChartData} />
+                            <WeightDetail
+                                rows={weightDetailRows}
+                                dateFrom={dateFrom}
+                                dateTo={dateTo}
+                            />
                         </>
                     )}
                 </>
             )}
         </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Weight Detail
+// ---------------------------------------------------------------------------
+
+function WeightDetail({
+    rows,
+    dateFrom,
+    dateTo,
+}: {
+    rows: WeightDetailRow[]
+    dateFrom: string
+    dateTo: string
+}) {
+    return (
+        <Card className="p-4">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                    <Scale className="h-5 w-5 text-blue-500" />
+                    <div>
+                        <h3 className="font-semibold">Detalle de pesos</h3>
+                        <p className="text-xs text-muted-foreground">
+                            {rows.length} día{rows.length === 1 ? '' : 's'} con métricas en el rango seleccionado
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 self-start sm:self-auto"
+                    disabled={rows.length === 0}
+                    onClick={() => downloadWeightCsv(rows, dateFrom, dateTo)}
+                >
+                    <Download className="h-4 w-4" />
+                    Exportar CSV
+                </Button>
+            </div>
+
+            {rows.length === 0 ? (
+                <p className="py-4 text-sm italic text-muted-foreground">
+                    No hay métricas registradas en este rango.
+                </p>
+            ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                    <table className="min-w-[860px] w-full table-fixed">
+                        <colgroup>
+                            <col className="w-[34%]" />
+                            <col className="w-[13%]" />
+                            <col className="w-[15%]" />
+                            <col className="w-[14%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[12%]" />
+                        </colgroup>
+                        <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                            <tr>
+                                <th className="px-3 py-2 text-left">Fecha</th>
+                                <th className="px-3 py-2 text-right">Peso</th>
+                                <th className="px-3 py-2 text-right">Cambio</th>
+                                <th className="px-3 py-2 text-right">Pasos</th>
+                                <th className="px-3 py-2 text-right">Sueño</th>
+                                <th className="px-3 py-2 text-right">Dieta</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {[...rows].reverse().map(row => (
+                                <tr key={row.date} className="text-sm">
+                                    <td className="truncate px-3 py-2.5 text-muted-foreground capitalize">
+                                        {row.dateLabel}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right font-medium tabular-nums">
+                                        {row.weight !== null ? `${row.weight.toFixed(1)} kg` : '—'}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right">
+                                        <span className={cn(
+                                            'inline-flex justify-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums',
+                                            row.delta === null && 'border-border bg-muted/30 text-muted-foreground',
+                                            row.delta !== null && row.delta < 0 && 'border-blue-500/20 bg-blue-500/10 text-blue-600',
+                                            row.delta !== null && row.delta > 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500',
+                                            row.delta === 0 && 'border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
+                                        )}>
+                                            {row.delta === null
+                                                ? '—'
+                                                : `${row.delta > 0 ? '+' : ''}${row.delta.toFixed(1)} kg`
+                                            }
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                        {row.steps !== null ? row.steps.toLocaleString('es-ES') : '—'}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                        {row.sleep !== null ? `${row.sleep.toFixed(1).replace('.0', '')}h` : '—'}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                        {row.dietAdherence !== null ? `${Math.round(row.dietAdherence)}%` : '—'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </Card>
     )
 }
 
@@ -420,6 +688,10 @@ function KpiCard({
     subValue,
     delta,
     deltaUnit,
+    comparisonDelta,
+    comparisonUnit,
+    comparisonLabel,
+    comparisonPositiveIsGood = false,
     color,
 }: {
     icon: React.ElementType
@@ -428,9 +700,14 @@ function KpiCard({
     subValue?: string
     delta?: number | null
     deltaUnit?: string
+    comparisonDelta?: number | null
+    comparisonUnit?: string
+    comparisonLabel?: string
+    comparisonPositiveIsGood?: boolean
     color: string
 }) {
     const c = COLOR_MAP[color] || COLOR_MAP.blue
+    const hasComparison = comparisonDelta != null
 
     return (
         <Card className="h-full rounded-xl border bg-card px-3 py-2.5 shadow-sm">
@@ -460,6 +737,24 @@ function KpiCard({
             </p>
             {subValue && (
                 <p className="mt-1 text-[11px] font-medium text-muted-foreground">{subValue}</p>
+            )}
+            {hasComparison && (
+                <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-[11px]">
+                    <span className="min-w-0 truncate text-muted-foreground">
+                        {comparisonLabel || 'vs periodo anterior'}
+                    </span>
+                    <span className={cn(
+                        'inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0 font-semibold tabular-nums',
+                        comparisonDelta === 0 && 'border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
+                        comparisonDelta !== 0 && comparisonPositiveIsGood && comparisonDelta > 0 && 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600',
+                        comparisonDelta !== 0 && comparisonPositiveIsGood && comparisonDelta < 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500',
+                        comparisonDelta !== 0 && !comparisonPositiveIsGood && comparisonDelta < 0 && 'border-blue-500/20 bg-blue-500/10 text-blue-600',
+                        comparisonDelta !== 0 && !comparisonPositiveIsGood && comparisonDelta > 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500'
+                    )}>
+                        {comparisonDelta < 0 ? <TrendingDown className="h-2.5 w-2.5" /> : comparisonDelta > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
+                        {formatComparisonDelta(comparisonDelta, comparisonUnit)}
+                    </span>
+                </div>
             )}
         </Card>
     )

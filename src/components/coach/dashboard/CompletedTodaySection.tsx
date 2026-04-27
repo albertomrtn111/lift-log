@@ -25,7 +25,7 @@ export function CompletedTodaySection({ reviews }: CompletedTodaySectionProps) {
                 <div className="flex items-center gap-2 px-4 py-3 bg-green-500/5 border border-green-500/20 rounded-lg hover:bg-green-500/10 transition-colors cursor-pointer">
                     <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                     <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                        ✓ {reviews.length} review{reviews.length !== 1 ? 's' : ''} completada{reviews.length !== 1 ? 's' : ''} hoy
+                        {reviews.length} revisión{reviews.length !== 1 ? 'es' : ''} completada{reviews.length !== 1 ? 's' : ''} hoy
                     </span>
                     {open
                         ? <ChevronDown className="h-4 w-4 text-green-600 ml-auto" />

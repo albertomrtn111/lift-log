@@ -365,7 +365,7 @@ function Step4({ form, setForm }: { form: FormState; setForm: (f: FormState) => 
         <div className="space-y-8">
             <QuestionBlock
                 label="¿Qué valoras más al revisar a un atleta?"
-                hint="Qué información buscas primero cuando recibes un check-in."
+                hint="Qué información buscas primero cuando recibes una revisión."
             >
                 <StyledTextarea
                     value={form.checkin_priorities}
@@ -389,7 +389,7 @@ function Step4({ form, setForm }: { form: FormState; setForm: (f: FormState) => 
 
             <QuestionBlock
                 label="¿Cuánto peso das a las métricas frente a las sensaciones?"
-                hint="Esto define cómo la IA ponderará los datos del check-in."
+                hint="Esto define cómo la IA ponderará los datos de la revisión."
             >
                 <ChipSelect
                     options={['Priorizo métricas objetivas', 'Equilibrio 50/50', 'Priorizo sensaciones del cliente', 'Depende del contexto del atleta']}

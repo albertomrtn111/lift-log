@@ -79,7 +79,7 @@ interface FormBuilderModalProps {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-    checkin: 'Check-in',
+    checkin: 'Revisión',
     onboarding: 'Onboarding',
     general: 'General',
 }
@@ -167,7 +167,7 @@ export function FormBuilderModal({
     }
 
     const isAssignableTemplate = templateType === 'checkin' || templateType === 'onboarding'
-    const assignmentEntityLabel = templateType === 'onboarding' ? 'onboarding' : 'check-in'
+    const assignmentEntityLabel = templateType === 'onboarding' ? 'onboarding' : 'revisión'
 
     const filteredClients = activeClients.filter((client) =>
         client.full_name.toLowerCase().includes(assignmentSearch.trim().toLowerCase())
@@ -391,7 +391,7 @@ export function FormBuilderModal({
                             <Input
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Ej. Check-in semanal"
+                                placeholder="Ej. Revisión semanal"
                                 className={titleError ? 'border-destructive' : ''}
                             />
                             {titleError && (
