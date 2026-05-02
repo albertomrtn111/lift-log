@@ -8,9 +8,12 @@ services:
         - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://nexttrain.ascenttech.cloud}
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://nexttrain.ascenttech.cloud}
     networks:
       - traefik
     labels:
@@ -20,11 +23,27 @@ services:
       - "traefik.http.routers.nexttrain.entrypoints=websecure"
       - "traefik.http.routers.nexttrain.tls=true"
       - "traefik.http.services.nexttrain.loadbalancer.server.port=3000"
+      # Legacy .com links -> canonical .cloud. This protects old n8n emails.
+      - "traefik.http.routers.nexttrain_legacy.rule=Host(`nexttrain.ascenttech.com`)"
+      - "traefik.http.routers.nexttrain_legacy.entrypoints=websecure"
+      - "traefik.http.routers.nexttrain_legacy.tls=true"
+      - "traefik.http.routers.nexttrain_legacy.middlewares=nexttrain_legacy_redirect"
+      - "traefik.http.routers.nexttrain_legacy.service=nexttrain"
+      - "traefik.http.middlewares.nexttrain_legacy_redirect.redirectregex.regex=^https?://nexttrain\\.ascenttech\\.com/(.*)"
+      - "traefik.http.middlewares.nexttrain_legacy_redirect.redirectregex.replacement=https://nexttrain.ascenttech.cloud/$${1}"
+      - "traefik.http.middlewares.nexttrain_legacy_redirect.redirectregex.permanent=true"
       # HTTP -> HTTPS redirect
       - "traefik.http.routers.nexttrain_http.rule=Host(`nexttrain.ascenttech.cloud`)"
       - "traefik.http.routers.nexttrain_http.entrypoints=web"
       - "traefik.http.routers.nexttrain_http.middlewares=nexttrain_https_redirect"
       - "traefik.http.middlewares.nexttrain_https_redirect.redirectscheme.scheme=https"
+      # Legacy .com HTTP -> canonical .cloud HTTPS
+      - "traefik.http.routers.nexttrain_legacy_http.rule=Host(`nexttrain.ascenttech.com`)"
+      - "traefik.http.routers.nexttrain_legacy_http.entrypoints=web"
+      - "traefik.http.routers.nexttrain_legacy_http.middlewares=nexttrain_legacy_http_redirect"
+      - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.regex=^http://nexttrain\\.ascenttech\\.com/(.*)"
+      - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.replacement=https://nexttrain.ascenttech.cloud/$${1}"
+      - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.permanent=true"
 networks:
   traefik:
     external: true

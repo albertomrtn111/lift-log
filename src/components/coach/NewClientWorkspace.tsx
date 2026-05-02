@@ -16,7 +16,6 @@ import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
     LayoutDashboard,
@@ -27,7 +26,6 @@ import {
     ClipboardList,
     ChevronLeft,
     ChevronRight,
-    MessageSquare,
     UserRound,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
@@ -35,16 +33,10 @@ import { ClientSelector } from './workspace/ClientSelector'
 import { AthleteProfileTab } from './workspace/AthleteProfileTab'
 import { ResumenTab } from './workspace/ResumenTab'
 import { CheckinsTab } from './workspace/CheckinsTab'
-import { PlanningTab } from './workspace/PlanningTab'
-import { DietTab } from './tabs/DietTab'
 import { ProgresoTab } from './workspace/ProgresoTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
-import { ReviewsTab } from './tabs/ReviewsTab'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
-import { ChatTab } from './workspace/ChatTab'
-import { getUnreadCountAction } from './workspace/chat-actions'
-import { createClient as createBrowserClient } from '@/lib/supabase/client'
 
 interface NewClientWorkspaceProps {
     clients: ClientSelectorOption[]
@@ -86,7 +78,7 @@ export function NewClientWorkspace({
     const router = useRouter()
     const searchParams = useSearchParams()
 
-    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'resumen')
+    const [activeTab, setActiveTab] = useState(normalizeWorkspaceTab(searchParams.get('tab')))
 
     // Persist selected client in localStorage so navigating away and back preserves selection
     const STORAGE_KEY = 'coach_last_client_id'
@@ -113,7 +105,7 @@ export function NewClientWorkspace({
     }, [selectedClientId])
 
     useEffect(() => {
-        const nextTab = searchParams.get('tab') || 'resumen'
+        const nextTab = normalizeWorkspaceTab(searchParams.get('tab'))
         setActiveTab(prev => (prev === nextTab ? prev : nextTab))
     }, [searchParams])
 
@@ -136,37 +128,6 @@ export function NewClientWorkspace({
     }
 
     const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
-
-    // ── Unread message count for chat badge ──
-    const [unreadCount, setUnreadCount] = useState(0)
-
-    useEffect(() => {
-        if (!selectedClientId) return
-        getUnreadCountAction(coachId, selectedClientId).then(setUnreadCount)
-    }, [coachId, selectedClientId])
-
-    // Realtime listener for unread badge (only when NOT on the chat tab)
-    useEffect(() => {
-        if (!selectedClientId) return
-        const supabase = createBrowserClient()
-        const channel = supabase
-            .channel(`unread-badge:${coachId}:${selectedClientId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `coach_id=eq.${coachId}`,
-            }, (payload) => {
-                const msg = payload.new as { client_id: string; sender_role: string }
-                if (msg.client_id === selectedClientId && msg.sender_role === 'client' && activeTab !== 'chat') {
-                    setUnreadCount(prev => prev + 1)
-                }
-            })
-            .subscribe()
-
-        return () => { supabase.removeChannel(channel) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [coachId, selectedClientId, activeTab])
 
     // Mejora 10: Prev/next navigation
     const activeClients = useMemo(() =>
@@ -323,20 +284,6 @@ export function NewClientWorkspace({
                                 <span className="hidden sm:inline">Progreso</span>
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                             </TabsTrigger>
-                        <TabsTrigger
-                            value="chat"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.25rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                                <MessageSquare className="h-4 w-4" />
-                                <span className="hidden sm:inline">Chat</span>
-                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                                {!isPendingSignup && unreadCount > 0 && (
-                                    <Badge variant="destructive" className="h-5 min-w-[20px] px-1 text-[10px] rounded-full ml-1">
-                                        {unreadCount > 99 ? '99+' : unreadCount}
-                                    </Badge>
-                                )}
-                            </TabsTrigger>
                         </TabsList>
 
                         <div className="mt-4 min-h-[500px]">
@@ -411,18 +358,6 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="chat">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <ChatTab
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        clientName={selectedClient.full_name || 'Cliente'}
-                                        onUnreadChange={setUnreadCount}
-                                    />
-                                )}
-                            </TabsContent>
                         </div>
                     </Tabs>
                 </>
@@ -437,4 +372,19 @@ export function NewClientWorkspace({
             )}
         </div>
     )
+}
+
+function normalizeWorkspaceTab(tab: string | null) {
+    if (
+        tab === 'athlete-profile' ||
+        tab === 'onboarding' ||
+        tab === 'resumen' ||
+        tab === 'plan' ||
+        tab === 'checkins' ||
+        tab === 'progreso'
+    ) {
+        return tab
+    }
+
+    return 'resumen'
 }

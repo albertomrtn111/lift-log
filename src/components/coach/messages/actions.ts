@@ -1,18 +1,10 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendCoachMessageNotification } from '@/lib/notifications/client'
-import { Message } from '@/types/messages'
+import type { Message } from '@/types/messages'
 
-// ============================================================================
-// CHAT / MESSAGES ACTIONS (coach side)
-// ============================================================================
-
-/**
- * Fetch the most recent messages for a coach-client conversation.
- * Returns up to 50 messages, ordered oldest-first for display.
- * Pass `before` (ISO timestamp) to paginate backwards.
- */
 export async function getMessagesAction(
     coachId: string,
     clientId: string,
@@ -39,13 +31,9 @@ export async function getMessagesAction(
         return []
     }
 
-    // Reverse so the oldest message is first (for chat display)
     return (data as Message[]).reverse()
 }
 
-/**
- * Send a message as the coach.
- */
 export async function sendMessageAction(
     coachId: string,
     clientId: string,
@@ -82,27 +70,28 @@ export async function sendMessageAction(
     return { success: true, message: data as Message }
 }
 
-/**
- * Mark all unread client messages as read (for the coach viewing them).
- */
 export async function markMessagesReadAction(
     coachId: string,
     clientId: string
 ): Promise<void> {
     const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
 
-    await supabase
+    const { error } = await supabase
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('sender_role', 'client')
         .is('read_at', null)
+
+    if (error) {
+        console.error('Error marking messages as read:', error)
+        return
+    }
+
+    revalidatePath('/coach/dashboard')
 }
 
-/**
- * Get the count of unread messages from the client.
- */
 export async function getUnreadCountAction(
     coachId: string,
     clientId: string
@@ -115,6 +104,7 @@ export async function getUnreadCountAction(
         .eq('coach_id', validatedCoachId)
         .eq('client_id', clientId)
         .eq('sender_role', 'client')
+        .eq('message_type', 'chat')
         .is('read_at', null)
 
     if (error) {

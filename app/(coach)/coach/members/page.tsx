@@ -40,7 +40,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                             <Users className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold">Miembros</h1>
+                            <h1 className="text-xl font-bold">Atletas</h1>
                             <div className="flex items-center gap-2 mt-1">
                                 <Badge variant="secondary" className="bg-success/10 text-success border-0">
                                     {activeCount} activos

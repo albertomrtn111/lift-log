@@ -129,6 +129,7 @@ export interface CoachDashboardData {
 export interface SidebarBadges {
     dashboardPending: number
     membersPendingSignup: number
+    messagesUnread: number
 }
 
 interface CheckinRecord {
@@ -683,9 +684,9 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .limit(20),
     ])
 
-    const checkins = (checkinsResult.data ?? []) as CheckinRecord[]
+    const candidateCheckins = (checkinsResult.data ?? []) as CheckinRecord[]
     const sentReviews = (sentReviewsResult.data ?? []) as SentReviewRecord[]
-    const checkinIds = Array.from(new Set([...checkins, ...sentReviews].map((checkin) => checkin.id)))
+    const checkinIds = Array.from(new Set([...candidateCheckins, ...sentReviews].map((checkin) => checkin.id)))
 
     const reviewsResult = checkinIds.length > 0
         ? await supabase
@@ -708,19 +709,20 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     const messages = (messagesResult.data ?? []) as MessageRecord[]
     const tasks = (tasksResult.data ?? []) as CoachTaskRecord[]
 
-    const checkinsByClient = new Map<string, CheckinRecord[]>()
-    for (const checkin of checkins) {
-        const list = checkinsByClient.get(checkin.client_id) ?? []
-        list.push(checkin)
-        checkinsByClient.set(checkin.client_id, list)
-    }
-
     const reviewsByCheckinId = new Map<string, ReviewRecord>()
     for (const review of reviews) {
         const current = reviewsByCheckinId.get(review.checkin_id)
         if (!current || new Date(review.created_at) > new Date(current.created_at)) {
             reviewsByCheckinId.set(review.checkin_id, review)
         }
+    }
+
+    const checkins = candidateCheckins.filter((checkin) => reviewsByCheckinId.has(checkin.id))
+    const checkinsByClient = new Map<string, CheckinRecord[]>()
+    for (const checkin of checkins) {
+        const list = checkinsByClient.get(checkin.client_id) ?? []
+        list.push(checkin)
+        checkinsByClient.set(checkin.client_id, list)
     }
 
     const latestMetricByClient = new Map<string, MetricRecord>()
@@ -844,8 +846,8 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             title: `Nuevo mensaje de ${clientName}`,
             preview: message.content.length > 80 ? message.content.slice(0, 80) + '…' : message.content,
             timestamp: message.created_at,
-            href: `/coach/clients?client=${message.client_id}`,
-            ctaLabel: 'Ir al chat',
+            href: `/coach/messages?client=${message.client_id}`,
+            ctaLabel: 'Ir a mensajes',
         }
     })
 
@@ -1020,13 +1022,13 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
         signupResult,
     ] = await Promise.all([
         supabase
-            .from('checkins')
-            .select('id', { count: 'exact', head: true })
-            .eq('coach_id', coachId)
-            .eq('type', 'checkin')
-            .neq('status', 'pending')
-            .not('submitted_at', 'is', null)
-            .gte('submitted_at', threeDaysAgo.toISOString()),
+            .from('reviews')
+            .select('id, checkins!inner(id, coach_id, type, submitted_at, status)', { count: 'exact', head: true })
+            .eq('checkins.coach_id', coachId)
+            .eq('checkins.type', 'checkin')
+            .neq('checkins.status', 'pending')
+            .not('checkins.submitted_at', 'is', null)
+            .gte('checkins.submitted_at', threeDaysAgo.toISOString()),
         supabase
             .from('messages')
             .select('id', { count: 'exact', head: true })
@@ -1050,11 +1052,11 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
 
     const pendingCount =
         (receivedReviewsResult.count ?? 0) +
-        (unreadMessagesResult.count ?? 0) +
         (dueTasksResult.count ?? 0)
 
     return {
         dashboardPending: pendingCount,
         membersPendingSignup: signupResult.count ?? 0,
+        messagesUnread: unreadMessagesResult.count ?? 0,
     }
 }

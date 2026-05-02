@@ -109,7 +109,7 @@ export function ReviewApprovalDialog({
                 toast({
                     title: result.sentToClient ? 'Revisión aprobada y enviada' : 'Revisión aprobada',
                     description: result.sentToClient
-                        ? 'El feedback ya está disponible en el chat del cliente.'
+                        ? 'El feedback ya está disponible en mensajes del cliente.'
                         : 'La revisión se cerró sin enviar feedback desde la app.',
                 })
                 onOpenChange(false)
@@ -176,7 +176,7 @@ export function ReviewApprovalDialog({
                         <div className="flex items-start gap-2">
                             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <p>
-                                Si eliges <strong>Aprobar y enviar</strong>, el mensaje llegará al chat del cliente como un bloque formal de revisión, no como un mensaje casual.
+                                Si eliges <strong>Aprobar y enviar</strong>, el mensaje llegará a mensajes del cliente como un bloque formal de revisión, no como un mensaje casual.
                             </p>
                         </div>
                     </div>

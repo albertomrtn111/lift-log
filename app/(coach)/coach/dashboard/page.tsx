@@ -23,6 +23,7 @@ import { AttentionClientList } from '@/components/coach/dashboard/AttentionClien
 import { CheckinRow } from '@/components/coach/dashboard/CheckinRow'
 import { WeeklyOperationsCard } from '@/components/coach/dashboard/WeeklyOperationsCard'
 import { ActivityFeed } from '@/components/coach/dashboard/ActivityFeed'
+import { DashboardFreshness } from '@/components/coach/dashboard/DashboardFreshness'
 
 function getGreeting(): string {
     const hour = new Date().getHours()
@@ -45,6 +46,7 @@ export default async function CoachDashboardPage() {
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
+            <DashboardFreshness />
             <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
                 <div className="px-4 py-6 lg:px-8">
                     <div className="flex items-start justify-between gap-4">

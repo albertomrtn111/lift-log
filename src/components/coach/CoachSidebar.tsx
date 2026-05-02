@@ -10,12 +10,12 @@ import {
     Calendar,
     UserCog,
     Settings2,
-    User,
     LogOut,
     FileText,
     ClipboardList,
     BarChart2,
-    Receipt
+    Receipt,
+    MessageCircle
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,7 @@ interface NavItem {
     href: string
     icon: React.ComponentType<{ className?: string }>
     label: string
-    badgeKey?: 'dashboardPending' | 'membersPendingSignup'
+    badgeKey?: 'dashboardPending' | 'membersPendingSignup' | 'messagesUnread'
 }
 
 const navSections = [
@@ -35,6 +35,7 @@ const navSections = [
         title: 'OPERATIVA',
         items: [
             { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard', badgeKey: 'dashboardPending' as const },
+            { href: '/coach/messages', icon: MessageCircle, label: 'Mensajes', badgeKey: 'messagesUnread' as const },
             { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
             { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
         ]
@@ -58,15 +59,14 @@ const navSections = [
 const accountSection = {
     title: 'CUENTA',
     items: [
-        { href: '/coach/members', icon: Users, label: 'Miembros', badgeKey: 'membersPendingSignup' as const },
-        { href: '/coach/profile', icon: User, label: 'Perfil' }
+        { href: '/coach/members', icon: Users, label: 'Atletas', badgeKey: 'membersPendingSignup' as const },
     ]
 }
 
 const allNavItems: NavItem[] = [
     ...navSections[0].items,
     ...navSections[1].items,
-    { href: '/coach/profile', icon: User, label: 'Perfil' }
+    { href: '/coach/settings', icon: Settings2, label: 'Ajustes' }
 ]
 
 

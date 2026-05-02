@@ -46,7 +46,7 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
                             : FileText
                 const typeLabel =
                     notification.type === 'chat_message'
-                        ? 'chat'
+                        ? 'mensaje'
                         : notification.type === 'coach_task'
                             ? 'tarea'
                             : 'revisión'

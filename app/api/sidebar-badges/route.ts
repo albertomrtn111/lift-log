@@ -8,14 +8,14 @@ export async function GET() {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
 
-        if (!user) return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0 })
+        if (!user) return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0, messagesUnread: 0 })
 
         const coachId = await getCoachIdForUser(user.id)
-        if (!coachId) return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0 })
+        if (!coachId) return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0, messagesUnread: 0 })
 
         const badges = await getSidebarBadges(coachId)
         return NextResponse.json(badges)
     } catch {
-        return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0 })
+        return NextResponse.json({ dashboardPending: 0, membersPendingSignup: 0, messagesUnread: 0 })
     }
 }

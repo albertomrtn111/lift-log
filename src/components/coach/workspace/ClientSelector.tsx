@@ -75,7 +75,7 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
                     <p className="text-sm text-muted-foreground">Crea tu primer cliente para empezar</p>
                 </div>
                 <Button variant="outline" size="sm" asChild className="ml-auto">
-                    <Link href="/coach/members">Ir a Miembros</Link>
+                    <Link href="/coach/members">Ir a Atletas</Link>
                 </Button>
             </div>
         )

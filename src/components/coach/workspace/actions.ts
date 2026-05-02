@@ -784,7 +784,7 @@ export async function completeReviewAction(input: {
                 return {
                     success: false,
                     partialSuccess: true,
-                    error: 'La revisión quedó aprobada y el mensaje salió al chat, pero no se pudo guardar el feedback en la revisión.',
+                    error: 'La revisión quedó aprobada y el mensaje salió a mensajes, pero no se pudo guardar el feedback en la revisión.',
                 }
             }
 
