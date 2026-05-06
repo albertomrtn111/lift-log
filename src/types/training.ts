@@ -15,6 +15,7 @@ export interface TrainingDay {
   name: string;
   order: number;
   default_weekday?: number; // 1=Mon, 7=Sun
+  defaultWeekday?: number | null;
 }
 
 export interface TrainingColumn {

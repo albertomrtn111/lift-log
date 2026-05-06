@@ -22,6 +22,7 @@ interface RoutinePageClientProps {
     initialSets: ExerciseSet[]
     initialWeek?: number
     initialDayId?: string
+    initialSessionDate?: string
 }
 
 export default function RoutinePageClient({
@@ -34,6 +35,7 @@ export default function RoutinePageClient({
     initialSets,
     initialWeek = 1,
     initialDayId,
+    initialSessionDate,
 }: RoutinePageClientProps) {
     const [selectedWeek, setSelectedWeek] = useState(initialWeek)
     const [selectedDayId, setSelectedDayId] = useState(initialDayId || days[0]?.id || '')
@@ -44,6 +46,41 @@ export default function RoutinePageClient({
     const router = useRouter()
 
     const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
+
+    const getSessionDate = useCallback(() => {
+        if (initialSessionDate && selectedDayId === initialDayId && selectedWeek === initialWeek) {
+            return initialSessionDate
+        }
+
+        const selectedDay = days.find(day => day.id === selectedDayId)
+        const defaultWeekday = selectedDay?.defaultWeekday ?? selectedDay?.default_weekday
+        if (!defaultWeekday) return undefined
+
+        const programStart = new Date(`${program.effectiveFrom}T12:00:00`)
+        const weekStart = new Date(programStart)
+        weekStart.setDate(weekStart.getDate() + ((selectedWeek - 1) * 7))
+        const mondayOffset = (weekStart.getDay() + 6) % 7
+        weekStart.setDate(weekStart.getDate() - mondayOffset)
+
+        const sessionDate = new Date(weekStart)
+        sessionDate.setDate(weekStart.getDate() + defaultWeekday - 1)
+        const y = sessionDate.getFullYear()
+        const m = String(sessionDate.getMonth() + 1).padStart(2, '0')
+        const d = String(sessionDate.getDate()).padStart(2, '0')
+        return `${y}-${m}-${d}`
+    }, [days, initialDayId, initialSessionDate, initialWeek, program.effectiveFrom, selectedDayId, selectedWeek])
+
+    const markCurrentDayComplete = useCallback(async () => {
+        if (!selectedDayId) return
+
+        const sessionDate = getSessionDate()
+        const markKey = `${selectedDayId}-${selectedWeek}-${sessionDate || 'today'}`
+        if (markedDays.current.has(markKey)) return
+
+        markedDays.current.add(markKey)
+        await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId, sessionDate)
+        router.refresh()
+    }, [clientId, getSessionDate, program.id, router, selectedDayId, selectedWeek])
 
     // ─── Cell handlers (legacy) ─────────────────────────────────
     const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string) => {
@@ -63,8 +100,11 @@ export default function RoutinePageClient({
             return [...prev, { id: `temp-${exerciseId}-${columnId}-${selectedWeek}`, exerciseId, columnId, weekNumber: selectedWeek, value }]
         })
 
-        await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
-    }, [selectedWeek, cells])
+        const result = await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
+        if (result.success) {
+            await markCurrentDayComplete()
+        }
+    }, [selectedWeek, cells, markCurrentDayComplete])
 
     // ─── Base Block: Generate / Apply ───────────────────────────
     const handleGenerateSets = useCallback(async (
@@ -80,9 +120,10 @@ export default function RoutinePageClient({
                 ...prev.filter(s => !(s.exerciseId === exerciseId && s.weekNumber === selectedWeek)),
                 ...result.sets!
             ])
+            await markCurrentDayComplete()
         }
         return result
-    }, [selectedWeek])
+    }, [selectedWeek, markCurrentDayComplete])
 
     // ─── Single set update (marks override) ─────────────────────
     const handleSetUpdate = useCallback(async (
@@ -101,15 +142,11 @@ export default function RoutinePageClient({
             }
         }))
 
-        await updateSingleSet(setId, payload)
-
-        const markKey = `${selectedDayId}-${selectedWeek}`
-        if (!markedDays.current.has(markKey)) {
-            markedDays.current.add(markKey)
-            await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId)
-            router.refresh()
+        const result = await updateSingleSet(setId, payload)
+        if (result.success) {
+            await markCurrentDayComplete()
         }
-    }, [selectedDayId, selectedWeek, clientId, program.id, router])
+    }, [markCurrentDayComplete])
 
     // ─── Revert override ────────────────────────────────────────
     const handleRevertSet = useCallback(async (
@@ -137,9 +174,10 @@ export default function RoutinePageClient({
         const result = await addSetFromBase(exerciseId, selectedWeek, baseWeight, baseReps, baseRir)
         if (result.success && result.set) {
             setSets(prev => [...prev, result.set!])
+            await markCurrentDayComplete()
         }
         return result
-    }, [selectedWeek])
+    }, [selectedWeek, markCurrentDayComplete])
 
     // ─── Delete set ─────────────────────────────────────────────
     const handleDeleteSet = useCallback(async (setId: string) => {

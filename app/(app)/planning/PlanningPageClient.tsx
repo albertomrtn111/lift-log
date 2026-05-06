@@ -104,6 +104,7 @@ export default function PlanningPageClient({
             if (item.dayId) {
                 params.set('dayId', item.dayId)
             }
+            params.set('date', item.date)
 
             router.push(`/routine?${params.toString()}`)
         }

@@ -366,18 +366,19 @@ export async function autoMarkStrengthDayComplete(
     clientId: string,
     programId: string,
     dayId: string,
+    scheduledDate?: string,
 ): Promise<void> {
     const supabase = await createClient()
-    const today = new Date().toISOString().split('T')[0]
+    const sessionDate = scheduledDate || new Date().toISOString().split('T')[0]
 
-    // ¿Ya existe una sesión para hoy?
+    // ¿Ya existe una sesión para la fecha planificada?
     const { data: existing } = await supabase
         .from('scheduled_strength_sessions')
         .select('id, is_completed')
         .eq('client_id', clientId)
         .eq('program_id', programId)
         .eq('day_id', dayId)
-        .eq('scheduled_date', today)
+        .eq('scheduled_date', sessionDate)
         .maybeSingle()
 
     if (existing) {
@@ -403,7 +404,7 @@ export async function autoMarkStrengthDayComplete(
                     coach_id: clientData.coach_id,
                     program_id: programId,
                     day_id: dayId,
-                    scheduled_date: today,
+                    scheduled_date: sessionDate,
                     is_completed: true,
                 })
         }
@@ -592,6 +593,8 @@ export async function getActiveClientProgram(clientId: string) {
             id: d.id,
             name: d.name,
             order: d.order_index,
+            default_weekday: d.default_weekday,
+            defaultWeekday: d.default_weekday ?? null,
         })),
         columns: mappedColumns,
         exercises: exercises.map((e: any) => ({

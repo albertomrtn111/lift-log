@@ -5,7 +5,7 @@ import { Dumbbell } from 'lucide-react'
 
 export default async function RoutinePage(
     props: {
-        searchParams: Promise<{ week?: string; dayId?: string }>
+        searchParams: Promise<{ week?: string; dayId?: string; date?: string }>
     }
 ) {
     const searchParams = await props.searchParams
@@ -59,6 +59,7 @@ export default async function RoutinePage(
 
     const initialWeek = searchParams.week ? parseInt(searchParams.week) : 1
     const initialDayId = searchParams.dayId
+    const initialSessionDate = searchParams.date
 
     return (
         <RoutinePageClient
@@ -71,6 +72,7 @@ export default async function RoutinePage(
             initialSets={data.sets || []}
             initialWeek={initialWeek}
             initialDayId={initialDayId}
+            initialSessionDate={initialSessionDate}
         />
     )
 }
