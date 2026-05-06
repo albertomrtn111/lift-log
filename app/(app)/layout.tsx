@@ -3,6 +3,7 @@ import { ClientAppProvider } from '@/contexts/ClientAppContext'
 import { DevStalenessGuard } from '@/components/debug/DevStalenessGuard'
 import { PwaNavigationFix } from '@/components/layout/PwaNavigationFix'
 import { PushNotificationBanner } from '@/components/push/PushNotificationBanner'
+import { StravaPendingFeedback } from '@/components/strava/StravaPendingFeedback'
 
 export default function AppLayout({
     children,
@@ -15,6 +16,7 @@ export default function AppLayout({
         <ClientAppProvider>
             <div className="app-mobile-shell bg-background">
                 <PushNotificationBanner />
+                <StravaPendingFeedback />
                 <main className="app-mobile-main">
                     {children}
                 </main>

@@ -24,6 +24,7 @@ import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { APP_MODE_COOKIE, type AppMode } from '@/lib/mode-utils'
 import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
+import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
 
 function getCookie(name: string): string | undefined {
     if (typeof document === 'undefined') return undefined
@@ -198,6 +199,14 @@ export default function ProfilePage() {
                         </div>
                     </Card>
                 )}
+
+                {/* Connectors */}
+                <section className="space-y-3">
+                    <div>
+                        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Conectores</h2>
+                    </div>
+                    <StravaConnectorCard />
+                </section>
 
                 {/* Debug Panel at bottom in dev */}
                 <RoleDebugPanel />
