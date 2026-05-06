@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getAppUrl } from '@/lib/app-url'
 import { getUserContext } from '@/lib/auth/get-user-context'
+import { sendPushToClient } from '@/lib/push'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -483,7 +484,8 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
 export async function importStravaActivityForIntegration(integration: any, activityId: number) {
     const accessToken = await getValidStravaAccessToken(integration.client_id)
     const activity = await fetchStravaApi<StravaActivityPayload>(`/activities/${activityId}`, accessToken)
-    return upsertImportedActivity(integration.client_id, integration.coach_id, activity)
+    const imported = await upsertImportedActivity(integration.client_id, integration.coach_id, activity)
+    return { imported, activity }
 }
 
 export async function syncRecentStravaActivities(context: AuthenticatedClientContext, perPage = 20) {
@@ -670,11 +672,20 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
         return
     }
 
-    await importStravaActivityForIntegration(integration, event.object_id)
+    const { activity } = await importStravaActivityForIntegration(integration, event.object_id)
     await supabase
         .from('athlete_integrations')
         .update({ last_sync_at: new Date().toISOString(), error_message: null })
         .eq('id', integration.id)
+
+    if (event.aspect_type === 'create') {
+        await sendPushToClient(integration.client_id, {
+            title: 'Actividad importada de Strava',
+            body: `${activity.name || 'Nueva actividad'} lista para RPE y notas.`,
+            url: '/progress',
+            tag: `strava-activity-${event.object_id}`,
+        })
+    }
 }
 
 export function validateWebhookEvent(value: unknown): StravaWebhookEvent | null {

@@ -72,6 +72,8 @@ export function StravaPendingFeedback() {
 
     useEffect(() => {
         loadPending()
+        window.addEventListener('strava:pending-updated', loadPending)
+        return () => window.removeEventListener('strava:pending-updated', loadPending)
     }, [])
 
     const activity = useMemo(

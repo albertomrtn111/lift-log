@@ -90,6 +90,7 @@ export function StravaConnectorCard() {
             if (!res.ok) throw new Error('sync')
             const data = await res.json()
             toast.success(`Strava sincronizado: ${data.imported ?? 0} actividades revisadas`)
+            window.dispatchEvent(new Event('strava:pending-updated'))
             await loadStatus()
         } catch {
             toast.error('No se pudo sincronizar Strava')
