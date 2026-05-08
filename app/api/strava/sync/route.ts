@@ -13,6 +13,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, ...result })
     } catch (error) {
         console.error('[strava/sync]', error)
-        return NextResponse.json({ error: 'No se pudo sincronizar Strava' }, { status: 500 })
+        return NextResponse.json({ error: 'No se pudo sincronizar el conector' }, { status: 500 })
     }
 }

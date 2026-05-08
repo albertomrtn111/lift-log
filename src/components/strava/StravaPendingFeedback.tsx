@@ -124,8 +124,8 @@ export function StravaPendingFeedback() {
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
                         <Activity className="h-5 w-5 text-orange-600" />
                     </div>
-                    <DialogTitle>Nueva actividad importada de Strava</DialogTitle>
-                    <DialogDescription>{activity.name || 'Actividad de Strava'}</DialogDescription>
+                    <DialogTitle>Nueva actividad importada</DialogTitle>
+                    <DialogDescription>{activity.name || 'Actividad importada'}</DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-5 px-5 py-5">

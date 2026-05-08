@@ -19,6 +19,6 @@ export async function GET() {
         })
     } catch (error) {
         console.error('[strava/status]', error)
-        return NextResponse.json({ error: 'No se pudo cargar el estado de Strava' }, { status: 500 })
+        return NextResponse.json({ error: 'No se pudo cargar el estado del conector' }, { status: 500 })
     }
 }

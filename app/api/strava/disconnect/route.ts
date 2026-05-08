@@ -12,6 +12,6 @@ export async function POST() {
         return NextResponse.json({ ok: true })
     } catch (error) {
         console.error('[strava/disconnect]', error)
-        return NextResponse.json({ error: 'No se pudo desconectar Strava' }, { status: 500 })
+        return NextResponse.json({ error: 'No se pudo desconectar el conector' }, { status: 500 })
     }
 }

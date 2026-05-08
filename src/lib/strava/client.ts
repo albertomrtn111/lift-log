@@ -299,11 +299,11 @@ export async function getValidStravaAccessToken(clientId: string) {
     const integration = await getIntegrationForClient(clientId)
 
     if (!integration || integration.status !== 'connected') {
-        throw new Error('Strava is not connected for this client')
+        throw new Error('Activity connector is not connected for this client')
     }
 
     if (!integration.access_token || !integration.refresh_token) {
-        throw new Error('Strava tokens are missing')
+        throw new Error('Activity connector tokens are missing')
     }
 
     const expiresAtMs = integration.expires_at ? new Date(integration.expires_at).getTime() : 0
@@ -455,7 +455,7 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
             provider: 'strava',
             provider_activity_id: providerActivityId,
             strava_athlete_id: stravaAthleteId,
-            name: activity.name ?? 'Actividad de Strava',
+            name: activity.name ?? 'Actividad importada',
             activity_type: activity.type ?? null,
             sport_type: activity.sport_type ?? null,
             start_date: activity.start_date ?? null,
@@ -491,7 +491,7 @@ export async function importStravaActivityForIntegration(integration: any, activ
 export async function syncRecentStravaActivities(context: AuthenticatedClientContext, perPage = 20) {
     const supabase = createAdminClient()
     const integration = await getIntegrationForClient(context.clientId)
-    if (!integration || integration.status !== 'connected') throw new Error('Strava is not connected')
+    if (!integration || integration.status !== 'connected') throw new Error('Activity connector is not connected')
 
     const accessToken = await getValidStravaAccessToken(context.clientId)
     const activities = await fetchStravaApi<StravaActivityPayload[]>(
@@ -592,8 +592,8 @@ async function completeCardioSessionForActivity(activity: any) {
             scheduled_date: scheduledDate,
             activity_type: mapStravaSportToDiscipline(activity.raw_payload || activity),
             training_type: activity.sport_type || activity.activity_type || 'strava',
-            name: activity.name || 'Actividad de Strava',
-            description: 'Importada desde Strava',
+            name: activity.name || 'Actividad importada',
+            description: 'Importada automáticamente',
             external_link: `https://www.strava.com/activities/${activity.provider_activity_id}`,
             ...payload,
         })
@@ -680,7 +680,7 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
 
     if (event.aspect_type === 'create') {
         await sendPushToClient(integration.client_id, {
-            title: 'Actividad importada de Strava',
+            title: 'Actividad importada',
             body: `${activity.name || 'Nueva actividad'} lista para RPE y notas.`,
             url: '/progress',
             tag: `strava-activity-${event.object_id}`,

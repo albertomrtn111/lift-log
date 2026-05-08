@@ -89,11 +89,11 @@ export function StravaConnectorCard() {
             })
             if (!res.ok) throw new Error('sync')
             const data = await res.json()
-            toast.success(`Strava sincronizado: ${data.imported ?? 0} actividades revisadas`)
+            toast.success(`${data.imported ?? 0} actividades revisadas`)
             window.dispatchEvent(new Event('strava:pending-updated'))
             await loadStatus()
         } catch {
-            toast.error('No se pudo sincronizar Strava')
+            toast.error('No se pudo sincronizar el conector')
         } finally {
             setSyncing(false)
         }
@@ -104,10 +104,10 @@ export function StravaConnectorCard() {
         try {
             const res = await fetch('/api/strava/disconnect', { method: 'POST' })
             if (!res.ok) throw new Error('disconnect')
-            toast.success('Strava desconectado')
+            toast.success('Conector desconectado')
             await loadStatus()
         } catch {
-            toast.error('No se pudo desconectar Strava')
+            toast.error('No se pudo desconectar el conector')
         } finally {
             setDisconnecting(false)
         }
@@ -126,7 +126,7 @@ export function StravaConnectorCard() {
                     </div>
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-semibold">Strava</h3>
+                            <h3 className="font-semibold">Conector de actividad</h3>
                             <Badge variant="outline" className={meta.badgeClass}>
                                 <MetaIcon className="mr-1 h-3 w-3" />
                                 {loading ? 'Cargando' : meta.label}
@@ -135,7 +135,7 @@ export function StravaConnectorCard() {
                         <p className="mt-1 text-sm text-muted-foreground">
                             {isConnected
                                 ? 'Tus actividades pueden importarse automáticamente.'
-                                : 'Conecta Strava para importar automáticamente tus actividades.'}
+                                : 'Conecta tu app de actividad para importar automáticamente tus entrenamientos.'}
                         </p>
                     </div>
                 </div>
@@ -164,7 +164,7 @@ export function StravaConnectorCard() {
                     <Button asChild className="w-full gap-2">
                         <a href="/api/strava/connect">
                             <Zap className="h-4 w-4" />
-                            {needsReconnect ? 'Reconectar Strava' : 'Conectar Strava'}
+                            {needsReconnect ? 'Reconectar' : 'Conectar'}
                         </a>
                     </Button>
                 ) : (
