@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,8 @@ import {
     Target,
     Scale,
     Dumbbell,
-    AlertCircle
+    AlertCircle,
+    PlusCircle,
 } from 'lucide-react'
 import {
     getActiveStrengthProgramSummary,
@@ -22,6 +23,7 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { RegistrarSheet } from '@/components/progress/RegistrarSheet'
 
 export default function SummaryPage() {
     const [range, setRange] = useState<MetricsRange>('7d')
@@ -29,34 +31,30 @@ export default function SummaryPage() {
     const [weightData, setWeightData] = useState<{ data: any[], avg: string, trend: string | null }>({ data: [], avg: '--', trend: null })
     const [adherenceData, setAdherenceData] = useState<{ percent: number | string, days: number, totalDays: number }>({ percent: '--', days: 0, totalDays: 0 })
     const [loading, setLoading] = useState(true)
+    const [registrarOpen, setRegistrarOpen] = useState(false)
+    const [refreshKey, setRefreshKey] = useState(0)
+
+    const loadData = useCallback(async () => {
+        setLoading(true)
+        try {
+            const [prog, weight, adh] = await Promise.all([
+                getActiveStrengthProgramSummary(),
+                getWeightSeries(range),
+                getMacroAdherence(range)
+            ])
+            setProgram(prog)
+            setWeightData(weight)
+            setAdherenceData(adh)
+        } catch (error) {
+            console.error('Error loading summary data:', error)
+        } finally {
+            setLoading(false)
+        }
+    }, [range])
 
     useEffect(() => {
-        let isMounted = true
-
-        async function loadData() {
-            setLoading(true)
-            try {
-                const [prog, weight, adh] = await Promise.all([
-                    getActiveStrengthProgramSummary(),
-                    getWeightSeries(range),
-                    getMacroAdherence(range)
-                ])
-
-                if (isMounted) {
-                    setProgram(prog)
-                    setWeightData(weight)
-                    setAdherenceData(adh)
-                }
-            } catch (error) {
-                console.error('Error loading summary data:', error)
-            } finally {
-                if (isMounted) setLoading(false)
-            }
-        }
-
         loadData()
-        return () => { isMounted = false }
-    }, [range])
+    }, [loadData, refreshKey])
 
     const ranges: { label: string, value: MetricsRange }[] = [
         { label: '7D', value: '7d' },
@@ -68,7 +66,7 @@ export default function SummaryPage() {
     ]
 
     return (
-        <div className="app-mobile-page min-h-screen pb-4">
+        <div className="app-mobile-page min-h-screen pb-28">
             {/* Header */}
             <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4">
@@ -77,8 +75,8 @@ export default function SummaryPage() {
                             <BarChart3 className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                            <h1 className="text-lg font-bold text-foreground">Resumen</h1>
-                            <p className="text-sm text-muted-foreground">Tu progreso general</p>
+                            <h1 className="text-lg font-bold text-foreground">Progreso</h1>
+                            <p className="text-sm text-muted-foreground">Tu evolución general</p>
                         </div>
                     </div>
                 </div>
@@ -203,10 +201,7 @@ export default function SummaryPage() {
                                         axisLine={false}
                                         minTickGap={30}
                                     />
-                                    <YAxis
-                                        domain={['auto', 'auto']}
-                                        hide
-                                    />
+                                    <YAxis domain={['auto', 'auto']} hide />
                                     <Tooltip
                                         contentStyle={{
                                             backgroundColor: 'hsl(var(--background))',
@@ -231,11 +226,30 @@ export default function SummaryPage() {
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                                 <p className="text-sm italic">Sin datos de peso en este rango.</p>
+                                <p className="text-xs mt-1 text-muted-foreground/70">Pulsa "Registrar" para añadir métricas.</p>
                             </div>
                         )}
                     </div>
                 </Card>
             </div>
+
+            {/* Fixed Registrar button above BottomNav */}
+            <div className="fixed bottom-[calc(var(--safe-area-bottom,0px)+68px)] left-4 right-4 z-40">
+                <Button
+                    size="lg"
+                    className="w-full shadow-lg shadow-primary/30 gap-2"
+                    onClick={() => setRegistrarOpen(true)}
+                >
+                    <PlusCircle className="h-5 w-5" />
+                    Registrar
+                </Button>
+            </div>
+
+            <RegistrarSheet
+                open={registrarOpen}
+                onOpenChange={setRegistrarOpen}
+                onSaved={() => setRefreshKey(k => k + 1)}
+            />
         </div>
     )
 }

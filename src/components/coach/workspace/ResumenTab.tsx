@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Client } from '@/types/coach'
-import type { ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram } from '@/data/workspace'
+import type { ClientEvent, ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram } from '@/data/workspace'
 import { forceAdvanceCheckinAction, regenerateReviewAIAction } from './actions'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -28,6 +28,8 @@ import {
     Weight,
     Footprints,
     CalendarClock,
+    Flag,
+    Trophy,
 } from 'lucide-react'
 import { MetricDefinition } from '@/types/metrics'
 import { cn } from '@/lib/utils'
@@ -56,6 +58,7 @@ interface ResumenTabProps {
     latestCheckin: CheckinWithReview | null
     activeMacroPlan: MacroPlan | null
     activeProgram: TrainingProgram | null
+    events: ClientEvent[]
     metrics: MetricPoint[]
     onRefresh: () => void
     onSwitchTab: (tab: string) => void
@@ -199,6 +202,20 @@ function getProgramSnapshot(activeProgram: TrainingProgram | null): ProgramSnaps
     }
 }
 
+function getEventDaysUntil(eventDate: string) {
+    const today = startOfLocalDay(new Date())
+    const date = startOfLocalDay(parseLocalDate(eventDate))
+    return Math.round((date.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+}
+
+function formatEventDaysUntil(days: number) {
+    if (days === 0) return 'Hoy'
+    if (days === 1) return 'Mañana'
+    if (days > 1) return `${days} días`
+    if (days === -1) return 'Ayer'
+    return `Hace ${Math.abs(days)} días`
+}
+
 
 function getFollowUpSummary(clientStatus: ClientStatus | null) {
     if (!clientStatus) {
@@ -238,6 +255,87 @@ function getFollowUpSummary(clientStatus: ClientStatus | null) {
         description: 'El seguimiento del cliente está dentro de lo esperado.',
         tone: 'success' as const,
     }
+}
+
+function UpcomingEventsCard({
+    events,
+    onViewAll,
+}: {
+    events: ClientEvent[]
+    onViewAll: () => void
+}) {
+    const upcomingEvents = events
+        .filter(event => event.status === 'planned' && getEventDaysUntil(event.event_date) >= 0)
+        .slice(0, 3)
+
+    return (
+        <Card className="overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+                <div className="flex items-center gap-2">
+                    <div className="rounded-md bg-primary/10 p-1.5 text-primary">
+                        <Flag className="h-4 w-4" />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-semibold">Próximos eventos / carreras</h3>
+                        <p className="text-xs text-muted-foreground">Fechas objetivo que condicionan el bloque.</p>
+                    </div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={onViewAll}>
+                    Ver todos
+                    <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+            </div>
+
+            {upcomingEvents.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                    <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                        <Trophy className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium">Sin eventos próximos</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Añade la carrera objetivo o un test clave.</p>
+                </div>
+            ) : (
+                <div className="divide-y">
+                    {upcomingEvents.map(event => {
+                        const date = parseLocalDate(event.event_date)
+                        const daysUntil = getEventDaysUntil(event.event_date)
+
+                        return (
+                            <button
+                                key={event.id}
+                                type="button"
+                                onClick={onViewAll}
+                                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                            >
+                                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-muted/60">
+                                    <span className="text-base font-bold leading-none">{date.getDate().toString().padStart(2, '0')}</span>
+                                    <span className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                                        {date.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '')}
+                                    </span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <p className="truncate text-sm font-semibold">{event.title}</p>
+                                        {event.priority === 'a' && (
+                                            <Badge className="border-0 bg-rose-500/10 px-1.5 py-0 text-[10px] text-rose-500">
+                                                A
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                        {event.target || event.location || 'Objetivo sin detalle'}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+                                    {formatEventDaysUntil(daysUntil)}
+                                </span>
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+        </Card>
+    )
 }
 
 function QuickStatCard({
@@ -295,6 +393,7 @@ export function ResumenTab({
     latestCheckin,
     activeMacroPlan,
     activeProgram,
+    events,
     metrics,
     onRefresh,
     onSwitchTab,
@@ -433,6 +532,8 @@ export function ResumenTab({
                     />
                 )}
             </section>
+
+            <UpcomingEventsCard events={events} onViewAll={() => onSwitchTab('events')} />
 
             <section className="space-y-5">
 

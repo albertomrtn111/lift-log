@@ -102,6 +102,27 @@ export interface TrainingProgram {
     created_at: string
 }
 
+export type ClientEventType = 'race' | 'test' | 'camp' | 'other'
+export type ClientEventStatus = 'planned' | 'completed' | 'cancelled'
+export type ClientEventPriority = 'a' | 'b' | 'c'
+
+export interface ClientEvent {
+    id: string
+    coach_id: string
+    client_id: string
+    title: string
+    event_date: string
+    event_type: ClientEventType
+    status: ClientEventStatus
+    priority: ClientEventPriority
+    location: string | null
+    target: string | null
+    notes: string | null
+    created_by: string | null
+    created_at: string
+    updated_at: string
+}
+
 // Diet plan with meals structure
 export interface DietPlanMealItem {
     quantity: string
@@ -435,6 +456,31 @@ export async function updateReview(
         return false
     }
     return true
+}
+
+// ============================================================================
+// CLIENT EVENT QUERIES
+// ============================================================================
+
+export async function listClientEvents(coachId: string, clientId: string): Promise<ClientEvent[]> {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('client_events')
+        .select('*')
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
+        .order('event_date', { ascending: true })
+        .order('created_at', { ascending: true })
+
+    if (error || !data) {
+        if (error && error.code !== '42P01') {
+            console.error('Error loading client events:', error)
+        }
+        return []
+    }
+
+    return data as ClientEvent[]
 }
 
 // ============================================================================

@@ -1,169 +1,339 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Dumbbell, Loader2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import {
+    Dumbbell,
+    Rocket,
+    Sparkles,
+    Building2,
+    Crown,
+    Check,
+    ArrowRight,
+} from 'lucide-react'
 
-export default function SignupPage() {
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
-    const [fullName, setFullName] = useState('')
-    const [error, setError] = useState<string | null>(null)
-    const [loading, setLoading] = useState(false)
-    const [success, setSuccess] = useState(false)
+type TierId = 'starter' | 'pro' | 'studio' | 'concierge'
+type Cycle = 'monthly' | 'yearly'
+
+interface Tier {
+    id: TierId
+    name: string
+    tagline: string
+    icon: React.ElementType
+    monthly: number
+    yearly: number
+    maxClients: string
+    features: string[]
+    highlight?: boolean
+    cta: string
+    isContact?: boolean
+}
+
+const TIERS: Tier[] = [
+    {
+        id: 'starter',
+        name: 'Starter',
+        tagline: 'Para coaches que empiezan',
+        icon: Rocket,
+        monthly: 29,
+        yearly: 290,
+        maxClients: 'Hasta 20 atletas activos',
+        features: [
+            'Entrenamiento y nutrición',
+            'Check-ins semanales',
+            'IA básica',
+            'App cliente y plantillas',
+            'Soporte estándar',
+        ],
+        cta: 'Empezar con Starter',
+    },
+    {
+        id: 'pro',
+        name: 'Pro',
+        tagline: 'El plan estrella',
+        icon: Sparkles,
+        monthly: 79,
+        yearly: 790,
+        maxClients: 'Hasta 75 atletas activos',
+        features: [
+            'Todo lo de Starter',
+            'IA completa en revisiones y check-ins',
+            'IA para nutrición y plantillas',
+            'Automatizaciones y métricas avanzadas',
+            'Branding mejorado e integraciones prioritarias',
+        ],
+        highlight: true,
+        cta: 'Empezar con Pro',
+    },
+    {
+        id: 'studio',
+        name: 'Studio',
+        tagline: 'Para equipos y alto volumen',
+        icon: Building2,
+        monthly: 199,
+        yearly: 1990,
+        maxClients: 'Hasta 250 atletas activos',
+        features: [
+            'Todo lo de Pro',
+            'Varios coaches y seats',
+            'Gestión de permisos',
+            'Soporte prioritario',
+            'Onboarding guiado y reporting avanzado',
+        ],
+        cta: 'Empezar con Studio',
+    },
+    {
+        id: 'concierge',
+        name: 'Concierge',
+        tagline: 'Servicio premium llave en mano',
+        icon: Crown,
+        monthly: 399,
+        yearly: 0,
+        maxClients: 'Atletas y coaches sin límite',
+        features: [
+            'Migración desde Trainerize, Everfit o Excel',
+            'Setup contigo, mano a mano',
+            'Acompañamiento dedicado',
+            'Canal directo con el equipo',
+            'Posible customización',
+        ],
+        cta: 'Contacta con ventas',
+        isContact: true,
+    },
+]
+
+const CONTACT_EMAIL = 'hola@nexttrain.app'
+
+export default function SignupPlanPage() {
     const router = useRouter()
+    const [cycle, setCycle] = useState<Cycle>('monthly')
 
-    const handleSignup = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setError(null)
-        setLoading(true)
-
-        try {
-            const supabase = createClient()
-            const { error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: {
-                        full_name: fullName,
-                    },
-                },
-            })
-
-            if (error) {
-                // Handle "User already registered" specifically
-                if (
-                    error.message.toLowerCase().includes('already registered') ||
-                    error.message.toLowerCase().includes('already been registered') ||
-                    error.message.toLowerCase().includes('user already exists')
-                ) {
-                    setError('ALREADY_REGISTERED')
-                } else {
-                    setError(error.message)
-                }
-                return
-            }
-
-            setSuccess(true)
-        } catch {
-            setError('Error inesperado. Por favor, inténtalo de nuevo.')
-        } finally {
-            setLoading(false)
+    const handleSelect = (tier: Tier) => {
+        if (tier.isContact) {
+            window.location.href = `mailto:${CONTACT_EMAIL}?subject=Quiero%20un%20plan%20Concierge%20de%20NexTrain`
+            return
         }
-    }
-
-    if (success) {
-        return (
-            <Card className="w-full max-w-md p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-                    <Dumbbell className="h-8 w-8 text-success" />
-                </div>
-                <h1 className="text-2xl font-bold mb-2">¡Registro completado!</h1>
-                <p className="text-muted-foreground mb-6">
-                    Revisa tu correo electrónico para confirmar tu cuenta.
-                </p>
-                <Button onClick={() => router.push('/login')} className="w-full">
-                    Ir a iniciar sesión
-                </Button>
-            </Card>
-        )
+        router.push(`/signup/details?plan=${tier.id}&cycle=${cycle}`)
     }
 
     return (
-        <Card className="w-full max-w-md p-8">
-            <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                    <Dumbbell className="h-8 w-8 text-primary" />
+        <div className="w-full max-w-6xl mx-auto py-8">
+            {/* Header */}
+            <div className="text-center mb-8">
+                <div className="inline-flex w-14 h-14 rounded-2xl bg-primary/10 items-center justify-center mb-4">
+                    <Dumbbell className="h-7 w-7 text-primary" />
                 </div>
-                <h1 className="text-2xl font-bold">Crear cuenta</h1>
-                <p className="text-muted-foreground text-sm mt-1">Únete a NextTrain</p>
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                    Elige tu plan
+                </h1>
+                <p className="text-muted-foreground mt-2 max-w-xl mx-auto">
+                    Empieza con el plan que mejor encaje con tu negocio. Podrás cambiar cuando quieras.
+                </p>
             </div>
 
-            <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="fullName">Nombre completo</Label>
-                    <Input
-                        id="fullName"
-                        type="text"
-                        placeholder="Tu nombre"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        required
-                        disabled={loading}
-                    />
+            {/* Billing toggle */}
+            <div className="flex justify-center mb-10">
+                <div className="inline-flex items-center gap-1 p-1 bg-muted/60 rounded-full border border-border/50">
+                    <button
+                        type="button"
+                        onClick={() => setCycle('monthly')}
+                        className={cn(
+                            'px-5 py-2 rounded-full text-sm font-medium transition-all',
+                            cycle === 'monthly'
+                                ? 'bg-background text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        Mensual
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setCycle('yearly')}
+                        className={cn(
+                            'px-5 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2',
+                            cycle === 'yearly'
+                                ? 'bg-background text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        Anual
+                        <Badge
+                            variant="secondary"
+                            className={cn(
+                                'text-[10px] px-1.5 py-0 font-semibold uppercase tracking-wide',
+                                cycle === 'yearly' ? 'bg-success/15 text-success border-0' : 'bg-muted-foreground/10 border-0'
+                            )}
+                        >
+                            Ahorra 2 meses
+                        </Badge>
+                    </button>
                 </div>
+            </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                        id="email"
-                        type="email"
-                        placeholder="tu@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        disabled={loading}
+            {/* Tiers grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                {TIERS.map((tier) => (
+                    <TierCard
+                        key={tier.id}
+                        tier={tier}
+                        cycle={cycle}
+                        onSelect={() => handleSelect(tier)}
                     />
-                </div>
+                ))}
+            </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
-                    <Input
-                        id="password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        disabled={loading}
-                    />
-                </div>
-
-                {error === 'ALREADY_REGISTERED' ? (
-                    <div className="text-sm bg-amber-500/10 border border-amber-500/30 p-4 rounded-md space-y-2">
-                        <p className="font-medium text-amber-600 dark:text-amber-400">
-                            Ya tienes una cuenta (o has sido invitado)
-                        </p>
-                        <p className="text-muted-foreground">
-                            Este email ya está registrado. Inicia sesión con tu contraseña o solicita un enlace de recuperación.
-                        </p>
-                        <div className="flex gap-2 pt-1">
-                            <Button asChild variant="outline" size="sm">
-                                <Link href="/login">Iniciar sesión</Link>
-                            </Button>
-                        </div>
-                    </div>
-                ) : error ? (
-                    <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                        {error}
-                    </div>
-                ) : null}
-
-                <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                        <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Creando cuenta...
-                        </>
-                    ) : (
-                        'Crear cuenta'
-                    )}
-                </Button>
-            </form>
-
-            <p className="text-center text-sm text-muted-foreground mt-6">
+            {/* Footer */}
+            <p className="text-center text-sm text-muted-foreground mt-10">
                 ¿Ya tienes cuenta?{' '}
-                <Link href="/login" className="text-primary hover:underline">
+                <Link href="/login" className="text-primary hover:underline font-medium">
                     Inicia sesión
                 </Link>
             </p>
-        </Card>
+        </div>
+    )
+}
+
+function TierCard({
+    tier,
+    cycle,
+    onSelect,
+}: {
+    tier: Tier
+    cycle: Cycle
+    onSelect: () => void
+}) {
+    const Icon = tier.icon
+    const isContact = tier.isContact
+    const price = cycle === 'monthly' ? tier.monthly : tier.yearly
+
+    return (
+        <div
+            className={cn(
+                'group relative flex flex-col rounded-2xl p-6 transition-all duration-200',
+                tier.highlight
+                    ? 'bg-card ring-2 ring-primary shadow-xl shadow-primary/10 lg:-translate-y-2'
+                    : isContact
+                        ? 'bg-gradient-to-br from-foreground via-foreground to-foreground/90 text-background ring-1 ring-foreground/20 shadow-lg'
+                        : 'bg-card border border-border hover:border-primary/40 hover:shadow-md',
+            )}
+        >
+            {/* "Más elegido" badge */}
+            {tier.highlight && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-primary text-primary-foreground border-0 px-3 py-1 text-xs font-semibold shadow-lg">
+                        ⭐ Más elegido
+                    </Badge>
+                </div>
+            )}
+
+            {/* Icon */}
+            <div
+                className={cn(
+                    'w-11 h-11 rounded-xl flex items-center justify-center mb-4',
+                    tier.highlight
+                        ? 'bg-primary/15 text-primary'
+                        : isContact
+                            ? 'bg-background/10 text-background'
+                            : 'bg-accent/60 text-accent-foreground',
+                )}
+            >
+                <Icon className="h-5 w-5" />
+            </div>
+
+            {/* Name + tagline */}
+            <h3 className="text-xl font-bold mb-1">{tier.name}</h3>
+            <p
+                className={cn(
+                    'text-sm mb-5',
+                    isContact ? 'text-background/70' : 'text-muted-foreground',
+                )}
+            >
+                {tier.tagline}
+            </p>
+
+            {/* Price */}
+            <div className="mb-5">
+                {isContact ? (
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold">Desde {tier.monthly} €</span>
+                        <span className="text-sm text-background/60">/mes</span>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-bold">{price}</span>
+                            <span className="text-base font-semibold">€</span>
+                            <span className="text-sm text-muted-foreground">
+                                /{cycle === 'monthly' ? 'mes' : 'año'}
+                            </span>
+                        </div>
+                        {cycle === 'yearly' && (
+                            <p className="text-xs text-success font-medium mt-1">
+                                Equivale a {Math.round(tier.yearly / 12)} €/mes
+                            </p>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Max clients chip */}
+            <div
+                className={cn(
+                    'rounded-lg px-3 py-2 text-xs font-medium mb-5',
+                    tier.highlight
+                        ? 'bg-primary/10 text-primary'
+                        : isContact
+                            ? 'bg-background/10 text-background'
+                            : 'bg-muted text-foreground',
+                )}
+            >
+                {tier.maxClients}
+            </div>
+
+            {/* Features */}
+            <ul className="space-y-2.5 mb-7 flex-1">
+                {tier.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm">
+                        <div
+                            className={cn(
+                                'shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center',
+                                tier.highlight
+                                    ? 'bg-primary/15 text-primary'
+                                    : isContact
+                                        ? 'bg-background/15 text-background'
+                                        : 'bg-success/15 text-success',
+                            )}
+                        >
+                            <Check className="h-3 w-3" strokeWidth={3} />
+                        </div>
+                        <span className={cn(isContact ? 'text-background/85' : 'text-foreground/85')}>
+                            {feature}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+
+            {/* CTA */}
+            <Button
+                onClick={onSelect}
+                size="lg"
+                className={cn(
+                    'w-full group/btn',
+                    tier.highlight
+                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                        : isContact
+                            ? 'bg-background text-foreground hover:bg-background/90'
+                            : '',
+                )}
+                variant={tier.highlight || isContact ? 'default' : 'outline'}
+            >
+                {tier.cta}
+                <ArrowRight className="h-4 w-4 ml-2 transition-transform group-hover/btn:translate-x-0.5" />
+            </Button>
+        </div>
     )
 }

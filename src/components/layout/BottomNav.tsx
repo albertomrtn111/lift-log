@@ -1,6 +1,6 @@
 'use client'
 
-import { ClipboardList, Utensils, CalendarDays, BarChart3, Timer, User, Dumbbell, TrendingUp, MessageSquare } from 'lucide-react'
+import { Utensils, CalendarDays, BarChart3, Dumbbell, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -14,13 +14,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/routine', icon: Dumbbell, label: 'Fuerza' }, // Was ClipboardList, 'Rutina'. Changed icon to Dumbbell for Strength.
+  { href: '/routine', icon: Dumbbell, label: 'Fuerza' },
   { href: '/diet', icon: Utensils, label: 'Dieta' },
-  { href: '/planning', icon: CalendarDays, label: 'Plan' }, // New Planning tab
-  { href: '/progress', icon: TrendingUp, label: 'Progreso' }, // Changed icon to TrendingUp? Original was CalendarDays. Let's check imports.
-  { href: '/summary', icon: BarChart3, label: 'Resumen' },
+  { href: '/planning', icon: CalendarDays, label: 'Plan' },
+  { href: '/summary', icon: BarChart3, label: 'Progreso' },
   { href: '/chat', icon: MessageSquare, label: 'Chat' },
-  { href: '/profile', icon: User, label: 'Perfil' },
 ]
 
 const DEBUG_NAV = true // Set to false to silence logs

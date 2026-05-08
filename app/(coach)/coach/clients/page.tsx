@@ -16,6 +16,7 @@ import {
     listDietPlans,
     getActiveTrainingProgram,
     listTrainingPrograms,
+    listClientEvents,
     getClientMetrics,
 } from '@/data/workspace'
 import { getMetricDefinitions } from '@/data/metric-definitions'
@@ -60,6 +61,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     let dietPlans: Awaited<ReturnType<typeof listDietPlans>> = []
     let activeProgram = null
     let programs: Awaited<ReturnType<typeof listTrainingPrograms>> = []
+    let events: Awaited<ReturnType<typeof listClientEvents>> = []
     let metrics: Awaited<ReturnType<typeof getClientMetrics>> = []
     let metricDefinitions: Awaited<ReturnType<typeof getMetricDefinitions>> = []
     let formTemplates: Awaited<ReturnType<typeof getFormTemplates>> = []
@@ -78,6 +80,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             dietPlansData,
             programData,
             programsData,
+            eventsData,
             metricsData,
             metricDefinitionsData,
             formTemplatesData,
@@ -93,6 +96,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             listDietPlans(coachId, selectedClientId),
             getActiveTrainingProgram(coachId, selectedClientId),
             listTrainingPrograms(coachId, selectedClientId),
+            listClientEvents(coachId, selectedClientId),
             getClientMetrics(coachId, selectedClientId, 90),
             getMetricDefinitions(),
             getFormTemplates(),
@@ -109,6 +113,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         dietPlans = dietPlansData
         activeProgram = programData
         programs = programsData
+        events = eventsData
         metrics = metricsData
         metricDefinitions = metricDefinitionsData
         formTemplates = formTemplatesData
@@ -144,6 +149,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     dietPlans={dietPlans}
                     activeProgram={activeProgram}
                     programs={programs}
+                    events={events}
                     coachId={coachId}
                     metrics={metrics}
                     metricDefinitions={metricDefinitions}

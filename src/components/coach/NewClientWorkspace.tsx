@@ -11,6 +11,7 @@ import {
     TrainingProgram,
     DietPlan,
     ClientSelectorOption,
+    ClientEvent,
 } from '@/data/workspace'
 import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
@@ -22,6 +23,7 @@ import {
     FileText,
     TrendingUp,
     CalendarDays,
+    Flag,
     Lock,
     ClipboardList,
     ChevronLeft,
@@ -34,6 +36,7 @@ import { AthleteProfileTab } from './workspace/AthleteProfileTab'
 import { ResumenTab } from './workspace/ResumenTab'
 import { CheckinsTab } from './workspace/CheckinsTab'
 import { ProgresoTab } from './workspace/ProgresoTab'
+import { EventsTab } from './workspace/EventsTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
@@ -50,6 +53,7 @@ interface NewClientWorkspaceProps {
     dietPlans: DietPlan[]
     activeProgram: TrainingProgram | null
     programs: TrainingProgram[]
+    events: ClientEvent[]
     coachId: string
     metrics: Awaited<ReturnType<typeof import('@/data/workspace').getClientMetrics>>
     metricDefinitions: MetricDefinition[]
@@ -69,6 +73,7 @@ export function NewClientWorkspace({
     dietPlans,
     activeProgram,
     programs,
+    events,
     coachId,
     metrics,
     metricDefinitions,
@@ -267,6 +272,15 @@ export function NewClientWorkspace({
                                 {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                             </TabsTrigger>
                         <TabsTrigger
+                            value="events"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                                <Flag className="h-4 w-4" />
+                                <span className="hidden sm:inline">Eventos</span>
+                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
+                            </TabsTrigger>
+                        <TabsTrigger
                             value="checkins"
                             disabled={isPendingSignup}
                             className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
@@ -313,6 +327,7 @@ export function NewClientWorkspace({
                                     latestCheckin={latestCheckin}
                                     activeMacroPlan={activeMacroPlan}
                                     activeProgram={activeProgram}
+                                    events={events}
                                     metrics={metrics}
                                     onRefresh={handleRefresh}
                                     onSwitchTab={handleSwitchTab}
@@ -330,6 +345,19 @@ export function NewClientWorkspace({
                                         clientId={selectedClient.id}
                                         activeProgram={activeProgram}
                                         programs={programs}
+                                        onRefresh={handleRefresh}
+                                    />
+                                )}
+                            </TabsContent>
+
+                            <TabsContent value="events">
+                                {isPendingSignup ? (
+                                    <BlockedTabContent />
+                                ) : (
+                                    <EventsTab
+                                        coachId={coachId}
+                                        clientId={selectedClient.id}
+                                        events={events}
                                         onRefresh={handleRefresh}
                                     />
                                 )}
@@ -380,6 +408,7 @@ function normalizeWorkspaceTab(tab: string | null) {
         tab === 'onboarding' ||
         tab === 'resumen' ||
         tab === 'plan' ||
+        tab === 'events' ||
         tab === 'checkins' ||
         tab === 'progreso'
     ) {
