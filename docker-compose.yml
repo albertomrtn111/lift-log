@@ -1,14 +1,16 @@
+x-nexttrain-build: &nexttrain-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+    - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+    - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://nexttrain.ascenttech.cloud}
+
 services:
   nexttrain_app:
     container_name: nexttrain_app
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
-        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://nexttrain.ascenttech.cloud}
+    build: *nexttrain-build
     restart: unless-stopped
     env_file:
       - .env
@@ -44,6 +46,21 @@ services:
       - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.regex=^http://nexttrain\\.ascenttech\\.com/(.*)"
       - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.replacement=https://nexttrain.ascenttech.cloud/$${1}"
       - "traefik.http.middlewares.nexttrain_legacy_http_redirect.redirectregex.permanent=true"
+
+  supplement_reminder_worker:
+    container_name: nexttrain_supplement_reminders
+    build: *nexttrain-build
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXTTRAIN_INTERNAL_APP_URL: http://nexttrain_app:3000
+      SUPPLEMENT_REMINDER_INTERVAL_MS: 60000
+    command: ["node", "scripts/supplement-reminder-worker.mjs"]
+    depends_on:
+      - nexttrain_app
+    networks:
+      - traefik
 networks:
   traefik:
     external: true
