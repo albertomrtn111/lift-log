@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertCircle, CheckCircle2, Loader2, RefreshCw, Unplug, Zap } from 'lucide-react'
+import { Activity, AlertCircle, CheckCircle2, Loader2, RefreshCw, Route, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -121,8 +121,8 @@ export function StravaConnectorCard() {
         <Card className="p-4">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/10">
-                        <Zap className="h-5 w-5 text-orange-600" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                        <Route className="h-5 w-5 text-primary" />
                     </div>
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -161,10 +161,9 @@ export function StravaConnectorCard() {
 
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                 {!isConnected ? (
-                    <Button asChild className="w-full gap-2">
+                    <Button asChild className="w-full">
                         <a href="/api/strava/connect">
-                            <Zap className="h-4 w-4" />
-                            {needsReconnect ? 'Reconectar' : 'Conectar'}
+                            {needsReconnect ? 'Reconectar Strava' : 'Conectar Strava'}
                         </a>
                     </Button>
                 ) : (
