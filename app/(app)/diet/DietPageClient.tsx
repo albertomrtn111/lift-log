@@ -22,7 +22,10 @@ import {
     ListTodo,
     AlertCircle,
     CalendarIcon,
-    FlaskConical
+    FlaskConical,
+    CheckCircle2,
+    Circle,
+    XCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
@@ -78,6 +81,27 @@ interface DietPageClientProps {
     supplements: ClientSupplement[]
 }
 
+type SupplementDoseStatus = 'taken' | 'skipped'
+
+interface SupplementDoseLog {
+    id: string
+    supplement_id: string
+    scheduled_date: string
+    scheduled_time: string
+    status: SupplementDoseStatus
+    logged_at: string
+}
+
+function doseKey(supplementId: string, time: string) {
+    return `${supplementId}:${time}`
+}
+
+function isSupplementActiveOnDate(supplement: ClientSupplement, dateStr: string) {
+    if (supplement.start_date && supplement.start_date > dateStr) return false
+    if (supplement.end_date && supplement.end_date < dateStr) return false
+    return true
+}
+
 export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageClientProps) {
     const [backfillOpen, setBackfillOpen] = useState(false)
     const [date, setDate] = useState<Date>(new Date())
@@ -85,6 +109,9 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
     const [notes, setNotes] = useState('')
     const [loading, setLoading] = useState(false)
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const [supplementLogs, setSupplementLogs] = useState<Record<string, SupplementDoseLog>>({})
+    const [supplementLogsLoading, setSupplementLogsLoading] = useState(false)
+    const [savingDoseKey, setSavingDoseKey] = useState<string | null>(null)
 
     // Load data when date changes
     useEffect(() => {
@@ -112,6 +139,61 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
         load()
         return () => { isMounted = false }
     }, [date])
+
+    useEffect(() => {
+        let isMounted = true
+        async function loadSupplementLogs() {
+            setSupplementLogsLoading(true)
+            try {
+                const dateStr = format(date, 'yyyy-MM-dd')
+                const res = await fetch(`/api/supplements/logs?date=${dateStr}`, { cache: 'no-store' })
+                if (!res.ok) throw new Error('logs')
+                const data = await res.json()
+                if (!isMounted) return
+
+                const byDose: Record<string, SupplementDoseLog> = {}
+                for (const log of data.logs || []) {
+                    byDose[doseKey(log.supplement_id, log.scheduled_time)] = log
+                }
+                setSupplementLogs(byDose)
+            } catch (error) {
+                if (isMounted) setSupplementLogs({})
+                console.error('Failed to load supplement logs', error)
+            } finally {
+                if (isMounted) setSupplementLogsLoading(false)
+            }
+        }
+
+        loadSupplementLogs()
+        return () => { isMounted = false }
+    }, [date])
+
+    const handleDoseLog = async (supplementId: string, scheduledTime: string, status: SupplementDoseStatus) => {
+        const key = doseKey(supplementId, scheduledTime)
+        setSavingDoseKey(key)
+        try {
+            const res = await fetch('/api/supplements/logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    supplementId,
+                    scheduledDate: format(date, 'yyyy-MM-dd'),
+                    scheduledTime,
+                    status,
+                }),
+            })
+            if (!res.ok) throw new Error('save')
+            const data = await res.json()
+            setSupplementLogs((current) => ({
+                ...current,
+                [key]: data.log,
+            }))
+        } catch {
+            toast.error('No se pudo guardar la toma')
+        } finally {
+            setSavingDoseKey(null)
+        }
+    }
 
     const handleSave = async () => {
         setSaveStatus('saving')
@@ -141,6 +223,19 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
 
     const hasSupplements = supplements.length > 0
     const defaultTab = hasMacros ? 'macros' : (hasMeals ? 'meals' : (hasSupplements ? 'supplements' : 'macros'))
+    const selectedDateStr = format(date, 'yyyy-MM-dd')
+    const supplementsForSelectedDate = supplements.filter((supplement) => isSupplementActiveOnDate(supplement, selectedDateStr))
+    const scheduledSupplementDoses = supplementsForSelectedDate.flatMap((supplement) =>
+        (supplement.dose_schedule || [])
+            .filter(Boolean)
+            .map((time) => ({ supplement, time }))
+    ).sort((a, b) => a.time.localeCompare(b.time))
+    const supplementTakenCount = scheduledSupplementDoses.filter(({ supplement, time }) =>
+        supplementLogs[doseKey(supplement.id, time)]?.status === 'taken'
+    ).length
+    const supplementLoggedCount = scheduledSupplementDoses.filter(({ supplement, time }) =>
+        supplementLogs[doseKey(supplement.id, time)]
+    ).length
 
     return (
         <div className="app-mobile-page min-h-screen pb-4">
@@ -434,41 +529,148 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
 
                 <TabsContent value="supplements" className="space-y-4 animate-fade-in">
                     {supplements.length > 0 ? (
-                        <div className="space-y-3">
-                            {supplements.map((s) => (
-                                <Card key={s.id} className="p-4">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
-                                            <FlaskConical className="h-4 w-4 text-accent" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-foreground truncate">{s.supplement_name}</p>
-                                            <p className="text-sm text-muted-foreground mt-0.5">
+                        <div className="space-y-4">
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start gap-2">
+                                        <CalendarIcon className="h-4 w-4" />
+                                        {format(date, "EEEE, d 'de' MMMM", { locale: es })}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={date}
+                                        onSelect={(d) => d && setDate(d)}
+                                        locale={es}
+                                        disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+
+                            <Card className="p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Tomas registradas</p>
+                                        <p className="mt-1 text-2xl font-bold tabular-nums">
+                                            {supplementTakenCount}
+                                            <span className="text-base font-semibold text-muted-foreground">/{scheduledSupplementDoses.length}</span>
+                                        </p>
+                                    </div>
+                                    <Badge variant="secondary" className="bg-primary/10 text-primary">
+                                        {scheduledSupplementDoses.length > 0 && supplementLoggedCount === scheduledSupplementDoses.length ? 'Día completo' : 'Pendiente'}
+                                    </Badge>
+                                </div>
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full bg-primary transition-all"
+                                        style={{
+                                            width: `${scheduledSupplementDoses.length ? (supplementTakenCount / scheduledSupplementDoses.length) * 100 : 0}%`,
+                                        }}
+                                    />
+                                </div>
+                            </Card>
+
+                            <div className="space-y-3">
+                                {scheduledSupplementDoses.length === 0 ? (
+                                    <Card className="p-6 text-center">
+                                        <FlaskConical className="mx-auto mb-3 h-8 w-8 text-muted-foreground opacity-40" />
+                                        <p className="font-medium text-muted-foreground">Sin tomas programadas para este día</p>
+                                    </Card>
+                                ) : scheduledSupplementDoses.map(({ supplement: s, time }) => {
+                                    const key = doseKey(s.id, time)
+                                    const log = supplementLogs[key]
+                                    const isSaving = savingDoseKey === key
+                                    const isTaken = log?.status === 'taken'
+                                    const isSkipped = log?.status === 'skipped'
+
+                                    return (
+                                        <Card key={key} className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10">
+                                                    {isTaken ? (
+                                                        <CheckCircle2 className="h-5 w-5 text-success" />
+                                                    ) : isSkipped ? (
+                                                        <XCircle className="h-5 w-5 text-muted-foreground" />
+                                                    ) : (
+                                                        <Circle className="h-5 w-5 text-accent" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="truncate font-semibold text-foreground">{s.supplement_name}</p>
+                                                            <p className="mt-0.5 text-sm text-muted-foreground">
+                                                                {s.dose_amount} {s.dose_unit} · {time}
+                                                            </p>
+                                                        </div>
+                                                        {log && (
+                                                            <Badge variant={isTaken ? 'default' : 'secondary'} className="shrink-0">
+                                                                {isTaken ? 'Tomado' : 'Omitido'}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+
+                                                    {s.notes && (
+                                                        <p className="mt-2 text-xs italic text-muted-foreground">{s.notes}</p>
+                                                    )}
+
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant={isTaken ? 'default' : 'outline'}
+                                                            disabled={isSaving || supplementLogsLoading}
+                                                            onClick={() => handleDoseLog(s.id, time, 'taken')}
+                                                            className="gap-2"
+                                                        >
+                                                            <Check className="h-4 w-4" />
+                                                            Tomado
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant={isSkipped ? 'secondary' : 'outline'}
+                                                            disabled={isSaving || supplementLogsLoading}
+                                                            onClick={() => handleDoseLog(s.id, time, 'skipped')}
+                                                        >
+                                                            Omitir
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    )
+                                })}
+                            </div>
+
+                            <Card className="p-4">
+                                <h3 className="font-semibold">Pauta activa</h3>
+                                <div className="mt-3 space-y-3">
+                                    {supplementsForSelectedDate.map((s) => (
+                                        <div key={s.id} className="rounded-lg border border-border p-3">
+                                            <p className="font-medium text-foreground">{s.supplement_name}</p>
+                                            <p className="mt-0.5 text-sm text-muted-foreground">
                                                 {s.dose_amount} {s.dose_unit} · {s.daily_doses} {s.daily_doses === 1 ? 'toma' : 'tomas'} al día
                                             </p>
                                             {s.dose_schedule?.filter(t => t).length > 0 && (
-                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                <div className="mt-2 flex flex-wrap gap-1.5">
                                                     {s.dose_schedule.filter(t => t).map((time, i) => (
-                                                        <Badge key={i} variant="secondary" className="text-xs font-mono px-2 py-0.5">
+                                                        <Badge key={i} variant="secondary" className="px-2 py-0.5 text-xs font-mono">
                                                             {time}
                                                         </Badge>
                                                     ))}
                                                 </div>
                                             )}
-                                            {s.notes && (
-                                                <p className="text-xs text-muted-foreground mt-2 italic">{s.notes}</p>
-                                            )}
                                             {(s.start_date || s.end_date) && (
-                                                <p className="text-xs text-muted-foreground mt-1">
+                                                <p className="mt-2 text-xs text-muted-foreground">
                                                     {s.start_date && `Desde ${format(new Date(s.start_date + 'T12:00:00'), 'dd MMM yyyy', { locale: es })}`}
                                                     {s.start_date && s.end_date && ' · '}
                                                     {s.end_date && `Hasta ${format(new Date(s.end_date + 'T12:00:00'), 'dd MMM yyyy', { locale: es })}`}
                                                 </p>
                                             )}
                                         </div>
-                                    </div>
-                                </Card>
-                            ))}
+                                    ))}
+                                </div>
+                            </Card>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
