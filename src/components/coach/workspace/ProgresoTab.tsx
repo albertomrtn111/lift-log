@@ -24,6 +24,7 @@ import {
     Loader2,
     CalendarDays,
     Download,
+    Pill,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProgressData, getCardioProgressData, ProgressData, CardioProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
@@ -65,6 +66,7 @@ type GeneralKpis = {
     avgDietAdherence: number | null
     avgSteps: number | null
     avgSleep: number | null
+    supplementAdherence: ProgressData['supplementAdherence']
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +176,7 @@ function calculateGeneralKpis(data: ProgressData | null): GeneralKpis | null {
         ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
         : null
 
-    return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep }
+    return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep, supplementAdherence: data.supplementAdherence }
 }
 
 function getComparisonDelta(current: number | null | undefined, previous: number | null | undefined) {
@@ -366,13 +368,19 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
         setLoading(true)
         const previousRange = getPeriodComparisonRange(from, selectedDays)
         const [result, previousResult] = await Promise.all([
-            getProgressData(clientId, from, to),
-            getProgressData(clientId, previousRange.from, previousRange.to),
+            getProgressData(clientId, from, to, coachId),
+            getProgressData(clientId, previousRange.from, previousRange.to, coachId),
         ])
-        setData(result.success && result.data ? result.data : { metrics: [], dietAdherence: [], workoutLogs: [] })
-        setPreviousData(previousResult.success && previousResult.data ? previousResult.data : { metrics: [], dietAdherence: [], workoutLogs: [] })
+        const emptyProgressData: ProgressData = {
+            metrics: [],
+            dietAdherence: [],
+            workoutLogs: [],
+            supplementAdherence: { percent: null, takenDoses: 0, scheduledDoses: 0, skippedDoses: 0, loggedDoses: 0 },
+        }
+        setData(result.success && result.data ? result.data : emptyProgressData)
+        setPreviousData(previousResult.success && previousResult.data ? previousResult.data : emptyProgressData)
         setLoading(false)
-    }, [clientId, selectedDays])
+    }, [clientId, coachId, selectedDays])
 
     const fetchCardio = useCallback(async (from: string, to: string) => {
         setCardioLoading(true)
@@ -504,7 +512,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                         </div>
                     ) : (
                         <>
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
                                 <KpiCard
                                     icon={Scale}
                                     label="Peso medio"
@@ -549,6 +557,19 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     comparisonLabel={`vs ${selectedDays}d anteriores`}
                                     comparisonPositiveIsGood
                                     color="green"
+                                />
+                                <KpiCard
+                                    icon={Pill}
+                                    label="Suplementación"
+                                    value={kpis?.supplementAdherence.percent != null ? `${kpis.supplementAdherence.percent}%` : null}
+                                    subValue={kpis?.supplementAdherence.scheduledDoses
+                                        ? `${kpis.supplementAdherence.takenDoses}/${kpis.supplementAdherence.scheduledDoses} tomas`
+                                        : 'Sin tomas programadas'}
+                                    comparisonDelta={getComparisonDelta(kpis?.supplementAdherence.percent, previousKpis?.supplementAdherence.percent)}
+                                    comparisonUnit="pp"
+                                    comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                    comparisonPositiveIsGood
+                                    color="orange"
                                 />
                             </div>
                             <WeightChart data={weightChartData} />
@@ -679,6 +700,7 @@ const COLOR_MAP: Record<string, { bg: string; icon: string; ring: string }> = {
     green: { bg: 'bg-emerald-500/10', icon: 'text-emerald-500', ring: 'ring-emerald-500/20' },
     violet: { bg: 'bg-violet-500/10', icon: 'text-violet-500', ring: 'ring-violet-500/20' },
     indigo: { bg: 'bg-indigo-500/10', icon: 'text-indigo-500', ring: 'ring-indigo-500/20' },
+    orange: { bg: 'bg-orange-500/10', icon: 'text-orange-500', ring: 'ring-orange-500/20' },
 }
 
 function KpiCard({

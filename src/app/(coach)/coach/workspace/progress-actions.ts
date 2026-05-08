@@ -1,6 +1,8 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +23,138 @@ export interface ProgressData {
         workout_date: string
         completed: boolean
     }[]
+    supplementAdherence: {
+        percent: number | null
+        takenDoses: number
+        scheduledDoses: number
+        skippedDoses: number
+        loggedDoses: number
+    }
+}
+
+function parseDateStr(date: string) {
+    return new Date(`${date}T12:00:00`)
+}
+
+function toDateStr(date: Date) {
+    return date.toISOString().split('T')[0]
+}
+
+function getDateRange(dateFrom: string, dateTo: string) {
+    const dates: string[] = []
+    const cursor = parseDateStr(dateFrom)
+    const end = parseDateStr(dateTo)
+
+    while (cursor <= end) {
+        dates.push(toDateStr(cursor))
+        cursor.setDate(cursor.getDate() + 1)
+    }
+
+    return dates
+}
+
+function isSupplementActiveOnDate(supplement: any, date: string) {
+    if (supplement.is_active === false) return false
+    if (supplement.start_date && supplement.start_date > date) return false
+    if (supplement.end_date && supplement.end_date < date) return false
+    return true
+}
+
+function getDoseTimes(supplement: any) {
+    return Array.isArray(supplement.dose_schedule)
+        ? supplement.dose_schedule.filter((time: unknown): time is string => typeof time === 'string' && time.trim().length > 0)
+        : []
+}
+
+function getFallbackDailyDoses(supplement: any) {
+    const dailyDoses = Number(supplement.daily_doses || 0)
+    return Number.isFinite(dailyDoses) && dailyDoses > 0 ? dailyDoses : 0
+}
+
+async function getSupplementAdherence(
+    clientId: string,
+    coachId: string,
+    dateFrom: string,
+    dateTo: string
+): Promise<ProgressData['supplementAdherence']> {
+    const admin = createAdminClient()
+    const [{ data: supplements, error: supplementsError }, { data: logs, error: logsError }] = await Promise.all([
+        admin
+            .from('client_supplements')
+            .select('id, daily_doses, dose_schedule, start_date, end_date, is_active')
+            .eq('client_id', clientId)
+            .eq('coach_id', coachId),
+        admin
+            .from('supplement_dose_logs')
+            .select('supplement_id, scheduled_date, scheduled_time, status')
+            .eq('client_id', clientId)
+            .eq('coach_id', coachId)
+            .gte('scheduled_date', dateFrom)
+            .lte('scheduled_date', dateTo),
+    ])
+
+    if (supplementsError) throw new Error(supplementsError.message)
+    if (logsError) throw new Error(logsError.message)
+
+    const dates = getDateRange(dateFrom, dateTo)
+    const scheduledKeys = new Set<string>()
+    const fallbackCapacityByDoseDay = new Map<string, number>()
+    let scheduledDoses = 0
+
+    for (const supplement of supplements || []) {
+        for (const date of dates) {
+            if (!isSupplementActiveOnDate(supplement, date)) continue
+
+            const doseTimes = getDoseTimes(supplement)
+            if (doseTimes.length > 0) {
+                scheduledDoses += doseTimes.length
+                for (const time of doseTimes) {
+                    scheduledKeys.add(`${supplement.id}:${date}:${time}`)
+                }
+            } else {
+                const fallbackDoses = getFallbackDailyDoses(supplement)
+                if (fallbackDoses > 0) {
+                    scheduledDoses += fallbackDoses
+                    fallbackCapacityByDoseDay.set(`${supplement.id}:${date}`, fallbackDoses)
+                }
+            }
+        }
+    }
+
+    let takenDoses = 0
+    let skippedDoses = 0
+    let loggedDoses = 0
+    const fallbackTakenByDoseDay = new Map<string, number>()
+
+    for (const log of logs || []) {
+        const exactKey = `${log.supplement_id}:${log.scheduled_date}:${log.scheduled_time}`
+        const fallbackKey = `${log.supplement_id}:${log.scheduled_date}`
+        const isScheduled = scheduledKeys.has(exactKey) || fallbackCapacityByDoseDay.has(fallbackKey)
+        if (!isScheduled) continue
+
+        loggedDoses += 1
+        if (log.status === 'skipped') skippedDoses += 1
+
+        if (log.status === 'taken') {
+            if (scheduledKeys.has(exactKey)) {
+                takenDoses += 1
+            } else {
+                fallbackTakenByDoseDay.set(fallbackKey, (fallbackTakenByDoseDay.get(fallbackKey) || 0) + 1)
+            }
+        }
+    }
+
+    for (const [key, taken] of fallbackTakenByDoseDay) {
+        takenDoses += Math.min(taken, fallbackCapacityByDoseDay.get(key) || 0)
+    }
+
+    return {
+        percent: scheduledDoses > 0 ? Math.round((takenDoses / scheduledDoses) * 100) : null,
+        takenDoses,
+        scheduledDoses,
+        skippedDoses,
+        loggedDoses,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -30,11 +164,22 @@ export interface ProgressData {
 export async function getProgressData(
     clientId: string,
     dateFrom: string, // YYYY-MM-DD
-    dateTo: string    // YYYY-MM-DD
+    dateTo: string,   // YYYY-MM-DD
+    coachIdFromClient?: string | null
 ): Promise<{ success: boolean; data?: ProgressData; error?: string }> {
-    const supabase = await createClient()
-
     try {
+        const { supabase, coachId } = await requireActiveCoachId(coachIdFromClient)
+
+        const { data: clientAccess, error: clientAccessError } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('coach_id', coachId)
+            .maybeSingle()
+
+        if (clientAccessError) throw new Error(clientAccessError.message)
+        if (!clientAccess) throw new Error('No tienes acceso a este cliente')
+
         // 1. Client metrics (weight, steps, sleep)
         const { data: metricsRaw, error: metricsErr } = await supabase
             .from('client_metrics')
@@ -68,6 +213,8 @@ export async function getProgressData(
 
         if (workoutErr) throw new Error(workoutErr.message)
 
+        const supplementAdherence = await getSupplementAdherence(clientId, coachId, dateFrom, dateTo)
+
         return {
             success: true,
             data: {
@@ -85,6 +232,7 @@ export async function getProgressData(
                     workout_date: w.workout_date,
                     completed: w.completed,
                 })),
+                supplementAdherence,
             },
         }
     } catch (error: any) {
