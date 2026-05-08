@@ -1,6 +1,9 @@
 
-import { createClient } from '@/lib/supabase/client'
-import { format, differenceInDays, startOfDay, subDays } from 'date-fns'
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { format, differenceInDays, subDays } from 'date-fns'
 
 export interface ProgramSummary {
     id: string
@@ -24,21 +27,45 @@ async function getClientContext() {
         .from('clients')
         .select('id')
         .eq('user_id', user.id)
+        .eq('status', 'active')
         .single()
 
     return client
 }
 
+function getTotalWeeks(program: any) {
+    const totalWeeks = Number(program.total_weeks ?? program.weeks ?? 1)
+    return Number.isFinite(totalWeeks) && totalWeeks > 0 ? totalWeeks : 1
+}
+
+function hasLegacyLogProgress(log: any) {
+    if (log.notes) return true
+    const sets = Array.isArray(log.sets) ? log.sets : []
+    return sets.some((set: any) =>
+        set?.weight !== null && set?.weight !== undefined && set?.weight !== '' ||
+        set?.reps !== null && set?.reps !== undefined && set?.reps !== '' ||
+        set?.rir !== null && set?.rir !== undefined && set?.rir !== ''
+    )
+}
+
+function hasSetProgress(set: any) {
+    return Boolean(set.completed || set.is_override) ||
+        set.weight_kg !== null && set.weight_kg !== undefined ||
+        set.reps !== null && set.reps !== undefined ||
+        set.rir !== null && set.rir !== undefined ||
+        Boolean(set.notes)
+}
+
 export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary | null> {
-    const supabase = await createClient()
     const client = await getClientContext()
 
     if (!client) return null
+    const supabase = createAdminClient()
 
     // 1. Get Active Program
     const { data: program } = await supabase
         .from('training_programs')
-        .select('*')
+        .select('id, name, weeks, total_weeks, effective_from')
         .eq('client_id', client.id)
         .eq('status', 'active')
         .order('effective_from', { ascending: false })
@@ -48,6 +75,7 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
     if (!program) return null
 
     // 2. Calculate Current Week
+    const totalWeeks = getTotalWeeks(program)
     const effectiveFrom = new Date(program.effective_from)
     const today = new Date()
     const diffDays = differenceInDays(today, effectiveFrom)
@@ -59,32 +87,44 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
 
     // Clamp week
     if (currentWeek < 1) currentWeek = 1
-    if (currentWeek > program.weeks) currentWeek = program.weeks
+    if (currentWeek > totalWeeks) currentWeek = totalWeeks
 
     // 3. Calculate Progress
-    // Total exercises in the program (sum of exercises in all days)
-    // We assume program structure repeats weekly.
-    // If we want "this week's total", it's the sum of exercises in all days of the program.
-
-    const { count: totalExercisesCount } = await supabase
+    // Mirror the current training progress model: per-set records are the new
+    // source of truth, with legacy exercise logs as a fallback for older rows.
+    const { data: exercises } = await supabase
         .from('training_exercises')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('program_id', program.id)
 
-    // Completed exercises this week
-    // We count distinct exercise_ids logged for this program and week
-    const { count: completedExercisesCount } = await supabase
-        .from('training_exercise_logs')
-        .select('exercise_id', { count: 'exact', head: true })
-        .eq('program_id', program.id)
-        .eq('week_index', currentWeek)
-    // We can create a view or just trust the count if logs are unique per exercise/week
-    // But logs might have duplicates if not constrained (we added unique constraint though)
-    // To be safe, we could use a distinct count if Supabase supports it via API or just count rows if constrained.
-    // Given our previous task added a UNIQUE constraint on (client_id, exercise_id, week_index), count is safe.
+    const exerciseIds = (exercises || []).map((exercise: any) => exercise.id)
+    const completedExerciseIds = new Set<string>()
 
-    const total = totalExercisesCount || 0
-    const completed = completedExercisesCount || 0
+    if (exerciseIds.length > 0) {
+        const { data: trackedSets } = await supabase
+            .from('training_exercise_sets')
+            .select('exercise_id, weight_kg, reps, rir, completed, is_override, notes')
+            .in('exercise_id', exerciseIds)
+            .eq('week_index', currentWeek)
+
+        for (const set of trackedSets || []) {
+            if (hasSetProgress(set)) completedExerciseIds.add(set.exercise_id)
+        }
+
+        const { data: legacyLogs } = await supabase
+            .from('training_exercise_logs')
+            .select('exercise_id, sets, notes')
+            .eq('client_id', client.id)
+            .eq('program_id', program.id)
+            .eq('week_index', currentWeek)
+
+        for (const log of legacyLogs || []) {
+            if (hasLegacyLogProgress(log)) completedExerciseIds.add(log.exercise_id)
+        }
+    }
+
+    const total = exerciseIds.length
+    const completed = completedExerciseIds.size
 
     const progressPercent = total > 0
         ? Math.round((completed / total) * 100)
@@ -93,7 +133,7 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
     return {
         id: program.id,
         name: program.name,
-        totalWeeks: program.weeks,
+        totalWeeks,
         currentWeek,
         progressPercent,
         effectiveFrom: program.effective_from
@@ -101,10 +141,10 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
 }
 
 export async function getWeightSeries(range: MetricsRange) {
-    const supabase = await createClient()
     const client = await getClientContext()
 
     if (!client) return { data: [], avg: '--', trend: null }
+    const supabase = createAdminClient()
 
     const today = new Date()
     let startDate = new Date()
@@ -149,10 +189,10 @@ export async function getWeightSeries(range: MetricsRange) {
 }
 
 export async function getMacroAdherence(range: MetricsRange) {
-    const supabase = await createClient()
     const client = await getClientContext()
 
     if (!client) return { percent: '--', days: 0, totalDays: 0 }
+    const supabase = createAdminClient()
 
     const today = new Date()
     let startDate = new Date()
