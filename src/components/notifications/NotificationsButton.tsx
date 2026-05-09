@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Bell, CheckCheck, Loader2, Megaphone, MessageSquare, Dumbbell, Apple, Pill } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -21,6 +22,7 @@ const TYPE_META: Record<NotificationType, { icon: React.ReactNode; color: string
 }
 
 export function NotificationsButton() {
+    const router = useRouter()
     const [open, setOpen] = useState(false)
     const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useClientNotifications()
 
@@ -94,6 +96,10 @@ export function NotificationsButton() {
                                         key={n.id}
                                         notification={n}
                                         onRead={markAsRead}
+                                        onNavigate={(url) => {
+                                            setOpen(false)
+                                            router.push(url)
+                                        }}
                                     />
                                 ))}
                             </ul>
@@ -108,14 +114,17 @@ export function NotificationsButton() {
 function NotificationItem({
     notification: n,
     onRead,
+    onNavigate,
 }: {
     notification: ClientNotification
     onRead: (id: string) => void
+    onNavigate: (url: string) => void
 }) {
     const meta = TYPE_META[n.type] ?? TYPE_META.general
 
     const handleClick = () => {
         if (!n.is_read) onRead(n.id)
+        if (n.url) onNavigate(n.url)
     }
 
     return (

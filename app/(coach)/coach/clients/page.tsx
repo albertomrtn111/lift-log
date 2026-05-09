@@ -21,6 +21,7 @@ import {
 } from '@/data/workspace'
 import { getMetricDefinitions } from '@/data/metric-definitions'
 import { getFormTemplates } from '@/data/form-templates'
+import { listReviewTemplates } from '@/data/review-templates'
 import { NewClientWorkspace } from '@/components/coach/NewClientWorkspace'
 
 interface PageProps {
@@ -65,6 +66,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     let metrics: Awaited<ReturnType<typeof getClientMetrics>> = []
     let metricDefinitions: Awaited<ReturnType<typeof getMetricDefinitions>> = []
     let formTemplates: Awaited<ReturnType<typeof getFormTemplates>> = []
+    let reviewTemplates: Awaited<ReturnType<typeof listReviewTemplates>> = []
     let athleteProfile: Awaited<ReturnType<typeof getAthleteAIProfile>> = null
 
     if (selectedClientId) {
@@ -84,6 +86,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             metricsData,
             metricDefinitionsData,
             formTemplatesData,
+            reviewTemplatesData,
             athleteProfileData,
         ] = await Promise.all([
             getClientForWorkspace(coachId, selectedClientId),
@@ -100,6 +103,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             getClientMetrics(coachId, selectedClientId, 90),
             getMetricDefinitions(),
             getFormTemplates(),
+            listReviewTemplates(coachId),
             getAthleteAIProfile(coachId, selectedClientId),
         ])
 
@@ -117,6 +121,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         metrics = metricsData
         metricDefinitions = metricDefinitionsData
         formTemplates = formTemplatesData
+        reviewTemplates = reviewTemplatesData
         athleteProfile = athleteProfileData
     }
     return (
@@ -154,6 +159,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     metrics={metrics}
                     metricDefinitions={metricDefinitions}
                     formTemplates={formTemplates}
+                    reviewTemplates={reviewTemplates}
                     athleteProfile={athleteProfile}
                 />
             </div>

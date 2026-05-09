@@ -48,6 +48,12 @@ export interface ClientWithMeta extends Client {
     hasPendingReview?: boolean
     /** ISO string of the most recent checkin */
     lastCheckinAt?: string | null
+    /**
+     * Próxima fecha de revisión efectiva. Prioriza el schedule activo más próximo
+     * (modelo nuevo de plantillas de revisión). Cae al campo legacy
+     * `next_checkin_date` cuando el cliente no tiene schedules.
+     */
+    effectiveNextCheckinDate?: string | null
 }
 
 export interface Checkin {
@@ -103,6 +109,13 @@ export interface CalendarEvent {
     aiStatus?: 'idle' | 'pending' | 'completed' | 'failed' | null
     rawMetricCount?: number
     rawResponseCount?: number
+    /**
+     * Si el evento viene de una plantilla de revisión asignada al atleta,
+     * aquí va el nombre de la plantilla (ej. "Check-in semanal runner").
+     * Vacío para eventos legacy sin plantilla.
+     */
+    reviewTemplateName?: string | null
+    reviewScheduleId?: string | null
 }
 
 export interface CalendarNote {

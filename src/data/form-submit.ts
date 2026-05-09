@@ -20,9 +20,10 @@ export async function submitFormAction(
     // 1. Auth
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'No autenticado' }
+    const admin = createAdminClient()
 
     // 2. Verify the checkin exists and load its type
-    const { data: checkin, error: checkinErr } = await supabase
+    const { data: checkin, error: checkinErr } = await admin
         .from('checkins')
         .select('id, client_id, type, status')
         .eq('id', checkinId)
@@ -33,13 +34,13 @@ export async function submitFormAction(
     }
 
     // 3. Verify ownership: the client's auth_user_id must match the current user
-    const { data: client } = await supabase
+    const { data: client } = await admin
         .from('clients')
-        .select('id, auth_user_id')
+        .select('id, auth_user_id, user_id')
         .eq('id', checkin.client_id)
         .single()
 
-    if (!client || client.auth_user_id !== user.id) {
+    if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) {
         return { success: false, error: 'No tienes permiso para enviar este formulario' }
     }
 
@@ -50,7 +51,7 @@ export async function submitFormAction(
 
     // 6. Update checkin with submitted data
     const now = new Date().toISOString()
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await admin
         .from('checkins')
         .update({
             raw_payload: payload,
@@ -66,7 +67,7 @@ export async function submitFormAction(
 
     // 7. If this is an onboarding form, update the client's onboarding status
     if (isOnboarding) {
-        const { error: clientErr } = await supabase
+        const { error: clientErr } = await admin
             .from('clients')
             .update({
                 onboarding_status: 'accepted',
@@ -83,7 +84,6 @@ export async function submitFormAction(
     // 8. For regular check-ins, ensure a review exists and launch AI analysis asynchronously.
     if (!isOnboarding) {
         try {
-            const admin = createAdminClient()
             const { data: adminCheckin, error: adminCheckinError } = await admin
                 .from('checkins')
                 .select('id, coach_id, client_id')

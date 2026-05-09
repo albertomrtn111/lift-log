@@ -2,8 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getFormTemplates } from '@/data/form-templates'
 import { getActiveClients } from '@/data/members'
+import { listReviewTemplates } from '@/data/review-templates'
 import { FormsPageClient } from '@/components/coach/forms/FormsPageClient'
 import { ClipboardList } from 'lucide-react'
+import type { MetricCategory, MetricDefinition } from '@/types/metrics'
 
 export default async function FormsPage() {
     const supabase = await createClient()
@@ -14,10 +16,24 @@ export default async function FormsPage() {
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return null
 
-    const [templates, activeClients] = await Promise.all([
+    const [templates, activeClients, reviewTemplates, metricsRes] = await Promise.all([
         getFormTemplates(),
         getActiveClients(coachId),
+        listReviewTemplates(coachId),
+        supabase
+            .from('metric_definitions')
+            .select('*')
+            .eq('coach_id', coachId)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true })
+            .order('name', { ascending: true }),
     ])
+
+    const metrics = metricsRes.data ?? []
+    const metricCounts: Record<MetricCategory, number> = { body: 0, performance: 0, general: 0 }
+    for (const row of metrics as { category: MetricCategory }[]) {
+        if (row.category in metricCounts) metricCounts[row.category]++
+    }
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -39,7 +55,13 @@ export default async function FormsPage() {
             </header>
 
             <div className="px-4 lg:px-8 pt-6">
-                <FormsPageClient templates={templates} activeClients={activeClients} />
+                <FormsPageClient
+                    templates={templates}
+                    activeClients={activeClients}
+                    reviewTemplates={reviewTemplates}
+                    metrics={metrics as MetricDefinition[]}
+                    metricCounts={metricCounts}
+                />
             </div>
         </div>
     )

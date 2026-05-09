@@ -15,6 +15,7 @@ import {
 } from '@/data/workspace'
 import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
+import type { ReviewTemplate } from '@/data/review-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,7 @@ interface NewClientWorkspaceProps {
     metrics: Awaited<ReturnType<typeof import('@/data/workspace').getClientMetrics>>
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
+    reviewTemplates?: ReviewTemplate[]
     athleteProfile: AthleteAIProfile | null
 }
 
@@ -78,6 +80,7 @@ export function NewClientWorkspace({
     metrics,
     metricDefinitions,
     formTemplates,
+    reviewTemplates,
     athleteProfile,
 }: NewClientWorkspaceProps) {
     const router = useRouter()
@@ -235,6 +238,7 @@ export function NewClientWorkspace({
                         clientStatus={clientStatus}
                         coachId={coachId}
                         formTemplates={formTemplates}
+                        reviewTemplates={reviewTemplates}
                         onClientUpdated={handleRefresh}
                     />
 
@@ -245,60 +249,60 @@ export function NewClientWorkspace({
                             value="athlete-profile"
                             className="workspace-tab-trigger shrink-0 sm:min-w-[10.5rem]"
                         >
-                                <UserRound className="h-4 w-4" />
-                                <span className="hidden sm:inline">Perfil del atleta</span>
-                            </TabsTrigger>
+                            <UserRound className="h-4 w-4" />
+                            <span className="hidden sm:inline">Perfil del atleta</span>
+                        </TabsTrigger>
                         <TabsTrigger
                             value="onboarding"
                             className="workspace-tab-trigger shrink-0 sm:min-w-[9rem]"
                         >
-                                <ClipboardList className="h-4 w-4" />
-                                <span className="hidden sm:inline">Onboarding</span>
-                            </TabsTrigger>
+                            <ClipboardList className="h-4 w-4" />
+                            <span className="hidden sm:inline">Onboarding</span>
+                        </TabsTrigger>
                         <TabsTrigger
                             value="resumen"
                             className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem]"
                         >
-                                <LayoutDashboard className="h-4 w-4" />
-                                <span className="hidden sm:inline">Resumen</span>
-                            </TabsTrigger>
-                        <TabsTrigger
-                            value="plan"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                                <CalendarDays className="h-4 w-4" />
-                                <span className="hidden sm:inline">Plan</span>
-                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                            </TabsTrigger>
-                        <TabsTrigger
-                            value="events"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                                <Flag className="h-4 w-4" />
-                                <span className="hidden sm:inline">Eventos</span>
-                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                            </TabsTrigger>
-                        <TabsTrigger
-                            value="checkins"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                                <FileText className="h-4 w-4" />
-                                <span className="hidden sm:inline">Revisiones</span>
-                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                            </TabsTrigger>
+                            <LayoutDashboard className="h-4 w-4" />
+                            <span className="hidden sm:inline">Resumen</span>
+                        </TabsTrigger>
                         <TabsTrigger
                             value="progreso"
                             disabled={isPendingSignup}
                             className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                                <TrendingUp className="h-4 w-4" />
-                                <span className="hidden sm:inline">Progreso</span>
-                                {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                            </TabsTrigger>
-                        </TabsList>
+                            <TrendingUp className="h-4 w-4" />
+                            <span className="hidden sm:inline">Progreso</span>
+                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="plan"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <CalendarDays className="h-4 w-4" />
+                            <span className="hidden sm:inline">Plan</span>
+                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="checkins"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <FileText className="h-4 w-4" />
+                            <span className="hidden sm:inline">Revisiones</span>
+                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="events"
+                            disabled={isPendingSignup}
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <Flag className="h-4 w-4" />
+                            <span className="hidden sm:inline">Eventos</span>
+                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
+                        </TabsTrigger>
+                    </TabsList>
 
                         <div className="mt-4 min-h-[500px]">
                             <TabsContent value="athlete-profile">

@@ -34,3 +34,30 @@ export async function updateProfileNameAction(
     revalidatePath('/profile/settings')
     return { success: true }
 }
+
+export async function updateAvatarUrlAction(
+    avatarUrl: string
+): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { success: false, error: 'No autenticado' }
+    }
+
+    const { error } = await supabase
+        .from('profiles')
+        .update({
+            avatar_url: avatarUrl,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id)
+
+    if (error) {
+        console.error('[updateAvatarUrl] Error:', error.message)
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/profile')
+    return { success: true }
+}

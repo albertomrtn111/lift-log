@@ -35,6 +35,13 @@ import { format } from 'date-fns'
 
 type Tab = 'recent' | 'library' | 'recipes'
 
+function parseDecimalInput(value: string | number, fallback = 0) {
+    const normalized = String(value).trim().replace(/\s/g, '').replace(',', '.')
+    if (!normalized) return fallback
+    const n = Number(normalized)
+    return Number.isFinite(n) ? n : fallback
+}
+
 interface AddFoodDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -449,10 +456,10 @@ function FoodPortionForm({
                     <Label htmlFor="grams">Gramos consumidos</Label>
                     <Input
                         id="grams"
-                        type="number"
+                        type="text"
                         inputMode="decimal"
                         value={grams}
-                        onChange={e => setGrams(parseFloat(e.target.value) || 0)}
+                        onChange={e => setGrams(parseDecimalInput(e.target.value))}
                         min={1}
                         step={1}
                     />
@@ -551,12 +558,12 @@ function RecipePortionForm({
                     <Label htmlFor="servings">Porciones</Label>
                     <Input
                         id="servings"
-                        type="number"
+                        type="text"
                         inputMode="decimal"
                         step="0.5"
                         min={0.5}
                         value={servings}
-                        onChange={e => setServings(parseFloat(e.target.value) || 0)}
+                        onChange={e => setServings(parseDecimalInput(e.target.value))}
                     />
                     <p className="text-xs text-muted-foreground">La receta tiene {recipe.servings} porciones en total.</p>
                 </div>
@@ -613,10 +620,10 @@ function CreateFoodForm({
             toast.error('Pon un nombre')
             return
         }
-        const k = parseFloat(kcal) || 0
-        const p = parseFloat(protein) || 0
-        const c = parseFloat(carbs) || 0
-        const f = parseFloat(fat) || 0
+        const k = parseDecimalInput(kcal)
+        const p = parseDecimalInput(protein)
+        const c = parseDecimalInput(carbs)
+        const f = parseDecimalInput(fat)
         if (k <= 0) {
             toast.error('Las kcal deben ser mayores que 0')
             return
@@ -629,7 +636,7 @@ function CreateFoodForm({
             protein_g: p,
             carbs_g: c,
             fat_g: f,
-            serving_size_g: parseFloat(servingSize) || 100,
+            serving_size_g: parseDecimalInput(servingSize, 100),
             serving_label: servingLabel.trim() || null,
             is_public: true,
         })
@@ -656,23 +663,23 @@ function CreateFoodForm({
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-kcal">kcal / 100g</Label>
-                    <Input id="f-kcal" type="number" inputMode="decimal" value={kcal} onChange={e => setKcal(e.target.value)} />
+                    <Input id="f-kcal" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={kcal} onChange={e => setKcal(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-p">Proteína (g)</Label>
-                    <Input id="f-p" type="number" inputMode="decimal" value={protein} onChange={e => setProtein(e.target.value)} />
+                    <Input id="f-p" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={protein} onChange={e => setProtein(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-c">Carbos (g)</Label>
-                    <Input id="f-c" type="number" inputMode="decimal" value={carbs} onChange={e => setCarbs(e.target.value)} />
+                    <Input id="f-c" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={carbs} onChange={e => setCarbs(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-f">Grasa (g)</Label>
-                    <Input id="f-f" type="number" inputMode="decimal" value={fat} onChange={e => setFat(e.target.value)} />
+                    <Input id="f-f" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={fat} onChange={e => setFat(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-ss">Porción (g)</Label>
-                    <Input id="f-ss" type="number" inputMode="decimal" value={servingSize} onChange={e => setServingSize(e.target.value)} />
+                    <Input id="f-ss" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={servingSize} onChange={e => setServingSize(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="f-sl">Etiqueta porción</Label>
@@ -742,7 +749,7 @@ function CreateRecipeForm({
     const handleSubmit = async () => {
         if (!name.trim()) return toast.error('Pon un nombre')
         if (items.length === 0) return toast.error('Añade al menos un ingrediente')
-        const s = parseFloat(servings) || 1
+        const s = parseDecimalInput(servings, 1)
         setSaving(true)
         const r = await createRecipe({
             name: name.trim(),
@@ -768,7 +775,7 @@ function CreateRecipeForm({
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="r-serv">Porciones</Label>
-                    <Input id="r-serv" type="number" inputMode="decimal" value={servings} onChange={e => setServings(e.target.value)} />
+                    <Input id="r-serv" type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={servings} onChange={e => setServings(e.target.value)} />
                 </div>
             </div>
 
@@ -782,10 +789,11 @@ function CreateRecipeForm({
                             <li key={idx} className="flex items-center gap-2">
                                 <span className="text-sm flex-1 truncate">{it.food.name}</span>
                                 <Input
-                                    type="number"
+                                    type="text"
                                     inputMode="decimal"
+                                    pattern="[0-9]*[.,]?[0-9]*"
                                     value={it.grams}
-                                    onChange={e => updateGrams(idx, parseFloat(e.target.value) || 0)}
+                                    onChange={e => updateGrams(idx, parseDecimalInput(e.target.value))}
                                     className="w-20 h-8"
                                 />
                                 <span className="text-xs text-muted-foreground">g</span>

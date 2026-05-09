@@ -2,9 +2,9 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ClientWithMeta } from '@/types/coach'
-import { FormTemplate } from '@/types/forms'
-import { StatusFilter } from '@/data/members'
+import type { ClientWithMeta } from '@/types/coach'
+import type { FormTemplate } from '@/types/forms'
+import type { StatusFilter } from '@/data/members'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -58,6 +58,9 @@ import { sendOnboardingAction } from './onboarding-actions'
 import { sendReviewAction } from './review-actions'
 import { useState } from 'react'
 import { EditClientModal } from './EditClientModal'
+import { ReviewScheduleSelectorDialog } from './ReviewScheduleSelectorDialog'
+import type { ReviewTemplate } from '@/data/review-templates'
+import type { ClientReviewScheduleWithTemplate } from '@/data/review-schedules'
 import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
 
@@ -66,9 +69,10 @@ interface MembersTableProps {
     statusFilter: StatusFilter
     coachId: string
     formTemplates: FormTemplate[]
+    reviewTemplates?: ReviewTemplate[]
 }
 
-export function MembersTable({ clients, statusFilter, coachId, formTemplates }: MembersTableProps) {
+export function MembersTable({ clients, statusFilter, coachId, formTemplates, reviewTemplates }: MembersTableProps) {
     const router = useRouter()
 
     if (clients.length === 0) {
@@ -114,6 +118,7 @@ export function MembersTable({ clients, statusFilter, coachId, formTemplates }: 
                             client={client}
                             coachId={coachId}
                             formTemplates={formTemplates}
+                            reviewTemplates={reviewTemplates}
                             onUpdate={() => router.refresh()}
                         />
                     ))}
@@ -127,17 +132,20 @@ function ClientRow({
     client,
     coachId,
     formTemplates,
+    reviewTemplates,
     onUpdate,
 }: {
     client: ClientWithMeta
     coachId: string
     formTemplates: FormTemplate[]
+    reviewTemplates?: ReviewTemplate[]
     onUpdate: () => void
 }) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
     const [reviewLinkModal, setReviewLinkModal] = useState<{ url: string } | null>(null)
+    const [scheduleSelector, setScheduleSelector] = useState<ClientReviewScheduleWithTemplate[] | null>(null)
     const [copied, setCopied] = useState(false)
     const { toast } = useToast()
 
@@ -200,14 +208,21 @@ function ClientRow({
         })
     }
 
-    const handleSendReview = () => {
+    const performSendReview = (scheduleId?: string) => {
         startTransition(async () => {
-            const result = await sendReviewAction(client.id, coachId)
+            const result = await sendReviewAction(client.id, coachId, scheduleId)
+
+            if (result.needsSelection) {
+                setScheduleSelector(result.needsSelection)
+                return
+            }
+
             if (result.success && result.form_url) {
                 toast({
                     title: 'Revisión enviada ✓',
                     description: `Revisión creada para ${client.full_name}`,
                 })
+                setScheduleSelector(null)
                 setReviewLinkModal({ url: result.form_url })
             } else {
                 toast({
@@ -218,6 +233,8 @@ function ClientRow({
             }
         })
     }
+
+    const handleSendReview = () => performSendReview()
 
     const handleCopyLink = async () => {
         if (!onboardingLinkModal) return
@@ -284,7 +301,7 @@ function ClientRow({
                 <TableCell>
                     {client.status === 'active' ? (
                         <div className="flex items-center gap-2">
-                            <span className="text-sm">{client.next_checkin_date}</span>
+                            <span className="text-sm">{client.effectiveNextCheckinDate ?? client.next_checkin_date}</span>
                             {getCheckinBadge()}
                         </div>
                     ) : (
@@ -401,9 +418,19 @@ function ClientRow({
             <EditClientModal
                 client={client}
                 formTemplates={formTemplates}
+                reviewTemplates={reviewTemplates}
                 open={editModalOpen}
                 onOpenChange={setEditModalOpen}
                 onSuccess={onUpdate}
+            />
+
+            <ReviewScheduleSelectorDialog
+                open={!!scheduleSelector}
+                onOpenChange={(v) => { if (!v) setScheduleSelector(null) }}
+                clientName={client.full_name}
+                schedules={scheduleSelector ?? []}
+                onSelect={(scheduleId) => performSendReview(scheduleId)}
+                isSending={isPending}
             />
 
             {/* Onboarding Link Modal */}

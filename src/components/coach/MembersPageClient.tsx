@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ClientWithMeta } from '@/types/coach'
 import { FormTemplate } from '@/types/forms'
-import { StatusFilter } from '@/data/members'
+import type { ReviewTemplate } from '@/data/review-templates'
+import type { StatusFilter } from '@/data/members'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,7 @@ interface MembersPageClientProps {
     initialStatusFilter: StatusFilter
     initialSearch: string
     formTemplates: FormTemplate[]
+    reviewTemplates?: ReviewTemplate[]
 }
 
 export function MembersPageClient({
@@ -27,6 +29,7 @@ export function MembersPageClient({
     initialStatusFilter,
     initialSearch,
     formTemplates,
+    reviewTemplates,
 }: MembersPageClientProps) {
     const router = useRouter()
     const [search, setSearch] = useState(initialSearch)
@@ -105,7 +108,7 @@ export function MembersPageClient({
             </Card>
 
             {/* Table */}
-            <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} formTemplates={formTemplates} />
+            <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} formTemplates={formTemplates} reviewTemplates={reviewTemplates} />
         </div>
     )
 }

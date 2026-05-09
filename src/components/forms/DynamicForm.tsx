@@ -53,9 +53,34 @@ interface DynamicFormProps {
     clientId: string
     metrics?: MetricDefinition[]
     initialValues?: Record<string, unknown>
+    embedded?: boolean
+    redirectOnOnboarding?: boolean
+    onSubmitted?: (result: { isOnboarding: boolean }) => void
+    /**
+     * Configuración de fotos según la plantilla de revisión.
+     * Si no se pasa, se usa la lógica legacy: bloque visible si el schema incluye `photo_upload`.
+     */
+    photoConfig?: {
+        enabled: boolean
+        required: boolean
+        maxItems: number
+    } | null
 }
 
-export function DynamicForm({ checkinId, templateTitle, templateType, schema, coachId, clientId, metrics = [], initialValues }: DynamicFormProps) {
+export function DynamicForm({
+    checkinId,
+    templateTitle,
+    templateType,
+    schema,
+    coachId,
+    clientId,
+    metrics = [],
+    initialValues,
+    embedded = false,
+    redirectOnOnboarding = true,
+    onSubmitted,
+    photoConfig,
+}: DynamicFormProps) {
     const router = useRouter()
     const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {})
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -63,6 +88,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
     const [submitted, setSubmitted] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
     const [isOnboarding, setIsOnboarding] = useState(false)
+    const [photoCount, setPhotoCount] = useState(0)
 
     const setValue = useCallback((fieldId: string, value: unknown) => {
         setValues(prev => ({ ...prev, [fieldId]: value }))
@@ -126,6 +152,11 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
             }
         }
 
+        const requiresPhotos = photoConfig?.enabled && photoConfig.required
+        if (requiresPhotos && photoCount === 0) {
+            newErrors.__photos = 'Sube al menos una foto de progreso'
+        }
+
         setErrors(newErrors)
         return Object.keys(newErrors).length === 0
     }
@@ -165,9 +196,10 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
             if (result.success) {
                 setSubmitted(true)
                 setIsOnboarding(!!result.isOnboarding)
+                onSubmitted?.({ isOnboarding: !!result.isOnboarding })
 
                 // Redirect to client dashboard after onboarding
-                if (result.isOnboarding) {
+                if (result.isOnboarding && redirectOnOnboarding) {
                     setTimeout(() => {
                         router.push('/planning')
                     }, 2000)
@@ -184,7 +216,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
 
     if (submitted) {
         return (
-            <Card className="max-w-xl mx-auto p-8 text-center space-y-4">
+            <Card className={`${embedded ? 'p-6' : 'max-w-xl mx-auto p-8'} text-center space-y-4`}>
                 <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
                     <CheckCircle2 className="h-8 w-8 text-success" />
                 </div>
@@ -203,6 +235,11 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
                         Redirigiendo...
                     </div>
                 )}
+                {embedded && !isOnboarding && (
+                    <p className="text-xs text-muted-foreground">
+                        Puedes cerrar esta ventana o volver a editar la revision mas adelante.
+                    </p>
+                )}
             </Card>
         )
     }
@@ -210,10 +247,10 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
     const typeLabel = templateType === 'onboarding' ? 'Onboarding' : templateType === 'checkin' ? 'Revisión' : 'Formulario'
 
     return (
-        <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-6">
+        <form onSubmit={handleSubmit} className={`${embedded ? 'space-y-5' : 'max-w-xl mx-auto space-y-6'}`}>
             <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold">{templateTitle}</h1>
+                    <h1 className={`${embedded ? 'text-xl' : 'text-2xl'} font-bold`}>{templateTitle}</h1>
                     <Badge variant="outline">{typeLabel}</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -267,15 +304,30 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
                 )}
             </div>
 
-            {/* Photo upload block — renders independently of form submit */}
-            {schema.some((f) => f.type === 'photo_upload') && (
-                <PhotoUploadBlock
-                    checkinId={checkinId}
-                    coachId={coachId}
-                    clientId={clientId}
-                    maxItems={schema.find((f) => f.type === 'photo_upload')?.maxItems ?? 6}
-                />
-            )}
+            {/* Photo upload block — renders independently of form submit.
+                Si photoConfig viene definido, manda él (Fase 6+). Si no, lógica legacy. */}
+            {(() => {
+                const showPhotos = photoConfig
+                    ? photoConfig.enabled
+                    : schema.some((f) => f.type === 'photo_upload')
+                if (!showPhotos) return null
+
+                const maxItems = photoConfig
+                    ? photoConfig.maxItems
+                    : (schema.find((f) => f.type === 'photo_upload')?.maxItems ?? 6)
+
+                return (
+                    <PhotoUploadBlock
+                        checkinId={checkinId}
+                        coachId={coachId}
+                        clientId={clientId}
+                        maxItems={maxItems}
+                        required={photoConfig?.required ?? false}
+                        error={errors.__photos}
+                        onCountChange={setPhotoCount}
+                    />
+                )
+            })()}
 
             {submitError && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
@@ -285,7 +337,7 @@ export function DynamicForm({ checkinId, templateTitle, templateType, schema, co
 
             <Button type="submit" className="w-full" size="lg" disabled={submitting}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Enviar respuestas
+                {templateType === 'checkin' ? 'Enviar revision' : 'Enviar respuestas'}
             </Button>
         </form>
     )

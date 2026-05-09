@@ -244,8 +244,8 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
             <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                            <Utensils className="h-5 w-5 text-accent" />
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <Utensils className="h-5 w-5 text-primary" />
                         </div>
                         <div>
                             <h1 className="text-lg font-bold text-foreground">Dieta</h1>
@@ -256,10 +256,10 @@ export function DietPageClient({ macroPlan, dietPlan, supplements }: DietPageCli
             </header>
 
             <Tabs defaultValue={defaultTab} className="px-4 pt-4">
-                <TabsList className="w-full grid grid-cols-3 mb-4">
-                    <TabsTrigger value="macros">Macros</TabsTrigger>
-                    <TabsTrigger value="meals">Plan de comidas</TabsTrigger>
-                    <TabsTrigger value="supplements">Suplementos</TabsTrigger>
+                <TabsList className="w-full mb-4">
+                    <TabsTrigger value="macros" className="flex-1">Macros</TabsTrigger>
+                    <TabsTrigger value="meals" className="flex-1">Comidas</TabsTrigger>
+                    <TabsTrigger value="supplements" className="flex-1">Suplementos</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="macros" className="space-y-4 animate-fade-in">

@@ -53,7 +53,7 @@ async function getClientContext() {
         const { data: client, error: clientError } = await supabase
             .from('clients')
             .select('id, coach_id')
-            .eq('auth_user_id', user.id)
+            .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
             .eq('status', 'active')
             .maybeSingle()
 

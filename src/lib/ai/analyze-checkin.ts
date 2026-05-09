@@ -71,6 +71,26 @@ async function buildContext(checkinId: string) {
         throw new Error('Revisión no encontrada')
     }
 
+    // Cargar la plantilla de revisión asociada (si existe).
+    // Permite a la IA saber qué tipo de revisión está analizando.
+    let reviewTemplate: {
+        name: string
+        review_type: string
+        default_frequency_days: number
+        include_body_metrics: boolean
+        include_performance_metrics: boolean
+        include_general_metrics: boolean
+        include_progress_photos: boolean
+    } | null = null
+    if (checkin.review_template_id) {
+        const { data: rt } = await supabase
+            .from('review_templates')
+            .select('name, review_type, default_frequency_days, include_body_metrics, include_performance_metrics, include_general_metrics, include_progress_photos')
+            .eq('id', checkin.review_template_id)
+            .maybeSingle()
+        if (rt) reviewTemplate = rt
+    }
+
     const clientId = checkin.client_id
     const coachId = checkin.coach_id
     const today = new Date().toISOString().split('T')[0]
@@ -148,6 +168,7 @@ async function buildContext(checkinId: string) {
 
     return {
         checkin,
+        reviewTemplate,
         previousCheckin: previousCheckinResult.data?.[0] ?? null,
         metricHistory: (metricHistoryResult.data ?? []) as RecentMetricRow[],
         macroPlan: macroPlanResult.data ?? null,
@@ -335,9 +356,29 @@ function buildPrompt(ctx: Awaited<ReturnType<typeof buildContext>>) {
         ctx.metricDefs
     )
 
+    const rt = ctx.reviewTemplate
+    const reviewTypeBlock = rt
+        ? `## Tipo de revisión
+Plantilla: ${rt.name}
+Tipo: ${rt.review_type}
+Frecuencia configurada: cada ${rt.default_frequency_days} días
+Esta plantilla solicita:
+- Métricas corporales: ${rt.include_body_metrics ? 'SÍ' : 'NO'}
+- Métricas de rendimiento: ${rt.include_performance_metrics ? 'SÍ' : 'NO'}
+- Métricas generales: ${rt.include_general_metrics ? 'SÍ' : 'NO'}
+- Fotos de progreso: ${rt.include_progress_photos ? 'SÍ' : 'NO'}
+
+IMPORTANTE: si esta plantilla NO solicita un tipo de dato (por ejemplo, "Métricas corporales: NO"), NO interpretes la ausencia de esos datos como un problema, una omisión del atleta, ni señales de alarma. Es por diseño. Por ejemplo, en una revisión semanal de runner es esperable que no haya medidas corporales ni fotos. Centra el análisis en los datos que SÍ se solicitan en esta revisión.
+
+`
+        : `## Tipo de revisión
+Revisión legacy (sin plantilla específica). Asumir formato completo: pueden existir métricas corporales, de rendimiento, fotos y formulario completo.
+
+`
+
     return `Eres el assistant del coach dentro de una plataforma de entrenamiento y nutricion. Analiza la revisión del atleta como lo haria un asistente experto que prepara una revision para el entrenador.
 
-## Revisión actual
+${reviewTypeBlock}## Revisión actual
 Fecha envio: ${ctx.checkin.submitted_at ? new Date(ctx.checkin.submitted_at).toLocaleDateString('es-ES') : 'Desconocida'}
 Periodo: ${ctx.checkin.period_start ?? '—'} -> ${ctx.checkin.period_end ?? '—'}
 Adherencia entrenamiento: ${ctx.checkin.training_adherence_pct != null ? `${ctx.checkin.training_adherence_pct}%` : 'No reportada'}

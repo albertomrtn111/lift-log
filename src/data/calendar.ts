@@ -14,6 +14,7 @@ type ClientRecord = {
 type CheckinRecord = {
     id: string
     client_id: string
+    review_schedule_id: string | null
     submitted_at: string | null
     created_at: string
     period_end: string | null
@@ -55,6 +56,14 @@ type CoachTaskRecord = {
     created_at: string
     updated_at: string
     completed_at: string | null
+}
+
+type ScheduleRecord = {
+    id: string
+    client_id: string
+    next_due_date: string | null
+    is_active: boolean
+    review_template: { name: string } | null
 }
 
 interface CalendarRangeInput {
@@ -205,6 +214,45 @@ function getCheckinDueDate(checkin: CheckinRecord, client: ClientRecord): string
     return checkin.period_end || client.next_checkin_date || checkin.created_at.split('T')[0]
 }
 
+function buildScheduledEventFromSchedule(
+    client: ClientRecord,
+    schedule: ScheduleRecord,
+    today: string
+): CalendarEvent | null {
+    const dueDate = schedule.next_due_date
+    if (!dueDate) return null
+
+    const status: CalendarEvent['status'] = dueDate < today ? 'missing' : 'scheduled'
+
+    return {
+        id: `scheduled-schedule-${schedule.id}-${dueDate}`,
+        clientId: client.id,
+        clientName: client.full_name,
+        date: dueDate,
+        type: 'checkin',
+        isUrgent: status === 'missing',
+        projected: false,
+        status,
+        checkinId: undefined,
+        reviewId: undefined,
+        reviewStatus: null,
+        checkinStatus: null,
+        submittedAt: null,
+        expectedDate: dueDate,
+        source: 'scheduled',
+        checkinSource: null,
+        weightKg: null,
+        trainingAdherencePct: null,
+        nutritionAdherencePct: null,
+        sleepAvgH: null,
+        aiStatus: null,
+        rawMetricCount: 0,
+        rawResponseCount: 0,
+        reviewTemplateName: schedule.review_template?.name ?? null,
+        reviewScheduleId: schedule.id,
+    }
+}
+
 function mapCalendarNote(
     note: CalendarNoteRecord,
     clientName: string | null
@@ -271,11 +319,26 @@ export async function getCalendarData(
         .map((client) => ({ id: client.id, name: client.full_name }))
         .sort((left, right) => left.name.localeCompare(right.name, 'es'))
 
+    // Fetch active schedules — un evento por schedule, no por cliente
+    const { data: schedulesData } = await supabase
+        .from('client_review_schedules')
+        .select('id, client_id, next_due_date, is_active, review_template:review_templates(name)')
+        .eq('coach_id', coachId)
+        .eq('is_active', true)
+
+    const schedulesByClient = new Map<string, ScheduleRecord[]>()
+    for (const s of (schedulesData ?? []) as unknown as ScheduleRecord[]) {
+        const list = schedulesByClient.get(s.client_id) ?? []
+        list.push(s)
+        schedulesByClient.set(s.client_id, list)
+    }
+
     const { data: submittedCheckins } = await supabase
         .from('checkins')
         .select(`
             id,
             client_id,
+            review_schedule_id,
             submitted_at,
             created_at,
             period_end,
@@ -299,6 +362,7 @@ export async function getCalendarData(
         .select(`
             id,
             client_id,
+            review_schedule_id,
             submitted_at,
             created_at,
             period_end,
@@ -366,9 +430,18 @@ export async function getCalendarData(
     }
 
     const latestPendingByClient = new Map<string, CheckinRecord>()
+    const latestPendingBySchedule = new Map<string, CheckinRecord>()
     for (const checkin of filteredPendingCheckins) {
         const client = activeClientById.get(checkin.client_id)
         if (!client) continue
+
+        if (checkin.review_schedule_id) {
+            if (!latestPendingBySchedule.has(checkin.review_schedule_id)) {
+                latestPendingBySchedule.set(checkin.review_schedule_id, checkin)
+            }
+            continue
+        }
+
         const dueDate = getCheckinDueDate(checkin, client)
         if (dueDate !== client.next_checkin_date) continue
         if (!latestPendingByClient.has(checkin.client_id)) {
@@ -387,6 +460,45 @@ export async function getCalendarData(
     }
 
     for (const client of activeClients) {
+        const clientSchedules = schedulesByClient.get(client.id) ?? []
+
+        if (clientSchedules.length > 0) {
+            // Modelo nuevo: un evento por schedule activo del cliente
+            for (const schedule of clientSchedules) {
+                const pendingCheckin = latestPendingBySchedule.get(schedule.id)
+                if (pendingCheckin) {
+                    const pendingDueDate = getCheckinDueDate(pendingCheckin, client)
+                    if (pendingDueDate >= range.startDate && pendingDueDate <= range.endDate) {
+                        const event = buildScheduledEvent(pendingCheckin, client, today)
+                        event.reviewTemplateName = schedule.review_template?.name ?? null
+                        event.reviewScheduleId = schedule.id
+                        events.push(event)
+                    }
+                    continue
+                }
+
+                const dueDate = schedule.next_due_date
+                if (!dueDate) continue
+                if (dueDate < range.startDate || dueDate > range.endDate) continue
+                if (client.start_date && dueDate < client.start_date) continue
+
+                const event = buildScheduledEventFromSchedule(client, schedule, today)
+                if (event) events.push(event)
+            }
+
+            // Si además hay un pending checkin "huérfano" para este cliente
+            // (sin review_schedule_id), también lo emitimos para no perder visibilidad
+            const pendingCheckin = latestPendingByClient.get(client.id)
+            if (pendingCheckin && client.next_checkin_date && !currentSubmittedDatesByClient.has(client.id)) {
+                const dueDate = pendingCheckin.period_end || client.next_checkin_date
+                if (dueDate >= range.startDate && dueDate <= range.endDate) {
+                    events.push(buildScheduledEvent(pendingCheckin, client, today))
+                }
+            }
+            continue
+        }
+
+        // Fallback legacy: cliente sin schedules → next_checkin_date del cliente
         const dueDate = client.next_checkin_date
         if (!dueDate) continue
         if (dueDate < range.startDate || dueDate > range.endDate) continue
@@ -485,7 +597,53 @@ export async function getUpcomingCheckins(
     const today = toLocalDateStr(new Date())
     const endDate = toLocalDateStr(new Date(Date.now() + days * 24 * 60 * 60 * 1000))
 
-    const { data, error } = await supabase
+    // 1) Schedules activos en rango (modelo nuevo)
+    const { data: schedules } = await supabase
+        .from('client_review_schedules')
+        .select(`
+            id,
+            next_due_date,
+            client:clients!inner ( id, full_name, status ),
+            review_template:review_templates ( name )
+        `)
+        .eq('coach_id', coachId)
+        .eq('is_active', true)
+        .gte('next_due_date', today)
+        .lte('next_due_date', endDate)
+        .order('next_due_date', { ascending: true })
+
+    type Row = {
+        id: string
+        next_due_date: string
+        client: { id: string; full_name: string; status: string } | null
+        review_template: { name: string } | null
+    }
+
+    const todayDate = new Date()
+    const events: CalendarEvent[] = []
+    const clientsWithSchedules = new Set<string>()
+
+    for (const row of (schedules ?? []) as unknown as Row[]) {
+        if (!row.client || row.client.status !== 'active') continue
+        clientsWithSchedules.add(row.client.id)
+        events.push({
+            id: `scheduled-schedule-${row.id}`,
+            clientId: row.client.id,
+            clientName: row.client.full_name,
+            date: row.next_due_date,
+            type: 'checkin' as const,
+            isUrgent: Math.ceil((parseLocalDate(row.next_due_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
+            status: 'scheduled' as const,
+            projected: false,
+            expectedDate: row.next_due_date,
+            source: 'scheduled' as const,
+            reviewTemplateName: row.review_template?.name ?? null,
+            reviewScheduleId: row.id,
+        })
+    }
+
+    // 2) Fallback legacy: clientes sin schedules → leer next_checkin_date
+    const { data: legacyClients } = await supabase
         .from('clients')
         .select('id, full_name, next_checkin_date, status')
         .eq('coach_id', coachId)
@@ -494,20 +652,23 @@ export async function getUpcomingCheckins(
         .lte('next_checkin_date', endDate)
         .order('next_checkin_date', { ascending: true })
 
-    if (error || !data) return []
+    for (const client of legacyClients ?? []) {
+        if (clientsWithSchedules.has(client.id)) continue
+        if (!client.next_checkin_date) continue
 
-    const todayDate = new Date()
+        events.push({
+            id: `scheduled-client-${client.id}`,
+            clientId: client.id,
+            clientName: client.full_name,
+            date: client.next_checkin_date,
+            type: 'checkin' as const,
+            isUrgent: Math.ceil((parseLocalDate(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
+            status: 'scheduled' as const,
+            projected: false,
+            expectedDate: client.next_checkin_date,
+            source: 'scheduled' as const,
+        })
+    }
 
-    return data.map((client) => ({
-        id: `scheduled-client-${client.id}`,
-        clientId: client.id,
-        clientName: client.full_name,
-        date: client.next_checkin_date,
-        type: 'checkin' as const,
-        isUrgent: Math.ceil((parseLocalDate(client.next_checkin_date).getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)) <= 2,
-        status: 'scheduled' as const,
-        projected: false,
-        expectedDate: client.next_checkin_date,
-        source: 'scheduled' as const,
-    }))
+    return events.sort((a, b) => a.date.localeCompare(b.date))
 }

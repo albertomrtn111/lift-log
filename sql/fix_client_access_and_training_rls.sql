@@ -1,5 +1,5 @@
 -- FIX CLIENT ACCESS AND TRAINING RLS POLICIES
--- Objective: Ensure clients can see their own records and training data via user_id join.
+-- Objective: Ensure clients can see their own records and training data via user_id/auth_user_id joins.
 
 BEGIN;
 
@@ -10,7 +10,7 @@ CREATE POLICY "clients_select_self"
 ON public.clients
 FOR SELECT
 TO authenticated
-USING (user_id = auth.uid());
+USING (user_id = auth.uid() OR auth_user_id = auth.uid());
 
 -- Opcional: permitir UPDATE limitado del cliente (ej. nombre)
 DROP POLICY IF EXISTS "clients_update_self" ON public.clients;
@@ -18,8 +18,8 @@ CREATE POLICY "clients_update_self"
 ON public.clients
 FOR UPDATE
 TO authenticated
-USING (user_id = auth.uid())
-WITH CHECK (user_id = auth.uid());
+USING (user_id = auth.uid() OR auth_user_id = auth.uid())
+WITH CHECK (user_id = auth.uid() OR auth_user_id = auth.uid());
 
 
 -- 2. FIX: training_programs RLS
@@ -33,7 +33,7 @@ USING (
     EXISTS (
         SELECT 1 FROM public.clients c 
         WHERE c.id = public.training_programs.client_id 
-        AND c.user_id = auth.uid() 
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
     )
 );
@@ -50,7 +50,7 @@ USING (
         SELECT 1 FROM public.training_programs tp
         JOIN public.clients c ON c.id = tp.client_id
         WHERE tp.id = public.training_days.program_id 
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
     )
 );
@@ -67,7 +67,7 @@ USING (
         SELECT 1 FROM public.training_programs tp
         JOIN public.clients c ON c.id = tp.client_id
         WHERE tp.id = public.training_columns.program_id 
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
     )
 );
@@ -84,7 +84,7 @@ USING (
         SELECT 1 FROM public.training_programs tp
         JOIN public.clients c ON c.id = tp.client_id
         WHERE tp.id = public.training_exercises.program_id 
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
     )
 );
@@ -102,7 +102,7 @@ USING (
         SELECT 1 FROM public.training_programs tp
         JOIN public.clients c ON c.id = tp.client_id
         WHERE tp.id = public.training_cells.program_id 
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
     )
 );
@@ -120,7 +120,7 @@ USING (
         JOIN public.training_columns tc ON tc.program_id = tp.id
         WHERE tp.id = public.training_cells.program_id 
         AND tc.id = public.training_cells.column_id
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
         AND (tc.editable_by = 'client' OR tc.editable_by = 'both')
     )
@@ -132,7 +132,7 @@ WITH CHECK (
         JOIN public.training_columns tc ON tc.program_id = tp.id
         WHERE tp.id = public.training_cells.program_id 
         AND tc.id = public.training_cells.column_id
-        AND c.user_id = auth.uid()
+        AND (c.user_id = auth.uid() OR c.auth_user_id = auth.uid())
         AND c.status = 'active'
         AND (tc.editable_by = 'client' OR tc.editable_by = 'both')
     )

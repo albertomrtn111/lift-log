@@ -21,8 +21,9 @@ async function getCurrentClientId(): Promise<string | null> {
     const { data: client } = await supabase
         .from('clients')
         .select('id')
-        .eq('user_id', user.id)
-        .single()
+        .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
+        .eq('status', 'active')
+        .maybeSingle()
     return client?.id ?? null
 }
 

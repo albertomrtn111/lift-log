@@ -16,6 +16,40 @@ export interface ProgramSummary {
 
 export type MetricsRange = '7d' | '14d' | '30d' | '3m' | '6m' | '1y'
 
+export interface ClientCardioWeekData {
+    weekStart: string
+    weekLabel: string
+    tooltipLabel: string
+    distanceKm: number
+    durationMin: number
+    sessionsCount: number
+    plannedDistanceKm: number
+    plannedDurationMin: number
+    plannedSessionsCount: number
+}
+
+export interface ClientCardioSessionProgress {
+    id: string
+    scheduledDate: string
+    title: string
+    trainingType: string | null
+    targetDistanceKm: number | null
+    targetDurationMin: number | null
+    actualDistanceKm: number | null
+    actualDurationMin: number | null
+    isCompleted: boolean
+    completionStatus: 'completed' | 'partial' | 'not_completed'
+}
+
+export interface ClientCardioProgressData {
+    weeks: ClientCardioWeekData[]
+    sessions: ClientCardioSessionProgress[]
+    totalDistanceKm: number
+    totalDurationMin: number
+    totalSessions: number
+    completedSessions: number
+}
+
 // Helper to get current client
 async function getClientContext() {
     const supabase = await createClient()
@@ -23,12 +57,13 @@ async function getClientContext() {
 
     if (!user) return null
 
-    const { data: client } = await supabase
+    const admin = createAdminClient()
+    const { data: client } = await admin
         .from('clients')
         .select('id')
-        .eq('user_id', user.id)
+        .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
         .eq('status', 'active')
-        .single()
+        .maybeSingle()
 
     return client
 }
@@ -54,6 +89,31 @@ function hasSetProgress(set: any) {
         set.reps !== null && set.reps !== undefined ||
         set.rir !== null && set.rir !== undefined ||
         Boolean(set.notes)
+}
+
+function getRangeStart(range: MetricsRange) {
+    const today = new Date()
+    switch (range) {
+        case '7d': return subDays(today, 7)
+        case '14d': return subDays(today, 14)
+        case '30d': return subDays(today, 30)
+        case '3m': return subDays(today, 90)
+        case '6m': return subDays(today, 180)
+        case '1y': return subDays(today, 365)
+    }
+}
+
+function toNullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+}
+
+function startOfWeek(date: Date) {
+    const d = new Date(date)
+    const diffToMonday = (d.getDay() + 6) % 7
+    d.setDate(d.getDate() - diffToMonday)
+    return d
 }
 
 export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary | null> {
@@ -147,16 +207,7 @@ export async function getWeightSeries(range: MetricsRange) {
     const supabase = createAdminClient()
 
     const today = new Date()
-    let startDate = new Date()
-
-    switch (range) {
-        case '7d': startDate = subDays(today, 7); break;
-        case '14d': startDate = subDays(today, 14); break;
-        case '30d': startDate = subDays(today, 30); break;
-        case '3m': startDate = subDays(today, 90); break;
-        case '6m': startDate = subDays(today, 180); break;
-        case '1y': startDate = subDays(today, 365); break;
-    }
+    const startDate = getRangeStart(range)
 
     const { data } = await supabase
         .from('client_metrics')
@@ -195,16 +246,16 @@ export async function getMacroAdherence(range: MetricsRange) {
     const supabase = createAdminClient()
 
     const today = new Date()
-    let startDate = new Date()
+    const startDate = getRangeStart(range)
     let totalDays = 0
 
     switch (range) {
-        case '7d': startDate = subDays(today, 7); totalDays = 7; break;
-        case '14d': startDate = subDays(today, 14); totalDays = 14; break;
-        case '30d': startDate = subDays(today, 30); totalDays = 30; break;
-        case '3m': startDate = subDays(today, 90); totalDays = 90; break;
-        case '6m': startDate = subDays(today, 180); totalDays = 180; break;
-        case '1y': startDate = subDays(today, 365); totalDays = 365; break;
+        case '7d': totalDays = 7; break;
+        case '14d': totalDays = 14; break;
+        case '30d': totalDays = 30; break;
+        case '3m': totalDays = 90; break;
+        case '6m': totalDays = 180; break;
+        case '1y': totalDays = 365; break;
     }
 
     const { data } = await supabase
@@ -264,5 +315,131 @@ export async function getMacroAdherence(range: MetricsRange) {
         // UI mockup had "4/5 días esta semana".
         // So let's return { percent: avg, days: data.length, totalDays: totalDays }
         // And UI can decide.
+    }
+}
+
+export async function getClientCardioProgress(range: MetricsRange): Promise<ClientCardioProgressData> {
+    const empty: ClientCardioProgressData = {
+        weeks: [],
+        sessions: [],
+        totalDistanceKm: 0,
+        totalDurationMin: 0,
+        totalSessions: 0,
+        completedSessions: 0,
+    }
+
+    const client = await getClientContext()
+    if (!client) return empty
+
+    const supabase = createAdminClient()
+    const today = new Date()
+    const startDate = getRangeStart(range)
+    const startStr = format(startDate, 'yyyy-MM-dd')
+    const endStr = format(today, 'yyyy-MM-dd')
+
+    const { data: sessions, error } = await supabase
+        .from('cardio_sessions')
+        .select(`
+            id,
+            scheduled_date,
+            name,
+            activity_type,
+            training_type,
+            target_distance_km,
+            target_duration_min,
+            structure,
+            is_completed,
+            actual_distance_km,
+            actual_duration_min
+        `)
+        .eq('client_id', client.id)
+        .gte('scheduled_date', startStr)
+        .lte('scheduled_date', endStr)
+        .order('scheduled_date', { ascending: true })
+
+    if (error) {
+        console.error('[getClientCardioProgress]', error.message)
+        return empty
+    }
+
+    const weekMap = new Map<string, ClientCardioWeekData>()
+    const cursor = startOfWeek(new Date(`${startStr}T12:00:00`))
+    const end = new Date(`${endStr}T12:00:00`)
+
+    while (cursor <= end) {
+        const key = format(cursor, 'yyyy-MM-dd')
+        const weekEnd = new Date(cursor)
+        weekEnd.setDate(weekEnd.getDate() + 6)
+
+        weekMap.set(key, {
+            weekStart: key,
+            weekLabel: cursor.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
+            tooltipLabel: `${cursor.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`,
+            distanceKm: 0,
+            durationMin: 0,
+            sessionsCount: 0,
+            plannedDistanceKm: 0,
+            plannedDurationMin: 0,
+            plannedSessionsCount: 0,
+        })
+
+        cursor.setDate(cursor.getDate() + 7)
+    }
+
+    const detailedSessions: ClientCardioSessionProgress[] = []
+
+    for (const session of sessions || []) {
+        const scheduledDate = session.scheduled_date
+        const sessionDate = startOfWeek(new Date(`${scheduledDate}T12:00:00`))
+        const weekKey = format(sessionDate, 'yyyy-MM-dd')
+        const targetDistanceKm = toNullableNumber(session.target_distance_km)
+        const targetDurationMin = toNullableNumber(session.target_duration_min)
+        const actualDistanceKm = toNullableNumber(session.actual_distance_km)
+        const actualDurationMin = toNullableNumber(session.actual_duration_min)
+        const hasActualWork = (actualDistanceKm ?? 0) > 0 || (actualDurationMin ?? 0) > 0
+        const completionStatus = session.is_completed
+            ? 'completed'
+            : hasActualWork
+                ? 'partial'
+                : 'not_completed'
+
+        const week = weekMap.get(weekKey)
+        if (week) {
+            week.plannedSessionsCount += 1
+            week.plannedDistanceKm += targetDistanceKm ?? 0
+            week.plannedDurationMin += targetDurationMin ?? 0
+
+            if (hasActualWork || session.is_completed) {
+                week.sessionsCount += 1
+                week.distanceKm += actualDistanceKm ?? 0
+                week.durationMin += actualDurationMin ?? 0
+            }
+        }
+
+        detailedSessions.push({
+            id: session.id,
+            scheduledDate,
+            title: session.name || session.structure?.trainingType || session.training_type || session.activity_type || 'Cardio',
+            trainingType: session.structure?.trainingType || session.training_type || session.activity_type || null,
+            targetDistanceKm,
+            targetDurationMin,
+            actualDistanceKm,
+            actualDurationMin,
+            isCompleted: Boolean(session.is_completed),
+            completionStatus,
+        })
+    }
+
+    const weeks = Array.from(weekMap.values())
+    const totalDistanceKm = weeks.reduce((sum, week) => sum + week.distanceKm, 0)
+    const totalDurationMin = weeks.reduce((sum, week) => sum + week.durationMin, 0)
+
+    return {
+        weeks,
+        sessions: detailedSessions.sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate)),
+        totalDistanceKm,
+        totalDurationMin,
+        totalSessions: detailedSessions.length,
+        completedSessions: detailedSessions.filter((session) => session.completionStatus === 'completed').length,
     }
 }

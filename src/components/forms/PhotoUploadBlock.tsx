@@ -24,6 +24,9 @@ interface PhotoUploadBlockProps {
     coachId: string
     clientId: string
     maxItems?: number
+    required?: boolean
+    error?: string
+    onCountChange?: (count: number) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +38,9 @@ export function PhotoUploadBlock({
     coachId,
     clientId,
     maxItems = 6,
+    required = false,
+    error: externalError,
+    onCountChange,
 }: PhotoUploadBlockProps) {
     const supabase = createClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -68,6 +74,10 @@ export function PhotoUploadBlock({
     useEffect(() => {
         fetchPhotos().finally(() => setLoading(false))
     }, [fetchPhotos])
+
+    useEffect(() => {
+        onCountChange?.(photos.length)
+    }, [onCountChange, photos.length])
 
     // -----------------------------------------------------------------------
     // Upload
@@ -197,6 +207,7 @@ export function PhotoUploadBlock({
                 <div className="flex items-center gap-2">
                     <Camera className="h-5 w-5 text-blue-400" />
                     <h3 className="font-medium">Fotos de progreso</h3>
+                    {required && <span className="text-destructive">*</span>}
                     <Badge variant="outline" className="text-xs">
                         {photos.length}/{maxItems}
                     </Badge>
@@ -208,10 +219,10 @@ export function PhotoUploadBlock({
             </p>
 
             {/* Error */}
-            {error && (
+            {(error || externalError) && (
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded-md">
                     <AlertCircle className="h-4 w-4 shrink-0" />
-                    {error}
+                    {error || externalError}
                 </div>
             )}
 

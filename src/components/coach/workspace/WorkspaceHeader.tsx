@@ -41,6 +41,9 @@ import { resendInviteAction } from '../invite-actions'
 import { sendOnboardingAction } from '../onboarding-actions'
 import { sendReviewAction } from '../review-actions'
 import { EditClientModal } from '../EditClientModal'
+import { ReviewScheduleSelectorDialog } from '../ReviewScheduleSelectorDialog'
+import type { ReviewTemplate } from '@/data/review-templates'
+import type { ClientReviewScheduleWithTemplate } from '@/data/review-schedules'
 import { useToast } from '@/hooks/use-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -51,14 +54,16 @@ interface WorkspaceHeaderProps {
     clientStatus: ClientStatus | null
     coachId: string
     formTemplates: FormTemplate[]
+    reviewTemplates?: ReviewTemplate[]
     onClientUpdated: () => void
 }
 
-export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, onClientUpdated }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, reviewTemplates, onClientUpdated }: WorkspaceHeaderProps) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
     const [reviewLinkModal, setReviewLinkModal] = useState<{ url: string } | null>(null)
+    const [scheduleSelector, setScheduleSelector] = useState<ClientReviewScheduleWithTemplate[] | null>(null)
     const [copied, setCopied] = useState(false)
     const { displayName, initials } = getClientDisplayIdentity(client)
     const { toast } = useToast()
@@ -114,14 +119,21 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
         })
     }
 
-    const handleSendReview = () => {
+    const performSendReview = (scheduleId?: string) => {
         startTransition(async () => {
-            const result = await sendReviewAction(client.id, coachId)
+            const result = await sendReviewAction(client.id, coachId, scheduleId)
+
+            if (result.needsSelection) {
+                setScheduleSelector(result.needsSelection)
+                return
+            }
+
             if (result.success && result.form_url) {
                 toast({
                     title: 'Revisión enviada ✓',
                     description: `Revisión creada para ${client.full_name}`,
                 })
+                setScheduleSelector(null)
                 setReviewLinkModal({ url: result.form_url })
             } else {
                 toast({
@@ -132,6 +144,8 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
             }
         })
     }
+
+    const handleSendReview = () => performSendReview()
 
     const handleCopyOnboardingLink = async () => {
         if (!onboardingLinkModal) return
@@ -155,9 +169,11 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
         }
     }
 
-    // Format next_checkin_date
-    const formattedCheckinDate = client.next_checkin_date
-        ? format(parseLocalDate(client.next_checkin_date), "EEE d 'de' MMM", { locale: es })
+    // Format next checkin date — prioriza la fecha schedule-aware de clientStatus
+    // (incluye el modelo nuevo de plantillas) y cae al legacy si no hay clientStatus.
+    const effectiveCheckinDate = clientStatus?.nextCheckinDate ?? client.next_checkin_date
+    const formattedCheckinDate = effectiveCheckinDate
+        ? format(parseLocalDate(effectiveCheckinDate), "EEE d 'de' MMM", { locale: es })
         : null
 
     return (
@@ -298,9 +314,19 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                 </div>
             </Card>
 
+            <ReviewScheduleSelectorDialog
+                open={!!scheduleSelector}
+                onOpenChange={(v) => { if (!v) setScheduleSelector(null) }}
+                clientName={client.full_name}
+                schedules={scheduleSelector ?? []}
+                onSelect={(scheduleId) => performSendReview(scheduleId)}
+                isSending={isPending}
+            />
+
             <EditClientModal
                 client={client}
                 formTemplates={formTemplates}
+                reviewTemplates={reviewTemplates}
                 open={editModalOpen}
                 onOpenChange={setEditModalOpen}
                 onSuccess={onClientUpdated}

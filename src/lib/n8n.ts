@@ -151,8 +151,16 @@ export async function sendReviewEmail(params: {
     checkinId?: string
     formTemplateId?: string
     formUrl?: string
+    /**
+     * Campos opcionales del nuevo modelo de plantillas de revisión.
+     * El flow legacy de n8n los ignora; los flows nuevos pueden usarlos
+     * para diferenciar asunto/template del email según review_type.
+     */
+    reviewTemplateId?: string
+    reviewTemplateName?: string
+    reviewType?: string
 }): Promise<N8nResult> {
-    console.log(`[n8n] Sending review for client=${params.clientId} coach=${params.coachId}`)
+    console.log(`[n8n] Sending review for client=${params.clientId} coach=${params.coachId} reviewType=${params.reviewType ?? 'legacy'}`)
     const formUrl = normalizeFormUrl(params.formUrl)
 
     return callN8n(N8N_REVIEW_URL, {
@@ -163,5 +171,9 @@ export async function sendReviewEmail(params: {
         checkin_id: params.checkinId,
         form_template_id: params.formTemplateId,
         form_url: formUrl,
+        // Campos nuevos (aditivos, opcionales):
+        review_template_id: params.reviewTemplateId,
+        review_template_name: params.reviewTemplateName,
+        review_type: params.reviewType,
     })
 }

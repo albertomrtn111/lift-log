@@ -38,8 +38,9 @@ export function useClientNotifications() {
             const { data: clientRow } = await supabase
                 .from('clients')
                 .select('id')
-                .eq('user_id', user.id)
-                .single()
+                .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
+                .eq('status', 'active')
+                .maybeSingle()
             if (!clientRow) return
 
             channel = supabase

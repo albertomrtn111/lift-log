@@ -53,14 +53,43 @@ export async function getClients(options: ListClientsOptions): Promise<ClientWit
     }
 
     const today = new Date()
+    const clientList = data as Client[]
+    const clientIds = clientList.map(c => c.id)
 
-    return data.map((client: Client) => {
-        const nextCheckin = new Date(client.next_checkin_date)
-        const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    // Resolver "próxima revisión" desde schedules activos (modelo nuevo).
+    // Si un cliente no tiene schedules, usamos el legacy client.next_checkin_date.
+    const earliestDueByClient = new Map<string, string>()
+    if (clientIds.length > 0) {
+        const { data: schedules } = await supabase
+            .from('client_review_schedules')
+            .select('client_id, next_due_date')
+            .in('client_id', clientIds)
+            .eq('is_active', true)
+            .not('next_due_date', 'is', null)
+            .order('next_due_date', { ascending: true })
+
+        for (const row of (schedules ?? []) as { client_id: string; next_due_date: string }[]) {
+            if (!earliestDueByClient.has(row.client_id)) {
+                earliestDueByClient.set(row.client_id, row.next_due_date)
+            }
+        }
+    }
+
+    return clientList.map((client: Client) => {
+        const scheduleDate = earliestDueByClient.get(client.id) ?? null
+        const effectiveDate = scheduleDate ?? client.next_checkin_date
+        const nextCheckin = effectiveDate ? new Date(effectiveDate) : null
+        const daysUntilCheckin = nextCheckin
+            ? Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+            : 9999
 
         return {
             ...client,
             daysUntilCheckin,
+            // Campo derivado: la próxima revisión "efectiva" para mostrar.
+            // Prioriza el schedule activo más próximo; cae al legacy si no hay schedules.
+            // El campo legacy `next_checkin_date` se mantiene intacto.
+            effectiveNextCheckinDate: effectiveDate ?? null,
         } as ClientWithMeta
     })
 }

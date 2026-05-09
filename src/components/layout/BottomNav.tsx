@@ -1,6 +1,13 @@
 'use client'
 
-import { Utensils, CalendarDays, BarChart3, Dumbbell, MessageSquare } from 'lucide-react'
+import {
+  CalendarDays,
+  ChartNoAxesColumnIncreasing,
+  Dumbbell,
+  MessageCircle,
+  Salad,
+  type LucideIcon,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -9,16 +16,16 @@ import { useClientUnreadMessages } from '@/hooks/useClientUnreadMessages'
 
 interface NavItem {
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
   label: string
 }
 
 const navItems: NavItem[] = [
   { href: '/routine', icon: Dumbbell, label: 'Fuerza' },
-  { href: '/diet', icon: Utensils, label: 'Dieta' },
+  { href: '/diet', icon: Salad, label: 'Dieta' },
   { href: '/planning', icon: CalendarDays, label: 'Plan' },
-  { href: '/summary', icon: BarChart3, label: 'Progreso' },
-  { href: '/chat', icon: MessageSquare, label: 'Chat' },
+  { href: '/summary', icon: ChartNoAxesColumnIncreasing, label: 'Progreso' },
+  { href: '/chat', icon: MessageCircle, label: 'Chat' },
 ]
 
 const DEBUG_NAV = true // Set to false to silence logs
@@ -58,9 +65,9 @@ export function BottomNav() {
 
   return (
     <nav
-      className="app-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card glass"
+      className="app-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-card/95 shadow-[0_-16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl"
     >
-      <div className="flex items-center justify-around px-1 py-1">
+      <div className="flex items-center justify-around px-2 py-1.5">
         {navItems.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/routine' && pathname?.startsWith(item.href))
@@ -72,19 +79,19 @@ export function BottomNav() {
               prefetch={false}
               onClick={(e) => handleNavClick(e, item.href)}
               className={cn(
-                'nav-item flex-1 max-w-[80px]',
-                isActive && 'nav-item-active'
+                'client-bottom-nav-item flex-1 max-w-[80px]',
+                isActive && 'client-bottom-nav-item-active'
               )}
             >
-              <div className="relative">
-                <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
+              <div className={cn('client-nav-icon-shell', isActive && 'client-nav-icon-shell-active')}>
+                <item.icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.45 : 2.1} />
                 {item.href === '/chat' && unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none pointer-events-none">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <span className="text-[10px] font-semibold leading-none">{item.label}</span>
             </Link>
           )
         })}

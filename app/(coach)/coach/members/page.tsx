@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getClients, StatusFilter } from '@/data/members'
 import { getFormTemplates } from '@/data/form-templates'
+import { listReviewTemplates } from '@/data/review-templates'
 import { MembersPageClient } from '@/components/coach/MembersPageClient'
 import { Badge } from '@/components/ui/badge'
 import { Users } from 'lucide-react'
@@ -23,9 +24,10 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
     const statusFilter = (params.status as StatusFilter) || 'all'
     const search = params.search || ''
 
-    const [clients, formTemplates] = await Promise.all([
+    const [clients, formTemplates, reviewTemplates] = await Promise.all([
         getClients({ coachId, statusFilter, search }),
         getFormTemplates(),
+        listReviewTemplates(coachId),
     ])
     const activeCount = clients.filter(c => c.status === 'active').length
     const inactiveCount = clients.filter(c => c.status === 'inactive').length
@@ -59,6 +61,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                     initialStatusFilter={statusFilter}
                     initialSearch={search}
                     formTemplates={formTemplates}
+                    reviewTemplates={reviewTemplates}
                 />
             </div>
         </div>

@@ -276,8 +276,23 @@ export async function getClientStatus(coachId: string, clientId: string): Promis
         .limit(1)
         .single()
 
-    const nextCheckin = new Date(client.next_checkin_date)
-    const daysUntilCheckin = Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    // Resolver "próxima revisión" usando schedules activos (modelo nuevo).
+    // Si no hay schedules, fallback a clients.next_checkin_date (legacy).
+    const { data: activeSchedules } = await supabase
+        .from('client_review_schedules')
+        .select('next_due_date')
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+        .not('next_due_date', 'is', null)
+        .order('next_due_date', { ascending: true })
+
+    const earliestScheduleDue = activeSchedules?.[0]?.next_due_date as string | undefined
+    const effectiveNextDate = earliestScheduleDue ?? client.next_checkin_date
+
+    const nextCheckin = effectiveNextDate ? new Date(effectiveNextDate) : null
+    const daysUntilCheckin = nextCheckin
+        ? Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        : 9999
 
     let daysSinceCheckin: number | null = null
     if (checkin?.submitted_at) {
@@ -299,7 +314,7 @@ export async function getClientStatus(coachId: string, clientId: string): Promis
     return {
         lastCheckinDate: checkin?.submitted_at?.split('T')[0] || null,
         daysSinceCheckin,
-        nextCheckinDate: client.next_checkin_date,
+        nextCheckinDate: effectiveNextDate,
         daysUntilCheckin,
         trainingAdherence: trainingAdh,
         nutritionAdherence: nutritionAdh,

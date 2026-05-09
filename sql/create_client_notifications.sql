@@ -21,13 +21,34 @@ alter table public.client_notifications enable row level security;
 drop policy if exists "cn_client_select" on public.client_notifications;
 create policy "cn_client_select" on public.client_notifications
   for select to authenticated
-  using (exists (select 1 from public.clients c where c.id = client_id and c.user_id = auth.uid()));
+  using (
+    exists (
+      select 1
+      from public.clients c
+      where c.id = client_id
+        and (c.user_id = auth.uid() or c.auth_user_id = auth.uid())
+    )
+  );
 
 drop policy if exists "cn_client_update" on public.client_notifications;
 create policy "cn_client_update" on public.client_notifications
   for update to authenticated
-  using (exists (select 1 from public.clients c where c.id = client_id and c.user_id = auth.uid()))
-  with check (exists (select 1 from public.clients c where c.id = client_id and c.user_id = auth.uid()));
+  using (
+    exists (
+      select 1
+      from public.clients c
+      where c.id = client_id
+        and (c.user_id = auth.uid() or c.auth_user_id = auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.clients c
+      where c.id = client_id
+        and (c.user_id = auth.uid() or c.auth_user_id = auth.uid())
+    )
+  );
 
 -- El coach (o service role desde API routes) puede insertar
 drop policy if exists "cn_coach_insert" on public.client_notifications;

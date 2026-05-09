@@ -260,8 +260,12 @@ function buildClientMeta(
     today: Date,
     latestCheckin: CheckinRecord | null,
     latestReview: ReviewRecord | null,
+    effectiveNextDueDate?: string | null,
 ): ClientWithMeta {
-    const nextCheckinDate = parseDateKey(client.next_checkin_date)
+    // Si hay un schedule activo con next_due_date, lo usamos como "próxima revisión"
+    // (preferido sobre el legacy client.next_checkin_date).
+    const sourceDate = effectiveNextDueDate ?? client.next_checkin_date
+    const nextCheckinDate = parseDateKey(sourceDate)
     const daysUntilCheckin = nextCheckinDate ? differenceInFullDays(nextCheckinDate, today) : 9999
     const lastAdherencePct = getAverageAdherence(latestCheckin)
     const hasPendingReview = Boolean(
@@ -634,6 +638,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         programsResult,
         messagesResult,
         tasksResult,
+        schedulesResult,
     ] = await Promise.all([
         supabase
             .from('checkins')
@@ -682,7 +687,22 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .order('task_date', { ascending: true })
             .order('created_at', { ascending: false })
             .limit(20),
+        supabase
+            .from('client_review_schedules')
+            .select('client_id, next_due_date')
+            .eq('coach_id', coachId)
+            .eq('is_active', true)
+            .not('next_due_date', 'is', null)
+            .order('next_due_date', { ascending: true }),
     ])
+
+    // Map: client_id → earliest active next_due_date
+    const earliestDueByClient = new Map<string, string>()
+    for (const row of (schedulesResult.data ?? []) as { client_id: string; next_due_date: string }[]) {
+        if (!earliestDueByClient.has(row.client_id)) {
+            earliestDueByClient.set(row.client_id, row.next_due_date)
+        }
+    }
 
     const candidateCheckins = (checkinsResult.data ?? []) as CheckinRecord[]
     const sentReviews = (sentReviewsResult.data ?? []) as SentReviewRecord[]
@@ -742,7 +762,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     const enrichedClients: AttentionClient[] = activeClients.map((client) => {
         const latestCheckin = (checkinsByClient.get(client.id) ?? [])[0] ?? null
         const latestReview = latestCheckin ? reviewsByCheckinId.get(latestCheckin.id) ?? null : null
-        const clientMeta = buildClientMeta(client, today, latestCheckin, latestReview)
+        const clientMeta = buildClientMeta(client, today, latestCheckin, latestReview, earliestDueByClient.get(client.id) ?? null)
         const lastMetricDate = latestMetricByClient.get(client.id)?.metric_date ?? null
         const hasActiveProgram = activeProgramByClient.has(client.id)
         const attentionReasons = buildAttentionReasons({
@@ -895,11 +915,10 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 10)
 
+    // Usa daysUntilCheckin (ya es schedule-aware vía buildClientMeta).
+    const weekRangeDays = Math.ceil((weekEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     const dueThisWeek = enrichedClients
-        .filter((client) => {
-            const nextCheckin = parseDateKey(client.next_checkin_date)
-            return nextCheckin && nextCheckin > today && nextCheckin <= weekEnd
-        })
+        .filter((client) => client.daysUntilCheckin > 0 && client.daysUntilCheckin <= weekRangeDays)
         .sort((left, right) => left.daysUntilCheckin - right.daysUntilCheckin)
 
     const pendingReviewCount = enrichedClients.filter((client) => client.hasPendingReview).length

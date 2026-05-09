@@ -279,6 +279,36 @@
     @apply text-primary bg-primary/10;
   }
 
+  .client-bottom-nav-item {
+    @apply flex flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-1.5 text-muted-foreground transition-colors;
+    @apply hover:text-foreground;
+  }
+
+  .client-bottom-nav-item-active {
+    @apply bg-transparent text-primary;
+  }
+
+  .client-nav-icon-shell {
+    @apply relative isolate flex h-7 w-7 items-center justify-center rounded-full transition-transform;
+  }
+
+  .client-nav-icon-shell-active {
+    color: hsl(var(--primary));
+    transform: translateY(-1px);
+  }
+
+  .client-nav-icon-shell-active::before {
+    content: "";
+    position: absolute;
+    inset: -0.18rem;
+    z-index: -1;
+    border-radius: 9999px;
+    background: hsl(var(--primary) / 0.07);
+    box-shadow:
+      0 0 0 4px hsl(var(--primary) / 0.045),
+      0 8px 16px -14px hsl(var(--primary) / 0.95);
+  }
+
   /* Progress bar */
   .progress-bar {
     @apply h-2 rounded-full bg-progress-empty overflow-hidden;

@@ -56,28 +56,34 @@ export async function updateClientAction(clientId: string, data: UpdateClientInp
     const result = await updateClientDetails(clientId, clientUpdates)
 
     if (result.success) {
-        const checkinAssignment = await syncClientTemplateAssignment({
-            supabase,
-            coachId,
-            clientId,
-            type: 'checkin',
-            templateId: checkin_template_id ?? null,
-        })
+        // Solo sincronizar la asignación si la clave está explícitamente en el payload.
+        // (undefined = "no tocar", null = "desasignar", string = "asignar a este template")
+        if ('checkin_template_id' in data) {
+            const checkinAssignment = await syncClientTemplateAssignment({
+                supabase,
+                coachId,
+                clientId,
+                type: 'checkin',
+                templateId: checkin_template_id ?? null,
+            })
 
-        if (!checkinAssignment.success) {
-            return { success: false, error: checkinAssignment.error }
+            if (!checkinAssignment.success) {
+                return { success: false, error: checkinAssignment.error }
+            }
         }
 
-        const onboardingAssignment = await syncClientTemplateAssignment({
-            supabase,
-            coachId,
-            clientId,
-            type: 'onboarding',
-            templateId: onboarding_template_id ?? null,
-        })
+        if ('onboarding_template_id' in data) {
+            const onboardingAssignment = await syncClientTemplateAssignment({
+                supabase,
+                coachId,
+                clientId,
+                type: 'onboarding',
+                templateId: onboarding_template_id ?? null,
+            })
 
-        if (!onboardingAssignment.success) {
-            return { success: false, error: onboardingAssignment.error }
+            if (!onboardingAssignment.success) {
+                return { success: false, error: onboardingAssignment.error }
+            }
         }
 
         revalidatePath('/coach/members')
