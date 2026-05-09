@@ -251,6 +251,14 @@ function getPrimaryWeight(checkin: { weight_avg_kg: number | null; weight_kg: nu
     return checkin.weight_avg_kg ?? checkin.weight_kg ?? null
 }
 
+function needsCoachReview(
+    checkin: Pick<CheckinRecord, 'status'>,
+    review: Pick<ReviewRecord, 'status'> | null | undefined,
+): boolean {
+    if (checkin.status === 'archived') return false
+    return Boolean(review?.status === 'draft' || (!review && checkin.status === 'reviewed'))
+}
+
 function getClientSortName(client: Client): string {
     return client.full_name?.trim() || client.email || 'Cliente'
 }
@@ -268,14 +276,7 @@ function buildClientMeta(
     const nextCheckinDate = parseDateKey(sourceDate)
     const daysUntilCheckin = nextCheckinDate ? differenceInFullDays(nextCheckinDate, today) : 9999
     const lastAdherencePct = getAverageAdherence(latestCheckin)
-    const hasPendingReview = Boolean(
-        latestCheckin &&
-        latestCheckin.status !== 'archived' &&
-        (
-            latestReview?.status === 'draft' ||
-            (!latestReview && latestCheckin.status === 'reviewed')
-        )
-    )
+    const hasPendingReview = latestCheckin ? needsCoachReview(latestCheckin, latestReview) : false
 
     return {
         ...client,
@@ -462,7 +463,7 @@ function buildRecentCheckins(
         const currentWeight = getPrimaryWeight(checkin)
         const previousWeight = getPrimaryWeight(previousCheckin)
         const review = reviewsByCheckinId.get(checkin.id) ?? null
-        const needsReview = Boolean(review?.status === 'draft' || (!review && checkin.status === 'reviewed'))
+        const needsReview = needsCoachReview(checkin, review)
 
         return {
             id: checkin.id,
@@ -504,7 +505,7 @@ function buildRecentSentReviews(
             : null
         const currentWeight = getPrimaryWeight(checkin)
         const previousWeight = getPrimaryWeight(previousReceived ?? null)
-        const needsReview = Boolean(review?.status === 'draft' || (!review && checkin.status === 'reviewed'))
+        const needsReview = needsCoachReview(checkin, review)
 
         return {
             id: checkin.id,
@@ -873,6 +874,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
 
     const checkinNotifications: DashboardNotification[] = checkins
         .filter((checkin) => new Date(checkin.submitted_at) >= threeDaysAgo)
+        .filter((checkin) => needsCoachReview(checkin, reviewsByCheckinId.get(checkin.id) ?? null))
         .slice(0, 8)
         .map((checkin) => {
             const client = clientsById.get(checkin.client_id)
@@ -1043,9 +1045,11 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
         supabase
             .from('reviews')
             .select('id, checkins!inner(id, coach_id, type, submitted_at, status)', { count: 'exact', head: true })
+            .eq('status', 'draft')
             .eq('checkins.coach_id', coachId)
             .eq('checkins.type', 'checkin')
             .neq('checkins.status', 'pending')
+            .neq('checkins.status', 'archived')
             .not('checkins.submitted_at', 'is', null)
             .gte('checkins.submitted_at', threeDaysAgo.toISOString()),
         supabase

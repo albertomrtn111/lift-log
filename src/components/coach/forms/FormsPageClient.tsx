@@ -64,14 +64,12 @@ import {
     Image as ImageIcon,
 } from 'lucide-react'
 
-type FormTabType = 'onboarding' | 'checkin' | 'general'
+type FormTabType = 'onboarding'
 type TabType = FormTabType | 'review-templates'
 
 const TAB_CONFIG: { value: TabType; label: string }[] = [
+    { value: 'review-templates', label: 'Revisiones' },
     { value: 'onboarding', label: 'Onboarding' },
-    { value: 'checkin', label: 'Revisión' },
-    { value: 'general', label: 'General' },
-    { value: 'review-templates', label: 'Plantillas de revisión' },
 ]
 
 interface FormsPageClientProps {
@@ -92,7 +90,7 @@ export function FormsPageClient({
     const router = useRouter()
     const { toast } = useToast()
     const [isPending, startTransition] = useTransition()
-    const [activeTab, setActiveTab] = useState<TabType>('onboarding')
+    const [activeTab, setActiveTab] = useState<TabType>('review-templates')
     const [builderOpen, setBuilderOpen] = useState(false)
     const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null)
     const [builderInitialData, setBuilderInitialData] = useState<FormBuilderInitialData | null>(null)
@@ -156,7 +154,7 @@ export function FormsPageClient({
             const result = await deleteReviewTemplateAction(deleteReviewTarget.id)
             if (result.success) {
                 toast({
-                    title: result.deactivated ? 'Plantilla desactivada' : 'Plantilla eliminada',
+                    title: result.deactivated ? 'Revisión desactivada' : 'Revisión eliminada',
                     description: result.deactivated
                         ? 'Tenía atletas asignados, así que se ha desactivado para evitar perder sus revisiones.'
                         : undefined,
@@ -169,10 +167,8 @@ export function FormsPageClient({
         })
     }
 
-    const handleGeneratedDraft = (
-        type: Extract<TabType, 'onboarding' | 'checkin'>,
-        data: FormBuilderInitialData
-    ) => {
+    const handleGeneratedDraft = (type: 'onboarding' | 'checkin', data: FormBuilderInitialData) => {
+        if (type !== 'onboarding') return
         setEditingTemplate(null)
         setBuilderInitialData(data)
         setActiveTab(type)
@@ -202,12 +198,9 @@ export function FormsPageClient({
                 toast({ title: 'Error', description: result.error, variant: 'destructive' })
             }
         } else {
-            // FormBuilderModal solo se abre desde pestañas de form templates,
-            // nunca desde 'review-templates'. Casteo seguro.
-            const formType: FormTabType = isReviewTab ? 'checkin' : (activeTab as FormTabType)
             const result = await createFormTemplate({
                 title: data.title,
-                type: formType,
+                type: 'onboarding',
                 schema: data.schema,
                 assigned_client_ids: data.assigned_client_ids,
             })
@@ -296,7 +289,8 @@ export function FormsPageClient({
                     <div className="flex items-center gap-2">
                         {!isReviewTab && (
                             <AIFormDialog
-                                defaultType={activeTab === 'checkin' ? 'checkin' : 'onboarding'}
+                                defaultType="onboarding"
+                                allowedTypes={['onboarding']}
                                 onGenerated={handleGeneratedDraft}
                                 trigger={
                                     <AIActionButton>
@@ -307,23 +301,21 @@ export function FormsPageClient({
                         )}
                         <Button onClick={handleCreate} className="gap-1.5 shrink-0">
                             <Plus className="h-4 w-4" />
-                            {isReviewTab ? 'Crear plantilla de revisión' : 'Crear Plantilla'}
+                            {isReviewTab ? 'Crear revisión' : 'Crear onboarding'}
                         </Button>
                     </div>
                 </div>
 
-                {(['onboarding', 'checkin', 'general'] as const).map((tab) => (
-                    <TabsContent key={tab} value={tab}>
-                        <TemplateTable
-                            templates={templates.filter((t) => t.type === tab)}
-                            isPending={isPending}
-                            onEdit={handleEdit}
-                            onDuplicate={handleDuplicate}
-                            onToggleActive={handleToggleActive}
-                            onDelete={handleDelete}
-                        />
-                    </TabsContent>
-                ))}
+                <TabsContent value="onboarding">
+                    <TemplateTable
+                        templates={templates.filter((t) => t.type === 'onboarding')}
+                        isPending={isPending}
+                        onEdit={handleEdit}
+                        onDuplicate={handleDuplicate}
+                        onToggleActive={handleToggleActive}
+                        onDelete={handleDelete}
+                    />
+                </TabsContent>
 
                 <TabsContent value="review-templates">
                     <ReviewTemplatesTable
@@ -341,7 +333,7 @@ export function FormsPageClient({
             <FormBuilderModal
                 open={builderOpen}
                 onOpenChange={handleBuilderOpenChange}
-                templateType={isReviewTab ? 'checkin' : (activeTab as FormTabType)}
+                templateType="onboarding"
                 editingTemplate={editingTemplate}
                 initialData={builderInitialData}
                 activeClients={activeClients}
@@ -387,7 +379,7 @@ export function FormsPageClient({
             <AlertDialog open={!!deleteReviewTarget} onOpenChange={(v) => !v && setDeleteReviewTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Desactivar plantilla de revisión</AlertDialogTitle>
+                        <AlertDialogTitle>Desactivar revisión</AlertDialogTitle>
                         <AlertDialogDescription>
                             Si &quot;{deleteReviewTarget?.name}&quot; tiene atletas asignados, se desactivará
                             sin borrar sus revisiones programadas. Si no tiene asignaciones, se eliminará.
@@ -460,11 +452,16 @@ function TemplateTable({
                             <TableCell>
                                 <div>
                                     <span className="font-medium">{t.title}</span>
-                                    {(t.type === 'checkin' || t.type === 'onboarding') && (
+                                    {t.type === 'onboarding' && (
                                         <p className="text-xs text-muted-foreground">
                                             {(t.assigned_client_ids?.length ?? 0) > 0
                                                 ? `${t.assigned_client_ids.length} atleta${t.assigned_client_ids.length === 1 ? '' : 's'} asignado${t.assigned_client_ids.length === 1 ? '' : 's'}`
                                                 : 'Sin atletas asignados'}
+                                        </p>
+                                    )}
+                                    {t.type === 'checkin' && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Se asigna desde Plantillas de revisión.
                                         </p>
                                     )}
                                 </div>
@@ -550,9 +547,9 @@ function ReviewTemplatesTable({
         return (
             <Card className="p-12 text-center">
                 <ClipboardCheck className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-                <h3 className="font-semibold">Aún no hay plantillas de revisión</h3>
+                <h3 className="font-semibold">Aún no hay revisiones</h3>
                 <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                    Crea plantillas combinando formulario, métricas y fotos para asignarlas a tus atletas.
+                    Crea una revisión combinando formulario, métricas, fotos y frecuencia para asignarla a tus atletas.
                 </p>
             </Card>
         )
@@ -571,7 +568,7 @@ function ReviewTemplatesTable({
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Plantilla</TableHead>
+                        <TableHead>Revisión</TableHead>
                         <TableHead className="hidden md:table-cell">Formulario</TableHead>
                         <TableHead className="hidden md:table-cell">Métricas</TableHead>
                         <TableHead>Fotos</TableHead>

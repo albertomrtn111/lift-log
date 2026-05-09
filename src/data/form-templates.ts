@@ -201,7 +201,7 @@ export async function createFormTemplate(
     const { supabase, coachId } = await requireActiveCoachId()
 
     const finalSchema = ensurePhotoField(input.schema)
-    const assignedClientIds = isAssignableFormTemplateType(input.type)
+    const assignedClientIds = input.type === 'onboarding'
         ? normalizeAssignedClientIds(input.assigned_client_ids)
         : []
     console.log(`[createFormTemplate] Injected photo field. Fields: ${finalSchema.length} (last: ${finalSchema[finalSchema.length - 1]?.id})`)
@@ -224,7 +224,7 @@ export async function createFormTemplate(
         return { success: false, error: error.message }
     }
 
-    if (isAssignableFormTemplateType(input.type)) {
+    if (input.type === 'onboarding') {
         await enforceExclusiveTemplateAssignments(supabase, coachId, data.id, input.type, assignedClientIds)
     }
 
@@ -260,7 +260,7 @@ export async function updateFormTemplate(
         )
     }
 
-    if (isAssignableFormTemplateType(currentTemplate.type)) {
+    if (currentTemplate.type === 'onboarding') {
         safeUpdates.assigned_client_ids = normalizeAssignedClientIds(updates.assigned_client_ids)
     } else {
         delete safeUpdates.assigned_client_ids
@@ -277,7 +277,7 @@ export async function updateFormTemplate(
         return { success: false, error: error.message }
     }
 
-    if (isAssignableFormTemplateType(currentTemplate.type)) {
+    if (currentTemplate.type === 'onboarding') {
         await enforceExclusiveTemplateAssignments(
             supabase,
             coachId,

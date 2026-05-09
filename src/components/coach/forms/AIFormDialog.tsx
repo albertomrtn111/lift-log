@@ -23,6 +23,7 @@ type AllowedGeneratedFieldType = Exclude<FormFieldType, 'photo_upload'>
 
 interface AIFormDialogProps {
     defaultType?: AIFormType
+    allowedTypes?: AIFormType[]
     trigger?: ReactNode
     onGenerated: (type: AIFormType, data: FormBuilderInitialData) => void
 }
@@ -93,19 +94,22 @@ function sanitizeGeneratedField(field: AIGeneratedField, index: number): FormFie
 
 export function AIFormDialog({
     defaultType = 'onboarding',
+    allowedTypes,
     trigger,
     onGenerated,
 }: AIFormDialogProps) {
+    const visibleTypes = allowedTypes?.length ? allowedTypes : (['onboarding', 'checkin'] as AIFormType[])
+    const effectiveDefaultType = visibleTypes.includes(defaultType) ? defaultType : visibleTypes[0]
     const [open, setOpen] = useState(false)
     const [step, setStep] = useState<Step>('input')
-    const [type, setType] = useState<AIFormType>(defaultType)
+    const [type, setType] = useState<AIFormType>(effectiveDefaultType)
     const [prompt, setPrompt] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [isGenerating, setIsGenerating] = useState(false)
 
-    function resetDialog(nextType = defaultType) {
+    function resetDialog(nextType = effectiveDefaultType) {
         setStep('input')
-        setType(nextType)
+        setType(visibleTypes.includes(nextType) ? nextType : effectiveDefaultType)
         setPrompt('')
         setError(null)
         setIsGenerating(false)
@@ -114,9 +118,9 @@ export function AIFormDialog({
     function handleOpenChange(value: boolean) {
         setOpen(value)
         if (!value) {
-            resetDialog(defaultType)
+            resetDialog(effectiveDefaultType)
         } else {
-            setType(defaultType)
+            setType(effectiveDefaultType)
         }
     }
 
@@ -193,33 +197,37 @@ export function AIFormDialog({
                     <div className="space-y-5">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Tipo de formulario</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setType('onboarding')}
-                                    className={cn(
-                                        'flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition-colors',
-                                        type === 'onboarding'
-                                            ? 'border-primary bg-primary/5 text-primary'
-                                            : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
-                                    )}
-                                >
-                                    <UserRound className="h-4 w-4" />
-                                    Onboarding
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setType('checkin')}
-                                    className={cn(
-                                        'flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition-colors',
-                                        type === 'checkin'
-                                            ? 'border-primary bg-primary/5 text-primary'
-                                            : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
-                                    )}
-                                >
-                                    <ClipboardList className="h-4 w-4" />
-                                    Revisión
-                                </button>
+                            <div className={cn('grid gap-2', visibleTypes.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                                {visibleTypes.includes('onboarding') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setType('onboarding')}
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition-colors',
+                                            type === 'onboarding'
+                                                ? 'border-primary bg-primary/5 text-primary'
+                                                : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
+                                        )}
+                                    >
+                                        <UserRound className="h-4 w-4" />
+                                        Onboarding
+                                    </button>
+                                )}
+                                {visibleTypes.includes('checkin') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setType('checkin')}
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition-colors',
+                                            type === 'checkin'
+                                                ? 'border-primary bg-primary/5 text-primary'
+                                                : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30'
+                                        )}
+                                    >
+                                        <ClipboardList className="h-4 w-4" />
+                                        Revisión
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -255,7 +263,9 @@ export function AIFormDialog({
                         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                             <p className="text-sm font-medium">Importante</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                Las fotos de progreso seguirán siendo un bloque fijo del formulario. La IA solo generará las preguntas editables.
+                                {type === 'checkin'
+                                    ? 'La IA solo generará las preguntas editables. Las métricas y fotos se configuran después dentro de la revisión.'
+                                    : 'Las fotos de progreso seguirán siendo un bloque fijo del formulario. La IA solo generará las preguntas editables.'}
                             </p>
                         </div>
 

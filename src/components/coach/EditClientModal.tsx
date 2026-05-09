@@ -113,29 +113,6 @@ export function EditClientModal({
         setActiveTab('datos')
     }, [client, formTemplates])
 
-    const recalculateNextCheckin = (startDate: string, frequency: number) => {
-        const start = new Date(startDate)
-        const next = new Date(start)
-        next.setDate(next.getDate() + frequency)
-        return next.toISOString().split('T')[0]
-    }
-
-    const handleStartDateChange = (newStartDate: string) => {
-        setFormData(fd => ({
-            ...fd,
-            start_date: newStartDate,
-            next_checkin_date: recalculateNextCheckin(newStartDate, fd.checkin_frequency_days),
-        }))
-    }
-
-    const handleFrequencyChange = (newFrequency: number) => {
-        setFormData(fd => ({
-            ...fd,
-            checkin_frequency_days: newFrequency,
-            next_checkin_date: recalculateNextCheckin(fd.start_date, newFrequency),
-        }))
-    }
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
         setError(null)
@@ -233,51 +210,19 @@ export function EditClientModal({
                                     disabled={isPending}
                                 />
                             </div>
-
-                            <div className="border-t pt-4 space-y-3">
-                                <div>
-                                    <Label className="text-sm font-medium">Frecuencia legacy (fallback)</Label>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                        Se usa solo si el atleta no tiene revisiones asignadas en la pestaña Revisiones.
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="edit_start_date">Fecha de inicio</Label>
-                                        <Input
-                                            id="edit_start_date"
-                                            type="date"
-                                            value={formData.start_date}
-                                            onChange={(e) => handleStartDateChange(e.target.value)}
-                                            required
-                                            disabled={isPending}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="edit_frequency">Frecuencia (días)</Label>
-                                        <Input
-                                            id="edit_frequency"
-                                            type="number"
-                                            min={1}
-                                            max={365}
-                                            value={formData.checkin_frequency_days}
-                                            onChange={(e) => handleFrequencyChange(parseInt(e.target.value) || 14)}
-                                            required
-                                            disabled={isPending}
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="edit_next_checkin">Próxima revisión</Label>
-                                        <Input
-                                            id="edit_next_checkin"
-                                            type="date"
-                                            value={formData.next_checkin_date}
-                                            onChange={(e) => setFormData({ ...formData, next_checkin_date: e.target.value })}
-                                            required
-                                            disabled={isPending}
-                                        />
-                                    </div>
-                                </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="edit_start_date">Fecha de inicio</Label>
+                                <Input
+                                    id="edit_start_date"
+                                    type="date"
+                                    value={formData.start_date}
+                                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                                    required
+                                    disabled={isPending}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    La frecuencia y la próxima fecha se gestionan únicamente desde la pestaña Revisiones.
+                                </p>
                             </div>
 
                             <div className="border-t pt-4 space-y-2">

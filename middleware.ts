@@ -143,7 +143,7 @@ export async function middleware(req: NextRequest) {
 
     // Role-specific route markers
     const isCoachRoute = pathname.startsWith('/coach')
-    const clientRoutes = ['/routine', '/diet', '/running', '/progress', '/summary']
+    const clientRoutes = ['/routine', '/diet', '/running', '/progress', '/summary', '/chat']
     const isClientRoute = clientRoutes.some(route => pathname === route || pathname.startsWith(route + '/'))
 
     // CASE: COACH ACCESS PROTECTION

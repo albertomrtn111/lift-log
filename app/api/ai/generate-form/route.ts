@@ -21,18 +21,145 @@ function coerceNullableNum(v: unknown): number | null | undefined {
     return null
 }
 
+function normalizeFieldType(value: unknown): unknown {
+    if (typeof value !== 'string') return value
+    const key = value.toLowerCase().trim().replace(/[\s-]+/g, '_')
+    const aliases: Record<string, string> = {
+        text: 'short_text',
+        short: 'short_text',
+        shorttext: 'short_text',
+        short_text: 'short_text',
+        input: 'short_text',
+        textarea: 'long_text',
+        long: 'long_text',
+        longtext: 'long_text',
+        long_text: 'long_text',
+        paragraph: 'long_text',
+        number_input: 'number',
+        numeric: 'number',
+        rating: 'scale',
+        slider: 'scale',
+        range: 'scale',
+        select: 'single_choice',
+        radio: 'single_choice',
+        choice: 'single_choice',
+        single: 'single_choice',
+        singlechoice: 'single_choice',
+        single_choice: 'single_choice',
+        dropdown: 'single_choice',
+        boolean: 'single_choice',
+        yes_no: 'single_choice',
+        checkbox: 'multi_choice',
+        checkboxes: 'multi_choice',
+        multiple: 'multi_choice',
+        multichoice: 'multi_choice',
+        multi_choice: 'multi_choice',
+        multiple_choice: 'multi_choice',
+        fecha: 'date',
+        date_picker: 'date',
+    }
+    return aliases[key] ?? key
+}
+
+function normalizeOptions(value: unknown): string[] | undefined {
+    if (value === null || value === undefined || value === '') return undefined
+    if (Array.isArray(value)) {
+        return value
+            .map((option) => {
+                if (typeof option === 'string') return option
+                if (option && typeof option === 'object') {
+                    const record = option as Record<string, unknown>
+                    const candidate = record.label ?? record.value ?? record.text ?? record.option
+                    return typeof candidate === 'string' ? candidate : ''
+                }
+                return String(option)
+            })
+            .map((option) => option.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+    }
+    if (typeof value === 'string') {
+        return value
+            .split(/[,;\n]/)
+            .map((option) => option.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+    }
+    return undefined
+}
+
+function normalizeGeneratedPayload(parsed: unknown): unknown {
+    if (!parsed || typeof parsed !== 'object') return parsed
+    const root = parsed as Record<string, unknown>
+    const source = root.form && typeof root.form === 'object'
+        ? root.form as Record<string, unknown>
+        : root
+
+    const rawFields = source.fields ?? source.questions ?? source.preguntas ?? source.campos
+    const fields = Array.isArray(rawFields)
+        ? rawFields.map((rawField) => {
+            if (!rawField || typeof rawField !== 'object') return rawField
+            const field = rawField as Record<string, unknown>
+            const rawType = field.type ?? field.fieldType ?? field.inputType
+            const rawTypeKey = typeof rawType === 'string'
+                ? rawType.toLowerCase().trim().replace(/[\s-]+/g, '_')
+                : ''
+            const normalizedType = normalizeFieldType(rawType)
+            const options = normalizeOptions(field.options ?? field.opciones ?? field.choices)
+            const normalized: Record<string, unknown> = {
+                ...field,
+                label: field.label ?? field.question ?? field.pregunta ?? field.title ?? field.name,
+                type: normalizedType,
+                required: field.required ?? field.obligatorio ?? false,
+                helpText: field.helpText ?? field.help ?? field.description ?? field.descripcion ?? null,
+                min: field.min ?? field.minimum ?? null,
+                max: field.max ?? field.maximum ?? null,
+                step: field.step ?? field.increment ?? null,
+            }
+
+            if (options !== undefined) normalized.options = options
+            else delete normalized.options
+
+            if (normalized.type === 'single_choice' && (!normalized.options || (normalized.options as string[]).length < 2)) {
+                if (rawTypeKey === 'boolean' || rawTypeKey === 'yes_no') {
+                    normalized.options = ['Sí', 'No']
+                } else {
+                    normalized.type = 'long_text'
+                    delete normalized.options
+                }
+            }
+
+            if (normalized.type === 'multi_choice' && (!normalized.options || (normalized.options as string[]).length < 2)) {
+                normalized.type = 'long_text'
+                delete normalized.options
+            }
+
+            return normalized
+        })
+        : rawFields
+
+    return {
+        formType: source.formType ?? source.type ?? source.tipo,
+        title: source.title ?? source.titulo ?? source.name ?? source.nombre,
+        fields,
+    }
+}
+
 const GeneratedFieldSchema = z
     .object({
         label: z.string().min(3).max(220),
-        type: z.enum([
-            'short_text',
-            'long_text',
-            'number',
-            'scale',
-            'single_choice',
-            'multi_choice',
-            'date',
-        ]),
+        type: z.preprocess(
+            normalizeFieldType,
+            z.enum([
+                'short_text',
+                'long_text',
+                'number',
+                'scale',
+                'single_choice',
+                'multi_choice',
+                'date',
+            ])
+        ),
         // Gemini may return required as boolean or as string "true"/"false"
         required: z.preprocess(
             (v) => (typeof v === 'string' ? v === 'true' || v === '1' : Boolean(v)),
@@ -47,7 +174,10 @@ const GeneratedFieldSchema = z
         min: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
         max: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
         step: z.preprocess(coerceNullableNum, z.number().nullable().optional()),
-        options: z.array(z.string().min(1).max(80)).max(8).optional(),
+        options: z.preprocess(
+            normalizeOptions,
+            z.array(z.string().min(1).max(80)).max(8).optional()
+        ),
     })
     .superRefine((field, ctx) => {
         if ((field.type === 'single_choice' || field.type === 'multi_choice') && (field.options?.length ?? 0) < 2) {
@@ -201,7 +331,7 @@ function parseAndValidate(rawText: string, expectedType: 'onboarding' | 'checkin
 
     let parsed: unknown
     try {
-        parsed = JSON.parse(cleaned)
+        parsed = normalizeGeneratedPayload(JSON.parse(cleaned))
     } catch (jsonErr) {
         console.error('[AI generate-form] JSON.parse failed')
         console.error('[AI generate-form] Cleaned string (first 400 chars):', cleaned.slice(0, 400))

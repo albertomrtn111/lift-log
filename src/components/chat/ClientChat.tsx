@@ -10,6 +10,17 @@ import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { createClient } from '@/lib/supabase/client'
 import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
+import {
+    getClientChatMessagesAction,
+    markClientCoachMessageReadAction,
+    sendClientChatMessageAction,
+} from './client-chat-actions'
+
+interface ChatSession {
+    coachId: string
+    clientId: string
+    userId: string
+}
 
 export function ClientChat() {
     const { client, isLoading: contextLoading } = useClientAppContext()
@@ -17,12 +28,14 @@ export function ClientChat() {
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(true)
     const [sending, setSending] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
+    const [chatSession, setChatSession] = useState<ChatSession | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-    const coachId = client?.coachId
-    const clientId = client?.clientId
-    const userId = client?.userId
+    const coachId = chatSession?.coachId ?? client?.coachId
+    const clientId = chatSession?.clientId ?? client?.clientId
+    const userId = chatSession?.userId ?? client?.userId
 
     const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -30,41 +43,28 @@ export function ClientChat() {
 
     // Load initial messages + mark coach messages as read
     useEffect(() => {
-        if (!coachId || !clientId) return
         let cancelled = false
-        const supabase = createClient()
 
         async function load() {
             setLoading(true)
+            setLoadError(null)
 
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('coach_id', coachId!)
-                .eq('client_id', clientId!)
-                .order('created_at', { ascending: false })
-                .limit(50)
+            const result = await getClientChatMessagesAction()
+            if (cancelled) return
 
-            if (!cancelled && data) {
-                setMessages(mergeUniqueMessages((data as Message[]).reverse()))
+            if (result.success && result.context) {
+                setChatSession(result.context)
+                setMessages(mergeUniqueMessages(result.messages ?? []))
+            } else {
+                setLoadError(result.error ?? 'No se pudo cargar el chat.')
+                setChatSession(null)
             }
-            if (error) console.error('Error loading messages:', error)
-
             setLoading(false)
-
-            // Mark coach messages as read
-            await supabase
-                .from('messages')
-                .update({ read_at: new Date().toISOString() })
-                .eq('coach_id', coachId!)
-                .eq('client_id', clientId!)
-                .eq('sender_role', 'coach')
-                .is('read_at', null)
         }
 
-        load()
+        if (!contextLoading) load()
         return () => { cancelled = true }
-    }, [coachId, clientId])
+    }, [contextLoading])
 
     // Auto-scroll when messages change
     useEffect(() => {
@@ -89,11 +89,7 @@ export function ClientChat() {
                     setMessages(prev => mergeUniqueMessages([...prev, newMsg]))
                     // If it's a coach message, mark as read
                     if (newMsg.sender_role === 'coach') {
-                        supabase
-                            .from('messages')
-                            .update({ read_at: new Date().toISOString() })
-                            .eq('id', newMsg.id)
-                            .then()
+                        markClientCoachMessageReadAction(newMsg.id)
                     }
                 }
             })
@@ -130,25 +126,15 @@ export function ClientChat() {
         }
 
         setSending(true)
-        const supabase = createClient()
-        const { data, error } = await supabase
-            .from('messages')
-            .insert({
-                coach_id: coachId,
-                client_id: clientId,
-                sender_role: 'client',
-                sender_id: userId,
-                content,
-            })
-            .select()
-            .single()
+        const result = await sendClientChatMessageAction(content)
 
-        if (data) {
+        if (result.success && result.message) {
+            if (result.context) setChatSession(result.context)
             setMessages(prev =>
-                reconcileOptimisticMessage(prev, optimisticMsg.id, data as Message)
+                reconcileOptimisticMessage(prev, optimisticMsg.id, result.message!)
             )
         } else {
-            console.error('Error sending message:', error)
+            console.error('Error sending message:', result.error)
             setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
         }
         setSending(false)
@@ -192,11 +178,11 @@ export function ClientChat() {
         )
     }
 
-    if (!coachId || !clientId) {
+    if (loadError || !coachId || !clientId) {
         return (
             <Card className="p-8 text-center">
                 <MessageSquare className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">No se pudo cargar el chat.</p>
+                <p className="text-muted-foreground">{loadError ?? 'No se pudo cargar el chat.'}</p>
             </Card>
         )
     }

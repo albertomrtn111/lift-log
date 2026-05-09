@@ -79,7 +79,7 @@ interface FormBuilderModalProps {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-    checkin: 'Revisión',
+    checkin: 'Formulario de revisión',
     onboarding: 'Onboarding',
     general: 'General',
 }
@@ -133,6 +133,7 @@ export function FormBuilderModal({
     const nextFieldNumberRef = useRef<number>(
         computeNextFieldNumber(getInitialFields())
     )
+    const entityLabel = templateType === 'checkin' ? 'Formulario' : 'Plantilla'
 
     useEffect(() => {
         if (open) {
@@ -145,7 +146,7 @@ export function FormBuilderModal({
             setAssignmentSearch('')
             setStep('builder')
             setSelectedClientIds(
-                (templateType === 'checkin' || templateType === 'onboarding')
+                templateType === 'onboarding'
                     ? (
                         editingTemplate
                             ? ((editingTemplate.assigned_client_ids?.length ?? 0) > 0
@@ -166,8 +167,8 @@ export function FormBuilderModal({
         onOpenChange(v)
     }
 
-    const isAssignableTemplate = templateType === 'checkin' || templateType === 'onboarding'
-    const assignmentEntityLabel = templateType === 'onboarding' ? 'onboarding' : 'revisión'
+    const isAssignableTemplate = templateType === 'onboarding'
+    const assignmentEntityLabel = 'onboarding'
 
     const filteredClients = activeClients.filter((client) =>
         client.full_name.toLowerCase().includes(assignmentSearch.trim().toLowerCase())
@@ -361,7 +362,7 @@ export function FormBuilderModal({
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        {editingTemplate ? 'Editar Plantilla' : initialData ? 'Revisar Formulario IA' : 'Crear Plantilla'}
+                        {editingTemplate ? `Editar ${entityLabel}` : initialData ? 'Revisar Formulario IA' : `Crear ${entityLabel}`}
                         <Badge variant="outline" className="text-xs">
                             {TYPE_LABELS[templateType]}
                         </Badge>
@@ -439,32 +440,34 @@ export function FormBuilderModal({
                                 />
                             ))}
 
-                            <Card className="border border-dashed border-blue-500/30 bg-blue-500/5 p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
-                                            <Camera className="h-4 w-4 text-blue-400" />
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-medium">
-                                                    {PROGRESS_PHOTOS_FIELD.label}
-                                                </span>
-                                                <Badge variant="outline" className="border-blue-500/30 px-1.5 text-[10px] text-blue-400">
-                                                    <Lock className="mr-0.5 h-2.5 w-2.5" />
-                                                    Fijo
-                                                </Badge>
+                            {templateType !== 'checkin' && (
+                                <Card className="border border-dashed border-blue-500/30 bg-blue-500/5 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
+                                                <Camera className="h-4 w-4 text-blue-400" />
                                             </div>
-                                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {PROGRESS_PHOTOS_FIELD.helpText}
-                                            </p>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium">
+                                                        {PROGRESS_PHOTOS_FIELD.label}
+                                                    </span>
+                                                    <Badge variant="outline" className="border-blue-500/30 px-1.5 text-[10px] text-blue-400">
+                                                        <Lock className="mr-0.5 h-2.5 w-2.5" />
+                                                        Fijo
+                                                    </Badge>
+                                                </div>
+                                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                                    {PROGRESS_PHOTOS_FIELD.helpText}
+                                                </p>
+                                            </div>
                                         </div>
+                                        <span className="font-mono text-[10px] text-muted-foreground/50">
+                                            {PROGRESS_PHOTOS_FIELD.id}
+                                        </span>
                                     </div>
-                                    <span className="font-mono text-[10px] text-muted-foreground/50">
-                                        {PROGRESS_PHOTOS_FIELD.id}
-                                    </span>
-                                </div>
-                            </Card>
+                                </Card>
+                            )}
                         </div>
                     </div>
                 )}
@@ -579,7 +582,7 @@ export function FormBuilderModal({
                             ) : (
                                 <Button onClick={handleSave} disabled={saving}>
                                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    {editingTemplate ? 'Guardar Cambios' : 'Crear Plantilla'}
+                                    {editingTemplate ? 'Guardar Cambios' : `Crear ${entityLabel}`}
                                 </Button>
                             )}
                         </>
@@ -596,7 +599,7 @@ export function FormBuilderModal({
                             </Button>
                             <Button onClick={handleSave} disabled={saving}>
                                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {editingTemplate ? 'Guardar Cambios' : 'Crear Plantilla'}
+                                {editingTemplate ? 'Guardar Cambios' : `Crear ${entityLabel}`}
                             </Button>
                         </>
                     )}

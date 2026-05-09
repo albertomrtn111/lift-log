@@ -47,7 +47,7 @@ export default async function FormsPage() {
                         <div>
                             <h1 className="text-xl font-bold">Formularios</h1>
                             <p className="text-sm text-muted-foreground">
-                                Gestiona plantillas de revisión, onboarding y formularios generales
+                                Gestiona revisiones completas y formularios de onboarding
                             </p>
                         </div>
                     </div>
