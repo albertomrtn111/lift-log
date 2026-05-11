@@ -135,6 +135,7 @@ export interface SidebarBadges {
 interface CheckinRecord {
     id: string
     client_id: string
+    review_schedule_id: string | null
     submitted_at: string
     status: 'pending' | 'reviewed' | 'archived'
     weight_kg: number | null
@@ -148,6 +149,7 @@ interface CheckinRecord {
 interface SentReviewRecord {
     id: string
     client_id: string
+    review_schedule_id: string | null
     submitted_at: string | null
     status: 'pending' | 'reviewed' | 'archived'
     weight_kg: number | null
@@ -259,6 +261,12 @@ function needsCoachReview(
     return Boolean(review?.status === 'draft' || (!review && checkin.status === 'reviewed'))
 }
 
+function getOperationalCheckinKey(checkin: Pick<CheckinRecord | SentReviewRecord, 'client_id' | 'review_schedule_id'>) {
+    return checkin.review_schedule_id
+        ? `schedule:${checkin.review_schedule_id}`
+        : `client:${checkin.client_id}`
+}
+
 function getClientSortName(client: Client): string {
     return client.full_name?.trim() || client.email || 'Cliente'
 }
@@ -331,24 +339,6 @@ function buildAttentionReasons(params: {
         reasons.push({
             code: 'no_active_program',
             label: 'Sin programa activo',
-            severity: 'medium',
-        })
-    }
-
-    const noRecentThreshold = Math.max(30, client.checkin_frequency_days * 2)
-    if (!latestCheckin) {
-        const daysSinceStart = -differenceInFullDays(client.start_date, today)
-        if (daysSinceStart >= 30) {
-            reasons.push({
-                code: 'no_recent_checkin',
-                label: 'Sin ninguna revisión reciente',
-                severity: 'medium',
-            })
-        }
-    } else if (daysSinceLastCheckin != null && daysSinceLastCheckin > noRecentThreshold) {
-        reasons.push({
-            code: 'no_recent_checkin',
-            label: `Sin revisión en ${daysSinceLastCheckin} días`,
             severity: 'medium',
         })
     }
@@ -643,7 +633,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     ] = await Promise.all([
         supabase
             .from('checkins')
-            .select('id, client_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
+            .select('id, client_id, review_schedule_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
             .eq('coach_id', coachId)
             .eq('type', 'checkin')
             .neq('status', 'pending')
@@ -652,7 +642,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .order('submitted_at', { ascending: false }),
         supabase
             .from('checkins')
-            .select('id, client_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
+            .select('id, client_id, review_schedule_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
             .eq('coach_id', coachId)
             .eq('type', 'checkin')
             .in('client_id', clientIds)
@@ -738,9 +728,23 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         }
     }
 
+    const latestCheckinByOperationalKey = new Map<string, SentReviewRecord>()
+    for (const checkin of sentReviews) {
+        const key = getOperationalCheckinKey(checkin)
+        if (!latestCheckinByOperationalKey.has(key)) {
+            latestCheckinByOperationalKey.set(key, checkin)
+        }
+    }
+
+    const isCurrentOperationalCheckin = (checkin: CheckinRecord) => {
+        const latest = latestCheckinByOperationalKey.get(getOperationalCheckinKey(checkin))
+        return !latest || latest.id === checkin.id
+    }
+
     const checkins = candidateCheckins.filter((checkin) => reviewsByCheckinId.has(checkin.id))
+    const currentOperationalCheckins = checkins.filter(isCurrentOperationalCheckin)
     const checkinsByClient = new Map<string, CheckinRecord[]>()
-    for (const checkin of checkins) {
+    for (const checkin of currentOperationalCheckins) {
         const list = checkinsByClient.get(checkin.client_id) ?? []
         list.push(checkin)
         checkinsByClient.set(checkin.client_id, list)
@@ -872,7 +876,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         }
     })
 
-    const checkinNotifications: DashboardNotification[] = checkins
+    const checkinNotifications: DashboardNotification[] = currentOperationalCheckins
         .filter((checkin) => new Date(checkin.submitted_at) >= threeDaysAgo)
         .filter((checkin) => needsCoachReview(checkin, reviewsByCheckinId.get(checkin.id) ?? null))
         .slice(0, 8)
@@ -1038,13 +1042,14 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
 
     const [
         receivedReviewsResult,
+        recentCheckinsResult,
         unreadMessagesResult,
         dueTasksResult,
         signupResult,
     ] = await Promise.all([
         supabase
             .from('reviews')
-            .select('id, checkins!inner(id, coach_id, type, submitted_at, status)', { count: 'exact', head: true })
+            .select('id, checkin_id, checkins!inner(id, client_id, review_schedule_id, coach_id, type, submitted_at, status, created_at)')
             .eq('status', 'draft')
             .eq('checkins.coach_id', coachId)
             .eq('checkins.type', 'checkin')
@@ -1052,6 +1057,13 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
             .neq('checkins.status', 'archived')
             .not('checkins.submitted_at', 'is', null)
             .gte('checkins.submitted_at', threeDaysAgo.toISOString()),
+        supabase
+            .from('checkins')
+            .select('id, client_id, review_schedule_id, created_at')
+            .eq('coach_id', coachId)
+            .eq('type', 'checkin')
+            .order('created_at', { ascending: false })
+            .limit(100),
         supabase
             .from('messages')
             .select('id', { count: 'exact', head: true })
@@ -1073,8 +1085,33 @@ export async function getSidebarBadges(coachId: string): Promise<SidebarBadges> 
             .eq('status', 'active'),
     ])
 
+    type BadgeCheckin = {
+        id: string
+        client_id: string
+        review_schedule_id: string | null
+        created_at: string
+    }
+    type BadgeReview = {
+        id: string
+        checkin_id: string
+        checkins: BadgeCheckin[] | BadgeCheckin | null
+    }
+
+    const latestByKey = new Map<string, BadgeCheckin>()
+    for (const checkin of (recentCheckinsResult.data ?? []) as BadgeCheckin[]) {
+        const key = getOperationalCheckinKey(checkin)
+        if (!latestByKey.has(key)) latestByKey.set(key, checkin)
+    }
+
+    const activeReceivedReviews = ((receivedReviewsResult.data ?? []) as unknown as BadgeReview[]).filter((review) => {
+        const relation = Array.isArray(review.checkins) ? review.checkins[0] : review.checkins
+        if (!relation) return false
+        const latest = latestByKey.get(getOperationalCheckinKey(relation))
+        return !latest || latest.id === relation.id
+    })
+
     const pendingCount =
-        (receivedReviewsResult.count ?? 0) +
+        activeReceivedReviews.length +
         (dueTasksResult.count ?? 0)
 
     return {

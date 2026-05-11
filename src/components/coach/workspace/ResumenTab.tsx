@@ -30,6 +30,7 @@ import {
     CalendarClock,
     Flag,
     Trophy,
+    BarChart3,
 } from 'lucide-react'
 import { MetricDefinition } from '@/types/metrics'
 import { cn } from '@/lib/utils'
@@ -651,16 +652,11 @@ function canOpenReviewFlow(checkin: CheckinWithReview | null) {
 
     return (
         !checkin.review ||
-        checkin.review.status === 'draft' ||
-        (checkin.review.status === 'approved' && !checkin.review.message_to_client?.trim())
+        checkin.review.status === 'draft'
     )
 }
 
 function getReviewActionLabel(checkin: CheckinWithReview | null) {
-    if (checkin?.review?.status === 'approved' && !checkin.review.message_to_client?.trim()) {
-        return 'Enviar feedback'
-    }
-
     return 'Cerrar revisión'
 }
 
@@ -716,9 +712,7 @@ function FollowUpActionBanner({
                         </div>
                         <p className="mt-1 text-sm text-amber-700/90">
                             {hasReviewableCheckin
-                                ? latestCheckin?.review?.status === 'approved'
-                                    ? 'La revisión ya está aprobada. Si quieres, todavía puedes enviar el feedback desde aquí.'
-                                    : 'Hay una revisión pendiente de cerrar antes de avanzar el siguiente ciclo.'
+                                ? 'Hay una revisión pendiente de cerrar antes de avanzar el siguiente ciclo.'
                                 : 'No hay una revisión pendiente. Puedes avanzar el ciclo manualmente si corresponde.'}
                         </p>
                     </div>
@@ -886,26 +880,13 @@ function ReviewCard({
                 <section className="space-y-4 rounded-xl border bg-muted/20 p-4">
                     <div className="flex items-start justify-between gap-3">
                         <div>
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                Métricas y estado
-                            </p>
+                            <div className="flex items-center gap-2">
+                                <BarChart3 className="h-4 w-4 text-primary" />
+                                <p className="text-sm font-semibold">Métricas y estado</p>
+                            </div>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 Vista compacta de la última revisión recibida.
                             </p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-right">
-                            <div className="rounded-lg bg-background px-3 py-2 border">
-                                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Entreno</p>
-                                <p className="text-sm font-semibold">
-                                    {checkin.training_adherence_pct != null ? `${checkin.training_adherence_pct}%` : '—'}
-                                </p>
-                            </div>
-                            <div className="rounded-lg bg-background px-3 py-2 border">
-                                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Nutrición</p>
-                                <p className="text-sm font-semibold">
-                                    {checkin.nutrition_adherence_pct != null ? `${checkin.nutrition_adherence_pct}%` : '—'}
-                                </p>
-                            </div>
                         </div>
                     </div>
 

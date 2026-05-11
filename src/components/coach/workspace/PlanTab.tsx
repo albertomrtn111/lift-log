@@ -495,6 +495,7 @@ function EntrenoSubtab({
                     </h3>
                     <div className="flex items-center gap-2">
                         <AITrainingDialog
+                            clientId={clientId}
                             existingProgram={activeProgram && existingExercises.length > 0
                                 ? { name: activeProgram.name, weeks: activeProgram.total_weeks, exercises: existingExercises }
                                 : null

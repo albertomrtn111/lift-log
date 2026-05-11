@@ -55,6 +55,7 @@ interface ExistingProgram {
 }
 
 interface AITrainingDialogProps {
+    clientId: string
     trigger?: React.ReactNode
     existingProgram?: ExistingProgram | null
     /** Called when user confirms — receives a StrengthStructure ready to import into the wizard */
@@ -240,7 +241,7 @@ const MODIFY_EXAMPLES = [
 // Main component
 // ============================================================================
 
-export function AITrainingDialog({ trigger, existingProgram, onConfirm }: AITrainingDialogProps) {
+export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm }: AITrainingDialogProps) {
     const hasExisting = !!existingProgram && existingProgram.exercises.length > 0
 
     const [open, setOpen] = useState(false)
@@ -281,9 +282,10 @@ export function AITrainingDialog({ trigger, existingProgram, onConfirm }: AITrai
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    clientId,
                     mode,
                     prompt: prompt.trim(),
-                    existingProgram: mode === 'modify' ? existingProgram : null,
+                    existingProgram,
                 }),
             })
 

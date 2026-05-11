@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { callGemini } from '@/lib/ai/gemini'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
+import { formatAthleteProfileContext } from '@/lib/ai/athlete-profile-context'
 
 const AICheckinAnalysisSchema = z.object({
     overall_summary: z.string().min(1),
@@ -99,6 +100,7 @@ async function buildContext(checkinId: string) {
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     const [
+        athleteProfileResult,
         previousCheckinResult,
         metricHistoryResult,
         macroPlanResult,
@@ -108,6 +110,12 @@ async function buildContext(checkinId: string) {
         cardioResult,
         trainingLogsResult,
     ] = await Promise.all([
+        supabase
+            .from('athlete_ai_profiles')
+            .select('profile_status, answers_json, generated_profile_json')
+            .eq('coach_id', coachId)
+            .eq('client_id', clientId)
+            .maybeSingle(),
         supabase
             .from('checkins')
             .select('raw_payload, submitted_at, weight_kg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, notes')
@@ -169,6 +177,7 @@ async function buildContext(checkinId: string) {
     return {
         checkin,
         reviewTemplate,
+        athleteProfile: athleteProfileResult.data ?? null,
         previousCheckin: previousCheckinResult.data?.[0] ?? null,
         metricHistory: (metricHistoryResult.data ?? []) as RecentMetricRow[],
         macroPlan: macroPlanResult.data ?? null,
@@ -388,6 +397,9 @@ Notas del atleta: ${ctx.checkin.notes ?? 'Ninguna'}
 
 ### Respuestas actuales
 ${currentPayloadLines.join('\n')}
+
+## Perfil IA del atleta
+${formatAthleteProfileContext(ctx.athleteProfile, 'Sin perfil IA del atleta disponible para esta revisión.')}
 
 ## Revisión anterior
 ${ctx.previousCheckin

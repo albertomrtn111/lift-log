@@ -260,6 +260,7 @@ export function ClientReviewsTab({ initialCheckinId }: ClientReviewsTabProps) {
                                 clientId={formData.clientId}
                                 metrics={formData.metrics}
                                 initialValues={formData.initialValues}
+                                photoConfig={formData.photoConfig}
                                 embedded
                                 redirectOnOnboarding={false}
                                 onSubmitted={() => {

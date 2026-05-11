@@ -20,6 +20,7 @@ export interface CalendarItem {
     programId?: string
     dayId?: string
     programName?: string
+    weekIndex?: number
     // Cardio-specific
     cardioSessionId?: string
     activityType?: string
@@ -87,6 +88,25 @@ export async function getClientWeeklySchedule(
         return `${y}-${m}-${day}`
     }
 
+    const getProgramWeekIndex = (dateStr: string, effectiveFrom?: string | null, totalWeeks?: number | null) => {
+        if (!effectiveFrom) return undefined
+
+        const date = new Date(`${dateStr}T12:00:00`)
+        const programStart = new Date(`${effectiveFrom}T12:00:00`)
+        const dateMondayOffset = (date.getDay() + 6) % 7
+        const programMondayOffset = (programStart.getDay() + 6) % 7
+
+        date.setDate(date.getDate() - dateMondayOffset)
+        programStart.setDate(programStart.getDate() - programMondayOffset)
+
+        const msPerWeek = 7 * 24 * 60 * 60 * 1000
+        const weekIndex = Math.floor((date.getTime() - programStart.getTime()) / msPerWeek) + 1
+
+        if (weekIndex < 1) return undefined
+        if (totalWeeks && weekIndex > totalWeeks) return undefined
+        return weekIndex
+    }
+
     const startStr = weekStart
     const endStr = weekEnd
 
@@ -139,6 +159,7 @@ export async function getClientWeeklySchedule(
                         programId: activeProgram.id,
                         dayId: day.id,
                         programName: activeProgram.name,
+                        weekIndex: week + 1,
                     })
                 }
             }
@@ -165,7 +186,7 @@ export async function getClientWeeklySchedule(
 
         const { data: programsData } = await supabase
             .from('training_programs')
-            .select('id, name')
+            .select('id, name, effective_from, weeks')
             .in('id', programIds)
 
         const daysMap = new Map((daysData || []).map((d: any) => [d.id, d]))
@@ -173,7 +194,7 @@ export async function getClientWeeklySchedule(
 
         for (const s of realStrength as any[]) {
             const dayInfo = daysMap.get(s.day_id)
-            const programInfo = programsMap.get(s.program_id)
+            const programInfo = programsMap.get(s.program_id) as any
             realStrengthItems.push({
                 id: s.id,
                 kind: 'strength',
@@ -184,6 +205,7 @@ export async function getClientWeeklySchedule(
                 programId: s.program_id,
                 dayId: s.day_id,
                 programName: programInfo?.name,
+                weekIndex: getProgramWeekIndex(s.scheduled_date, programInfo?.effective_from, programInfo?.weeks),
             })
         }
     }
@@ -417,11 +439,10 @@ export async function autoMarkStrengthDayComplete(
 // Get active training program with days/columns/exercises/cells
 // ------------------------------------------------------------------
 
-export async function getActiveClientProgram(clientId: string) {
+export async function getActiveClientProgram(clientId: string, programId?: string) {
     const supabase = await createClient()
 
-    // Fetch most recent active program
-    const { data: programs } = await supabase
+    let query = supabase
         .from('training_programs')
         .select(`
             id, name, weeks, effective_from, effective_to,
@@ -430,9 +451,14 @@ export async function getActiveClientProgram(clientId: string) {
             )
         `)
         .eq('client_id', clientId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
+
+    if (programId) {
+        query = query.eq('id', programId)
+    } else {
+        query = query.eq('status', 'active').order('created_at', { ascending: false })
+    }
+
+    const { data: programs } = await query.limit(1)
 
     const program = programs?.[0] || null
     if (!program) return null

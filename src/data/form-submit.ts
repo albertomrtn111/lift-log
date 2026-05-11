@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureReviewForCheckin } from '@/data/workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
+import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
 
 interface SubmitFormResult {
     success: boolean
@@ -25,7 +26,7 @@ export async function submitFormAction(
     // 2. Verify the checkin exists and load its type
     const { data: checkin, error: checkinErr } = await admin
         .from('checkins')
-        .select('id, client_id, type, status')
+        .select('id, coach_id, client_id, type, status, form_template_id, review_template_id, review_schedule_id, period_start, period_end')
         .eq('id', checkinId)
         .single()
 
@@ -44,7 +45,43 @@ export async function submitFormAction(
         return { success: false, error: 'No tienes permiso para enviar este formulario' }
     }
 
-    // 4. Removed prevent re-submission guard
+    // 4. Validate server-side photo requirements from the review template.
+    const linkedCheckin = await ensureCheckinReviewTemplateLink(admin, checkin)
+
+    if (linkedCheckin.review_template_id) {
+        const { data: reviewTemplate, error: reviewTemplateErr } = await admin
+            .from('review_templates')
+            .select('include_progress_photos, photos_required, photos_max_items')
+            .eq('id', linkedCheckin.review_template_id)
+            .eq('coach_id', linkedCheckin.coach_id)
+            .maybeSingle()
+
+        if (reviewTemplateErr) {
+            return { success: false, error: reviewTemplateErr.message }
+        }
+
+        if (reviewTemplate?.include_progress_photos) {
+            const { count, error: mediaCountErr } = await admin
+                .from('checkin_media')
+                .select('id', { count: 'exact', head: true })
+                .eq('checkin_id', checkinId)
+                .eq('client_id', checkin.client_id)
+                .eq('media_type', 'progress_photo')
+
+            if (mediaCountErr) {
+                return { success: false, error: mediaCountErr.message }
+            }
+
+            const photoCount = count ?? 0
+            const maxPhotos = reviewTemplate.photos_max_items ?? 6
+            if (reviewTemplate.photos_required && photoCount === 0) {
+                return { success: false, error: 'Sube al menos una foto de progreso antes de enviar la revisión.' }
+            }
+            if (photoCount > maxPhotos) {
+                return { success: false, error: `Esta revisión permite un máximo de ${maxPhotos} fotos.` }
+            }
+        }
+    }
 
     // 5. Validate type for onboarding-specific forms
     const isOnboarding = checkin.type === 'onboarding'
@@ -106,6 +143,8 @@ export async function submitFormAction(
                     const { error: reviewResetError } = await admin
                         .from('reviews')
                         .update({
+                            status: 'draft',
+                            approved_by: null,
                             ai_status: 'pending',
                             ai_summary: null,
                             ai_error: null,

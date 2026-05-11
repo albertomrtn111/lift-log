@@ -42,6 +42,23 @@ async function assertReviewTemplateBelongsToCoach(reviewTemplateId: string, coac
     }
 }
 
+async function assertFormTemplateBelongsToCoach(formTemplateId: string | null | undefined, coachId: string): Promise<void> {
+    if (!formTemplateId) return
+
+    const supabase = await createClient()
+    const { data, error } = await supabase
+        .from('form_templates')
+        .select('id')
+        .eq('id', formTemplateId)
+        .eq('coach_id', coachId)
+        .eq('type', 'checkin')
+        .maybeSingle()
+
+    if (error || !data) {
+        throw new Error('El formulario asociado no pertenece a este workspace')
+    }
+}
+
 async function getScheduleCountForReviewTemplate(reviewTemplateId: string, coachId: string): Promise<number> {
     const supabase = await createClient()
     const { count, error } = await supabase
@@ -99,6 +116,7 @@ export async function createReviewTemplateAction(
         const { coachId } = await requireActiveCoachId()
         const validationError = validateInput(input)
         if (validationError) return { success: false, error: validationError }
+        await assertFormTemplateBelongsToCoach(input.form_template_id, coachId)
         await assertMetricIdsBelongToCoach(metricIds, coachId)
 
         const created = await createReviewTemplate(coachId, input)
@@ -129,6 +147,9 @@ export async function updateReviewTemplateAction(
         const validationError = validateInput({ name: 'placeholder', ...patch })
         if (validationError) {
             return { success: false, error: validationError }
+        }
+        if (patch.form_template_id !== undefined) {
+            await assertFormTemplateBelongsToCoach(patch.form_template_id, coachId)
         }
         if (metricIds !== undefined) {
             await assertMetricIdsBelongToCoach(metricIds, coachId)

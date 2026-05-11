@@ -10,6 +10,7 @@ import {
     AlertCircle,
     BarChart3,
     ClipboardCheck,
+    ClipboardList,
     Dumbbell,
     Loader2,
     PlusCircle,
@@ -20,8 +21,10 @@ import {
 import {
     getActiveStrengthProgramSummary,
     getClientCardioProgress,
+    getClientDailyMetrics,
     getWeightSeries,
     getMacroAdherence,
+    type ClientDailyMetricEntry,
     type ClientCardioProgressData,
     type ProgramSummary,
     type MetricsRange
@@ -47,6 +50,7 @@ interface SummaryOverviewProps {
     weightData: { data: any[], avg: string, trend: string | null }
     adherenceData: { percent: number | string, days: number, totalDays: number }
     cardioData: ClientCardioProgressData
+    dailyMetrics: ClientDailyMetricEntry[]
     loading: boolean
 }
 
@@ -57,6 +61,7 @@ function SummaryOverview({
     weightData,
     adherenceData,
     cardioData,
+    dailyMetrics,
     loading,
 }: SummaryOverviewProps) {
     const ranges: { label: string, value: MetricsRange }[] = [
@@ -224,6 +229,68 @@ function SummaryOverview({
             </Card>
 
             <ClientCardioEvolution data={cardioData} />
+
+            <Card className="overflow-hidden">
+                <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
+                    <div>
+                        <h3 className="font-semibold flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            Registro diario
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Peso, pasos, sueño y notas del rango seleccionado.
+                        </p>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">
+                        {dailyMetrics.length} días
+                    </Badge>
+                </div>
+
+                {dailyMetrics.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[620px] text-sm">
+                            <thead>
+                                <tr className="border-b bg-muted/40 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                                    <th className="px-4 py-3 text-left font-semibold">Día</th>
+                                    <th className="px-3 py-3 text-right font-semibold">Peso</th>
+                                    <th className="px-3 py-3 text-right font-semibold">Pasos</th>
+                                    <th className="px-3 py-3 text-right font-semibold">Sueño</th>
+                                    <th className="px-4 py-3 text-left font-semibold">Notas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dailyMetrics.map((entry) => (
+                                    <tr key={entry.date} className="border-b last:border-0">
+                                        <td className="whitespace-nowrap px-4 py-3 font-medium">
+                                            {format(new Date(`${entry.date}T12:00:00`), 'd MMM', { locale: es })}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                                            {entry.weightKg !== null ? `${entry.weightKg.toFixed(1)} kg` : <span className="text-muted-foreground">—</span>}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                                            {entry.steps !== null ? entry.steps.toLocaleString('es-ES') : <span className="text-muted-foreground">—</span>}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                                            {entry.sleepHours !== null ? `${entry.sleepHours.toFixed(1)} h` : <span className="text-muted-foreground">—</span>}
+                                        </td>
+                                        <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
+                                            {entry.notes ? (
+                                                <span className="line-clamp-1">{entry.notes}</span>
+                                            ) : (
+                                                <span>—</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Sin registros diarios en este rango.
+                    </div>
+                )}
+            </Card>
         </div>
     )
 }
@@ -232,10 +299,11 @@ export default function SummaryPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const [activeTab, setActiveTab] = useState<ProgressTab>(() => normalizeTab(searchParams.get('tab')))
-    const [range, setRange] = useState<MetricsRange>('7d')
+    const [range, setRange] = useState<MetricsRange>('14d')
     const [program, setProgram] = useState<ProgramSummary | null>(null)
     const [weightData, setWeightData] = useState<{ data: any[], avg: string, trend: string | null }>({ data: [], avg: '--', trend: null })
     const [adherenceData, setAdherenceData] = useState<{ percent: number | string, days: number, totalDays: number }>({ percent: '--', days: 0, totalDays: 0 })
+    const [dailyMetrics, setDailyMetrics] = useState<ClientDailyMetricEntry[]>([])
     const [cardioData, setCardioData] = useState<ClientCardioProgressData>({
         weeks: [],
         sessions: [],
@@ -251,16 +319,18 @@ export default function SummaryPage() {
     const loadData = useCallback(async () => {
         setLoading(true)
         try {
-            const [prog, weight, adh, cardio] = await Promise.all([
+            const [prog, weight, adh, cardio, metrics] = await Promise.all([
                 getActiveStrengthProgramSummary(),
                 getWeightSeries(range),
                 getMacroAdherence(range),
                 getClientCardioProgress(range),
+                getClientDailyMetrics(range),
             ])
             setProgram(prog)
             setWeightData(weight)
             setAdherenceData(adh)
             setCardioData(cardio)
+            setDailyMetrics(metrics)
         } catch (error) {
             console.error('Error loading summary data:', error)
         } finally {
@@ -349,6 +419,7 @@ export default function SummaryPage() {
                         weightData={weightData}
                         adherenceData={adherenceData}
                         cardioData={cardioData}
+                        dailyMetrics={dailyMetrics}
                         loading={loading}
                     />
                 </TabsContent>

@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils'
 
 interface WeeklySummaryCardProps {
     items: CalendarItem[]
+    title?: string
+    emptyText?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -89,14 +91,18 @@ interface SportStats {
     completedKm: number
 }
 
-export function WeeklySummary({ items }: WeeklySummaryCardProps) {
+export function WeeklySummary({
+    items,
+    title = 'Resumen semanal',
+    emptyText = 'No hay sesiones planificadas esta semana.',
+}: WeeklySummaryCardProps) {
     const activeSessions = items.filter(i => i.kind !== 'rest')
 
     if (activeSessions.length === 0) {
         return (
             <Card className="p-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">Resumen semanal</h3>
-                <p className="text-sm text-muted-foreground">No hay sesiones planificadas esta semana.</p>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">{title}</h3>
+                <p className="text-sm text-muted-foreground">{emptyText}</p>
             </Card>
         )
     }
@@ -130,7 +136,7 @@ export function WeeklySummary({ items }: WeeklySummaryCardProps) {
 
     return (
         <Card className="p-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Resumen semanal</h3>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">{title}</h3>
 
             {/* Grid de sesiones por deporte */}
             <div className={cn('grid gap-4', gridCols)}>

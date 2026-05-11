@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
 import type { Message } from '@/types/messages'
 import { ConversationPanel } from './ConversationPanel'
 
@@ -84,6 +85,7 @@ export function MessagesPageClient({
     const selectedConversation = conversationState.find(conversation => conversation.clientId === selectedClientId) ?? null
 
     const handleSelectConversation = useCallback((clientId: string) => {
+        const unreadBeforeSelect = conversationState.find(conversation => conversation.clientId === clientId)?.unreadCount ?? 0
         setSelectedClientId(clientId)
         setConversationState(prev => {
             let changed = false
@@ -94,10 +96,13 @@ export function MessagesPageClient({
             })
             return changed ? next : prev
         })
+        if (unreadBeforeSelect > 0) {
+            notifyCoachBadgesChanged({ messagesUnreadDelta: -unreadBeforeSelect })
+        }
         if (clientId !== selectedClientId) {
             router.replace(`/coach/messages?client=${clientId}`)
         }
-    }, [router, selectedClientId])
+    }, [conversationState, router, selectedClientId])
 
     const handleUnreadChange = useCallback((clientId: string, count: number) => {
         setConversationState(prev => {

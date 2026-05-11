@@ -17,11 +17,12 @@ import {
     Receipt,
     MessageCircle
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import { createClient } from '@/lib/supabase/client'
 import { useCoachContext } from '@/contexts/CoachContext'
+import { COACH_BADGES_CHANGED_EVENT, type CoachBadgesChangedDetail } from '@/lib/coach-badges-events'
 
 interface NavItem {
     href: string
@@ -76,18 +77,35 @@ export function CoachSidebar() {
     const [loggingOut, setLoggingOut] = useState(false)
     const [badges, setBadges] = useState<Record<string, number>>({})
 
-    // Fetch sidebar badges
+    const fetchBadges = useCallback(async () => {
+        try {
+            const res = await fetch('/api/sidebar-badges', { cache: 'no-store' })
+            if (res.ok) setBadges(await res.json())
+        } catch { /* silent */ }
+    }, [])
+
     useEffect(() => {
-        async function fetchBadges() {
-            try {
-                const res = await fetch('/api/sidebar-badges')
-                if (res.ok) setBadges(await res.json())
-            } catch { /* silent */ }
-        }
         fetchBadges()
         const interval = setInterval(fetchBadges, 60_000)
         return () => clearInterval(interval)
-    }, [])
+    }, [fetchBadges])
+
+    useEffect(() => {
+        const handleBadgesChanged = (event: Event) => {
+            const detail = (event as CustomEvent<CoachBadgesChangedDetail>).detail
+            if (typeof detail?.messagesUnreadDelta === 'number') {
+                setBadges(prev => ({
+                    ...prev,
+                    messagesUnread: Math.max(0, (prev.messagesUnread ?? 0) + detail.messagesUnreadDelta!),
+                }))
+            }
+
+            window.setTimeout(fetchBadges, 300)
+        }
+
+        window.addEventListener(COACH_BADGES_CHANGED_EVENT, handleBadgesChanged)
+        return () => window.removeEventListener(COACH_BADGES_CHANGED_EVENT, handleBadgesChanged)
+    }, [fetchBadges])
 
     // Get user context from cached provider
     const { coach } = useCoachContext()

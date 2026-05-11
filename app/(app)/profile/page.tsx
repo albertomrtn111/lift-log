@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useRef, useState, useEffect } from 'react'
+import type React from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -18,6 +20,10 @@ import {
     Briefcase,
     AlertCircle,
     Camera,
+    Bell,
+    MessageCircle,
+    ClipboardCheck,
+    Pill,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -26,7 +32,17 @@ import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { APP_MODE_COOKIE, type AppMode } from '@/lib/mode-utils'
 import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
 import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
-import { updateAvatarUrlAction } from './actions'
+import {
+    getNotificationPreferencesAction,
+    updateAvatarUrlAction,
+    updateNotificationPreferencesAction,
+} from './actions'
+
+type ClientNotificationPreferences = {
+    messages_enabled: boolean
+    reviews_enabled: boolean
+    supplements_enabled: boolean
+}
 
 function getCookie(name: string): string | undefined {
     if (typeof document === 'undefined') return undefined
@@ -46,6 +62,13 @@ export default function ProfilePage() {
     const [loggingOut, setLoggingOut] = useState(false)
     const [uploading, setUploading] = useState(false)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
+    const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
+        messages_enabled: true,
+        reviews_enabled: true,
+        supplements_enabled: true,
+    })
+    const [loadingNotificationPreferences, setLoadingNotificationPreferences] = useState(true)
+    const [savingNotificationKey, setSavingNotificationKey] = useState<keyof ClientNotificationPreferences | null>(null)
 
     const { client, isLoading, error } = useClientAppContext()
 
@@ -53,6 +76,48 @@ export default function ProfilePage() {
         const mode = getCookie(APP_MODE_COOKIE) as AppMode | undefined
         setCurrentMode(mode)
     }, [])
+
+    useEffect(() => {
+        let isMounted = true
+
+        async function loadNotificationPreferences() {
+            const result = await getNotificationPreferencesAction()
+            if (!isMounted) return
+
+            if (result.success && result.preferences) {
+                setNotificationPreferences(result.preferences)
+            } else if (result.error) {
+                console.error('[ProfilePage] Notification preferences:', result.error)
+            }
+            setLoadingNotificationPreferences(false)
+        }
+
+        loadNotificationPreferences()
+        return () => {
+            isMounted = false
+        }
+    }, [])
+
+    const handleNotificationToggle = async (
+        key: keyof ClientNotificationPreferences,
+        checked: boolean
+    ) => {
+        const previous = notificationPreferences
+        const next = { ...notificationPreferences, [key]: checked }
+        setNotificationPreferences(next)
+        setSavingNotificationKey(key)
+
+        const result = await updateNotificationPreferencesAction(next)
+        setSavingNotificationKey(null)
+
+        if (result.success && result.preferences) {
+            setNotificationPreferences(result.preferences)
+            toast.success('Preferencias de notificación actualizadas')
+        } else {
+            setNotificationPreferences(previous)
+            toast.error(result.error || 'No se pudieron actualizar las notificaciones')
+        }
+    }
 
     const handleLogout = async () => {
         setLoggingOut(true)
@@ -275,6 +340,37 @@ export default function ProfilePage() {
                     <StravaConnectorCard />
                 </section>
 
+                {/* Notificaciones */}
+                <section className="space-y-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Notificaciones</h2>
+                    <Card className="divide-y divide-border">
+                        <NotificationPreferenceRow
+                            icon={<Pill className="h-5 w-5 text-primary" />}
+                            title="Suplementación"
+                            description="Recordatorios para marcar tus tomas."
+                            checked={notificationPreferences.supplements_enabled}
+                            disabled={loadingNotificationPreferences || savingNotificationKey === 'supplements_enabled'}
+                            onCheckedChange={(checked) => handleNotificationToggle('supplements_enabled', checked)}
+                        />
+                        <NotificationPreferenceRow
+                            icon={<MessageCircle className="h-5 w-5 text-primary" />}
+                            title="Mensajes"
+                            description="Avisos cuando tu entrenador te escribe."
+                            checked={notificationPreferences.messages_enabled}
+                            disabled={loadingNotificationPreferences || savingNotificationKey === 'messages_enabled'}
+                            onCheckedChange={(checked) => handleNotificationToggle('messages_enabled', checked)}
+                        />
+                        <NotificationPreferenceRow
+                            icon={<ClipboardCheck className="h-5 w-5 text-primary" />}
+                            title="Revisiones"
+                            description="Nuevas revisiones, aprobaciones y feedback."
+                            checked={notificationPreferences.reviews_enabled}
+                            disabled={loadingNotificationPreferences || savingNotificationKey === 'reviews_enabled'}
+                            onCheckedChange={(checked) => handleNotificationToggle('reviews_enabled', checked)}
+                        />
+                    </Card>
+                </section>
+
                 <RoleDebugPanel />
 
                 {/* Menú */}
@@ -306,6 +402,43 @@ export default function ProfilePage() {
 
                 <p className="text-center text-xs text-muted-foreground">NextTrain v1.0.0</p>
             </div>
+        </div>
+    )
+}
+
+function NotificationPreferenceRow({
+    icon,
+    title,
+    description,
+    checked,
+    disabled,
+    onCheckedChange,
+}: {
+    icon: React.ReactNode
+    title: string
+    description: string
+    checked: boolean
+    disabled: boolean
+    onCheckedChange: (checked: boolean) => void
+}) {
+    return (
+        <div className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                {icon}
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                    <Bell className="h-3.5 w-3.5 text-primary" />
+                    <p className="font-medium text-foreground">{title}</p>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+            </div>
+            <Switch
+                checked={checked}
+                disabled={disabled}
+                onCheckedChange={onCheckedChange}
+                aria-label={`Activar notificaciones de ${title.toLowerCase()}`}
+            />
         </div>
     )
 }

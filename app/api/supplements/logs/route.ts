@@ -32,17 +32,33 @@ export async function GET(request: NextRequest) {
         const context = await getClientContext()
         if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-        const date = new URL(request.url).searchParams.get('date')
-        if (!isDate(date)) {
+        const params = new URL(request.url).searchParams
+        const date = params.get('date')
+        const start = params.get('start')
+        const end = params.get('end')
+
+        if (!isDate(date) && (!isDate(start) || !isDate(end))) {
             return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
         }
 
+        if (start && end && start > end) {
+            return NextResponse.json({ error: 'Rango inválido' }, { status: 400 })
+        }
+
         const supabase = createAdminClient()
-        const { data, error } = await supabase
+        let query = supabase
             .from('supplement_dose_logs')
             .select('id, supplement_id, scheduled_date, scheduled_time, status, logged_at')
             .eq('client_id', context.clientId)
-            .eq('scheduled_date', date)
+
+        if (date) {
+            query = query.eq('scheduled_date', date)
+        } else {
+            query = query.gte('scheduled_date', start!).lte('scheduled_date', end!)
+        }
+
+        const { data, error } = await query
+            .order('scheduled_date', { ascending: true })
             .order('scheduled_time', { ascending: true })
 
         if (error) throw error

@@ -50,6 +50,14 @@ export interface ClientCardioProgressData {
     completedSessions: number
 }
 
+export interface ClientDailyMetricEntry {
+    date: string
+    weightKg: number | null
+    steps: number | null
+    sleepHours: number | null
+    notes: string | null
+}
+
 // Helper to get current client
 async function getClientContext() {
     const supabase = await createClient()
@@ -71,24 +79,6 @@ async function getClientContext() {
 function getTotalWeeks(program: any) {
     const totalWeeks = Number(program.total_weeks ?? program.weeks ?? 1)
     return Number.isFinite(totalWeeks) && totalWeeks > 0 ? totalWeeks : 1
-}
-
-function hasLegacyLogProgress(log: any) {
-    if (log.notes) return true
-    const sets = Array.isArray(log.sets) ? log.sets : []
-    return sets.some((set: any) =>
-        set?.weight !== null && set?.weight !== undefined && set?.weight !== '' ||
-        set?.reps !== null && set?.reps !== undefined && set?.reps !== '' ||
-        set?.rir !== null && set?.rir !== undefined && set?.rir !== ''
-    )
-}
-
-function hasSetProgress(set: any) {
-    return Boolean(set.completed || set.is_override) ||
-        set.weight_kg !== null && set.weight_kg !== undefined ||
-        set.reps !== null && set.reps !== undefined ||
-        set.rir !== null && set.rir !== undefined ||
-        Boolean(set.notes)
 }
 
 function getRangeStart(range: MetricsRange) {
@@ -149,46 +139,7 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
     if (currentWeek < 1) currentWeek = 1
     if (currentWeek > totalWeeks) currentWeek = totalWeeks
 
-    // 3. Calculate Progress
-    // Mirror the current training progress model: per-set records are the new
-    // source of truth, with legacy exercise logs as a fallback for older rows.
-    const { data: exercises } = await supabase
-        .from('training_exercises')
-        .select('id')
-        .eq('program_id', program.id)
-
-    const exerciseIds = (exercises || []).map((exercise: any) => exercise.id)
-    const completedExerciseIds = new Set<string>()
-
-    if (exerciseIds.length > 0) {
-        const { data: trackedSets } = await supabase
-            .from('training_exercise_sets')
-            .select('exercise_id, weight_kg, reps, rir, completed, is_override, notes')
-            .in('exercise_id', exerciseIds)
-            .eq('week_index', currentWeek)
-
-        for (const set of trackedSets || []) {
-            if (hasSetProgress(set)) completedExerciseIds.add(set.exercise_id)
-        }
-
-        const { data: legacyLogs } = await supabase
-            .from('training_exercise_logs')
-            .select('exercise_id, sets, notes')
-            .eq('client_id', client.id)
-            .eq('program_id', program.id)
-            .eq('week_index', currentWeek)
-
-        for (const log of legacyLogs || []) {
-            if (hasLegacyLogProgress(log)) completedExerciseIds.add(log.exercise_id)
-        }
-    }
-
-    const total = exerciseIds.length
-    const completed = completedExerciseIds.size
-
-    const progressPercent = total > 0
-        ? Math.round((completed / total) * 100)
-        : 0
+    const progressPercent = Math.min(100, Math.round((currentWeek / totalWeeks) * 100))
 
     return {
         id: program.id,
@@ -237,6 +188,37 @@ export async function getWeightSeries(range: MetricsRange) {
         avg,
         trend
     }
+}
+
+export async function getClientDailyMetrics(range: MetricsRange): Promise<ClientDailyMetricEntry[]> {
+    const client = await getClientContext()
+
+    if (!client) return []
+    const supabase = createAdminClient()
+
+    const today = new Date()
+    const startDate = getRangeStart(range)
+
+    const { data, error } = await supabase
+        .from('client_metrics')
+        .select('metric_date, weight_kg, steps, sleep_h, notes')
+        .eq('client_id', client.id)
+        .gte('metric_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('metric_date', format(today, 'yyyy-MM-dd'))
+        .order('metric_date', { ascending: false })
+
+    if (error) {
+        console.error('[getClientDailyMetrics]', error.message)
+        return []
+    }
+
+    return (data || []).map((entry: any) => ({
+        date: entry.metric_date,
+        weightKg: toNullableNumber(entry.weight_kg),
+        steps: toNullableNumber(entry.steps),
+        sleepHours: toNullableNumber(entry.sleep_h),
+        notes: entry.notes || null,
+    }))
 }
 
 export async function getMacroAdherence(range: MetricsRange) {

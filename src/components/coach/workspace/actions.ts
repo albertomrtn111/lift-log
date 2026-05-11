@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { revalidatePath } from 'next/cache'
-import { ensureReviewForCheckin, updateReview } from '@/data/workspace'
+import { ensureReviewForCheckin } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
@@ -81,6 +81,19 @@ export async function createReviewAction(
     try {
         // Validate coach_id against membership
         const { coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId)
+        const admin = createAdminClient()
+
+        const { data: checkin, error: checkinError } = await admin
+            .from('checkins')
+            .select('id')
+            .eq('id', checkinId)
+            .eq('coach_id', validatedCoachId)
+            .eq('client_id', clientId)
+            .maybeSingle()
+
+        if (checkinError || !checkin) {
+            return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
+        }
 
         const review = await ensureReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
 
@@ -89,7 +102,6 @@ export async function createReviewAction(
         }
 
         if (review.ai_status !== 'completed' || !review.ai_summary) {
-            const admin = createAdminClient()
             await admin
                 .from('reviews')
                 .update({
@@ -160,10 +172,18 @@ export async function updateReviewAction(
         proposal?: Record<string, unknown>
     }
 ) {
-    const success = await updateReview(reviewId, updates)
+    const { coachId } = await requireActiveCoachId()
+    const admin = createAdminClient()
+    const { data: review, error } = await admin
+        .from('reviews')
+        .update(updates)
+        .eq('id', reviewId)
+        .eq('coach_id', coachId)
+        .select('id')
+        .maybeSingle()
 
-    if (!success) {
-        return { success: false, error: 'Error al actualizar la revisión' }
+    if (error || !review) {
+        return { success: false, error: error?.message || 'No tienes permiso para actualizar esta revisión' }
     }
 
     revalidatePath('/coach/clients')
@@ -222,42 +242,175 @@ async function advanceClientNextCheckinDate(
         .eq('id', clientId)
 }
 
+function advanceDateByFrequency(anchorDate: string, frequencyDays: number) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const nextDate = new Date(`${anchorDate}T12:00:00`)
+    do {
+        nextDate.setDate(nextDate.getDate() + frequencyDays)
+    } while (nextDate < today)
+
+    return toLocalDateStr(nextDate)
+}
+
+async function advanceReviewScheduleForCheckin(
+    supabase: SupabaseClient,
+    coachId: string,
+    clientId: string,
+    checkinId: string
+) {
+    const { data: checkin } = await supabase
+        .from('checkins')
+        .select('id, period_end, review_schedule_id, review_template_id')
+        .eq('id', checkinId)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
+        .maybeSingle()
+
+    if (!checkin?.period_end) return null
+
+    type ScheduleRow = {
+        id: string
+        review_template_id: string
+        frequency_days: number
+        next_due_date: string | null
+        is_active: boolean
+    }
+
+    let schedules: ScheduleRow[] = []
+
+    if (checkin.review_schedule_id) {
+        const { data } = await supabase
+            .from('client_review_schedules')
+            .select('id, review_template_id, frequency_days, next_due_date, is_active')
+            .eq('id', checkin.review_schedule_id)
+            .eq('coach_id', coachId)
+            .eq('client_id', clientId)
+            .maybeSingle()
+
+        if (data) schedules = [data as ScheduleRow]
+    } else {
+        const { data } = await supabase
+            .from('client_review_schedules')
+            .select('id, review_template_id, frequency_days, next_due_date, is_active')
+            .eq('coach_id', coachId)
+            .eq('client_id', clientId)
+            .eq('is_active', true)
+            .order('next_due_date', { ascending: true, nullsFirst: false })
+
+        const activeSchedules = (data ?? []) as ScheduleRow[]
+        const exactMatches = activeSchedules.filter((schedule) => schedule.next_due_date === checkin.period_end)
+        if (exactMatches.length === 1) {
+            schedules = exactMatches
+        } else {
+            const dueMatches = activeSchedules.filter((schedule) => {
+                return schedule.next_due_date != null && schedule.next_due_date <= checkin.period_end!
+            })
+            if (dueMatches.length === 1) schedules = dueMatches
+        }
+    }
+
+    const schedule = schedules[0]
+    if (!schedule?.next_due_date) return null
+
+    if (schedule.next_due_date > checkin.period_end) {
+        return {
+            scheduleId: schedule.id,
+            nextDueDate: schedule.next_due_date,
+            advanced: false,
+        }
+    }
+
+    const nextDueDate = advanceDateByFrequency(schedule.next_due_date, schedule.frequency_days)
+    const { error: scheduleError } = await supabase
+        .from('client_review_schedules')
+        .update({ next_due_date: nextDueDate })
+        .eq('id', schedule.id)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
+
+    if (scheduleError) {
+        console.error('[advanceReviewScheduleForCheckin] schedule update failed:', scheduleError)
+        return null
+    }
+
+    if (!checkin.review_schedule_id) {
+        await supabase
+            .from('checkins')
+            .update({
+                review_schedule_id: schedule.id,
+                review_template_id: checkin.review_template_id ?? schedule.review_template_id,
+            })
+            .eq('id', checkinId)
+            .eq('coach_id', coachId)
+            .eq('client_id', clientId)
+    }
+
+    await supabase
+        .from('clients')
+        .update({ next_checkin_date: nextDueDate })
+        .eq('id', clientId)
+        .eq('coach_id', coachId)
+
+    return {
+        scheduleId: schedule.id,
+        nextDueDate,
+        advanced: true,
+    }
+}
+
 async function finalizeApprovedReview(
     supabase: SupabaseClient,
+    coachId: string,
     userId: string,
     reviewId: string,
     checkinId: string,
     clientId: string
 ) {
-    const approved = await updateReview(reviewId, {
-        status: 'approved',
-        approved_by: userId,
-    })
+    const { data: approved, error: approveError } = await supabase
+        .from('reviews')
+        .update({
+            status: 'approved',
+            approved_by: userId,
+        })
+        .eq('id', reviewId)
+        .eq('checkin_id', checkinId)
+        .select('id')
+        .maybeSingle()
 
-    if (!approved) {
-        return { success: false as const, error: 'Error al aprobar la revisión' }
+    if (approveError || !approved) {
+        return { success: false as const, error: approveError?.message || 'Error al aprobar la revisión' }
     }
 
-    const { error: checkinError } = await supabase
+    const { data: archivedCheckin, error: checkinError } = await supabase
         .from('checkins')
         .update({ status: 'archived' })
         .eq('id', checkinId)
+        .eq('client_id', clientId)
+        .select('id')
+        .maybeSingle()
 
-    if (checkinError) {
-        return { success: false as const, error: checkinError.message || 'No se pudo cerrar la revisión.' }
+    if (checkinError || !archivedCheckin) {
+        return { success: false as const, error: checkinError?.message || 'No se pudo cerrar la revisión.' }
     }
 
-    await advanceClientNextCheckinDate(supabase, clientId, checkinId)
+    const advancedSchedule = await advanceReviewScheduleForCheckin(supabase, coachId, clientId, checkinId)
+    if (!advancedSchedule) {
+        await advanceClientNextCheckinDate(supabase, clientId, checkinId)
+    }
 
     return { success: true as const }
 }
 
 export async function approveReviewAction(reviewId: string) {
-    const supabase = await createClient()
-    const { data: review } = await supabase
+    const { coachId } = await requireActiveCoachId()
+    const admin = createAdminClient()
+    const { data: review } = await admin
         .from('reviews')
         .select('coach_id, client_id, checkin_id')
         .eq('id', reviewId)
+        .eq('coach_id', coachId)
         .single()
 
     if (!review) {
@@ -273,13 +426,21 @@ export async function approveReviewAction(reviewId: string) {
 }
 
 export async function revertReviewToDraftAction(reviewId: string) {
-    const success = await updateReview(reviewId, {
-        status: 'draft',
-        approved_by: null
-    })
+    const { coachId } = await requireActiveCoachId()
+    const admin = createAdminClient()
+    const { data: review, error } = await admin
+        .from('reviews')
+        .update({
+            status: 'draft',
+            approved_by: null,
+        })
+        .eq('id', reviewId)
+        .eq('coach_id', coachId)
+        .select('id')
+        .maybeSingle()
 
-    if (!success) {
-        return { success: false, error: 'Error al revertir la revisión' }
+    if (error || !review) {
+        return { success: false, error: error?.message || 'No tienes permiso para revertir esta revisión' }
     }
 
     revalidatePath('/coach/clients')
@@ -625,17 +786,60 @@ export async function reorderExerciseAction(exerciseId: string, direction: 'up' 
  * el checkin existe pero no tiene revisión asociada.
  */
 export async function forceAdvanceCheckinAction(clientId: string) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
+    let validatedCoachId: string
+    try {
+        ;({ coachId: validatedCoachId } = await requireActiveCoachId())
+    } catch {
+        return { success: false, error: 'No autenticado' }
+    }
+
+    const supabase = createAdminClient()
 
     const { data: client } = await supabase
         .from('clients')
         .select('checkin_frequency_days, next_checkin_date')
         .eq('id', clientId)
-        .single()
+        .eq('coach_id', validatedCoachId)
+        .maybeSingle()
 
     if (!client) return { success: false, error: 'Cliente no encontrado' }
+
+    const { data: activeSchedules } = await supabase
+        .from('client_review_schedules')
+        .select('id, frequency_days, next_due_date')
+        .eq('client_id', clientId)
+        .eq('coach_id', validatedCoachId)
+        .eq('is_active', true)
+        .not('next_due_date', 'is', null)
+        .order('next_due_date', { ascending: true })
+
+    const scheduleToAdvance = activeSchedules?.[0]
+    if (scheduleToAdvance?.next_due_date) {
+        const nextDateStr = advanceDateByFrequency(
+            scheduleToAdvance.next_due_date,
+            scheduleToAdvance.frequency_days ?? client.checkin_frequency_days ?? 14
+        )
+
+        const { error: scheduleError } = await supabase
+            .from('client_review_schedules')
+            .update({ next_due_date: nextDateStr })
+            .eq('id', scheduleToAdvance.id)
+            .eq('coach_id', validatedCoachId)
+            .eq('client_id', clientId)
+
+        if (scheduleError) return { success: false, error: scheduleError.message }
+
+        await supabase
+            .from('clients')
+            .update({ next_checkin_date: nextDateStr })
+            .eq('id', clientId)
+            .eq('coach_id', validatedCoachId)
+
+        revalidatePath('/coach/clients')
+        revalidatePath('/coach/dashboard')
+        revalidatePath('/coach/calendar')
+        return { success: true, nextDate: nextDateStr }
+    }
 
     const freqDays = client.checkin_frequency_days ?? 14
     const nextCheckinDate = client.next_checkin_date
@@ -656,6 +860,7 @@ export async function forceAdvanceCheckinAction(clientId: string) {
         .from('clients')
         .update({ next_checkin_date: nextDateStr })
         .eq('id', clientId)
+        .eq('coach_id', validatedCoachId)
 
     if (error) return { success: false, error: error.message }
 
@@ -664,9 +869,12 @@ export async function forceAdvanceCheckinAction(clientId: string) {
         .from('checkins')
         .update({ status: 'archived' })
         .eq('client_id', clientId)
+        .eq('coach_id', validatedCoachId)
         .eq('status', 'reviewed')
 
     revalidatePath('/coach/clients')
+    revalidatePath('/coach/dashboard')
+    revalidatePath('/coach/calendar')
     return { success: true, nextDate: nextDateStr }
 }
 
@@ -728,6 +936,19 @@ export async function completeReviewAction(input: {
         if (!user) return { success: false, error: 'No autenticado' }
 
         const { coachId: validatedCoachId } = await requireActiveCoachId(input.coachId)
+        const admin = createAdminClient()
+
+        const { data: checkin, error: checkinError } = await admin
+            .from('checkins')
+            .select('id, coach_id, client_id')
+            .eq('id', input.checkinId)
+            .eq('coach_id', validatedCoachId)
+            .eq('client_id', input.clientId)
+            .maybeSingle()
+
+        if (checkinError || !checkin) {
+            return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
+        }
 
         const review = await ensureReviewForCheckin(validatedCoachId, input.clientId, input.checkinId, user.id)
         if (!review) {
@@ -742,7 +963,8 @@ export async function completeReviewAction(input: {
 
         if (!isAlreadyApproved) {
             const finalized = await finalizeApprovedReview(
-                supabase,
+                admin,
+                validatedCoachId,
                 user.id,
                 review.id,
                 input.checkinId,
@@ -752,10 +974,12 @@ export async function completeReviewAction(input: {
             if (!finalized.success) {
                 return { success: false, error: finalized.error }
             }
+        } else {
+            await advanceReviewScheduleForCheckin(admin, validatedCoachId, input.clientId, input.checkinId)
         }
 
         if (input.sendToClient) {
-            const { error: messageError } = await supabase
+            const { error: messageError } = await admin
                 .from('messages')
                 .insert({
                     coach_id: validatedCoachId,
@@ -775,16 +999,20 @@ export async function completeReviewAction(input: {
                 }
             }
 
-            const messageSaved = await updateReview(review.id, {
-                message_to_client: feedbackMessage,
-            })
+            const { data: messageSaved, error: messageSaveError } = await admin
+                .from('reviews')
+                .update({ message_to_client: feedbackMessage })
+                .eq('id', review.id)
+                .eq('checkin_id', input.checkinId)
+                .select('id')
+                .maybeSingle()
 
-            if (!messageSaved) {
+            if (messageSaveError || !messageSaved) {
                 revalidateReviewSurfaces()
                 return {
                     success: false,
                     partialSuccess: true,
-                    error: 'La revisión quedó aprobada y el mensaje salió a mensajes, pero no se pudo guardar el feedback en la revisión.',
+                    error: messageSaveError?.message || 'La revisión quedó aprobada y el mensaje salió a mensajes, pero no se pudo guardar el feedback en la revisión.',
                 }
             }
 

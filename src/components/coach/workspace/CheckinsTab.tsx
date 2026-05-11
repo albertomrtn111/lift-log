@@ -340,7 +340,15 @@ function CheckinDetailPanel({
     }
 
     const rawPayload = (checkin.raw_payload as Record<string, unknown>) || {}
-    const metricKeys = Object.keys(rawPayload).filter(k => k.startsWith('metric_') && rawPayload[k] !== null && rawPayload[k] !== '')
+    const metricKeys = Object.keys(rawPayload)
+        .filter(k => k.startsWith('metric_') && rawPayload[k] !== null && rawPayload[k] !== '')
+        .sort((a, b) => {
+            const idA = a.replace('metric_', '')
+            const idB = b.replace('metric_', '')
+            const defA = metricDefinitions.find(m => m.id === idA)
+            const defB = metricDefinitions.find(m => m.id === idB)
+            return (defA?.sort_order ?? 9999) - (defB?.sort_order ?? 9999)
+        })
     const questionKeys = Object.keys(rawPayload).filter(k => k.startsWith('campo_') && rawPayload[k] !== null && rawPayload[k] !== '')
 
     const getMetricLabel = (key: string) => {

@@ -4,7 +4,7 @@ import { callGemini } from '@/lib/ai/gemini'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
-import { getAthleteAIProfile } from '@/data/athlete-ai-profile'
+import { getAthleteProfileContextForCoach } from '@/lib/ai/athlete-profile-context'
 import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
 
 // ============================================================================
@@ -132,27 +132,6 @@ function buildCurrentMacrosSummary(plan: z.infer<typeof MacroPlanContextSchema>)
         `  ${plan.kcal} kcal | Proteína: ${plan.protein_g}g | Carbohidratos: ${plan.carbs_g}g | Grasas: ${plan.fat_g}g`,
         plan.steps ? `  Pasos: ${plan.steps}` : '',
         plan.notes ? `  Notas: ${plan.notes}` : '',
-    ].filter(Boolean).join('\n')
-}
-
-function buildAthleteNutritionContext(
-    athleteProfile: Awaited<ReturnType<typeof getAthleteAIProfile>>
-): string {
-    if (!athleteProfile) {
-        return 'Sin perfil del atleta generado. Usa solo el contexto de peso, macros, dieta y prompt del entrenador.'
-    }
-
-    const generated = athleteProfile.generated_profile_json
-    const answers = athleteProfile.answers_json
-
-    return [
-        `Perfil del atleta disponible (${athleteProfile.profile_status}):`,
-        generated?.athlete_summary ? `- Resumen: ${generated.athlete_summary}` : '',
-        generated?.goals_and_calendar ? `- Objetivos y calendario: ${generated.goals_and_calendar}` : '',
-        generated?.nutrition_and_body_context ? `- Nutrición y composición: ${generated.nutrition_and_body_context}` : '',
-        answers.bodyCompositionGoal ? `- Objetivo corporal: ${answers.bodyCompositionGoal}` : '',
-        answers.nutritionContext ? `- Contexto nutricional adicional: ${answers.nutritionContext}` : '',
-        answers.recoveryContext ? `- Recuperación: ${answers.recoveryContext}` : '',
     ].filter(Boolean).join('\n')
 }
 
@@ -402,8 +381,7 @@ export async function POST(req: NextRequest) {
 
         const weightSummary = buildWeightSummary(context.weightHistory)
         const macrosSummary = buildCurrentMacrosSummary(context.activeMacroPlan ?? null)
-        const athleteProfile = coachId ? await getAthleteAIProfile(coachId, clientId) : null
-        const athleteContext = buildAthleteNutritionContext(athleteProfile)
+        const athleteContext = await getAthleteProfileContextForCoach(coachId, clientId)
 
         const taskPrompt = type === 'macros'
             ? buildMacrosPrompt(mode, objective, prompt, weightSummary, macrosSummary, athleteContext)

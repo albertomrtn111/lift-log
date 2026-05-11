@@ -28,6 +28,9 @@ interface WeeklyPlanningAIInput {
     weekEnd: string
     prompt: string
     items: UnifiedCalendarItem[]
+    athleteProfileContext?: string
+    latestReviewContext?: string
+    previousWeekTrainingContext?: string
     overview?: {
         programName?: string | null
         currentWeek?: number | null
@@ -303,6 +306,9 @@ function buildPrompt(
         },
         availableStrengthSessions: availableStrength,
         dayContext,
+        athleteProfileContext: input.athleteProfileContext || 'Sin perfil IA del atleta disponible.',
+        latestReviewContext: input.latestReviewContext || 'Sin revisión reciente disponible.',
+        previousWeekTrainingContext: input.previousWeekTrainingContext || 'Sin datos de entrenamientos de la semana anterior.',
         coachPrompt: input.prompt.trim(),
     }
 
@@ -329,6 +335,16 @@ Tu trabajo es organizar SOLO la semana visible actual del cliente y devolver una
 
 ## Instrucción del coach
 ${input.prompt.trim()}
+
+## Contexto adicional del atleta
+Perfil IA:
+${payload.athleteProfileContext}
+
+Última revisión:
+${payload.latestReviewContext}
+
+Entrenamientos de la semana anterior:
+${payload.previousWeekTrainingContext}
 
 ## Datos estructurados de la semana
 ${JSON.stringify(payload, null, 2)}

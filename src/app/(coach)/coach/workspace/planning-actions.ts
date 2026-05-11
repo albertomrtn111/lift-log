@@ -5,6 +5,7 @@ import { UnifiedCalendarItem, PlanningSnapshot, PlanningNote, PlanningDayState, 
 import { CardioStructure } from "@/types/templates";
 import { requireActiveCoachId } from "@/lib/auth/require-coach";
 import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
+import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
 
 type TrainingDayRow = {
     id: string;
@@ -131,6 +132,58 @@ function buildCardioStructureForPlanning(session: { kind: 'cardio' | 'hybrid'; d
         notes: session.notes,
         blocks: [],
     };
+}
+
+function formatPlanningItems(items: UnifiedCalendarItem[]) {
+    if (items.length === 0) return 'No hay entrenamientos registrados en la semana anterior.';
+
+    return items
+        .map((item) => {
+            const status = item.is_completed ? 'completado' : 'programado/no completado';
+            if (item.type === 'strength') {
+                const title = item.training_days?.name || item.training_programs?.name || 'Sesión de fuerza';
+                const focus = item.focus_label ? ` · foco ${item.focus_label}` : '';
+                const count = item.exercise_count ? ` · ${item.exercise_count} ejercicios` : '';
+                return `- ${item.date}: Fuerza · ${title}${focus}${count} · ${status}`;
+            }
+
+            const summary = item.summary_line ? ` · ${item.summary_line}` : '';
+            const type = item.cardio_type ? ` · ${item.cardio_type}` : '';
+            return `- ${item.date}: Cardio · ${item.name}${type}${summary} · ${status}`;
+        })
+        .join('\n');
+}
+
+async function getLatestReviewContext(supabase: Awaited<ReturnType<typeof createClient>>, clientId: string) {
+    const { data: checkins, error } = await supabase
+        .from('checkins')
+        .select('id, submitted_at, period_start, period_end, notes, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h')
+        .eq('client_id', clientId)
+        .eq('type', 'checkin')
+        .not('submitted_at', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(1);
+
+    if (error || !checkins?.[0]) return 'Sin revisión reciente disponible.';
+
+    const checkin = checkins[0] as any;
+    const { data: review } = await supabase
+        .from('reviews')
+        .select('status, ai_summary, message_to_client')
+        .eq('checkin_id', checkin.id)
+        .maybeSingle();
+
+    return [
+        `Fecha: ${checkin.submitted_at ? String(checkin.submitted_at).split('T')[0] : 'desconocida'}`,
+        `Periodo: ${checkin.period_start ?? '—'} -> ${checkin.period_end ?? '—'}`,
+        checkin.training_adherence_pct != null ? `Adherencia entrenamiento: ${checkin.training_adherence_pct}%` : '',
+        checkin.nutrition_adherence_pct != null ? `Adherencia nutrición: ${checkin.nutrition_adherence_pct}%` : '',
+        checkin.sleep_avg_h != null ? `Sueño medio: ${checkin.sleep_avg_h}h` : '',
+        checkin.notes ? `Notas del atleta: ${checkin.notes}` : '',
+        review?.status ? `Estado interno revisión: ${review.status}` : '',
+        review?.ai_summary ? `Resumen IA revisión: ${review.ai_summary}` : '',
+        review?.message_to_client ? `Feedback enviado al cliente: ${review.message_to_client}` : '',
+    ].filter(Boolean).join('\n') || 'Última revisión sin datos útiles.';
 }
 
 // ----------------------------------------------------------------------
@@ -476,6 +529,21 @@ export async function generateWeeklyPlanningAIAction({
             return { success: false, error: scheduleResult.error || 'No se pudo cargar la semana visible.' };
         }
 
+        const previousWeekStartDate = new Date(weekStartDate);
+        previousWeekStartDate.setDate(previousWeekStartDate.getDate() - 7);
+        const previousWeekEndDate = getWeekEndFromStart(toLocalDateStr(previousWeekStartDate));
+        const supabase = await createClient();
+
+        const [
+            athleteProfileContext,
+            latestReviewContext,
+            previousWeekResult,
+        ] = await Promise.all([
+            getAthleteProfileContextForCoach(coachId, clientId),
+            getLatestReviewContext(supabase, clientId),
+            getWeeklySchedule(clientId, previousWeekStartDate, previousWeekEndDate, previousWeekStartDate),
+        ]);
+
         return await generateWeeklyPlanningProposal({
             coachId,
             clientId,
@@ -483,6 +551,11 @@ export async function generateWeeklyPlanningAIAction({
             weekEnd,
             prompt: trimmedPrompt,
             items: scheduleResult.data.items,
+            athleteProfileContext,
+            latestReviewContext,
+            previousWeekTrainingContext: previousWeekResult.success && previousWeekResult.data
+                ? formatPlanningItems(previousWeekResult.data.items)
+                : 'No se pudo cargar la semana anterior.',
             overview: scheduleResult.data.overview,
         });
     } catch (error: any) {

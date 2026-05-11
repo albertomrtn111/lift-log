@@ -92,7 +92,6 @@ export function ReviewApprovalDialog({
             ? format(new Date(checkin.period_end), "d MMM yyyy", { locale: es })
             : 'Revisión'
     const isAlreadyApproved = checkin.review?.status === 'approved'
-    const approveOnlyLabel = isAlreadyApproved ? 'Mantener aprobada' : 'Aprobar sin feedback'
     const sendLabel = isAlreadyApproved ? 'Enviar feedback' : 'Aprobar y enviar'
 
     const handleSubmit = (sendToClient: boolean) => {
@@ -107,7 +106,9 @@ export function ReviewApprovalDialog({
 
             if (result.success) {
                 toast({
-                    title: result.sentToClient ? 'Revisión aprobada y enviada' : 'Revisión aprobada',
+                    title: result.sentToClient
+                        ? isAlreadyApproved ? 'Feedback enviado' : 'Revisión aprobada y enviada'
+                        : 'Revisión aprobada',
                     description: result.sentToClient
                         ? 'El feedback ya está disponible en mensajes del cliente.'
                         : 'La revisión se cerró sin enviar feedback desde la app.',
@@ -176,7 +177,7 @@ export function ReviewApprovalDialog({
                         <div className="flex items-start gap-2">
                             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <p>
-                                Si eliges <strong>Aprobar y enviar</strong>, el mensaje llegará a mensajes del cliente como un bloque formal de revisión, no como un mensaje casual.
+                                Si eliges <strong>{sendLabel}</strong>, el mensaje llegará a mensajes del cliente como un bloque formal de revisión, no como un mensaje casual.
                             </p>
                         </div>
                     </div>
@@ -186,10 +187,12 @@ export function ReviewApprovalDialog({
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
                         Cancelar
                     </Button>
-                    <Button variant="secondary" onClick={() => handleSubmit(false)} disabled={isPending}>
-                        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                        {approveOnlyLabel}
-                    </Button>
+                    {!isAlreadyApproved && (
+                        <Button variant="secondary" onClick={() => handleSubmit(false)} disabled={isPending}>
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                            Aprobar sin feedback
+                        </Button>
+                    )}
                     <Button onClick={() => handleSubmit(true)} disabled={isPending || !feedbackText.trim()}>
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                         {sendLabel}

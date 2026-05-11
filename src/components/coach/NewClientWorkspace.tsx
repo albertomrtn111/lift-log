@@ -307,7 +307,7 @@ export function NewClientWorkspace({
                         <div className="mt-4 min-h-[500px]">
                             <TabsContent value="athlete-profile">
                                 <AthleteProfileTab
-                                    key={`${selectedClient.id}:${athleteProfile?.updated_at ?? 'new'}`}
+                                    key={selectedClient.id}
                                     clientId={selectedClient.id}
                                     clientName={selectedClient.full_name || 'Atleta'}
                                     athleteProfile={athleteProfile}

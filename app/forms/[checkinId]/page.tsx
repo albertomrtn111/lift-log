@@ -7,6 +7,7 @@ import { AlertCircle, Lock } from 'lucide-react'
 import type { FormField } from '@/types/forms'
 import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
+import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
 
 interface PageProps {
     params: Promise<{ checkinId: string }>
@@ -34,6 +35,8 @@ export default async function FormPage({ params }: PageProps) {
             review_template_id,
             review_schedule_id,
             submitted_at,
+            period_start,
+            period_end,
             raw_payload,
             form_templates (
                 id,
@@ -94,13 +97,15 @@ export default async function FormPage({ params }: PageProps) {
         schema: FormField[]
     } | null
 
-    const reviewTemplate = checkin.review_template as unknown as ReviewTemplate | null
+    const linkedCheckin = await ensureCheckinReviewTemplateLink(admin, checkin)
+    const reviewTemplate = (checkin.review_template as unknown as ReviewTemplate | null)
+        ?? (linkedCheckin.linked_review_template as unknown as ReviewTemplate | null)
 
     // 5. Cargar TODAS las métricas activas del coach
     const { data: allMetricsData } = await admin
         .from('metric_definitions')
         .select('*')
-        .eq('coach_id', checkin.coach_id)
+        .eq('coach_id', linkedCheckin.coach_id)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true })
@@ -171,8 +176,8 @@ export default async function FormPage({ params }: PageProps) {
                     templateTitle={title}
                     templateType={type}
                     schema={schema}
-                    coachId={checkin.coach_id}
-                    clientId={checkin.client_id}
+                    coachId={linkedCheckin.coach_id}
+                    clientId={linkedCheckin.client_id}
                     metrics={filteredMetrics}
                     initialValues={(checkin.raw_payload as Record<string, unknown>) ?? {}}
                     photoConfig={photoConfig}

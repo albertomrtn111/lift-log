@@ -7,6 +7,7 @@ import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
 import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { cn } from '@/lib/utils'
+import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
 import type { Message } from '@/types/messages'
 import {
     getMessagesAction,
@@ -56,6 +57,7 @@ export function ConversationPanel({
                 onUnreadChange?.(clientId, 0)
             }
             await markMessagesReadAction(coachId, clientId)
+            notifyCoachBadgesChanged()
         }
 
         load()
@@ -84,7 +86,7 @@ export function ConversationPanel({
                 onLastMessageChange?.(newMessage)
 
                 if (newMessage.sender_role === 'client') {
-                    markMessagesReadAction(coachId, clientId)
+                    markMessagesReadAction(coachId, clientId).then(() => notifyCoachBadgesChanged())
                     onUnreadChange?.(clientId, 0)
                 }
             })

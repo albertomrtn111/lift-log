@@ -4,6 +4,7 @@ import { callGemini } from '@/lib/ai/gemini'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
+import { getAthleteProfileContextForCoach } from '@/lib/ai/athlete-profile-context'
 import type { AITrainingProposal } from '@/types/ai-training'
 
 // ============================================================================
@@ -21,6 +22,7 @@ const ExistingExerciseSchema = z.object({
 })
 
 const RequestSchema = z.object({
+    clientId: z.string().uuid(),
     mode: z.enum(['generate', 'modify']),
     prompt: z.string().min(5).max(800),
     existingProgram: z.object({
@@ -67,9 +69,44 @@ const AITrainingProposalSchema = z.object({
 // Prompt builders
 // ============================================================================
 
-function buildGeneratePrompt(userPrompt: string): string {
+function formatExistingProgram(existing: NonNullable<z.infer<typeof RequestSchema>['existingProgram']>): string {
+    const dayMap = new Map<string, typeof existing.exercises>()
+    for (const ex of existing.exercises) {
+        const list = dayMap.get(ex.dayName) ?? []
+        list.push(ex)
+        dayMap.set(ex.dayName, list)
+    }
+
+    return Array.from(dayMap.entries()).map(([dayName, exs]) => {
+        const exerciseLines = exs.map(e =>
+            `    - ${e.exerciseName}: ${e.sets ?? '?'} series × ${e.reps ?? '?'} reps | RIR ${e.rir ?? '-'} | Descanso ${e.restSeconds ?? '?'}s${e.notes ? ` | Notas: ${e.notes}` : ''}`
+        ).join('\n')
+        return `  ${dayName}:\n${exerciseLines}`
+    }).join('\n\n')
+}
+
+function buildGeneratePrompt(
+    userPrompt: string,
+    athleteContext: string,
+    previousProgram: NonNullable<z.infer<typeof RequestSchema>['existingProgram']> | null | undefined
+): string {
+    const previousProgramBlock = previousProgram
+        ? `## Rutina anterior como contexto
+Programa anterior: "${previousProgram.name}" (${previousProgram.weeks} semanas)
+
+${formatExistingProgram(previousProgram)}
+
+Usa esta rutina SOLO como contexto para entender qué venía haciendo el atleta. No estás obligado a mantenerla si el entrenador pide una rutina nueva.
+
+`
+        : ''
+
     return `Eres un entrenador personal experto en fuerza e hipertrofia. Genera un programa de entrenamiento personalizado para un atleta basándote en las instrucciones del entrenador.
 
+## Perfil IA del atleta
+${athleteContext}
+
+${previousProgramBlock}
 ## Instrucciones del entrenador
 ${userPrompt}
 
@@ -115,23 +152,17 @@ Reglas estrictas:
 - Usa español para todos los textos`
 }
 
-function buildModifyPrompt(userPrompt: string, existing: NonNullable<z.infer<typeof RequestSchema>['existingProgram']>): string {
-    // Serialize existing program as readable text
-    const dayMap = new Map<string, typeof existing.exercises>()
-    for (const ex of existing.exercises) {
-        const list = dayMap.get(ex.dayName) ?? []
-        list.push(ex)
-        dayMap.set(ex.dayName, list)
-    }
-
-    const programText = Array.from(dayMap.entries()).map(([dayName, exs]) => {
-        const exerciseLines = exs.map(e =>
-            `    - ${e.exerciseName}: ${e.sets ?? '?'} series × ${e.reps ?? '?'} reps | RIR ${e.rir ?? '-'} | Descanso ${e.restSeconds ?? '?'}s${e.notes ? ` | Notas: ${e.notes}` : ''}`
-        ).join('\n')
-        return `  ${dayName}:\n${exerciseLines}`
-    }).join('\n\n')
+function buildModifyPrompt(
+    userPrompt: string,
+    existing: NonNullable<z.infer<typeof RequestSchema>['existingProgram']>,
+    athleteContext: string
+): string {
+    const programText = formatExistingProgram(existing)
 
     return `Eres un entrenador personal experto en fuerza e hipertrofia. Modifica el programa de entrenamiento existente de un atleta según las instrucciones del entrenador.
+
+## Perfil IA del atleta
+${athleteContext}
 
 ## Programa actual: "${existing.name}" (${existing.weeks} semanas)
 
@@ -234,11 +265,12 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const { mode, prompt, existingProgram } = input.data
+        const { clientId, mode, prompt, existingProgram } = input.data
+        const athleteContext = await getAthleteProfileContextForCoach(coachId, clientId)
 
         const taskPrompt = mode === 'modify' && existingProgram
-            ? buildModifyPrompt(prompt, existingProgram)
-            : buildGeneratePrompt(prompt)
+            ? buildModifyPrompt(prompt, existingProgram, athleteContext)
+            : buildGeneratePrompt(prompt, athleteContext, existingProgram)
 
         const fullPrompt = coachContext + taskPrompt
 

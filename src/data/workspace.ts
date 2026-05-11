@@ -57,6 +57,8 @@ export interface Checkin {
     notes: string | null
     raw_payload: Record<string, unknown> | null
     form_template_id: string | null
+    review_template_id: string | null
+    review_schedule_id: string | null
 }
 
 export interface CheckinWithReview extends Checkin {
@@ -407,6 +409,19 @@ export async function createReviewForCheckin(
 ): Promise<Review | null> {
     const supabase = createAdminClient()
 
+    const { data: checkin, error: checkinError } = await supabase
+        .from('checkins')
+        .select('id')
+        .eq('id', checkinId)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
+        .maybeSingle()
+
+    if (checkinError || !checkin) {
+        console.error('Error validating checkin before review creation:', checkinError)
+        return null
+    }
+
     const { data, error } = await supabase
         .from('reviews')
         .insert({
@@ -441,6 +456,8 @@ export async function ensureReviewForCheckin(
         .from('reviews')
         .select('*')
         .eq('checkin_id', checkinId)
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
         .maybeSingle()
 
     if (existingError) {

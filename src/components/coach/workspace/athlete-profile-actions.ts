@@ -35,7 +35,6 @@ export async function saveAthleteProfileStep(
 
     if (error) return { success: false, error: error.message }
 
-    revalidatePath('/coach/clients')
     return { success: true }
 }
 
