@@ -31,6 +31,7 @@ interface WeeklyPlanningAIInput {
     athleteProfileContext?: string
     latestReviewContext?: string
     previousWeekTrainingContext?: string
+    upcomingEventsContext?: PlanningAIEventContext[]
     overview?: {
         programName?: string | null
         currentWeek?: number | null
@@ -45,6 +46,20 @@ interface AvailableStrengthSessionRef {
     title: string
     sourceDate: string
     sourceKind: StrengthSessionSourceKind
+}
+
+interface PlanningAIEventContext {
+    title: string
+    date: string
+    type: string
+    priority: string
+    location: string | null
+    target: string | null
+    notes: string | null
+    daysUntilFromWeekStart: number
+    weeksUntilFromWeekStart: number
+    daysAfterWeekEnd: number
+    timingLabel: string
 }
 
 const numericOptional = z.preprocess(
@@ -309,6 +324,7 @@ function buildPrompt(
         athleteProfileContext: input.athleteProfileContext || 'Sin perfil IA del atleta disponible.',
         latestReviewContext: input.latestReviewContext || 'Sin revisión reciente disponible.',
         previousWeekTrainingContext: input.previousWeekTrainingContext || 'Sin datos de entrenamientos de la semana anterior.',
+        upcomingEvents: input.upcomingEventsContext ?? [],
         coachPrompt: input.prompt.trim(),
     }
 
@@ -332,6 +348,8 @@ Tu trabajo es organizar SOLO la semana visible actual del cliente y devolver una
 - Para rodajes o sesiones simples usa una estructura limpia tipo "Objetivo:", "Sesión:" y "Notas:".
 - En cardio intenta rellenar distancia y/o duración cuando tenga sentido.
 - Si un día queda libre, refleja igualmente un summary útil para ese día.
+- Ten muy en cuenta los eventos programados del atleta. Si hay una carrera, test, camp u objetivo cercano, ajusta carga, intensidad y descanso según los días/semanas que faltan.
+- Si la semana visible cae justo antes de un evento prioritario, evita proponer carga excesiva y razona la descarga/taper en overview, rationale, summaries, assumptions o warnings según corresponda.
 
 ## Instrucción del coach
 ${input.prompt.trim()}
@@ -345,6 +363,17 @@ ${payload.latestReviewContext}
 
 Entrenamientos de la semana anterior:
 ${payload.previousWeekTrainingContext}
+
+Eventos programados:
+${payload.upcomingEvents.length > 0
+        ? payload.upcomingEvents.map((event) => [
+            `- ${event.title} (${event.type}, prioridad ${event.priority})`,
+            `  Fecha: ${event.date}. ${event.timingLabel}`,
+            event.location ? `  Ubicación: ${event.location}` : '',
+            event.target ? `  Objetivo: ${event.target}` : '',
+            event.notes ? `  Notas: ${event.notes}` : '',
+        ].filter(Boolean).join('\n')).join('\n')
+        : 'Sin eventos futuros planificados.'}
 
 ## Datos estructurados de la semana
 ${JSON.stringify(payload, null, 2)}

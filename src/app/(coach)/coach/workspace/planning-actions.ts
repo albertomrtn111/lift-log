@@ -6,6 +6,7 @@ import { CardioStructure } from "@/types/templates";
 import { requireActiveCoachId } from "@/lib/auth/require-coach";
 import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
 import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
+import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
 
 type TrainingDayRow = {
     id: string;
@@ -184,6 +185,41 @@ async function getLatestReviewContext(supabase: Awaited<ReturnType<typeof create
         review?.ai_summary ? `Resumen IA revisión: ${review.ai_summary}` : '',
         review?.message_to_client ? `Feedback enviado al cliente: ${review.message_to_client}` : '',
     ].filter(Boolean).join('\n') || 'Última revisión sin datos útiles.';
+}
+
+async function getUpcomingEventContext(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    clientId: string,
+    coachId: string,
+    weekStart: string,
+    weekEnd: string
+) {
+    const horizon = parseLocalDate(weekStart);
+    horizon.setDate(horizon.getDate() + 365);
+
+    const { data, error } = await supabase
+        .from('client_events')
+        .select('title, event_date, event_type, priority, location, target, notes')
+        .eq('client_id', clientId)
+        .eq('coach_id', coachId)
+        .eq('status', 'planned')
+        .gte('event_date', weekStart)
+        .lte('event_date', toLocalDateStr(horizon))
+        .order('event_date', { ascending: true })
+        .limit(8);
+
+    if (error || !data) {
+        if (error && error.code !== '42P01') {
+            console.error('[planning-ai] Error loading client events:', error);
+        }
+        return [];
+    }
+
+    return buildPlanningEventContext({
+        weekStart,
+        weekEnd,
+        events: data,
+    });
 }
 
 // ----------------------------------------------------------------------
@@ -538,10 +574,12 @@ export async function generateWeeklyPlanningAIAction({
             athleteProfileContext,
             latestReviewContext,
             previousWeekResult,
+            upcomingEventsContext,
         ] = await Promise.all([
             getAthleteProfileContextForCoach(coachId, clientId),
             getLatestReviewContext(supabase, clientId),
             getWeeklySchedule(clientId, previousWeekStartDate, previousWeekEndDate, previousWeekStartDate),
+            getUpcomingEventContext(supabase, clientId, coachId, weekStart, weekEnd),
         ]);
 
         return await generateWeeklyPlanningProposal({
@@ -556,6 +594,7 @@ export async function generateWeeklyPlanningAIAction({
             previousWeekTrainingContext: previousWeekResult.success && previousWeekResult.data
                 ? formatPlanningItems(previousWeekResult.data.items)
                 : 'No se pudo cargar la semana anterior.',
+            upcomingEventsContext,
             overview: scheduleResult.data.overview,
         });
     } catch (error: any) {

@@ -255,11 +255,11 @@
   }
 
   .workspace-tabs-list {
-    @apply mb-8 flex w-full min-w-0 items-stretch justify-start gap-2 overflow-x-auto rounded-none border-b border-border/70 bg-transparent p-0 scrollbar-hide;
+    @apply mb-8 flex w-full max-w-full min-w-0 items-stretch justify-start gap-2 overflow-x-auto overflow-y-hidden rounded-none border-b border-border/70 bg-transparent p-0 scrollbar-hide;
   }
 
   .workspace-tab-trigger {
-    @apply min-w-[3.75rem] justify-center gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 pb-3 text-muted-foreground shadow-none transition-colors sm:min-w-[8.5rem] sm:px-5;
+    @apply min-w-[3.75rem] max-w-full justify-center gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 pb-3 text-muted-foreground shadow-none transition-colors sm:min-w-[8.5rem] sm:px-5 [&_svg]:shrink-0 [&_span]:min-w-0 [&_span]:truncate;
     @apply hover:text-foreground;
     @apply data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none;
   }

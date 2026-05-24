@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { callGemini } from '@/lib/ai/gemini'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { formatAthleteProfileContext } from '@/lib/ai/athlete-profile-context'
+import { resolvePayloadLines } from '@/lib/ai/checkin-payload-lines'
 
 const AICheckinAnalysisSchema = z.object({
     overall_summary: z.string().min(1),
@@ -29,6 +30,11 @@ type MetricDefinitionLite = {
     id: string
     name: string
     unit: string | null
+}
+
+type FormFieldLite = {
+    id: string
+    label?: string | null
 }
 
 type RecentMetricRow = {
@@ -118,7 +124,7 @@ async function buildContext(checkinId: string) {
             .maybeSingle(),
         supabase
             .from('checkins')
-            .select('raw_payload, submitted_at, weight_kg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, notes')
+            .select('raw_payload, submitted_at, weight_kg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, notes, form_template_id')
             .eq('client_id', clientId)
             .eq('type', 'checkin')
             .not('submitted_at', 'is', null)
@@ -174,11 +180,36 @@ async function buildContext(checkinId: string) {
             .limit(20),
     ])
 
+    const previousCheckin = previousCheckinResult.data?.[0] ?? null
+    const formTemplateIds = Array.from(new Set([
+        checkin.form_template_id,
+        previousCheckin?.form_template_id,
+    ].filter(Boolean)))
+
+    let formFieldsByTemplateId: Record<string, FormFieldLite[]> = {}
+    if (formTemplateIds.length > 0) {
+        const { data: formTemplates } = await supabase
+            .from('form_templates')
+            .select('id, schema')
+            .in('id', formTemplateIds)
+
+        formFieldsByTemplateId = Object.fromEntries(
+            (formTemplates ?? []).map((template) => [
+                template.id,
+                Array.isArray(template.schema)
+                    ? (template.schema as FormFieldLite[]).filter((field) => field?.id?.startsWith('campo_'))
+                    : [],
+            ])
+        )
+    }
+
     return {
         checkin,
         reviewTemplate,
         athleteProfile: athleteProfileResult.data ?? null,
-        previousCheckin: previousCheckinResult.data?.[0] ?? null,
+        previousCheckin,
+        currentFormFields: checkin.form_template_id ? formFieldsByTemplateId[checkin.form_template_id] ?? [] : [],
+        previousFormFields: previousCheckin?.form_template_id ? formFieldsByTemplateId[previousCheckin.form_template_id] ?? [] : [],
         metricHistory: (metricHistoryResult.data ?? []) as RecentMetricRow[],
         macroPlan: macroPlanResult.data ?? null,
         trainingProgram: trainingProgramResult.data ?? null,
@@ -187,34 +218,6 @@ async function buildContext(checkinId: string) {
         cardioSessions: (cardioResult.data ?? []) as RecentCardioRow[],
         trainingLogs: (trainingLogsResult.data ?? []) as RecentTrainingRow[],
     }
-}
-
-function resolvePayloadLines(
-    payload: Record<string, unknown> | null,
-    metricDefs: MetricDefinitionLite[]
-) {
-    if (!payload) return ['Sin datos']
-
-    const lines: string[] = []
-
-    for (const [key, value] of Object.entries(payload)) {
-        if (value === null || value === '') continue
-
-        if (key.startsWith('metric_')) {
-            const id = key.replace('metric_', '')
-            const def = metricDefs.find((metric) => metric.id === id)
-            const label = def ? `${def.name}${def.unit ? ` (${def.unit})` : ''}` : key
-            lines.push(`- ${label}: ${value}`)
-            continue
-        }
-
-        if (key.startsWith('campo_')) {
-            const renderedValue = Array.isArray(value) ? value.join(', ') : String(value)
-            lines.push(`- ${key}: ${renderedValue}`)
-        }
-    }
-
-    return lines.length > 0 ? lines : ['Sin datos']
 }
 
 function buildMetricTrendText(metricHistory: RecentMetricRow[]) {
@@ -358,11 +361,13 @@ function buildTrainingText(ctx: Awaited<ReturnType<typeof buildContext>>) {
 function buildPrompt(ctx: Awaited<ReturnType<typeof buildContext>>) {
     const currentPayloadLines = resolvePayloadLines(
         (ctx.checkin.raw_payload as Record<string, unknown> | null) ?? null,
-        ctx.metricDefs
+        ctx.metricDefs,
+        ctx.currentFormFields
     )
     const previousPayloadLines = resolvePayloadLines(
         (ctx.previousCheckin?.raw_payload as Record<string, unknown> | null) ?? null,
-        ctx.metricDefs
+        ctx.metricDefs,
+        ctx.previousFormFields
     )
 
     const rt = ctx.reviewTemplate

@@ -30,6 +30,7 @@ import {
     ChevronLeft,
     ChevronRight,
     UserRound,
+    Bot,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
@@ -41,6 +42,7 @@ import { EventsTab } from './workspace/EventsTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
+import { NextIAChatPanel } from './workspace/NextIAChatPanel'
 
 interface NewClientWorkspaceProps {
     clients: ClientSelectorOption[]
@@ -188,9 +190,9 @@ export function NewClientWorkspace({
     }, [checkins])
 
     return (
-        <div className="space-y-4">
+        <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
             {/* Client Selector + Prev/Next Navigation */}
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 max-w-full items-center gap-2">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -243,8 +245,8 @@ export function NewClientWorkspace({
                     />
 
                     {/* NEW TAB STRUCTURE */}
-                    <Tabs value={activeTab} onValueChange={handleSwitchTab} className="w-full">
-                    <TabsList className="workspace-tabs-list gap-2.5 sm:gap-3">
+                    <Tabs value={activeTab} onValueChange={handleSwitchTab} className="min-w-0 max-w-full overflow-hidden">
+                    <TabsList className="workspace-tabs-list max-w-full gap-2.5 sm:gap-3">
                         <TabsTrigger
                             value="athlete-profile"
                             className="workspace-tab-trigger shrink-0 sm:min-w-[10.5rem]"
@@ -265,6 +267,13 @@ export function NewClientWorkspace({
                         >
                             <LayoutDashboard className="h-4 w-4" />
                             <span className="hidden sm:inline">Resumen</span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="nextia"
+                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem]"
+                        >
+                            <Bot className="h-4 w-4" />
+                            <span className="hidden sm:inline">Chat NextIA</span>
                         </TabsTrigger>
                         <TabsTrigger
                             value="progreso"
@@ -304,8 +313,8 @@ export function NewClientWorkspace({
                         </TabsTrigger>
                     </TabsList>
 
-                        <div className="mt-4 min-h-[500px]">
-                            <TabsContent value="athlete-profile">
+                        <div className="mt-4 min-h-[500px] min-w-0 max-w-full overflow-x-hidden">
+                            <TabsContent value="athlete-profile" className="min-w-0">
                                 <AthleteProfileTab
                                     key={selectedClient.id}
                                     clientId={selectedClient.id}
@@ -314,7 +323,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="onboarding">
+                            <TabsContent value="onboarding" className="min-w-0">
                                 <OnboardingTab
                                     clientId={selectedClient.id}
                                     coachId={coachId}
@@ -322,7 +331,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="resumen">
+                            <TabsContent value="resumen" className="min-w-0">
                                 <ResumenTab
                                     coachId={coachId}
                                     clientId={selectedClient.id}
@@ -340,7 +349,16 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="plan">
+                            <TabsContent value="nextia" className="min-w-0">
+                                <NextIAChatPanel
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    clientName={selectedClient.full_name || selectedClient.email}
+                                    standalone
+                                />
+                            </TabsContent>
+
+                            <TabsContent value="plan" className="min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -354,7 +372,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="events">
+                            <TabsContent value="events" className="min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -367,7 +385,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="checkins">
+                            <TabsContent value="checkins" className="min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -382,7 +400,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="progreso">
+                            <TabsContent value="progreso" className="min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -411,6 +429,7 @@ function normalizeWorkspaceTab(tab: string | null) {
         tab === 'athlete-profile' ||
         tab === 'onboarding' ||
         tab === 'resumen' ||
+        tab === 'nextia' ||
         tab === 'plan' ||
         tab === 'events' ||
         tab === 'checkins' ||

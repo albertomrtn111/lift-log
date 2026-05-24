@@ -81,6 +81,7 @@ export function TrainingProgramWizard({
     const [currentProgramId, setCurrentProgramId] = useState<string | null>(programId)
     const [isStepping, setIsStepping] = useState(false)
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+    const appliedPendingAIKeyRef = useRef<string | null>(null)
 
     // Refs for imperative save
     const step1Ref = useRef<{ handleSave: () => Promise<boolean> }>(null)
@@ -112,6 +113,30 @@ export function TrainingProgramWizard({
             }
         }
     }, [isOpen, programId])
+
+    useEffect(() => {
+        if (!isOpen || !programId || !currentProgramId || !pendingAIStructure) return
+
+        const applyKey = `${currentProgramId}:${pendingAIName ?? ''}:${pendingAIStructure.weeks ?? ''}:${pendingAIStructure.days.length}`
+        if (appliedPendingAIKeyRef.current === applyKey) return
+        appliedPendingAIKeyRef.current = applyKey
+
+        ;(async () => {
+            setLoading(true)
+            try {
+                await applyStructureToDB(currentProgramId, coachId ?? program?.coach_id ?? '', pendingAIStructure, pendingAIName)
+                await loadAllData(currentProgramId)
+                setStep(2)
+                toast({
+                    title: 'Programa actualizado con IA',
+                    description: 'Revisa los días antes de finalizar para confirmar la planificación semanal.',
+                })
+            } catch {
+                await loadAllData(currentProgramId)
+            }
+        })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, programId, currentProgramId, pendingAIStructure])
 
     async function loadAllData(idToLoad: string) {
         setLoading(true)
@@ -243,8 +268,25 @@ export function TrainingProgramWizard({
         programId: string,
         resolvedCoachId: string,
         structure: StrengthStructure,
+        programName?: string | null,
     ) {
         const supabase = createClient()
+
+        const { data: existingDays } = await supabase
+            .from('training_days')
+            .select('name, order_index, default_weekday')
+            .eq('program_id', programId)
+
+        const defaultWeekdayByName = new Map(
+            (existingDays ?? [])
+                .filter((day: any) => day.default_weekday != null)
+                .map((day: any) => [String(day.name ?? '').trim().toLowerCase(), day.default_weekday])
+        )
+        const defaultWeekdayByOrder = new Map(
+            (existingDays ?? [])
+                .filter((day: any) => day.default_weekday != null)
+                .map((day: any) => [day.order_index, day.default_weekday])
+        )
 
         // Build days + exercises with fresh UUIDs
         const newDays: any[] = []
@@ -252,7 +294,14 @@ export function TrainingProgramWizard({
 
         structure.days.forEach((day, dIdx) => {
             const newDayId = crypto.randomUUID()
-            newDays.push({ id: newDayId, name: day.name, order_index: dIdx + 1 })
+            const orderIndex = dIdx + 1
+            const normalizedName = String(day.name ?? '').trim().toLowerCase()
+            newDays.push({
+                id: newDayId,
+                name: day.name,
+                order_index: orderIndex,
+                default_weekday: defaultWeekdayByName.get(normalizedName) ?? defaultWeekdayByOrder.get(orderIndex) ?? null,
+            })
             ;(day.exercises ?? []).forEach((ex, eIdx) => {
                 newExercises.push({
                     id: crypto.randomUUID(),
@@ -272,6 +321,7 @@ export function TrainingProgramWizard({
         })
 
         // Clear any pre-existing days/exercises (RPC creates program with empty days)
+        await supabase.from('training_cells').delete().eq('program_id', programId)
         await supabase.from('training_exercises').delete().eq('program_id', programId)
         await supabase.from('training_days').delete().eq('program_id', programId)
 
@@ -285,6 +335,7 @@ export function TrainingProgramWizard({
                 order_index: d.order_index,
                 day_name: d.name,
                 day_order: d.order_index,
+                default_weekday: d.default_weekday,
             }))
         )
         if (daysError) {
@@ -317,9 +368,21 @@ export function TrainingProgramWizard({
         }
 
         // Update weeks on the program if structure specifies them
-        if (structure.weeks) {
-            await supabase.from('training_programs').update({ weeks: structure.weeks }).eq('id', programId)
+        const programUpdate: Record<string, unknown> = {}
+        if (structure.weeks) programUpdate.weeks = structure.weeks
+        if (programName?.trim()) programUpdate.name = programName.trim()
+        if (Object.keys(programUpdate).length > 0) {
+            await supabase.from('training_programs').update(programUpdate).eq('id', programId)
         }
+
+        await saveTrainingDays(
+            programId,
+            newDays.map(day => ({
+                id: day.id,
+                name: day.name,
+                default_weekday: day.default_weekday,
+            }))
+        )
     }
 
     const handleImportTemplate = async (template: TrainingTemplate) => {
@@ -496,7 +559,7 @@ export function TrainingProgramWizard({
                                 // but the step stays on 1 — user sees the error toast and can retry.
                                 if (pendingAIStructure) {
                                     try {
-                                        await applyStructureToDB(newId, coachId ?? '', pendingAIStructure)
+                                        await applyStructureToDB(newId, coachId ?? '', pendingAIStructure, pendingAIName)
                                     } catch {
                                         // Error already shown via toast inside applyStructureToDB.
                                         // Load the (empty) program so the wizard is usable.

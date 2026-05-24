@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { getAthleteProfileContextForCoach } from '@/lib/ai/athlete-profile-context'
+import { buildTrainingEventContext } from '@/lib/ai/training-event-context'
 import type { AITrainingProposal } from '@/types/ai-training'
 
 // ============================================================================
@@ -65,6 +66,19 @@ const AITrainingProposalSchema = z.object({
     changes: z.array(z.string()).default([]),  // list of change descriptions (used in modify mode)
 })
 
+type TrainingAIEventContext = {
+    title: string
+    date: string
+    type: string
+    priority: string
+    location: string | null
+    target: string | null
+    notes: string | null
+    daysUntil: number
+    weeksUntil: number
+    timingLabel: string
+}
+
 // ============================================================================
 // Prompt builders
 // ============================================================================
@@ -88,7 +102,8 @@ function formatExistingProgram(existing: NonNullable<z.infer<typeof RequestSchem
 function buildGeneratePrompt(
     userPrompt: string,
     athleteContext: string,
-    previousProgram: NonNullable<z.infer<typeof RequestSchema>['existingProgram']> | null | undefined
+    previousProgram: NonNullable<z.infer<typeof RequestSchema>['existingProgram']> | null | undefined,
+    upcomingEvents: TrainingAIEventContext[]
 ): string {
     const previousProgramBlock = previousProgram
         ? `## Rutina anterior como contexto
@@ -105,6 +120,9 @@ Usa esta rutina SOLO como contexto para entender qué venía haciendo el atleta.
 
 ## Perfil IA del atleta
 ${athleteContext}
+
+## Eventos programados del atleta
+${formatEventContext(upcomingEvents)}
 
 ${previousProgramBlock}
 ## Instrucciones del entrenador
@@ -149,13 +167,15 @@ Reglas estrictas:
 - "muscle_group": DEBE ser exactamente uno de: hombro, pecho, espalda, abdomen, cuádriceps, femorales, gemelos, tríceps, bíceps, glúteo, aductores, otros
 - Organiza ejercicios de mayor a menor demanda neuromuscular dentro de cada día
 - Incluye al menos 4 ejercicios por día
+- Usa los eventos programados para ubicar el punto de la planificación. Si hay una carrera, test o evento prioritario cercano, ajusta volumen, intensidad y selección de ejercicios para llegar bien a ese evento.
 - Usa español para todos los textos`
 }
 
 function buildModifyPrompt(
     userPrompt: string,
     existing: NonNullable<z.infer<typeof RequestSchema>['existingProgram']>,
-    athleteContext: string
+    athleteContext: string,
+    upcomingEvents: TrainingAIEventContext[]
 ): string {
     const programText = formatExistingProgram(existing)
 
@@ -163,6 +183,9 @@ function buildModifyPrompt(
 
 ## Perfil IA del atleta
 ${athleteContext}
+
+## Eventos programados del atleta
+${formatEventContext(upcomingEvents)}
 
 ## Programa actual: "${existing.name}" (${existing.weeks} semanas)
 
@@ -207,7 +230,62 @@ Reglas estrictas:
 - "changes": lista de strings describiendo cada cambio realizado (qué cambió y por qué). Imprescindible para que el entrenador pueda revisar las diferencias.
 - "muscle_group": DEBE ser exactamente uno de: hombro, pecho, espalda, abdomen, cuádriceps, femorales, gemelos, tríceps, bíceps, glúteo, aductores, otros
 - Si no hay cambios en un día, inclúyelo igualmente sin modificaciones
+- Usa los eventos programados para ubicar el punto de la planificación. Si una modificación aumenta demasiado la carga cerca de un evento prioritario, ajusta la propuesta o adviértelo en "explanation" y "changes".
 - Usa español para todos los textos`
+}
+
+function formatEventContext(events: TrainingAIEventContext[]) {
+    if (events.length === 0) return 'Sin eventos futuros planificados.'
+
+    return events.map((event) => [
+        `- ${event.title} (${event.type}, prioridad ${event.priority})`,
+        `  Fecha: ${event.date}. ${event.timingLabel}`,
+        event.location ? `  Ubicación: ${event.location}` : '',
+        event.target ? `  Objetivo: ${event.target}` : '',
+        event.notes ? `  Notas: ${event.notes}` : '',
+    ].filter(Boolean).join('\n')).join('\n')
+}
+
+function toLocalDateStr(date: Date) {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+}
+
+async function getUpcomingTrainingEvents(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    clientId: string,
+    coachId: string | null
+) {
+    if (!coachId) return []
+
+    const today = toLocalDateStr(new Date())
+    const horizon = new Date(`${today}T12:00:00`)
+    horizon.setDate(horizon.getDate() + 365)
+
+    const { data, error } = await supabase
+        .from('client_events')
+        .select('title, event_date, event_type, priority, location, target, notes')
+        .eq('client_id', clientId)
+        .eq('coach_id', coachId)
+        .eq('status', 'planned')
+        .gte('event_date', today)
+        .lte('event_date', toLocalDateStr(horizon))
+        .order('event_date', { ascending: true })
+        .limit(8)
+
+    if (error || !data) {
+        if (error && error.code !== '42P01') {
+            console.error('[AI generate-training] Error loading client events:', error)
+        }
+        return []
+    }
+
+    return buildTrainingEventContext({
+        referenceDate: today,
+        events: data,
+    })
 }
 
 // ============================================================================
@@ -266,11 +344,14 @@ export async function POST(req: NextRequest) {
         }
 
         const { clientId, mode, prompt, existingProgram } = input.data
-        const athleteContext = await getAthleteProfileContextForCoach(coachId, clientId)
+        const [athleteContext, upcomingEvents] = await Promise.all([
+            getAthleteProfileContextForCoach(coachId, clientId),
+            getUpcomingTrainingEvents(supabase, clientId, coachId),
+        ])
 
         const taskPrompt = mode === 'modify' && existingProgram
-            ? buildModifyPrompt(prompt, existingProgram, athleteContext)
-            : buildGeneratePrompt(prompt, athleteContext, existingProgram)
+            ? buildModifyPrompt(prompt, existingProgram, athleteContext, upcomingEvents)
+            : buildGeneratePrompt(prompt, athleteContext, existingProgram, upcomingEvents)
 
         const fullPrompt = coachContext + taskPrompt
 

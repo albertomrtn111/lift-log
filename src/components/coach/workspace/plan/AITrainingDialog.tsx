@@ -59,7 +59,7 @@ interface AITrainingDialogProps {
     trigger?: React.ReactNode
     existingProgram?: ExistingProgram | null
     /** Called when user confirms — receives a StrengthStructure ready to import into the wizard */
-    onConfirm: (structure: StrengthStructure, programName: string, weeks: number) => void
+    onConfirm: (structure: StrengthStructure, programName: string, weeks: number, mode: Mode) => void
 }
 
 // ============================================================================
@@ -309,7 +309,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
     function handleConfirm() {
         if (!proposal) return
         const structure = proposalToStrengthStructure(proposal)
-        onConfirm(structure, proposal.name, proposal.weeks)
+        onConfirm(structure, proposal.name, proposal.weeks, mode)
         setOpen(false)
         resetDialog()
     }

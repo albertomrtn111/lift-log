@@ -3,7 +3,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserContext } from '@/lib/auth/get-user-context'
-import { DEFAULT_CLIENT_NOTIFICATION_PREFERENCES, type ClientNotificationPreferences } from '@/lib/notifications/preferences'
+import {
+    DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
+    isMissingPreferencesTable,
+    type ClientNotificationPreferences,
+} from '@/lib/notifications/preferences'
+import {
+    readNotificationPreferencesFromClientPreferences,
+    sanitizeNotificationPreferences,
+    writeNotificationPreferencesToClientPreferences,
+} from '@/lib/notifications/preference-values'
 import { revalidatePath } from 'next/cache'
 
 export async function updateProfileNameAction(
@@ -82,17 +91,66 @@ async function getCurrentClientId() {
 }
 
 function sanitizePreferences(input: Partial<ClientNotificationPreferences>): ClientNotificationPreferences {
-    return {
-        messages_enabled: typeof input.messages_enabled === 'boolean'
-            ? input.messages_enabled
-            : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.messages_enabled,
-        reviews_enabled: typeof input.reviews_enabled === 'boolean'
-            ? input.reviews_enabled
-            : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.reviews_enabled,
-        supplements_enabled: typeof input.supplements_enabled === 'boolean'
-            ? input.supplements_enabled
-            : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.supplements_enabled,
+    return sanitizeNotificationPreferences(input) as ClientNotificationPreferences
+}
+
+async function getFallbackNotificationPreferences(
+    clientId: string
+): Promise<{ success: boolean; preferences?: ClientNotificationPreferences; error?: string }> {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+        .from('clients')
+        .select('preferences')
+        .eq('id', clientId)
+        .maybeSingle()
+
+    if (error) {
+        console.error('[getFallbackNotificationPreferences] Error:', error.message)
+        return { success: false, error: error.message }
     }
+
+    return {
+        success: true,
+        preferences: readNotificationPreferencesFromClientPreferences(data?.preferences) as ClientNotificationPreferences,
+    }
+}
+
+async function updateFallbackNotificationPreferences(
+    clientId: string,
+    preferences: ClientNotificationPreferences
+): Promise<{ success: boolean; preferences?: ClientNotificationPreferences; error?: string }> {
+    const admin = createAdminClient()
+    const { data: clientRow, error: readError } = await admin
+        .from('clients')
+        .select('preferences')
+        .eq('id', clientId)
+        .maybeSingle()
+
+    if (readError) {
+        console.error('[updateFallbackNotificationPreferences] Read error:', readError.message)
+        return { success: false, error: readError.message }
+    }
+
+    const nextClientPreferences = writeNotificationPreferencesToClientPreferences(
+        clientRow?.preferences,
+        preferences
+    )
+
+    const { error: updateError } = await admin
+        .from('clients')
+        .update({
+            preferences: nextClientPreferences,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', clientId)
+
+    if (updateError) {
+        console.error('[updateFallbackNotificationPreferences] Update error:', updateError.message)
+        return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/profile')
+    return { success: true, preferences }
 }
 
 export async function getNotificationPreferencesAction(): Promise<{
@@ -113,6 +171,9 @@ export async function getNotificationPreferencesAction(): Promise<{
         .maybeSingle()
 
     if (error) {
+        if (isMissingPreferencesTable(error)) {
+            return getFallbackNotificationPreferences(context.clientId)
+        }
         console.error('[getNotificationPreferencesAction] Error:', error.message)
         return { success: false, error: error.message }
     }
@@ -131,6 +192,12 @@ export async function getNotificationPreferencesAction(): Promise<{
         .single()
 
     if (createError) {
+        if (isMissingPreferencesTable(createError)) {
+            return updateFallbackNotificationPreferences(
+                context.clientId,
+                DEFAULT_CLIENT_NOTIFICATION_PREFERENCES as ClientNotificationPreferences
+            )
+        }
         console.error('[getNotificationPreferencesAction] Insert error:', createError.message)
         return { success: false, error: createError.message }
     }
@@ -163,6 +230,9 @@ export async function updateNotificationPreferencesAction(
         .single()
 
     if (error) {
+        if (isMissingPreferencesTable(error)) {
+            return updateFallbackNotificationPreferences(context.clientId, sanitized)
+        }
         console.error('[updateNotificationPreferencesAction] Error:', error.message)
         return { success: false, error: error.message }
     }

@@ -49,6 +49,7 @@ import { DietTab } from '../tabs/DietTab'
 import type { StrengthStructure } from '@/types/templates'
 import { SupplementsPanel } from './plan/SupplementsPanel'
 import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+import { getAITrainingWizardConfig } from '@/lib/training/ai-training-flow'
 
 type ProgramSummaryDetail = {
     days: Array<{ id: string; name: string }>
@@ -420,10 +421,14 @@ function EntrenoSubtab({
     const clampedSummaryWeek = Math.min(Math.max(summaryWeek, 1), Math.max(activeProgram?.total_weeks || 1, 1))
     const muscleVolumeMetrics = buildMuscleVolumeMetrics(programSummaryDetail, clampedSummaryWeek)
 
-    function handleAIConfirm(structure: StrengthStructure, name: string, weeks: number) {
+    function handleAIConfirm(structure: StrengthStructure, name: string, weeks: number, mode: 'generate' | 'modify') {
         setPendingAIStructure({ ...structure, weeks })
         setPendingAIName(name)
-        setWizardConfig({ isOpen: true, programId: null, step: 1 })
+        const config = getAITrainingWizardConfig({
+            mode,
+            activeProgramId: activeProgram?.id ?? null,
+        })
+        setWizardConfig({ isOpen: true, ...config })
     }
 
     const handleCreate = async () => {

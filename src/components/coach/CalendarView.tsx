@@ -64,6 +64,7 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { getVisibleMonthDayItems } from '@/lib/calendar/month-day-items'
 import { cn } from '@/lib/utils'
 
 interface CalendarViewProps {
@@ -224,9 +225,9 @@ function MiniInfo({
     label: string
 }) {
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
-            {icon}
-            {label}
+        <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-border/70 bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span className="shrink-0">{icon}</span>
+            <span className="min-w-0 truncate">{label}</span>
         </span>
     )
 }
@@ -725,16 +726,18 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                             const dayTasks = tasksByDate[dateStr] || []
                             const hasUrgent = dayEvents.some((event) => event.status === 'missing' || event.status === 'pending_review')
                             const isToday = dateStr === todayStr
-                            const visibleDayEvents = dayEvents.slice(0, 2)
-                            const visibleDayTasks = dayTasks.slice(0, Math.max(0, 3 - visibleDayEvents.length))
-                            const hiddenDayItems = (dayEvents.length + dayTasks.length) - (visibleDayEvents.length + visibleDayTasks.length)
+                            const {
+                                visibleEvents: visibleDayEvents,
+                                visibleTasks: visibleDayTasks,
+                                hiddenItemCount: hiddenDayItems,
+                            } = getVisibleMonthDayItems(dayEvents, dayTasks)
 
                             return (
                                 <button
                                     key={dateStr}
                                     onClick={() => setSelectedDate(dateStr)}
                                     className={cn(
-                                        'min-h-[88px] rounded-xl border p-2 text-left transition-all sm:min-h-[126px]',
+                                        'min-h-[88px] rounded-xl border p-2 text-left transition-all sm:min-h-[148px]',
                                         isToday && 'border-primary bg-primary/5',
                                         hasUrgent && !isToday && 'border-red-500/30 bg-red-500/[0.03]',
                                         !isToday && !hasUrgent && 'hover:border-primary/30 hover:bg-muted/20'
@@ -754,12 +757,12 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                         </div>
                                     </div>
 
-                                    <div className="mt-2 space-y-1">
+                                    <div className="mt-1.5 space-y-1">
                                         {visibleDayEvents.map((event) => (
                                             <div
                                                 key={event.id}
                                                 className={cn(
-                                                    'rounded-md border px-2 py-1 text-[11px]',
+                                                    'rounded-md border px-1.5 py-1 text-[10px] leading-tight',
                                                     STATUS_BADGE_VARIANTS[event.status]
                                                 )}
                                             >
@@ -767,7 +770,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                     <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_COLORS[event.status])} />
                                                     <span className="truncate font-medium">{event.clientName}</span>
                                                 </div>
-                                                <div className="mt-0.5 truncate text-[10px] opacity-80">
+                                                <div className="mt-0.5 truncate text-[9px] opacity-80">
                                                     {getCompactEventLine(event)}
                                                 </div>
                                             </div>
@@ -777,7 +780,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                             <div
                                                 key={task.id}
                                                 className={cn(
-                                                    'rounded-md border px-2 py-1 text-[11px]',
+                                                    'rounded-md border px-1.5 py-1 text-[10px] leading-tight',
                                                     task.status === 'completed'
                                                         ? 'border-border/70 bg-muted/30 text-muted-foreground'
                                                         : TASK_PRIORITY_STYLES[task.priority]
@@ -789,7 +792,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                         {task.title}
                                                     </span>
                                                 </div>
-                                                <div className="mt-0.5 truncate text-[10px] opacity-80">
+                                                <div className="mt-0.5 truncate text-[9px] opacity-80">
                                                     {task.status === 'completed' ? 'Completada' : 'Tarea del coach'}
                                                 </div>
                                             </div>
@@ -815,7 +818,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
             )}
 
             {!loading && viewMode === 'week' && (
-                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-7">
+                <div className="grid gap-1.5 lg:grid-cols-7 xl:gap-2">
                     {weekDays.map(({ date, dateStr }) => {
                         const dayEvents = filteredEventsByDate[dateStr] || []
                         const dayTasks = tasksByDate[dateStr] || []
@@ -826,37 +829,37 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                             <Card
                                 key={dateStr}
                                 className={cn(
-                                    'overflow-hidden',
+                                    'min-w-0 overflow-hidden',
                                     urgentCount > 0 && 'border-red-500/25',
                                     isToday && 'border-primary/30'
                                 )}
                             >
                                 <div className={cn(
-                                    'border-b px-4 py-3',
+                                    'border-b px-2.5 py-2.5',
                                     isToday ? 'bg-primary/5' : 'bg-muted/20',
                                     urgentCount > 0 && 'bg-red-500/[0.04]'
                                 )}>
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                                                 {format(date, 'EEEE', { locale: es })}
                                             </p>
-                                            <p className="mt-1 text-xl font-semibold">{format(date, 'd')}</p>
+                                            <p className="mt-0.5 text-lg font-semibold">{format(date, 'd')}</p>
                                         </div>
-                                        <div className="flex flex-wrap justify-end gap-1">
+                                        <div className="flex shrink-0 flex-col items-end gap-1">
                                             {urgentCount > 0 && (
-                                                <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-500/20">
+                                                <Badge variant="outline" className="h-5 px-1.5 text-[9px] bg-red-500/10 text-red-700 border-red-500/20">
                                                     {urgentCount} acción
                                                 </Badge>
                                             )}
                                             {dayTasks.length > 0 && (
-                                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+                                                <Badge variant="outline" className="h-5 px-1.5 text-[9px] bg-amber-500/10 text-amber-700 border-amber-500/20">
                                                     {dayTasks.length} tarea{dayTasks.length !== 1 ? 's' : ''}
                                                 </Badge>
                                             )}
                                         </div>
                                     </div>
-                                    <p className="mt-2 text-xs text-muted-foreground">
+                                    <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
                                         {dayEvents.length > 0
                                             ? `${dayEvents.length} item${dayEvents.length !== 1 ? 's' : ''} en el día`
                                             : dayTasks.length > 0
@@ -866,44 +869,44 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                 </div>
 
                                 <ScrollArea className="h-[320px]">
-                                    <div className="space-y-2 p-3">
+                                    <div className="space-y-1.5 p-1.5">
                                         {dayEvents.map((event) => (
                                             <button
                                                 key={event.id}
                                                 onClick={() => setSelectedDate(dateStr)}
                                                 className={cn(
-                                                    'w-full rounded-lg border p-3 text-left transition-all hover:border-primary/30 hover:bg-muted/20',
+                                                    'w-full overflow-hidden rounded-md border p-1.5 text-left transition-all hover:border-primary/30 hover:bg-muted/20',
                                                     event.status === 'missing' && 'border-red-500/20',
                                                     event.status === 'pending_review' && 'border-amber-500/20'
                                                 )}
                                             >
-                                                <div className="flex items-start justify-between gap-2">
+                                                <div className="flex min-w-0 flex-col gap-1.5">
                                                     <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={cn('h-2 w-2 rounded-full', STATUS_DOT_COLORS[event.status])} />
-                                                            <p className="truncate font-medium">{event.clientName}</p>
+                                                        <div className="flex min-w-0 items-center gap-1.5">
+                                                            <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT_COLORS[event.status])} />
+                                                            <p className="min-w-0 truncate text-[12px] font-semibold leading-tight">{event.clientName}</p>
                                                         </div>
-                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                        <p className="mt-1 truncate text-[11px] leading-tight text-muted-foreground">
                                                             {getCompactEventLine(event)}
                                                         </p>
                                                     </div>
                                                     <Badge
                                                         variant="outline"
-                                                        className={cn('shrink-0 text-[10px]', STATUS_BADGE_VARIANTS[event.status])}
+                                                        className={cn('h-5 w-fit max-w-full shrink-0 truncate px-1.5 text-[9px]', STATUS_BADGE_VARIANTS[event.status])}
                                                     >
                                                         {STATUS_LABELS[event.status]}
                                                     </Badge>
                                                 </div>
 
-                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
                                                     {event.aiStatus === 'completed' && (
-                                                        <MiniInfo icon={<Sparkles className="h-3 w-3" />} label="IA lista" />
+                                                        <MiniInfo icon={<Sparkles className="h-2.5 w-2.5" />} label="IA lista" />
                                                     )}
                                                     {event.weightKg != null && (
-                                                        <MiniInfo icon={<Scale className="h-3 w-3" />} label={`${event.weightKg} kg`} />
+                                                        <MiniInfo icon={<Scale className="h-2.5 w-2.5" />} label={`${event.weightKg} kg`} />
                                                     )}
                                                     {event.trainingAdherencePct != null && (
-                                                        <MiniInfo icon={<Dumbbell className="h-3 w-3" />} label={`${event.trainingAdherencePct}%`} />
+                                                        <MiniInfo icon={<Dumbbell className="h-2.5 w-2.5" />} label={`${event.trainingAdherencePct}%`} />
                                                     )}
                                                 </div>
                                             </button>
@@ -913,7 +916,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                             <div
                                                 key={task.id}
                                                 className={cn(
-                                                    'rounded-lg border p-3',
+                                                    'overflow-hidden rounded-md border p-1.5',
                                                     task.status === 'completed'
                                                         ? 'border-border/70 bg-muted/20'
                                                         : task.priority === 'high'
@@ -921,26 +924,26 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                             : 'border-amber-500/20 bg-amber-500/[0.03]'
                                                 )}
                                             >
-                                                <div className="flex items-start justify-between gap-3">
+                                                <div className="flex min-w-0 flex-col gap-1.5">
                                                     <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <Bell className={cn('h-4 w-4 shrink-0', task.status === 'completed' ? 'text-muted-foreground' : 'text-amber-600')} />
-                                                            <p className="truncate font-medium">{task.title}</p>
+                                                        <div className="flex min-w-0 items-center gap-1.5">
+                                                            <Bell className={cn('h-3 w-3 shrink-0', task.status === 'completed' ? 'text-muted-foreground' : 'text-amber-600')} />
+                                                            <p className="min-w-0 truncate text-[12px] font-semibold leading-tight">{task.title}</p>
                                                         </div>
                                                         {task.description && (
-                                                            <p className="mt-1 text-xs text-muted-foreground">{task.description}</p>
+                                                            <p className="mt-1 line-clamp-2 text-[11px] leading-tight text-muted-foreground">{task.description}</p>
                                                         )}
-                                                        <div className="mt-2 flex flex-wrap gap-1">
-                                                            <Badge variant="outline" className={cn('text-[10px]', TASK_PRIORITY_STYLES[task.priority])}>
+                                                        <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
+                                                            <Badge variant="outline" className={cn('h-5 max-w-full truncate px-1.5 text-[9px]', TASK_PRIORITY_STYLES[task.priority])}>
                                                                 {task.priority === 'high' ? 'Alta prioridad' : 'Normal'}
                                                             </Badge>
                                                             {task.clientName && (
-                                                                <Badge variant="secondary" className="text-[10px]">
+                                                                <Badge variant="secondary" className="h-5 max-w-full truncate px-1.5 text-[9px]">
                                                                     {task.clientName}
                                                                 </Badge>
                                                             )}
                                                             {task.status === 'completed' && (
-                                                                <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-700 border-green-500/20">
+                                                                <Badge variant="outline" className="h-5 max-w-full truncate px-1.5 text-[9px] bg-green-500/10 text-green-700 border-green-500/20">
                                                                     Completada
                                                                 </Badge>
                                                             )}
@@ -952,11 +955,12 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                                             size="sm"
                                                             onClick={() => completeTask(task.id)}
                                                             disabled={isCompletingTask}
+                                                            className="h-7 w-fit px-2 text-[11px]"
                                                         >
                                                             {isCompletingTask && completingTaskId === task.id ? (
-                                                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                                                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                                                             ) : (
-                                                                <Check className="mr-1 h-4 w-4" />
+                                                                <Check className="mr-1 h-3 w-3" />
                                                             )}
                                                             Completar
                                                         </Button>
@@ -966,8 +970,8 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
                                         ))}
 
                                         {dayEvents.length === 0 && dayTasks.length === 0 && (
-                                            <div className="rounded-lg border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-                                                Libre. Sin revisiones ni incidencias reales.
+                                            <div className="rounded-md border border-dashed px-2 py-4 text-center text-[11px] text-muted-foreground">
+                                                Libre
                                             </div>
                                         )}
                                     </div>

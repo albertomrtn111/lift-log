@@ -125,15 +125,15 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         athleteProfile = athleteProfileData
     }
     return (
-        <div className="min-h-screen pb-20 lg:pb-4">
+        <div className="min-h-screen min-w-0 overflow-x-hidden pb-20 lg:pb-4">
             {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 lg:px-8 py-6">
-                    <div className="flex items-center gap-3">
+                <div className="min-w-0 px-4 py-6 lg:px-8">
+                    <div className="flex min-w-0 items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                             <UserCog className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <h1 className="text-xl font-bold">Workspace</h1>
                             <p className="text-sm text-muted-foreground">Centro operativo por cliente</p>
                         </div>
@@ -141,7 +141,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                 </div>
             </header>
 
-            <div className="px-4 lg:px-8 pt-6">
+            <div className="min-w-0 px-4 pt-6 lg:px-8">
                 <NewClientWorkspace
                     clients={clients}
                     selectedClient={selectedClient}

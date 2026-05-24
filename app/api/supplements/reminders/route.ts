@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSupplementReminderNotification } from '@/lib/notifications/client'
+import { dateTimeInTimezone, getReminderTargets } from '@/lib/supplements/reminder-time'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,55 +43,19 @@ function nowInTimezone(timezone: string) {
     return dateTimeInTimezone(new Date(), timezone)
 }
 
-function dateTimeInTimezone(date: Date, timezone: string) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-    }).formatToParts(new Date())
-
-    const get = (type: string) => parts.find((part) => part.type === type)?.value || ''
-    return {
-        date: `${get('year')}-${get('month')}-${get('day')}`,
-        time: `${get('hour')}:${get('minute')}`,
-    }
-}
-
-function getReminderTargets(request: NextRequest, timezone: string): ReminderTarget[] {
+function getRequestReminderTargets(request: NextRequest, timezone: string): ReminderTarget[] {
     const params = new URL(request.url).searchParams
-    const requestedDate = params.get('date')
-    const requestedTime = params.get('time')
-
-    if (requestedDate && requestedTime) {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && /^\d{2}:\d{2}$/.test(requestedTime)) {
-            return [{ date: requestedDate, time: requestedTime }]
-        }
-        return []
-    }
-
     const lookbackMinutes = Math.min(
         30,
         Math.max(1, Number(process.env.SUPPLEMENT_REMINDER_LOOKBACK_MINUTES || 5))
     )
-    const now = new Date()
-    const seen = new Set<string>()
-    const targets: ReminderTarget[] = []
 
-    for (let offset = lookbackMinutes - 1; offset >= 0; offset -= 1) {
-        const candidate = new Date(now.getTime() - offset * 60_000)
-        const target = dateTimeInTimezone(candidate, timezone)
-        const key = `${target.date}|${target.time}`
-        if (!seen.has(key)) {
-            seen.add(key)
-            targets.push(target)
-        }
-    }
-
-    return targets
+    return getReminderTargets({
+        timezone,
+        requestedDate: params.get('date'),
+        requestedTime: params.get('time'),
+        lookbackMinutes,
+    })
 }
 
 function isActiveOnDate(row: SupplementReminderRow, date: string) {
@@ -121,7 +86,7 @@ async function handleReminderRun(request: NextRequest) {
 
         const timezone = process.env.SUPPLEMENT_REMINDER_TIMEZONE || 'Europe/Madrid'
         const checkedAt = nowInTimezone(timezone)
-        const targets = getReminderTargets(request, timezone)
+        const targets = getRequestReminderTargets(request, timezone)
         if (targets.length === 0) {
             return NextResponse.json({ error: 'Fecha u hora inválida' }, { status: 400 })
         }

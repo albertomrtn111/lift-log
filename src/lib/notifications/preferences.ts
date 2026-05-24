@@ -1,6 +1,11 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+    DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
+    readNotificationPreferencesFromClientPreferences,
+    sanitizeNotificationPreferences,
+} from '@/lib/notifications/preference-values'
 
 export type ClientNotificationChannel = 'messages' | 'reviews' | 'supplements'
 
@@ -10,11 +15,7 @@ export type ClientNotificationPreferences = {
     supplements_enabled: boolean
 }
 
-export const DEFAULT_CLIENT_NOTIFICATION_PREFERENCES: ClientNotificationPreferences = {
-    messages_enabled: true,
-    reviews_enabled: true,
-    supplements_enabled: true,
-}
+export { DEFAULT_CLIENT_NOTIFICATION_PREFERENCES }
 
 function preferenceColumn(channel: ClientNotificationChannel): keyof ClientNotificationPreferences {
     if (channel === 'messages') return 'messages_enabled'
@@ -22,9 +23,25 @@ function preferenceColumn(channel: ClientNotificationChannel): keyof ClientNotif
     return 'supplements_enabled'
 }
 
-function isMissingPreferencesTable(error: { code?: string; message?: string } | null | undefined) {
+export function isMissingPreferencesTable(error: { code?: string; message?: string } | null | undefined) {
     if (!error) return false
     return error.code === '42P01' || error.code === 'PGRST205' || /client_notification_preferences/i.test(error.message ?? '')
+}
+
+async function getClientPreferencesFallback(clientId: string): Promise<ClientNotificationPreferences> {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+        .from('clients')
+        .select('preferences')
+        .eq('id', clientId)
+        .maybeSingle()
+
+    if (error) {
+        console.warn('[notifications] No se pudieron leer preferencias fallback:', error)
+        return DEFAULT_CLIENT_NOTIFICATION_PREFERENCES as ClientNotificationPreferences
+    }
+
+    return readNotificationPreferencesFromClientPreferences(data?.preferences) as ClientNotificationPreferences
 }
 
 export async function getClientNotificationPreferences(
@@ -38,16 +55,15 @@ export async function getClientNotificationPreferences(
         .maybeSingle()
 
     if (error) {
-        if (!isMissingPreferencesTable(error)) {
+        if (isMissingPreferencesTable(error)) {
+            return getClientPreferencesFallback(clientId)
+        } else {
             console.warn('[notifications] No se pudieron leer preferencias:', error)
         }
-        return DEFAULT_CLIENT_NOTIFICATION_PREFERENCES
+        return DEFAULT_CLIENT_NOTIFICATION_PREFERENCES as ClientNotificationPreferences
     }
 
-    return {
-        ...DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
-        ...(data ?? {}),
-    }
+    return sanitizeNotificationPreferences(data ?? {}) as ClientNotificationPreferences
 }
 
 export async function isClientNotificationChannelEnabled(

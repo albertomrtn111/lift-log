@@ -32,9 +32,9 @@ export default async function CoachLayout({
 
     return (
         <CoachProvider>
-            <div className="min-h-screen bg-background flex">
+            <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-background">
                 <CoachSidebar />
-                <main className="flex-1 lg:pl-64">
+                <main className="min-w-0 flex-1 overflow-x-hidden lg:pl-64">
                     {children}
                 </main>
             </div>
