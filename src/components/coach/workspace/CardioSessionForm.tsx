@@ -11,7 +11,8 @@ import {
     Gauge,
     TrendingUp,
     Bike,
-    Waves
+    Waves,
+    CircleEllipsis
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -39,11 +40,20 @@ const numericOptional = z.preprocess(
 
 const formSchema = z.object({
     trainingType: z.string().optional(),
+    customName: z.string().optional(),
     targetDistanceKm: numericOptional,
     targetDurationMin: numericOptional,
     targetPace: z.string().optional(),
     description: z.string().min(1, "El detalle del entrenamiento es obligatorio"),
     notes: z.string().optional(),
+}).superRefine((values, ctx) => {
+    if (values.trainingType === 'other' && !values.customName?.trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['customName'],
+            message: 'Escribe el nombre de la sesión',
+        })
+    }
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -95,6 +105,12 @@ const SESSION_SECTIONS = [
         ],
     },
     {
+        label: 'Otro',
+        types: [
+            { id: 'other', label: 'Otro', icon: CircleEllipsis, color: 'text-slate-500', bg: 'bg-slate-500/10' },
+        ],
+    },
+    {
         label: 'Híbrido',
         types: [
             { id: 'hybrid', label: 'Híbrido', icon: Dumbbell, color: 'text-purple-500', bg: 'bg-purple-500/10' },
@@ -106,11 +122,14 @@ const SESSION_SECTIONS = [
 const SESSION_TYPES = SESSION_SECTIONS.flatMap(s => s.types)
 
 export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCancel, hideTypeSelector, visibleSections }: CardioSessionFormProps) {
+    const initialTrainingType = initialData?.structure?.trainingType || 'rodaje'
+    const isKnownInitialType = SESSION_TYPES.some(type => type.id === initialTrainingType)
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            trainingType: initialData?.structure?.trainingType || 'rodaje',
+            trainingType: isKnownInitialType ? initialTrainingType : 'other',
+            customName: initialTrainingType === 'other' || !isKnownInitialType ? initialData?.name || '' : '',
             targetDistanceKm: initialData?.targetDistanceKm ?? undefined,
             targetDurationMin: initialData?.targetDurationMin ?? undefined,
             targetPace: initialData?.targetPace || '',
@@ -120,14 +139,18 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
     })
 
     const handleSubmit = async (values: FormValues) => {
+        const selectedType = SESSION_TYPES.find(t => t.id === values.trainingType)
+        const isOther = values.trainingType === 'other'
+        const customName = values.customName?.trim()
+
         await onSubmit({
-            name: SESSION_TYPES.find(t => t.id === values.trainingType)?.label || 'Cardio',
+            name: isOther ? customName || 'Otro' : selectedType?.label || 'Cardio',
             description: values.description,
             targetDistanceKm: typeof values.targetDistanceKm === 'number' ? values.targetDistanceKm : undefined,
             targetDurationMin: typeof values.targetDurationMin === 'number' ? values.targetDurationMin : undefined,
             targetPace: values.targetPace || undefined,
             structure: {
-                trainingType: values.trainingType,
+                trainingType: isOther ? 'other' : values.trainingType,
                 notes: values.notes,
                 blocks: []
             }
@@ -137,6 +160,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
     const displayedSections = visibleSections
         ? SESSION_SECTIONS.filter(s => visibleSections.includes(s.label))
         : SESSION_SECTIONS
+    const selectedTrainingType = form.watch('trainingType')
 
     return (
         <Form {...form}>
@@ -198,6 +222,26 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         />
                     </CardContent>
                 </Card>
+                )}
+
+                {selectedTrainingType === 'other' && (
+                    <FormField
+                        control={form.control}
+                        name="customName"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-sm font-medium">Nombre de la sesión</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        placeholder="Ej: Pádel, senderismo, elíptica..."
+                                        {...field}
+                                        value={field.value ?? ''}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
                 )}
 
                 {/* Target Objectives Row */}

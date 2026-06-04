@@ -626,7 +626,7 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                             visibleSections={
                                 cardioInitialData?.structure?.trainingType === 'hybrid'
                                     ? undefined
-                                    : ['Running', 'Bicicleta', 'Natación']
+                                    : ['Running', 'Bicicleta', 'Natación', 'Otro']
                             }
                         />
                     </div>

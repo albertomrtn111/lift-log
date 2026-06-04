@@ -17,8 +17,10 @@ function normalizeAppUrl(raw: string): string {
 
     try {
         const url = new URL(withoutTrailingSlash)
-        if (url.hostname === LEGACY_PRODUCTION_HOST) {
+        if (url.hostname === LEGACY_PRODUCTION_HOST || url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
             url.hostname = 'nexttrain.ascenttech.cloud'
+            url.protocol = 'https:'
+            url.port = ''
             return url.toString().replace(/\/$/, '')
         }
     } catch {

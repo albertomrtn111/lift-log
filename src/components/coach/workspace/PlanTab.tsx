@@ -36,8 +36,9 @@ import {
     Loader2 as Loader2Icon,
     BarChart3,
     Layers3,
+    Copy,
 } from 'lucide-react'
-import { activateTrainingProgramAction, archiveTrainingProgramAction } from './actions'
+import { activateTrainingProgramAction, archiveTrainingProgramAction, copyTrainingProgramToTemplateAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
 import { TrainingProgramWizard } from './plan/TrainingProgramWizard'
 import { AITrainingDialog } from './plan/AITrainingDialog'
@@ -355,6 +356,7 @@ function EntrenoSubtab({
     })
     const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
     const [isArchiving, setIsArchiving] = useState(false)
+    const [isCopyingTemplate, setIsCopyingTemplate] = useState(false)
 
     // AI state
     const [pendingAIStructure, setPendingAIStructure] = useState<StrengthStructure | null>(null)
@@ -489,6 +491,36 @@ function EntrenoSubtab({
         }
     }
 
+    const handleCopyToTemplate = async () => {
+        if (!activeProgram || isCopyingTemplate) return
+
+        setIsCopyingTemplate(true)
+        try {
+            const result = await copyTrainingProgramToTemplateAction(activeProgram.id, clientId)
+            if (!result.success) {
+                toast({
+                    title: 'Error al copiar a plantillas',
+                    description: result.error || 'No se pudo crear la plantilla.',
+                    variant: 'destructive',
+                })
+                return
+            }
+
+            toast({
+                title: 'Plantilla creada',
+                description: `"${result.template?.name ?? activeProgram.name}" ya está disponible en Plantillas.`,
+            })
+        } catch (error: any) {
+            toast({
+                title: 'Error al copiar a plantillas',
+                description: error?.message || 'Error inesperado',
+                variant: 'destructive',
+            })
+        } finally {
+            setIsCopyingTemplate(false)
+        }
+    }
+
     return (
         <div className="space-y-6">
             {/* Active Program */}
@@ -550,6 +582,17 @@ function EntrenoSubtab({
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
                                             Configurar plan
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            onClick={handleCopyToTemplate}
+                                            disabled={isCopyingTemplate}
+                                        >
+                                            {isCopyingTemplate ? (
+                                                <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                                            ) : (
+                                                <Copy className="h-4 w-4 mr-2" />
+                                            )}
+                                            Copiar a plantillas
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                             onClick={() => setArchiveDialogOpen(true)}

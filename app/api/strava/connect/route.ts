@@ -4,6 +4,7 @@ import {
     createOAuthState,
     getAuthenticatedClientContext,
 } from '@/lib/strava/client'
+import { getAppUrl } from '@/lib/app-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ export async function GET() {
     try {
         const context = await getAuthenticatedClientContext()
         if (!context) {
-            return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'))
+            return NextResponse.redirect(new URL('/login', getAppUrl()))
         }
 
         const { state, nonce, cookieName, maxAge } = createOAuthState(context)

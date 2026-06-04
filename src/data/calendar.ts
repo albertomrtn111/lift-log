@@ -73,6 +73,25 @@ interface CalendarRangeInput {
 
 const IGNORED_CHECKIN_STATUSES = new Set(['cancelled'])
 
+function getSubmittedResolutionKeys(checkin: CheckinRecord): string[] {
+    if (!checkin.period_end) return []
+
+    const keys = [`client:${checkin.client_id}:${checkin.period_end}`]
+    if (checkin.review_schedule_id) {
+        keys.push(`schedule:${checkin.review_schedule_id}:${checkin.period_end}`)
+    }
+
+    return keys
+}
+
+function getScheduleResolutionKey(scheduleId: string, dueDate: string) {
+    return `schedule:${scheduleId}:${dueDate}`
+}
+
+function getClientResolutionKey(clientId: string, dueDate: string) {
+    return `client:${clientId}:${dueDate}`
+}
+
 function countPrefixedValues(
     payload: Record<string, unknown> | null,
     prefix: string
@@ -357,6 +376,30 @@ export async function getCalendarData(
         .gte('submitted_at', `${range.startDate}T00:00:00`)
         .lte('submitted_at', `${range.endDate}T23:59:59`)
 
+    const { data: submittedCheckinsForDueDates } = await supabase
+        .from('checkins')
+        .select(`
+            id,
+            client_id,
+            review_schedule_id,
+            submitted_at,
+            created_at,
+            period_end,
+            status,
+            source,
+            raw_payload,
+            weight_kg,
+            weight_avg_kg,
+            training_adherence_pct,
+            nutrition_adherence_pct,
+            sleep_avg_h
+        `)
+        .eq('coach_id', coachId)
+        .eq('type', 'checkin')
+        .not('submitted_at', 'is', null)
+        .gte('period_end', range.startDate)
+        .lte('period_end', range.endDate)
+
     const { data: pendingCheckins } = await supabase
         .from('checkins')
         .select(`
@@ -385,8 +428,27 @@ export async function getCalendarData(
         .filter((checkin) => activeClientById.has(checkin.client_id))
         .filter((checkin) => checkin.status !== 'pending')
 
+    const submittedCheckinsById = new Map<string, CheckinRecord>()
+    for (const checkin of [
+        ...filteredSubmittedCheckins,
+        ...((submittedCheckinsForDueDates ?? []) as CheckinRecord[])
+            .filter((checkin) => !IGNORED_CHECKIN_STATUSES.has(checkin.status ?? ''))
+            .filter((checkin) => activeClientById.has(checkin.client_id))
+            .filter((checkin) => checkin.status !== 'pending'),
+    ]) {
+        submittedCheckinsById.set(checkin.id, checkin)
+    }
+
+    const submittedCheckinsForResolution = [...submittedCheckinsById.values()]
+    const resolvedSubmittedKeys = new Set<string>()
+    for (const checkin of submittedCheckinsForResolution) {
+        for (const key of getSubmittedResolutionKeys(checkin)) {
+            resolvedSubmittedKeys.add(key)
+        }
+    }
+
     const latestSubmittedAtByClient = new Map<string, string>()
-    for (const checkin of filteredSubmittedCheckins) {
+    for (const checkin of submittedCheckinsForResolution) {
         if (!checkin.submitted_at) continue
         const current = latestSubmittedAtByClient.get(checkin.client_id)
         if (!current || checkin.submitted_at > current) {
@@ -397,6 +459,17 @@ export async function getCalendarData(
     const filteredPendingCheckins = ((pendingCheckins ?? []) as CheckinRecord[])
         .filter((checkin) => activeClientById.has(checkin.client_id))
         .filter((checkin) => {
+            const client = activeClientById.get(checkin.client_id)
+            if (client) {
+                const dueDate = getCheckinDueDate(checkin, client)
+                if (checkin.review_schedule_id && resolvedSubmittedKeys.has(getScheduleResolutionKey(checkin.review_schedule_id, dueDate))) {
+                    return false
+                }
+                if (resolvedSubmittedKeys.has(getClientResolutionKey(checkin.client_id, dueDate))) {
+                    return false
+                }
+            }
+
             const latestSubmittedAt = latestSubmittedAtByClient.get(checkin.client_id)
             if (!latestSubmittedAt) return true
             return latestSubmittedAt < checkin.created_at
@@ -449,16 +522,6 @@ export async function getCalendarData(
         }
     }
 
-    const currentSubmittedDatesByClient = new Map<string, string>()
-    for (const checkin of filteredSubmittedCheckins) {
-        const client = activeClientById.get(checkin.client_id)
-        if (!client || !client.next_checkin_date) continue
-        if (!checkin.period_end) continue
-        if (checkin.period_end === client.next_checkin_date) {
-            currentSubmittedDatesByClient.set(checkin.client_id, checkin.period_end)
-        }
-    }
-
     for (const client of activeClients) {
         const clientSchedules = schedulesByClient.get(client.id) ?? []
 
@@ -469,6 +532,12 @@ export async function getCalendarData(
                 if (pendingCheckin) {
                     const pendingDueDate = getCheckinDueDate(pendingCheckin, client)
                     if (pendingDueDate >= range.startDate && pendingDueDate <= range.endDate) {
+                        if (
+                            resolvedSubmittedKeys.has(getScheduleResolutionKey(schedule.id, pendingDueDate)) ||
+                            resolvedSubmittedKeys.has(getClientResolutionKey(client.id, pendingDueDate))
+                        ) {
+                            continue
+                        }
                         const event = buildScheduledEvent(pendingCheckin, client, today)
                         event.reviewTemplateName = schedule.review_template?.name ?? null
                         event.reviewScheduleId = schedule.id
@@ -481,6 +550,12 @@ export async function getCalendarData(
                 if (!dueDate) continue
                 if (dueDate < range.startDate || dueDate > range.endDate) continue
                 if (client.start_date && dueDate < client.start_date) continue
+                if (
+                    resolvedSubmittedKeys.has(getScheduleResolutionKey(schedule.id, dueDate)) ||
+                    resolvedSubmittedKeys.has(getClientResolutionKey(client.id, dueDate))
+                ) {
+                    continue
+                }
 
                 const event = buildScheduledEventFromSchedule(client, schedule, today)
                 if (event) events.push(event)
@@ -489,9 +564,12 @@ export async function getCalendarData(
             // Si además hay un pending checkin "huérfano" para este cliente
             // (sin review_schedule_id), también lo emitimos para no perder visibilidad
             const pendingCheckin = latestPendingByClient.get(client.id)
-            if (pendingCheckin && client.next_checkin_date && !currentSubmittedDatesByClient.has(client.id)) {
+            if (pendingCheckin && client.next_checkin_date) {
                 const dueDate = pendingCheckin.period_end || client.next_checkin_date
                 if (dueDate >= range.startDate && dueDate <= range.endDate) {
+                    if (resolvedSubmittedKeys.has(getClientResolutionKey(client.id, dueDate))) {
+                        continue
+                    }
                     events.push(buildScheduledEvent(pendingCheckin, client, today))
                 }
             }
@@ -510,7 +588,7 @@ export async function getCalendarData(
             continue
         }
 
-        if (currentSubmittedDatesByClient.has(client.id)) {
+        if (resolvedSubmittedKeys.has(getClientResolutionKey(client.id, dueDate))) {
             continue
         }
 

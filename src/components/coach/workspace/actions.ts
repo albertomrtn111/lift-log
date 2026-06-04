@@ -11,6 +11,8 @@ import { sendReviewApprovedNotification, sendReviewFeedbackNotification } from '
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
+import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================
 // CLIENT ACTIONS
@@ -645,6 +647,105 @@ export async function archiveTrainingProgramAction(programId: string) {
     return { success: true }
 }
 
+export async function copyTrainingProgramToTemplateAction(programId: string, clientId: string) {
+    try {
+        await assertClientLinked(clientId)
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
+    let supabase, coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+
+    const { data: program, error: programError } = await supabase
+        .from('training_programs')
+        .select('id, name, total_weeks, weeks, client_id')
+        .eq('id', programId)
+        .eq('client_id', clientId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+
+    if (programError || !program) {
+        return { success: false, error: programError?.message || 'No se encontró el programa de fuerza.' }
+    }
+
+    const { data: days, error: daysError } = await supabase
+        .from('training_days')
+        .select('id, name, order_index, day_order')
+        .eq('program_id', programId)
+        .eq('coach_id', coachId)
+        .order('order_index', { ascending: true })
+        .order('created_at', { ascending: true })
+
+    if (daysError) return { success: false, error: daysError.message }
+    if (!days || days.length === 0) {
+        return { success: false, error: 'Este programa no tiene días para copiar.' }
+    }
+
+    const { data: exercises, error: exercisesError } = await supabase
+        .from('training_exercises')
+        .select('id, day_id, exercise_name, order_index, muscle_group, sets, reps, rir, rest_seconds, notes, created_at')
+        .eq('program_id', programId)
+        .eq('coach_id', coachId)
+        .order('order_index', { ascending: true })
+        .order('created_at', { ascending: true })
+
+    if (exercisesError) return { success: false, error: exercisesError.message }
+
+    const exercisesByDay = new Map<string, typeof exercises>()
+    ;(exercises || []).forEach((exercise) => {
+        const current = exercisesByDay.get(exercise.day_id) || []
+        current.push(exercise)
+        exercisesByDay.set(exercise.day_id, current)
+    })
+
+    const structure: StrengthStructure = {
+        weeks: program.total_weeks ?? program.weeks ?? 4,
+        days: days.map((day, dayIndex) => ({
+            id: crypto.randomUUID(),
+            name: day.name || `Día ${dayIndex + 1}`,
+            order: day.order_index ?? day.day_order ?? dayIndex + 1,
+            exercises: (exercisesByDay.get(day.id) || []).map((exercise, exerciseIndex) => ({
+                id: crypto.randomUUID(),
+                exercise_name: exercise.exercise_name || '',
+                order: exercise.order_index ?? exerciseIndex + 1,
+                muscle_group: normalizeMuscleGroup(exercise.muscle_group),
+                sets: exercise.sets ?? 0,
+                reps: exercise.reps ?? '',
+                rir: exercise.rir != null ? String(exercise.rir) : '',
+                rest_seconds: exercise.rest_seconds ?? 0,
+                notes: exercise.notes ?? null,
+            })),
+        })),
+    }
+
+    const templateName = `Plantilla - ${program.name || 'Rutina de fuerza'}`
+    const { data: template, error: templateError } = await supabase
+        .from('training_templates')
+        .insert({
+            coach_id: coachId,
+            name: templateName,
+            description: `Copiada desde el programa "${program.name || 'Rutina de fuerza'}".`,
+            tags: ['fuerza'],
+            type: 'strength',
+            structure,
+            is_public: false,
+        })
+        .select('id, name')
+        .single()
+
+    if (templateError || !template) {
+        return { success: false, error: templateError?.message || 'No se pudo crear la plantilla.' }
+    }
+
+    revalidatePath('/coach/templates')
+    return { success: true, template }
+}
+
 export async function addExerciseAction(dayId: string, exerciseName: string, order: number) {
     const supabase = await createClient()
 
@@ -753,27 +854,49 @@ export async function reorderExerciseAction(exerciseId: string, direction: 'up' 
     // Obtener todos los ejercicios del día ordenados
     const { data: dayExercises, error } = await supabase
         .from('training_exercises')
-        .select('id, order_index')
+        .select('id, order_index, created_at')
         .eq('day_id', dayId)
         .order('order_index', { ascending: true })
+        .order('created_at', { ascending: true })
 
     if (error || !dayExercises) return { success: false, error: 'No se pudieron cargar los ejercicios' }
 
-    const idx = dayExercises.findIndex(e => e.id === exerciseId)
+    const normalizedExercises = dayExercises.map((exercise, index) => ({
+        id: exercise.id,
+        order_index: index + 1,
+    }))
+
+    const idx = normalizedExercises.findIndex(e => e.id === exerciseId)
     if (idx === -1) return { success: false, error: 'Ejercicio no encontrado' }
 
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= dayExercises.length) return { success: false, error: 'No se puede mover más' }
+    if (swapIdx < 0 || swapIdx >= normalizedExercises.length) return { success: false, error: 'No se puede mover más' }
 
-    const current = dayExercises[idx]
-    const swap = dayExercises[swapIdx]
+    const reordered = [...normalizedExercises]
+    const [moved] = reordered.splice(idx, 1)
+    reordered.splice(swapIdx, 0, moved)
 
-    // Intercambiar order_index entre los dos ejercicios
-    await supabase.from('training_exercises').update({ order_index: swap.order_index }).eq('id', current.id)
-    await supabase.from('training_exercises').update({ order_index: current.order_index }).eq('id', swap.id)
+    const updates = await Promise.all(
+        reordered.map((exercise, index) =>
+            supabase
+                .from('training_exercises')
+                .update({ order_index: index + 1, updated_at: new Date().toISOString() })
+                .eq('id', exercise.id)
+                .eq('day_id', dayId)
+        )
+    )
+
+    const updateError = updates.find(result => result.error)?.error
+    if (updateError) return { success: false, error: updateError.message }
 
     revalidatePath('/coach/clients')
-    return { success: true }
+    return {
+        success: true,
+        exercises: reordered.map((exercise, index) => ({
+            id: exercise.id,
+            order_index: index + 1,
+        })),
+    }
 }
 
 // ============================================================================

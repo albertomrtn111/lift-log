@@ -20,6 +20,10 @@ export async function POST(
         const result = await saveStravaActivityFeedback(context, params.id, {
             rpe,
             athleteNotes: typeof body?.athleteNotes === 'string' ? body.athleteNotes.trim() || null : null,
+            plannedSessionId: typeof body?.plannedSessionId === 'string' && body.plannedSessionId.trim()
+                ? body.plannedSessionId.trim()
+                : null,
+            clearPlannedSessionMatch: body?.clearPlannedSessionMatch === true,
         })
         return NextResponse.json({ ok: true, ...result })
     } catch (error) {

@@ -943,7 +943,11 @@ function StepProgramTable({
     const { toast } = useToast()
     const activeDayExercises = exercises
         .filter(e => e.day_id === activeDayId)
-        .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+        .sort((a, b) => {
+            const orderDiff = (a.order_index ?? 0) - (b.order_index ?? 0)
+            if (orderDiff !== 0) return orderDiff
+            return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
+        })
 
     async function addExercise() {
         if (!activeDayId) {
@@ -957,6 +961,37 @@ function StepProgramTable({
         } else if (result.exercise) {
             setExercises([...exercises, result.exercise])
         }
+    }
+
+    function moveExerciseLocally(exerciseId: string, direction: 'up' | 'down') {
+        if (!activeDayId) return
+
+        const orderedDayExercises = exercises
+            .filter((exercise: any) => exercise.day_id === activeDayId)
+            .sort((a: any, b: any) => {
+                const orderDiff = (a.order_index ?? 0) - (b.order_index ?? 0)
+                if (orderDiff !== 0) return orderDiff
+                return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
+            })
+
+        const currentIndex = orderedDayExercises.findIndex((exercise: any) => exercise.id === exerciseId)
+        if (currentIndex === -1) return
+
+        const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+        if (nextIndex < 0 || nextIndex >= orderedDayExercises.length) return
+
+        const reorderedDayExercises = [...orderedDayExercises]
+        const [movedExercise] = reorderedDayExercises.splice(currentIndex, 1)
+        reorderedDayExercises.splice(nextIndex, 0, movedExercise)
+
+        const orderByExerciseId = new Map(
+            reorderedDayExercises.map((exercise: any, index: number) => [exercise.id, index + 1])
+        )
+
+        setExercises(exercises.map((exercise: any) => {
+            const nextOrder = orderByExerciseId.get(exercise.id)
+            return nextOrder ? { ...exercise, order_index: nextOrder } : exercise
+        }))
     }
 
     return (
@@ -1050,30 +1085,8 @@ function StepProgramTable({
                                         const updatedCells = [...cells.filter(c => !(c.exercise_id === ex.id && c.column_id === columnId && c.week_index === activeWeek)), newCell]
                                         setCells(updatedCells)
                                     }}
-                                    onMoveUp={() => {
-                                        const dayExs = exercises.filter((e: any) => e.day_id === activeDayId).sort((a: any, b: any) => a.order_index - b.order_index)
-                                        const idx = dayExs.findIndex((e: any) => e.id === ex.id)
-                                        if (idx <= 0) return
-                                        const updated = [...exercises]
-                                        const aIdx = updated.findIndex((e: any) => e.id === dayExs[idx].id)
-                                        const bIdx = updated.findIndex((e: any) => e.id === dayExs[idx - 1].id)
-                                        const tmpOrder = updated[aIdx].order_index
-                                        updated[aIdx] = { ...updated[aIdx], order_index: updated[bIdx].order_index }
-                                        updated[bIdx] = { ...updated[bIdx], order_index: tmpOrder }
-                                        setExercises(updated)
-                                    }}
-                                    onMoveDown={() => {
-                                        const dayExs = exercises.filter((e: any) => e.day_id === activeDayId).sort((a: any, b: any) => a.order_index - b.order_index)
-                                        const idx = dayExs.findIndex((e: any) => e.id === ex.id)
-                                        if (idx < 0 || idx >= dayExs.length - 1) return
-                                        const updated = [...exercises]
-                                        const aIdx = updated.findIndex((e: any) => e.id === dayExs[idx].id)
-                                        const bIdx = updated.findIndex((e: any) => e.id === dayExs[idx + 1].id)
-                                        const tmpOrder = updated[aIdx].order_index
-                                        updated[aIdx] = { ...updated[aIdx], order_index: updated[bIdx].order_index }
-                                        updated[bIdx] = { ...updated[bIdx], order_index: tmpOrder }
-                                        setExercises(updated)
-                                    }}
+                                    onMoveUp={() => moveExerciseLocally(ex.id, 'up')}
+                                    onMoveDown={() => moveExerciseLocally(ex.id, 'down')}
                                 />
                             ))}
                             {activeDayExercises.length === 0 && activeDayId && (
@@ -1195,6 +1208,22 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
         }
     }
 
+    function parseOptionalInteger(value: string) {
+        const trimmed = value.trim()
+        if (trimmed === '') return null
+
+        const parsed = Number.parseInt(trimmed, 10)
+        return Number.isFinite(parsed) ? parsed : null
+    }
+
+    function parseOptionalNumber(value: string) {
+        const trimmed = value.trim()
+        if (trimmed === '') return null
+
+        const parsed = Number.parseFloat(trimmed.replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : null
+    }
+
     const [isProcessing, setIsProcessing] = useState(false)
 
     return (
@@ -1217,17 +1246,18 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
                             <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Sets:</span>
                             <input
                                 type="number"
+                                inputMode="numeric"
                                 className="w-8 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.sets || ''}
-                                onChange={e => onUpdate({ ...exercise, sets: parseInt(e.target.value) || 0 })}
-                                onBlur={e => updateExerciseFields({ sets: parseInt(e.target.value) || 0 })}
+                                value={exercise.sets ?? ''}
+                                onChange={e => onUpdate({ ...exercise, sets: e.target.value })}
+                                onBlur={e => updateExerciseFields({ sets: parseOptionalInteger(e.target.value) })}
                             />
                         </div>
                         <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
                             <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Reps:</span>
                             <input
                                 className="w-12 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.reps || ''}
+                                value={exercise.reps ?? ''}
                                 onChange={e => onUpdate({ ...exercise, reps: e.target.value })}
                                 onBlur={e => updateExerciseFields({ reps: e.target.value })}
                             />
@@ -1235,20 +1265,22 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
                         <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
                             <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">RIR:</span>
                             <input
+                                inputMode="decimal"
                                 className="w-8 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.rir || ''}
+                                value={exercise.rir ?? ''}
                                 onChange={e => onUpdate({ ...exercise, rir: e.target.value })}
-                                onBlur={e => updateExerciseFields({ rir: e.target.value })}
+                                onBlur={e => updateExerciseFields({ rir: parseOptionalNumber(e.target.value) })}
                             />
                         </div>
                         <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
                             <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Rest:</span>
                             <input
                                 type="number"
+                                inputMode="numeric"
                                 className="w-10 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.rest_seconds || ''}
-                                onChange={e => onUpdate({ ...exercise, rest_seconds: parseInt(e.target.value) || 0 })}
-                                onBlur={e => updateExerciseFields({ rest_seconds: parseInt(e.target.value) || 0 })}
+                                value={exercise.rest_seconds ?? ''}
+                                onChange={e => onUpdate({ ...exercise, rest_seconds: e.target.value })}
+                                onBlur={e => updateExerciseFields({ rest_seconds: parseOptionalInteger(e.target.value) })}
                             />
                         </div>
                         <Select

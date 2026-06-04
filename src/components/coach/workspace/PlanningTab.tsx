@@ -158,6 +158,7 @@ const cardioTypeLabels: Record<string, string> = {
     hybrid: 'Híbrido',
     bike: 'Bicicleta',
     swim: 'Natación',
+    other: 'Otro',
 }
 
 

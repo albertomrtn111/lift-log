@@ -70,9 +70,24 @@ interface StravaActivityPayload {
     calories?: number
 }
 
+export interface StravaPlannedSessionOption {
+    id: string
+    scheduled_date: string
+    name: string | null
+    activity_type: string | null
+    training_type: string | null
+    target_distance_km: number | null
+    target_duration_min: number | null
+    target_pace: string | null
+    structure: any
+}
+
 export function getStravaEnv(): StravaEnv {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || getAppUrl()
-    const redirectUri = process.env.STRAVA_REDIRECT_URI?.trim() || `${appUrl}/api/strava/callback`
+    const appUrl = getAppUrl()
+    const rawRedirectUri = process.env.STRAVA_REDIRECT_URI?.trim()
+    const redirectUri = rawRedirectUri && !rawRedirectUri.includes('localhost')
+        ? rawRedirectUri.replace('https://nexttrain.ascenttech.com', appUrl)
+        : `${appUrl}/api/strava/callback`
     const env = {
         clientId: process.env.STRAVA_CLIENT_ID?.trim() || '',
         clientSecret: process.env.STRAVA_CLIENT_SECRET?.trim() || '',
@@ -377,6 +392,16 @@ function addDays(date: string, days: number) {
     return d.toISOString().slice(0, 10)
 }
 
+function getWeekRange(date: string) {
+    const d = new Date(`${date}T12:00:00`)
+    const day = d.getDay() || 7
+    d.setDate(d.getDate() - day + 1)
+    const start = d.toISOString().slice(0, 10)
+    d.setDate(d.getDate() + 6)
+    const end = d.toISOString().slice(0, 10)
+    return { start, end }
+}
+
 function compatibleActivity(session: any, activity: StravaActivityPayload) {
     const discipline = mapStravaSportToDiscipline(activity).toLowerCase()
     const haystack = [
@@ -519,7 +544,7 @@ export async function getPendingStravaActivities(context: AuthenticatedClientCon
     const supabase = createAdminClient()
     const { data, error } = await supabase
         .from('strava_activities')
-        .select('id, name, activity_type, sport_type, start_date_local, distance_meters, moving_time_seconds, average_pace_seconds_per_km, average_heartrate, max_heartrate')
+        .select('id, name, activity_type, sport_type, start_date_local, distance_meters, moving_time_seconds, average_pace_seconds_per_km, average_heartrate, max_heartrate, matched_planned_session_id')
         .eq('client_id', context.clientId)
         .eq('feedback_status', 'pending')
         .eq('is_deleted', false)
@@ -527,7 +552,51 @@ export async function getPendingStravaActivities(context: AuthenticatedClientCon
         .limit(5)
 
     if (error) throw new Error(error.message)
-    return data || []
+
+    const activities = data || []
+    const ranges = new Map<string, { start: string; end: string }>()
+    for (const activity of activities) {
+        const date = activity.start_date_local ? String(activity.start_date_local).slice(0, 10) : new Date().toISOString().slice(0, 10)
+        ranges.set(date, getWeekRange(date))
+    }
+
+    const weekStarts = [...new Set([...ranges.values()].map((range) => range.start))]
+    const plannedByWeekStart = new Map<string, StravaPlannedSessionOption[]>()
+
+    await Promise.all(weekStarts.map(async (weekStart) => {
+        const range = [...ranges.values()].find((item) => item.start === weekStart)
+        if (!range) return
+
+        const { data: sessions, error: sessionsError } = await supabase
+            .from('cardio_sessions')
+            .select('id, scheduled_date, name, activity_type, training_type, target_distance_km, target_duration_min, target_pace, structure')
+            .eq('client_id', context.clientId)
+            .eq('is_completed', false)
+            .is('source_provider', null)
+            .gte('scheduled_date', range.start)
+            .lte('scheduled_date', range.end)
+            .order('scheduled_date', { ascending: true })
+
+        if (sessionsError) throw new Error(sessionsError.message)
+        plannedByWeekStart.set(weekStart, (sessions || []).map((session: any) => ({
+            id: session.id,
+            scheduled_date: session.scheduled_date,
+            name: session.name,
+            activity_type: session.activity_type,
+            training_type: session.training_type,
+            target_distance_km: session.target_distance_km != null ? Number(session.target_distance_km) : null,
+            target_duration_min: session.target_duration_min != null ? Number(session.target_duration_min) : null,
+            target_pace: session.target_pace,
+            structure: session.structure,
+        })))
+    }))
+
+    return activities.map((activity: any) => {
+        const date = activity.start_date_local ? String(activity.start_date_local).slice(0, 10) : new Date().toISOString().slice(0, 10)
+        const range = ranges.get(date)
+        const planned_sessions = range ? plannedByWeekStart.get(range.start) || [] : []
+        return { ...activity, planned_sessions }
+    })
 }
 
 async function completeCardioSessionForActivity(activity: any) {
@@ -607,14 +676,51 @@ async function completeCardioSessionForActivity(activity: any) {
 export async function saveStravaActivityFeedback(context: AuthenticatedClientContext, activityId: string, input: {
     rpe: number
     athleteNotes: string | null
+    plannedSessionId?: string | null
+    clearPlannedSessionMatch?: boolean
 }) {
     const supabase = createAdminClient()
+    let matchedSessionId: string | null | undefined = undefined
+
+    if (input.clearPlannedSessionMatch) {
+        matchedSessionId = null
+    } else if (input.plannedSessionId) {
+        const { data: activity, error: activityError } = await supabase
+            .from('strava_activities')
+            .select('start_date_local')
+            .eq('id', activityId)
+            .eq('client_id', context.clientId)
+            .maybeSingle()
+
+        if (activityError) throw new Error(activityError.message)
+        if (!activity) throw new Error('Actividad no encontrada')
+
+        const activityDate = activity.start_date_local
+            ? String(activity.start_date_local).slice(0, 10)
+            : new Date().toISOString().slice(0, 10)
+        const range = getWeekRange(activityDate)
+        const { data: session, error: sessionError } = await supabase
+            .from('cardio_sessions')
+            .select('id')
+            .eq('id', input.plannedSessionId)
+            .eq('client_id', context.clientId)
+            .eq('is_completed', false)
+            .gte('scheduled_date', range.start)
+            .lte('scheduled_date', range.end)
+            .maybeSingle()
+
+        if (sessionError) throw new Error(sessionError.message)
+        if (!session) throw new Error('La sesión seleccionada no está disponible')
+        matchedSessionId = session.id
+    }
+
     const { data: updated, error } = await supabase
         .from('strava_activities')
         .update({
             rpe: input.rpe,
             athlete_notes: input.athleteNotes,
             feedback_status: 'completed',
+            ...(matchedSessionId !== undefined ? { matched_planned_session_id: matchedSessionId } : {}),
         })
         .eq('id', activityId)
         .eq('client_id', context.clientId)
@@ -631,6 +737,21 @@ export async function saveStravaActivityFeedback(context: AuthenticatedClientCon
 
     if (linkError) throw new Error(linkError.message)
     return { cardioSessionId }
+}
+
+export async function ignoreStravaActivity(context: AuthenticatedClientContext, activityId: string) {
+    const supabase = createAdminClient()
+    const { error } = await supabase
+        .from('strava_activities')
+        .update({
+            is_deleted: true,
+            feedback_status: 'completed',
+        })
+        .eq('id', activityId)
+        .eq('client_id', context.clientId)
+
+    if (error) throw new Error(error.message)
+    return { success: true }
 }
 
 export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
