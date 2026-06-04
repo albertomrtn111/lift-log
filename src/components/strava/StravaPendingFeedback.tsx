@@ -179,38 +179,38 @@ export function StravaPendingFeedback() {
 
     return (
         <Dialog open={!!activity} onOpenChange={(open) => !open && dismissCurrent()}>
-            <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md gap-0 overflow-hidden p-0">
-                <DialogHeader className="border-b px-5 py-5 pr-12 text-left">
+            <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col gap-0 overflow-hidden p-0 sm:max-h-[90vh] sm:w-[calc(100vw-1.5rem)]">
+                <DialogHeader className="shrink-0 border-b px-4 py-4 pr-12 text-left sm:px-5 sm:py-5">
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
                         <Activity className="h-5 w-5 text-orange-600" />
                     </div>
-                    <DialogTitle>Nueva actividad importada</DialogTitle>
-                    <DialogDescription>{activity.name || 'Actividad importada'}</DialogDescription>
+                    <DialogTitle className="leading-tight">Nueva actividad importada</DialogTitle>
+                    <DialogDescription className="break-words">{activity.name || 'Actividad importada'}</DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-5 px-5 py-5">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
                     <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-lg border border-border p-3">
+                        <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="text-xs text-muted-foreground">Fecha</p>
-                            <p className="mt-1 font-semibold">{formatDate(activity.start_date_local)}</p>
+                            <p className="mt-1 break-words font-semibold leading-snug">{formatDate(activity.start_date_local)}</p>
                         </div>
-                        <div className="rounded-lg border border-border p-3">
+                        <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="text-xs text-muted-foreground">Tipo</p>
-                            <p className="mt-1 font-semibold">{sportType}</p>
+                            <p className="mt-1 break-words font-semibold leading-snug">{sportType}</p>
                         </div>
-                        <div className="rounded-lg border border-border p-3">
+                        <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Route className="h-3 w-3" />
                                 Distancia
                             </p>
-                            <p className="mt-1 font-semibold">{formatDistance(activity.distance_meters)}</p>
+                            <p className="mt-1 break-words font-semibold leading-snug">{formatDistance(activity.distance_meters)}</p>
                         </div>
-                        <div className="rounded-lg border border-border p-3">
+                        <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
                                 Tiempo
                             </p>
-                            <p className="mt-1 font-semibold">{formatDuration(activity.moving_time_seconds)}</p>
+                            <p className="mt-1 break-words font-semibold leading-snug">{formatDuration(activity.moving_time_seconds)}</p>
                         </div>
                     </div>
 
@@ -292,15 +292,15 @@ export function StravaPendingFeedback() {
                     />
                 </div>
 
-                <DialogFooter className="flex-col gap-2 border-t px-5 py-4 sm:flex-row">
-                    <Button variant="outline" onClick={dismissCurrent} disabled={saving}>
+                <DialogFooter className="shrink-0 flex-col gap-2 border-t px-4 py-3 sm:flex-row sm:px-5 sm:py-4">
+                    <Button variant="outline" onClick={dismissCurrent} disabled={saving} className="w-full sm:w-auto">
                         Ahora no
                     </Button>
-                    <Button variant="ghost" onClick={ignoreCurrent} disabled={saving || ignoring} className="text-destructive hover:text-destructive">
+                    <Button variant="ghost" onClick={ignoreCurrent} disabled={saving || ignoring} className="w-full text-destructive hover:text-destructive sm:w-auto">
                         {ignoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         No importar
                     </Button>
-                    <Button onClick={saveFeedback} disabled={saving || ignoring || requiresSessionChoice} className="gap-2">
+                    <Button onClick={saveFeedback} disabled={saving || ignoring || requiresSessionChoice} className="w-full gap-2 sm:w-auto">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                         Importar
                     </Button>
