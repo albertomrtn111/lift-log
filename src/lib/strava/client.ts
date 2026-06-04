@@ -6,10 +6,23 @@ import { createClient } from '@/lib/supabase/server'
 import { getAppUrl } from '@/lib/app-url'
 import { getUserContext } from '@/lib/auth/get-user-context'
 import { sendPushToClient } from '@/lib/push'
+import { calculateStravaLapMetrics } from '@/lib/strava/lap-metrics'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
 const STRAVA_API_URL = 'https://www.strava.com/api/v3'
+const PENDING_ACTIVITY_LOOKBACK_DAYS = 21
+const STRAVA_ACTIVITY_STREAM_KEYS = [
+    'time',
+    'distance',
+    'velocity_smooth',
+    'heartrate',
+    'cadence',
+    'watts',
+    'altitude',
+    'moving',
+    'grade_smooth',
+]
 const STATE_COOKIE_NAME = 'strava_oauth_nonce'
 const STATE_TTL_SECONDS = 10 * 60
 const TOKEN_REFRESH_SKEW_SECONDS = 5 * 60
@@ -69,6 +82,29 @@ interface StravaActivityPayload {
     total_elevation_gain?: number
     calories?: number
 }
+
+interface StravaLapPayload {
+    id?: number
+    name?: string
+    start_date?: string
+    start_date_local?: string
+    start_index?: number
+    end_index?: number
+    lap_index?: number
+    split?: number
+    distance?: number
+    moving_time?: number
+    elapsed_time?: number
+    average_speed?: number
+    max_speed?: number
+    average_heartrate?: number
+    max_heartrate?: number
+    average_cadence?: number
+    average_watts?: number
+    total_elevation_gain?: number
+}
+
+type StravaStreamSet = Record<string, { data?: unknown[] }>
 
 export interface StravaPlannedSessionOption {
     id: string
@@ -359,6 +395,84 @@ async function fetchStravaApi<T>(path: string, accessToken: string): Promise<T> 
     return response.json()
 }
 
+async function fetchStravaActivityLaps(providerActivityId: string, accessToken: string) {
+    try {
+        return await fetchStravaApi<StravaLapPayload[]>(`/activities/${providerActivityId}/laps`, accessToken)
+    } catch (error) {
+        console.warn('[strava] Could not fetch activity laps', { providerActivityId, error })
+        return []
+    }
+}
+
+async function fetchStravaActivityStreams(providerActivityId: string, accessToken: string) {
+    try {
+        const keys = STRAVA_ACTIVITY_STREAM_KEYS.join(',')
+        return await fetchStravaApi<StravaStreamSet>(
+            `/activities/${providerActivityId}/streams?keys=${keys}&key_by_type=true`,
+            accessToken
+        )
+    } catch (error) {
+        console.warn('[strava] Could not fetch activity streams', { providerActivityId, error })
+        return {}
+    }
+}
+
+function streamKeys(streams: StravaStreamSet) {
+    return Object.entries(streams)
+        .filter(([, stream]) => Array.isArray(stream?.data))
+        .map(([key]) => key)
+}
+
+async function persistStravaActivityDetails(stravaActivityId: string, providerActivityId: string, accessToken: string) {
+    const supabase = createAdminClient()
+    const [laps, streams] = await Promise.all([
+        fetchStravaActivityLaps(providerActivityId, accessToken),
+        fetchStravaActivityStreams(providerActivityId, accessToken),
+    ])
+    const keys = streamKeys(streams)
+
+    if (keys.length > 0) {
+        const { error: streamError } = await supabase
+            .from('strava_activity_streams')
+            .upsert({
+                strava_activity_id: stravaActivityId,
+                provider_activity_id: providerActivityId,
+                stream_keys: keys,
+                streams,
+                fetched_at: new Date().toISOString(),
+            }, { onConflict: 'strava_activity_id' })
+
+        if (streamError) throw new Error(streamError.message)
+    }
+
+    const lapMetrics = calculateStravaLapMetrics(laps, streams)
+    const { error: deleteError } = await supabase
+        .from('strava_activity_laps')
+        .delete()
+        .eq('strava_activity_id', stravaActivityId)
+
+    if (deleteError) throw new Error(deleteError.message)
+
+    if (lapMetrics.length === 0) return
+
+    const { error: lapError } = await supabase
+        .from('strava_activity_laps')
+        .insert(lapMetrics.map((lap: any) => ({
+            strava_activity_id: stravaActivityId,
+            ...lap,
+        })))
+
+    if (lapError) throw new Error(lapError.message)
+}
+
+async function persistStravaActivityDetailsSafely(stravaActivityId: string, providerActivityId: string, accessToken: string) {
+    try {
+        await persistStravaActivityDetails(stravaActivityId, providerActivityId, accessToken)
+    } catch (error) {
+        console.warn('[strava] Could not persist activity details', { stravaActivityId, providerActivityId, error })
+    }
+}
+
 function averagePaceSecondsPerKm(activity: StravaActivityPayload) {
     const distance = Number(activity.distance ?? 0)
     const movingTime = Number(activity.moving_time ?? 0)
@@ -471,6 +585,16 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
     const matchedSessionId = await findPlannedCardioSessionMatch(clientId, activity)
     const providerActivityId = String(activity.id)
     const stravaAthleteId = String(activity.athlete?.id ?? '')
+    const { data: existing, error: existingError } = await supabase
+        .from('strava_activities')
+        .select('id, feedback_status, is_deleted, matched_planned_session_id')
+        .eq('provider', 'strava')
+        .eq('provider_activity_id', providerActivityId)
+        .maybeSingle()
+
+    if (existingError) throw new Error(existingError.message)
+
+    const hasAthleteDecision = existing?.is_deleted || existing?.feedback_status === 'completed'
 
     const { data, error } = await supabase
         .from('strava_activities')
@@ -495,8 +619,11 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
             total_elevation_gain: activity.total_elevation_gain ?? null,
             calories: activity.calories ?? null,
             raw_payload: activity,
-            matched_planned_session_id: matchedSessionId,
-            is_deleted: false,
+            matched_planned_session_id: hasAthleteDecision
+                ? existing.matched_planned_session_id
+                : matchedSessionId,
+            feedback_status: existing?.feedback_status || 'pending',
+            is_deleted: existing?.is_deleted || false,
             imported_at: new Date().toISOString(),
         }, { onConflict: 'provider,provider_activity_id' })
         .select('id')
@@ -510,6 +637,7 @@ export async function importStravaActivityForIntegration(integration: any, activ
     const accessToken = await getValidStravaAccessToken(integration.client_id)
     const activity = await fetchStravaApi<StravaActivityPayload>(`/activities/${activityId}`, accessToken)
     const imported = await upsertImportedActivity(integration.client_id, integration.coach_id, activity)
+    await persistStravaActivityDetailsSafely(imported.id, String(activity.id), accessToken)
     return { imported, activity }
 }
 
@@ -527,7 +655,8 @@ export async function syncRecentStravaActivities(context: AuthenticatedClientCon
     let imported = 0
     for (const summary of activities) {
         const detail = await fetchStravaApi<StravaActivityPayload>(`/activities/${summary.id}`, accessToken)
-        await upsertImportedActivity(context.clientId, context.coachId, detail)
+        const importedActivity = await upsertImportedActivity(context.clientId, context.coachId, detail)
+        await persistStravaActivityDetailsSafely(importedActivity.id, String(detail.id), accessToken)
         imported += 1
     }
 
@@ -542,12 +671,16 @@ export async function syncRecentStravaActivities(context: AuthenticatedClientCon
 
 export async function getPendingStravaActivities(context: AuthenticatedClientContext) {
     const supabase = createAdminClient()
+    const pendingSince = new Date()
+    pendingSince.setDate(pendingSince.getDate() - PENDING_ACTIVITY_LOOKBACK_DAYS)
+
     const { data, error } = await supabase
         .from('strava_activities')
         .select('id, name, activity_type, sport_type, start_date_local, distance_meters, moving_time_seconds, average_pace_seconds_per_km, average_heartrate, max_heartrate, matched_planned_session_id')
         .eq('client_id', context.clientId)
         .eq('feedback_status', 'pending')
         .eq('is_deleted', false)
+        .gte('start_date_local', pendingSince.toISOString())
         .order('start_date_local', { ascending: false })
         .limit(5)
 
