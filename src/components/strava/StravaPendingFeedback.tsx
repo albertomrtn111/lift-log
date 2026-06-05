@@ -179,8 +179,8 @@ export function StravaPendingFeedback() {
 
     return (
         <Dialog open={!!activity} onOpenChange={(open) => !open && dismissCurrent()}>
-            <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md flex-col gap-0 overflow-hidden p-0 sm:max-h-[90vh] sm:w-[calc(100vw-1.5rem)]">
-                <DialogHeader className="shrink-0 border-b px-4 py-4 pr-12 text-left sm:px-5 sm:py-5">
+            <DialogContent className="flex max-h-[calc(100dvh-var(--safe-area-top,0px)-0.75rem)] w-[calc(100vw-1rem)] max-w-md flex-col gap-0 overflow-hidden p-0 [&>button]:top-[calc(var(--safe-area-top,0px)+1rem)] sm:max-h-[90vh] sm:w-[calc(100vw-1.5rem)] sm:[&>button]:top-4">
+                <DialogHeader className="shrink-0 border-b px-4 pb-4 pt-[calc(var(--safe-area-top,0px)+1rem)] pr-12 text-left sm:px-5 sm:py-5">
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
                         <Activity className="h-5 w-5 text-orange-600" />
                     </div>

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { CalendarItem } from '@/data/client-schedule'
+import { formatNumberForInput, roundToDecimals } from '@/lib/format/number'
 import {
   Activity,
   MessageSquare,
@@ -48,8 +49,8 @@ export function CardioSessionDetail({
   onSave
 }: CardioSessionDetailProps) {
   // Pre-load values
-  const [distance, setDistance] = useState(item?.actualDistanceKm?.toString() ?? '')
-  const [duration, setDuration] = useState(item?.actualDurationMin?.toString() ?? '')
+  const [distance, setDistance] = useState(formatNumberForInput(item?.actualDistanceKm))
+  const [duration, setDuration] = useState(formatNumberForInput(item?.actualDurationMin))
   const [pace, setPace] = useState(item?.actualAvgPace ?? '')
   const [rpe, setRpe] = useState<number | null>(item?.rpe ?? null)
   const [notes, setNotes] = useState(item?.feedbackNotes ?? '')
@@ -63,7 +64,7 @@ export function CardioSessionDetail({
   useEffect(() => {
     if (distance && duration && !pace) {
       const d = parseFloat(distance)
-      const t = parseInt(duration)
+      const t = parseFloat(duration)
       if (d > 0 && t > 0) {
         const paceDec = t / d
         const pMin = Math.floor(paceDec)
@@ -77,8 +78,8 @@ export function CardioSessionDetail({
   // Reset form when item changes
   useEffect(() => {
     if (item && open) {
-      setDistance(item.actualDistanceKm?.toString() ?? '')
-      setDuration(item.actualDurationMin?.toString() ?? '')
+      setDistance(formatNumberForInput(item.actualDistanceKm))
+      setDuration(formatNumberForInput(item.actualDurationMin))
       setPace(item.actualAvgPace ?? '')
       setRpe(item.rpe ?? null)
       setNotes(item.feedbackNotes ?? '')
@@ -96,8 +97,8 @@ export function CardioSessionDetail({
     setSaveStatus('saving')
     try {
       await onSave(item.id, {
-        actualDistanceKm: distance ? parseFloat(distance) : undefined,
-        actualDurationMin: duration ? parseInt(duration) : undefined,
+        actualDistanceKm: distance ? roundToDecimals(distance) : undefined,
+        actualDurationMin: duration ? roundToDecimals(duration) : undefined,
         actualAvgPace: pace || undefined,
         rpe: rpe ?? undefined,
         feedbackNotes: notes || undefined,
@@ -219,7 +220,7 @@ export function CardioSessionDetail({
                   <Label className="text-xs">Distancia (km)</Label>
                   <Input
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="0"
                     max="100"
                     placeholder="8.5"
@@ -231,6 +232,7 @@ export function CardioSessionDetail({
                   <Label className="text-xs">Tiempo (min)</Label>
                   <Input
                     type="number"
+                    step="0.01"
                     min="0"
                     max="999"
                     placeholder="45"

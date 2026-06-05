@@ -19,6 +19,7 @@ import {
   Waves
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { resolveCardioDisplayKind } from '@/lib/cardio/display-kind'
 
 interface PlanningDayCardProps {
   item: CalendarItem
@@ -47,35 +48,24 @@ const kindConfig: Record<CalendarItemKind, {
   },
 }
 
-// Map training types to more specific icons
-function getCardioIcon(trainingType?: string) {
-  switch (trainingType?.toLowerCase()) {
+// Map cardio discipline/training types to more specific icons.
+function getCardioIcon(activityType?: string, trainingType?: string) {
+  switch (resolveCardioDisplayKind(activityType, trainingType)) {
     case 'series':
-    case 'intervals':
-    case 'hiit':
       return { icon: Zap, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' }
     case 'tempo':
-    case 'umbral':
       return { icon: Gauge, color: 'text-blue-500', bgColor: 'bg-blue-500/10' }
     case 'hybrid':
-    case 'hibrido':
       return { icon: Dumbbell, color: 'text-purple-500', bgColor: 'bg-purple-500/10' }
     case 'progressive':
-    case 'progresivo':
-    case 'progresivos':
       return { icon: TrendingUp, color: 'text-indigo-500', bgColor: 'bg-indigo-500/10' }
     case 'fartlek':
       return { icon: Shuffle, color: 'text-pink-500', bgColor: 'bg-pink-500/10' }
     case 'bike':
-    case 'bicicleta':
       return { icon: Bike, color: 'text-cyan-500', bgColor: 'bg-cyan-500/10' }
     case 'swim':
-    case 'natacion':
-    case 'natación':
       return { icon: Waves, color: 'text-teal-500', bgColor: 'bg-teal-500/10' }
-    case 'rodaje':
-    case 'tirada_larga':
-    case 'long':
+    case 'running':
     default:
       return { icon: Footprints, color: 'text-green-500', bgColor: 'bg-green-500/10' }
   }
@@ -83,7 +73,7 @@ function getCardioIcon(trainingType?: string) {
 
 export function PlanningDayCard({ item, onClick }: PlanningDayCardProps) {
   const config = item.kind === 'cardio'
-    ? getCardioIcon(item.trainingType)
+    ? getCardioIcon(item.activityType, item.trainingType)
     : kindConfig[item.kind]
   const Icon = config.icon
   const isRest = item.kind === 'rest'

@@ -5,8 +5,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getAppUrl } from '@/lib/app-url'
 import { getUserContext } from '@/lib/auth/get-user-context'
-import { sendPushToClient } from '@/lib/push'
+import { sendStravaActivityImportedNotification } from '@/lib/notifications/client'
 import { calculateStravaLapMetrics } from '@/lib/strava/lap-metrics'
+import { buildStravaCardioPrivacyReset } from '@/lib/strava/cardio-cleanup'
+import { mapStravaSportToDiscipline, shouldImportStravaActivity } from '@/lib/strava/sport-mapping'
+import { roundToDecimals } from '@/lib/format/number'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -105,6 +108,11 @@ interface StravaLapPayload {
 }
 
 type StravaStreamSet = Record<string, { data?: unknown[] }>
+
+type ImportedStravaActivityResult = {
+    id: string
+    shouldNotifyAthlete: boolean
+}
 
 export interface StravaPlannedSessionOption {
     id: string
@@ -487,14 +495,6 @@ function formatPace(secondsPerKm: number | null) {
     return `${minutes}:${seconds}/km`
 }
 
-function mapStravaSportToDiscipline(activity: StravaActivityPayload) {
-    const sport = (activity.sport_type || activity.type || '').toLowerCase()
-    if (sport.includes('ride') || sport.includes('bike') || sport.includes('cycling')) return 'Bicicleta'
-    if (sport.includes('swim')) return 'Natación'
-    if (sport.includes('run') || sport.includes('walk') || sport.includes('hike')) return 'Running'
-    return 'Running'
-}
-
 function getLocalDate(activity: StravaActivityPayload) {
     const source = activity.start_date_local || activity.start_date
     return source ? source.slice(0, 10) : new Date().toISOString().slice(0, 10)
@@ -517,7 +517,9 @@ function getWeekRange(date: string) {
 }
 
 function compatibleActivity(session: any, activity: StravaActivityPayload) {
-    const discipline = mapStravaSportToDiscipline(activity).toLowerCase()
+    const discipline = mapStravaSportToDiscipline(activity)?.toLowerCase()
+    if (!discipline) return false
+
     const haystack = [
         session.activity_type,
         session.training_type,
@@ -579,8 +581,11 @@ async function findPlannedCardioSessionMatch(clientId: string, activity: StravaA
     return null
 }
 
-async function upsertImportedActivity(clientId: string, coachId: string, activity: StravaActivityPayload) {
+async function upsertImportedActivity(clientId: string, coachId: string, activity: StravaActivityPayload): Promise<ImportedStravaActivityResult | null> {
     const supabase = createAdminClient()
+    const discipline = mapStravaSportToDiscipline(activity)
+    if (!discipline) return null
+
     const paceSeconds = averagePaceSecondsPerKm(activity)
     const matchedSessionId = await findPlannedCardioSessionMatch(clientId, activity)
     const providerActivityId = String(activity.id)
@@ -595,6 +600,7 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
     if (existingError) throw new Error(existingError.message)
 
     const hasAthleteDecision = existing?.is_deleted || existing?.feedback_status === 'completed'
+    const shouldNotifyAthlete = !existing
 
     const { data, error } = await supabase
         .from('strava_activities')
@@ -605,7 +611,7 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
             provider_activity_id: providerActivityId,
             strava_athlete_id: stravaAthleteId,
             name: activity.name ?? 'Actividad importada',
-            activity_type: activity.type ?? null,
+            activity_type: discipline,
             sport_type: activity.sport_type ?? null,
             start_date: activity.start_date ?? null,
             start_date_local: activity.start_date_local ?? null,
@@ -630,14 +636,23 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
         .single()
 
     if (error) throw new Error(error.message)
-    return data
+    return {
+        id: data.id as string,
+        shouldNotifyAthlete,
+    }
 }
 
 export async function importStravaActivityForIntegration(integration: any, activityId: number) {
     const accessToken = await getValidStravaAccessToken(integration.client_id)
     const activity = await fetchStravaApi<StravaActivityPayload>(`/activities/${activityId}`, accessToken)
+    if (!shouldImportStravaActivity(activity)) {
+        return { imported: null, activity }
+    }
+
     const imported = await upsertImportedActivity(integration.client_id, integration.coach_id, activity)
-    await persistStravaActivityDetailsSafely(imported.id, String(activity.id), accessToken)
+    if (imported) {
+        await persistStravaActivityDetailsSafely(imported.id, String(activity.id), accessToken)
+    }
     return { imported, activity }
 }
 
@@ -655,9 +670,13 @@ export async function syncRecentStravaActivities(context: AuthenticatedClientCon
     let imported = 0
     for (const summary of activities) {
         const detail = await fetchStravaApi<StravaActivityPayload>(`/activities/${summary.id}`, accessToken)
+        if (!shouldImportStravaActivity(detail)) continue
+
         const importedActivity = await upsertImportedActivity(context.clientId, context.coachId, detail)
-        await persistStravaActivityDetailsSafely(importedActivity.id, String(detail.id), accessToken)
-        imported += 1
+        if (importedActivity) {
+            await persistStravaActivityDetailsSafely(importedActivity.id, String(detail.id), accessToken)
+            imported += 1
+        }
     }
 
     const { error } = await supabase
@@ -735,8 +754,8 @@ export async function getPendingStravaActivities(context: AuthenticatedClientCon
 async function completeCardioSessionForActivity(activity: any) {
     const supabase = createAdminClient()
     const pace = formatPace(activity.average_pace_seconds_per_km ? Number(activity.average_pace_seconds_per_km) : null)
-    const actualDistanceKm = activity.distance_meters ? Number(activity.distance_meters) / 1000 : null
-    const actualDurationMin = activity.moving_time_seconds ? Number(activity.moving_time_seconds) / 60 : null
+    const actualDistanceKm = activity.distance_meters ? roundToDecimals(Number(activity.distance_meters) / 1000) : null
+    const actualDurationMin = activity.moving_time_seconds ? roundToDecimals(Number(activity.moving_time_seconds) / 60) : null
     const scheduledDate = activity.start_date_local
         ? String(activity.start_date_local).slice(0, 10)
         : new Date().toISOString().slice(0, 10)
@@ -887,6 +906,61 @@ export async function ignoreStravaActivity(context: AuthenticatedClientContext, 
     return { success: true }
 }
 
+async function handleDeletedStravaActivity(providerActivityId: string) {
+    const supabase = createAdminClient()
+    const { data: activities, error: selectError } = await supabase
+        .from('strava_activities')
+        .select('id, cardio_session_id, matched_planned_session_id')
+        .eq('provider', 'strava')
+        .eq('provider_activity_id', providerActivityId)
+
+    if (selectError) throw new Error(selectError.message)
+
+    const { error: deleteError } = await supabase
+        .from('strava_activities')
+        .update({ is_deleted: true, feedback_status: 'completed' })
+        .eq('provider', 'strava')
+        .eq('provider_activity_id', providerActivityId)
+
+    if (deleteError) throw new Error(deleteError.message)
+
+    const resetPayload = buildStravaCardioPrivacyReset()
+    const matchedCardioSessionIds = (activities || [])
+        .filter((activity: any) => activity.cardio_session_id && activity.matched_planned_session_id)
+        .map((activity: any) => activity.cardio_session_id)
+    const extraCardioSessionIds = (activities || [])
+        .filter((activity: any) => activity.cardio_session_id && !activity.matched_planned_session_id)
+        .map((activity: any) => activity.cardio_session_id)
+
+    if (matchedCardioSessionIds.length > 0) {
+        const { error } = await supabase
+            .from('cardio_sessions')
+            .update(resetPayload)
+            .in('id', matchedCardioSessionIds)
+
+        if (error) throw new Error(error.message)
+    }
+
+    if (extraCardioSessionIds.length > 0) {
+        const { error } = await supabase
+            .from('cardio_sessions')
+            .delete()
+            .in('id', extraCardioSessionIds)
+
+        if (error) throw new Error(error.message)
+    }
+
+    if (!activities || activities.length === 0) {
+        const { error } = await supabase
+            .from('cardio_sessions')
+            .update(resetPayload)
+            .eq('source_provider', 'strava')
+            .eq('provider_activity_id', providerActivityId)
+
+        if (error) throw new Error(error.message)
+    }
+}
+
 export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
     const supabase = createAdminClient()
     const ownerId = String(event.owner_id)
@@ -916,29 +990,18 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
     if (!integration) return
 
     if (event.aspect_type === 'delete') {
-        const { error: deleteError } = await supabase
-            .from('strava_activities')
-            .update({ is_deleted: true })
-            .eq('provider', 'strava')
-            .eq('provider_activity_id', String(event.object_id))
-
-        if (deleteError) throw new Error(deleteError.message)
+        await handleDeletedStravaActivity(String(event.object_id))
         return
     }
 
-    const { activity } = await importStravaActivityForIntegration(integration, event.object_id)
+    const { imported, activity } = await importStravaActivityForIntegration(integration, event.object_id)
     await supabase
         .from('athlete_integrations')
         .update({ last_sync_at: new Date().toISOString(), error_message: null })
         .eq('id', integration.id)
 
-    if (event.aspect_type === 'create') {
-        await sendPushToClient(integration.client_id, {
-            title: 'Actividad importada',
-            body: `${activity.name || 'Nueva actividad'} lista para RPE y notas.`,
-            url: '/progress',
-            tag: `strava-activity-${event.object_id}`,
-        })
+    if (imported?.shouldNotifyAthlete && event.aspect_type === 'create') {
+        await sendStravaActivityImportedNotification(integration.client_id, activity.name, event.object_id)
     }
 }
 

@@ -34,10 +34,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true, ignored: true })
         }
 
-        // Inline for v1. This call is centralized so it can move to a queue
-        // without changing Strava's callback surface.
-        await processStravaWebhookEvent(event)
-        return NextResponse.json({ ok: true })
+        processStravaWebhookEvent(event).catch((error) => {
+            console.error('[strava/webhook:process]', error)
+        })
+        return NextResponse.json({ ok: true, accepted: true })
     } catch (error) {
         console.error('[strava/webhook:POST]', error)
         return NextResponse.json({ ok: true })

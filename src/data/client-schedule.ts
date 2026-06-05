@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { roundToDecimals } from '@/lib/format/number'
 
 // ------------------------------------------------------------------
 // Types
@@ -223,7 +224,7 @@ export async function getClientWeeklySchedule(
             target_distance_km, target_duration_min, target_pace,
             structure, notes, planned_structure, coach_notes, is_completed,
             actual_distance_km, actual_duration_min, actual_avg_pace,
-            rpe, feedback_notes
+            rpe, feedback_notes, avg_heart_rate, max_heart_rate
         `)
         .eq('client_id', clientId)
         .gte('scheduled_date', startStr)
@@ -306,8 +307,8 @@ export async function saveCardioSessionLog(
     const { error } = await supabase
         .from('cardio_sessions')
         .update({
-            actual_distance_km: data.actualDistanceKm ?? null,
-            actual_duration_min: data.actualDurationMin ?? null,
+            actual_distance_km: roundToDecimals(data.actualDistanceKm) ?? null,
+            actual_duration_min: roundToDecimals(data.actualDurationMin) ?? null,
             actual_avg_pace: data.actualAvgPace ?? null,
             rpe: data.rpe ?? null,
             feedback_notes: data.feedbackNotes ?? null,

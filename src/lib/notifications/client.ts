@@ -3,6 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToClient } from '@/lib/push'
 import { isClientNotificationChannelEnabled, type ClientNotificationChannel } from '@/lib/notifications/preferences'
+import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
 
 async function sendClientNotification(
     clientId: string,
@@ -30,12 +31,14 @@ async function createClientInboxNotification(
         title: string
         body: string
         url: string
-        type: 'message' | 'check_in' | 'supplement'
+        type: 'general' | 'message' | 'check_in' | 'supplement'
     },
-    channel: ClientNotificationChannel
+    channel?: ClientNotificationChannel
 ) {
-    const enabled = await isClientNotificationChannelEnabled(clientId, channel)
-    if (!enabled) return false
+    if (channel) {
+        const enabled = await isClientNotificationChannelEnabled(clientId, channel)
+        if (!enabled) return false
+    }
 
     try {
         const admin = createAdminClient()
@@ -161,4 +164,30 @@ export async function sendSupplementReminderNotification(
     }, 'supplements')
 
     await sendClientNotification(clientId, payload, 'supplements')
+}
+
+export async function sendStravaActivityImportedNotification(
+    clientId: string,
+    activityName: string | null | undefined,
+    providerActivityId: string | number
+) {
+    const payload = buildStravaActivityImportedNotification(activityName, providerActivityId)
+
+    await createClientInboxNotification(clientId, {
+        title: payload.title,
+        body: payload.body,
+        url: payload.url,
+        type: 'general',
+    })
+
+    const result = await sendPushToClient(clientId, {
+        title: payload.title,
+        body: payload.body,
+        url: payload.url,
+        tag: payload.tag,
+    })
+
+    if (!result.ok && result.reason && result.reason !== 'misconfigured' && result.reason !== 'dependency_missing') {
+        console.warn('[notifications] Push Strava no enviado:', result)
+    }
 }
