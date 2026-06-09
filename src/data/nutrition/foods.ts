@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import type { Food, FoodInput } from './tracking-types'
+import type { Food, FoodInput, MealType } from './tracking-types'
 
 const FOOD_FIELDS = 'id, name, brand, kcal, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, serving_size_g, serving_label, source, created_by, is_public, created_at, updated_at'
 
@@ -77,12 +77,22 @@ export async function createFood(input: FoodInput): Promise<Food | null> {
     return data as Food
 }
 
+interface RecentFoodsOptions {
+    limit?: number
+    mealType?: MealType
+    mealLabel?: string | null
+    mealOrder?: number
+}
+
 /**
- * Devuelve los alimentos usados recientemente por el cliente actual,
- * deduplicados por food_id, ordenados por fecha desc.
+ * Devuelve alimentos usados recientemente por el cliente actual,
+ * deduplicados por food_id y ordenados por última fecha de uso.
+ * Si se pasa una comida, limita las recomendaciones a esa comida.
  */
-export async function getRecentFoodsForCurrentClient(limit = 20): Promise<Food[]> {
+export async function getRecentFoodsForCurrentClient(options: number | RecentFoodsOptions = 20): Promise<Food[]> {
     const supabase = createClient()
+    const config = typeof options === 'number' ? { limit: options } : options
+    const limit = config.limit ?? 20
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
 
@@ -93,13 +103,24 @@ export async function getRecentFoodsForCurrentClient(limit = 20): Promise<Food[]
         .single()
     if (!client) return []
 
-    const { data: entries, error } = await supabase
+    let req = supabase
         .from('nutrition_log_entries')
         .select('food_id, created_at')
         .eq('client_id', client.id)
         .not('food_id', 'is', null)
         .order('created_at', { ascending: false })
         .limit(100)
+
+    if (config.mealType) {
+        req = req.eq('meal_type', config.mealType)
+        if (config.mealType === 'other') {
+            req = req
+                .eq('meal_label', config.mealLabel ?? 'Otra')
+                .eq('meal_order', config.mealOrder ?? 4)
+        }
+    }
+
+    const { data: entries, error } = await req
     if (error || !entries) {
         if (error) console.error('getRecentFoods error:', error)
         return []

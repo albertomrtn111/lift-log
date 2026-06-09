@@ -149,6 +149,7 @@ export function CardioTemplateDialog({ trigger, template }: CardioTemplateDialog
                 : []
 
             const cardioStructure: CardioStructure = {
+                mode: 'free_text',
                 trainingType: values.trainingType,
                 description: values.details || '',
                 notes: values.notes || '',

@@ -26,6 +26,20 @@ export async function searchRecipes(query: string, limit = 30): Promise<Recipe[]
     return (data ?? []) as Recipe[]
 }
 
+export async function getRecipeById(id: string): Promise<Recipe | null> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('recipes')
+        .select(RECIPE_FIELDS)
+        .eq('id', id)
+        .maybeSingle()
+    if (error) {
+        console.error('getRecipeById error:', error)
+        return null
+    }
+    return (data as Recipe) ?? null
+}
+
 export async function getRecipeWithIngredients(id: string): Promise<RecipeWithIngredients | null> {
     const supabase = createClient()
     const { data: recipe, error: rErr } = await supabase
@@ -61,12 +75,8 @@ export interface CreateRecipeInput {
     ingredients: Array<{ food: Food; grams: number }>
 }
 
-export async function createRecipe(input: CreateRecipeInput): Promise<Recipe | null> {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-
-    const totals = input.ingredients.reduce(
+function calculateRecipeTotals(ingredients: Array<{ food: Food; grams: number }>) {
+    return ingredients.reduce(
         (acc, ing) => {
             const m = macrosForFood(ing.food, ing.grams)
             acc.kcal += m.kcal
@@ -77,6 +87,14 @@ export async function createRecipe(input: CreateRecipeInput): Promise<Recipe | n
         },
         { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     )
+}
+
+export async function createRecipe(input: CreateRecipeInput): Promise<Recipe | null> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const totals = calculateRecipeTotals(input.ingredients)
 
     const { data: recipe, error } = await supabase
         .from('recipes')
@@ -112,4 +130,83 @@ export async function createRecipe(input: CreateRecipeInput): Promise<Recipe | n
     }
 
     return recipe as Recipe
+}
+
+export async function updateRecipe(id: string, input: CreateRecipeInput): Promise<Recipe | null> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const totals = calculateRecipeTotals(input.ingredients)
+
+    const { data: recipe, error } = await supabase
+        .from('recipes')
+        .update({
+            name: input.name.trim(),
+            description: input.description ?? null,
+            servings: input.servings,
+            serving_label: input.serving_label ?? null,
+            is_public: input.is_public ?? true,
+            total_kcal: totals.kcal,
+            total_protein_g: totals.protein_g,
+            total_carbs_g: totals.carbs_g,
+            total_fat_g: totals.fat_g,
+        })
+        .eq('id', id)
+        .eq('created_by', user.id)
+        .select(RECIPE_FIELDS)
+        .single()
+
+    if (error || !recipe) {
+        console.error('updateRecipe error:', error)
+        return null
+    }
+
+    const { error: deleteErr } = await supabase
+        .from('recipe_ingredients')
+        .delete()
+        .eq('recipe_id', id)
+
+    if (deleteErr) {
+        console.error('delete recipe ingredients error:', deleteErr)
+        return null
+    }
+
+    if (input.ingredients.length > 0) {
+        const rows = input.ingredients.map((ing, idx) => ({
+            recipe_id: id,
+            food_id: ing.food.id,
+            grams: ing.grams,
+            order_index: idx,
+        }))
+        const { error: insertErr } = await supabase.from('recipe_ingredients').insert(rows)
+        if (insertErr) {
+            console.error('insert updated recipe_ingredients error:', insertErr)
+            return null
+        }
+    }
+
+    return recipe as Recipe
+}
+
+export async function deleteRecipe(id: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No hay sesión activa' }
+
+    const { error } = await supabase
+        .from('recipes')
+        .delete()
+        .eq('id', id)
+        .eq('created_by', user.id)
+
+    if (error) {
+        console.error('deleteRecipe error:', error)
+        return {
+            success: false,
+            error: 'No se pudo eliminar. Si ya la usaste en registros antiguos, la dejamos guardada para no romper el histórico.',
+        }
+    }
+
+    return { success: true }
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
     Command,
@@ -26,6 +25,7 @@ import type { ClientSelectorOption } from '@/data/workspace'
 interface ClientSelectorProps {
     clients: ClientSelectorOption[]
     selectedClientId: string | null
+    onClientChange?: (clientId: string) => void
 }
 
 function UrgencyDot({ client }: { client: ClientSelectorOption }) {
@@ -38,8 +38,7 @@ function UrgencyDot({ client }: { client: ClientSelectorOption }) {
     return null
 }
 
-export function ClientSelector({ clients, selectedClientId }: ClientSelectorProps) {
-    const router = useRouter()
+export function ClientSelector({ clients, selectedClientId, onClientChange }: ClientSelectorProps) {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState('')
 
@@ -62,7 +61,9 @@ export function ClientSelector({ clients, selectedClientId }: ClientSelectorProp
     const inactiveClients = filteredClients.filter(c => c.status !== 'active')
 
     const handleSelect = (clientId: string) => {
-        router.push(`/coach/clients?client=${clientId}`)
+        if (clientId !== selectedClientId) {
+            onClientChange?.(clientId)
+        }
         setOpen(false)
     }
 

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { analyzeCardioSessionExecution } from '@/lib/cardio/analysis'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -275,6 +276,30 @@ export interface CardioSessionProgress {
     avgHeartRate: number | null
     maxHeartRate: number | null
     rpe: number | null
+    analysisSource: 'streams' | 'laps' | 'summary'
+    analysisSegments: {
+        label: string
+        kind: string
+        targetSummary: string
+        actualSummary: string
+        actualDistanceMeters: number | null
+        actualDurationSec: number | null
+        avgPaceSecondsPerKm: number | null
+        avgHeartRate: number | null
+        maxHeartRate: number | null
+        startHeartRate: number | null
+        endHeartRate: number | null
+        delta: number | null
+        deltaUnit: string | null
+    }[]
+    chartAxis: 'distance' | 'time'
+    chartPoints: {
+        x: number | null
+        distanceKm: number | null
+        timeMin: number | null
+        paceSecondsPerKm: number | null
+        heartRate: number | null
+    }[]
     isCompleted: boolean
     completionStatus: 'completed' | 'partial' | 'not_completed'
     primaryGoal: 'distance' | 'duration' | 'mixed' | 'none'
@@ -350,7 +375,8 @@ export async function getCardioProgressData(
                 rpe,
                 feedback_notes,
                 avg_heart_rate,
-                max_heart_rate
+                max_heart_rate,
+                strava_activity_id
             `)
             .eq('client_id', clientId)
             .gte('scheduled_date', dateFrom)
@@ -358,6 +384,50 @@ export async function getCardioProgressData(
             .order('scheduled_date', { ascending: true })
 
         if (error) throw new Error(error.message)
+
+        const stravaActivityIds = [...new Set((sessions || [])
+            .map((session: any) => session.strava_activity_id)
+            .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))]
+        const streamsByActivityId = new Map<string, any>()
+        const lapsByActivityId = new Map<string, any[]>()
+
+        if (stravaActivityIds.length > 0) {
+            const [{ data: streams, error: streamsError }, { data: laps, error: lapsError }] = await Promise.all([
+                supabase
+                    .from('strava_activity_streams')
+                    .select('strava_activity_id, streams')
+                    .in('strava_activity_id', stravaActivityIds),
+                supabase
+                    .from('strava_activity_laps')
+                    .select(`
+                        strava_activity_id,
+                        lap_index,
+                        name,
+                        distance_meters,
+                        moving_time_seconds,
+                        avg_pace_seconds_per_km,
+                        avg_heartrate,
+                        max_heartrate,
+                        start_heartrate,
+                        end_heartrate
+                    `)
+                    .in('strava_activity_id', stravaActivityIds)
+                    .order('lap_index', { ascending: true }),
+            ])
+
+            if (streamsError) throw new Error(streamsError.message)
+            if (lapsError) throw new Error(lapsError.message)
+
+            for (const stream of streams || []) {
+                streamsByActivityId.set(stream.strava_activity_id, stream.streams)
+            }
+
+            for (const lap of laps || []) {
+                const list = lapsByActivityId.get(lap.strava_activity_id) || []
+                list.push(lap)
+                lapsByActivityId.set(lap.strava_activity_id, list)
+            }
+        }
 
         // Agrupar por semana (lunes como inicio)
         const weekMap = new Map<string, CardioWeekData>()
@@ -406,6 +476,7 @@ export async function getCardioProgressData(
             const actualDurationMin = toNullableNumber(s.actual_duration_min)
             const avgHeartRate = toNullableNumber((s as any).avg_heart_rate)
             const maxHeartRate = toNullableNumber((s as any).max_heart_rate)
+            const plannedStructure = s.planned_structure || s.structure || null
             const hasActualWork = (actualDistanceKm ?? 0) > 0 || (actualDurationMin ?? 0) > 0
             const completionStatus = s.is_completed
                 ? 'completed'
@@ -423,6 +494,18 @@ export async function getCardioProgressData(
                         ? [distanceProgressPct, durationProgressPct].filter((value): value is number => value !== null)
                             .reduce((sum, value, _, arr) => sum + value / arr.length, 0)
                         : null
+            const analysis = analyzeCardioSessionExecution({
+                structure: plannedStructure,
+                streams: s.strava_activity_id ? streamsByActivityId.get(s.strava_activity_id) : null,
+                laps: s.strava_activity_id ? lapsByActivityId.get(s.strava_activity_id) || [] : [],
+                session: {
+                    actualDistanceKm,
+                    actualDurationMin,
+                    actualAvgPace: s.actual_avg_pace || null,
+                    avgHeartRate,
+                    maxHeartRate,
+                },
+            })
 
             if (weekMap.has(key)) {
                 const w = weekMap.get(key)!
@@ -444,7 +527,7 @@ export async function getCardioProgressData(
                 description: s.description || null,
                 coachNotes: s.coach_notes || s.notes || null,
                 feedbackNotes: s.feedback_notes || null,
-                plannedStructure: s.planned_structure || s.structure || null,
+                plannedStructure,
                 targetDistanceKm,
                 targetDurationMin,
                 targetPace: s.target_pace || null,
@@ -454,6 +537,10 @@ export async function getCardioProgressData(
                 avgHeartRate,
                 maxHeartRate,
                 rpe: toNullableNumber(s.rpe),
+                analysisSource: analysis.source as CardioSessionProgress['analysisSource'],
+                analysisSegments: analysis.segments,
+                chartAxis: analysis.chartAxis as CardioSessionProgress['chartAxis'],
+                chartPoints: analysis.chartPoints,
                 isCompleted: Boolean(s.is_completed),
                 completionStatus,
                 primaryGoal,

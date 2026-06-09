@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -117,12 +118,12 @@ export function CardioSessionDetail({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{item.title}</SheetTitle>
+      <SheetContent className="flex h-dvh w-full flex-col overflow-hidden p-0 sm:max-w-lg">
+        <SheetHeader className="shrink-0 border-b px-5 pb-4 pl-5 pr-16 pt-[calc(env(safe-area-inset-top,0px)+1rem)] text-left">
+          <SheetTitle className="truncate text-xl">{item.title}</SheetTitle>
         </SheetHeader>
 
-        <div className="space-y-6 py-6">
+        <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 pb-28 sm:px-6">
           {/* ── Prescribed Training (read-only) ── */}
           <Card className="overflow-hidden border-0 shadow-sm bg-muted/20">
             {/* Header */}
@@ -215,10 +216,11 @@ export function CardioSessionDetail({
                 Tu registro
               </h3>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-xs">Distancia (km)</Label>
                   <Input
+                    className="min-w-0"
                     type="number"
                     step="0.01"
                     min="0"
@@ -231,6 +233,7 @@ export function CardioSessionDetail({
                 <div className="space-y-2">
                   <Label className="text-xs">Tiempo (min)</Label>
                   <Input
+                    className="min-w-0"
                     type="number"
                     step="0.01"
                     min="0"
@@ -259,7 +262,7 @@ export function CardioSessionDetail({
                           Pulsaciones
                       </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                           <Label className="text-xs">Media (bpm)</Label>
                           <Input
@@ -318,11 +321,23 @@ export function CardioSessionDetail({
                   className="min-h-[60px] resize-none"
                 />
               </div>
-
+            </Card>
+          )}
+        </div>
+        {item.kind === 'cardio' && !isRest && (
+          <SheetFooter className="shrink-0 border-t bg-background/95 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-3 backdrop-blur sm:px-6">
+            <div className="flex w-full flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="h-11 flex-1"
+                disabled={saveStatus === 'saving'}
+              >
+                Cancelar
+              </Button>
               <Button
                 onClick={handleSave}
-                className="w-full"
-                size="lg"
+                className="h-11 flex-1"
                 disabled={saveStatus === 'saving'}
               >
                 {saveStatus === 'saving' ? (
@@ -333,9 +348,9 @@ export function CardioSessionDetail({
                   <><Save className="h-4 w-4 mr-2" /> Guardar sesión</>
                 )}
               </Button>
-            </Card>
-          )}
-        </div>
+            </div>
+          </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   )

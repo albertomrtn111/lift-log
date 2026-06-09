@@ -25,17 +25,19 @@ export interface StrengthStructure {
 }
 
 export interface CardioStructure {
+    mode?: 'free_text' | 'structured'
     trainingType?: 'rodaje' | 'series' | 'tempo' | 'hybrid' | 'progressive' | 'fartlek' | string
     description?: string  // Simple-mode: free-text training details
     blocks?: CardioBlock[]
     notes?: string
 }
 
-export type CardioBlockType = 'continuous' | 'intervals' | 'station'
+export type CardioBlockType = 'continuous' | 'intervals' | 'cooldown' | 'station'
 
 export interface CardioBlock {
     id: string
     type: CardioBlockType
+    label?: string
     notes?: string
 
     // Para 'continuous' (Rodaje, Calentamiento)

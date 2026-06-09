@@ -35,6 +35,7 @@ import {
     YAxis,
 } from 'recharts'
 import { cn } from '@/lib/utils'
+import { getCardioStructureLines, summarizeCardioStructure } from '@/lib/cardio/structure'
 import type {
     CardioProgressData,
     CardioSessionProgress,
@@ -156,6 +157,52 @@ function formatDistance(km: number) {
     return `${km.toFixed(1)} km`
 }
 
+function formatMeters(meters: number | null) {
+    if (meters === null || !Number.isFinite(meters)) return '—'
+    if (Math.abs(meters) < 1000) return `${Math.round(meters)} m`
+    const km = meters / 1000
+    return `${Number.isInteger(km) ? km : km.toFixed(2)} km`
+}
+
+function formatSeconds(seconds: number | null) {
+    if (seconds === null || !Number.isFinite(seconds)) return '—'
+    const sign = seconds < 0 ? '-' : ''
+    const abs = Math.abs(seconds)
+    const minutes = Math.round(abs / 60)
+    if (minutes < 60) return `${sign}${minutes} min`
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return `${sign}${h}h${m ? ` ${m}min` : ''}`
+}
+
+function formatPaceSeconds(seconds: number | null) {
+    if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return '—'
+    const minutes = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60).toString().padStart(2, '0')
+    return `${minutes}:${secs}/km`
+}
+
+function paceToSeconds(value: string | null) {
+    if (!value) return null
+    const match = value.match(/(\d+):(\d{2})/)
+    if (!match) return null
+    return Number(match[1]) * 60 + Number(match[2])
+}
+
+function formatDistanceDelta(km: number | null) {
+    if (km === null || !Number.isFinite(km)) return 'Sin objetivo'
+    const sign = km > 0 ? '+' : ''
+    return `${sign}${km.toFixed(2)} km vs plan`
+}
+
+function formatSegmentDelta(delta: number | null, unit: string | null) {
+    if (delta === null || !unit) return '—'
+    const sign = delta > 0 ? '+' : ''
+    if (unit === 'm') return `${sign}${Math.round(delta)} m`
+    if (unit === 's') return `${sign}${formatSeconds(delta)}`
+    return `${sign}${delta}`
+}
+
 function formatDate(date: string) {
     return new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
         weekday: 'short',
@@ -188,51 +235,10 @@ function getTrainingTypeLabel(trainingType: string | null) {
     return cardioTypeLabels[trainingType.toLowerCase()] || `${trainingType.charAt(0).toUpperCase()}${trainingType.slice(1)}`
 }
 
-function getStructureLines(structure: unknown): string[] {
-    if (!structure) return []
-
-    if (typeof structure === 'string') {
-        return structure.trim() ? [structure.trim()] : []
-    }
-
-    if (Array.isArray(structure)) {
-        return structure
-            .map((block: any) => {
-                const label = block?.name || block?.type
-                const details = [
-                    block?.description,
-                    block?.distance ? `${block.distance} km` : null,
-                    block?.duration ? `${block.duration} min` : null,
-                    block?.targetPace,
-                    block?.targetHR,
-                    block?.sets && (block?.workDistance || block?.workDuration)
-                        ? `${block.sets} repeticiones`
-                        : null,
-                    block?.workDistance ? `${block.workDistance} km trabajo` : null,
-                    block?.workDuration ? `${block.workDuration} min trabajo` : null,
-                    block?.workTargetPace,
-                    block?.restDuration ? `${block.restDuration} min rec.` : null,
-                    block?.restDistance ? `${block.restDistance} km rec.` : null,
-                    block?.notes,
-                ].filter(Boolean)
-
-                if (!label && details.length === 0) return null
-                return [label, details.join(' · ')].filter(Boolean).join(': ')
-            })
-            .filter((line): line is string => Boolean(line))
-    }
-
-    if (typeof structure === 'object' && structure !== null) {
-        const structureObject = structure as Record<string, any>
-        if (Array.isArray(structureObject.blocks)) {
-            return getStructureLines(structureObject.blocks)
-        }
-        if (typeof structureObject.description === 'string' && structureObject.description.trim()) {
-            return [structureObject.description.trim()]
-        }
-    }
-
-    return []
+function averageNumber(values: (number | null)[]) {
+    const numbers = values.filter((value): value is number => value !== null && Number.isFinite(value))
+    if (numbers.length === 0) return null
+    return numbers.reduce((sum, value) => sum + value, 0) / numbers.length
 }
 
 // ---------------------------------------------------------------------------
@@ -449,38 +455,230 @@ function DisciplineBadge({ trainingType }: { trainingType: string | null }) {
     )
 }
 
+function WeeklyAnalysisSummary({ weeks, sessions }: { weeks: CardioWeekData[]; sessions: CardioSessionProgress[] }) {
+    const plannedKm = weeks.reduce((sum, week) => sum + week.plannedDistanceKm, 0)
+    const actualKm = weeks.reduce((sum, week) => sum + week.distanceKm, 0)
+    const diffKm = actualKm - plannedKm
+    const avgRpe = averageNumber(sessions.map((session) => session.rpe))
+    const avgHr = averageNumber(sessions.map((session) => session.avgHeartRate))
+    const totalSeconds = sessions.reduce((sum, session) => sum + ((session.actualDurationMin ?? 0) * 60), 0)
+    const totalDistance = sessions.reduce((sum, session) => sum + (session.actualDistanceKm ?? 0), 0)
+    const avgPace = totalDistance > 0 && totalSeconds > 0 ? totalSeconds / totalDistance : null
+    const reviewCount = sessions.filter((session) =>
+        session.feedbackNotes
+        || session.completionStatus === 'partial'
+        || (session.distanceDeltaKm !== null && Math.abs(session.distanceDeltaKm) >= 1)
+    ).length
+
+    return (
+        <Card className="overflow-hidden border-border/70 bg-card/95">
+            <CardContent className="p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Resumen del periodo</p>
+                        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <span className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                                {actualKm.toFixed(1)} km
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                                hechos / {plannedKm.toFixed(1)} km planificados
+                            </span>
+                            <span className={cn(
+                                'rounded-full px-2 py-0.5 text-xs font-semibold',
+                                diffKm >= 0 ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'
+                            )}>
+                                {diffKm >= 0 ? '+' : ''}{diffKm.toFixed(1)} km
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
+                        <SessionMetricCard label="RPE medio" value={avgRpe !== null ? `${avgRpe.toFixed(1)}/10` : '—'} />
+                        <SessionMetricCard label="FC media" value={avgHr !== null ? `${Math.round(avgHr)} ppm` : '—'} />
+                        <SessionMetricCard label="Ritmo medio" value={formatPaceSeconds(avgPace)} />
+                        <SessionMetricCard label="Por revisar" value={String(reviewCount)} />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
+
+function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
+    const segments = session.analysisSegments || []
+    if (segments.length === 0) {
+        return (
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4 text-sm text-muted-foreground">
+                No hay segmentos suficientes para analizar esta actividad.
+            </div>
+        )
+    }
+
+    return (
+        <div className="space-y-3">
+            <div className="md:hidden space-y-3">
+                {segments.map((segment, index) => (
+                    <div key={`${session.id}-segment-mobile-${index}`} className="rounded-2xl border border-border/70 bg-background/90 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="font-semibold text-foreground">{segment.label}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{segment.targetSummary}</p>
+                            </div>
+                            <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+                                {segment.kind}
+                            </Badge>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Real</p>
+                                <p className="font-medium text-foreground">{segment.actualSummary}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Ritmo</p>
+                                <p className="font-medium text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">FC media</p>
+                                <p className="font-medium text-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Diferencia</p>
+                                <p className="font-medium text-foreground">{formatSegmentDelta(segment.delta, segment.deltaUnit)}</p>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-2xl border border-border/70 bg-background/90 md:block">
+                <table className="w-full text-sm">
+                    <thead className="border-b border-border/70 bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+                        <tr>
+                            <th className="px-4 py-3 text-left font-medium">Bloque</th>
+                            <th className="px-4 py-3 text-left font-medium">Objetivo</th>
+                            <th className="px-4 py-3 text-left font-medium">Real</th>
+                            <th className="px-4 py-3 text-left font-medium">Ritmo</th>
+                            <th className="px-4 py-3 text-left font-medium">FC media</th>
+                            <th className="px-4 py-3 text-left font-medium">FC máx</th>
+                            <th className="px-4 py-3 text-left font-medium">Dif.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {segments.map((segment, index) => (
+                            <tr key={`${session.id}-segment-${index}`} className="border-b border-border/50 last:border-0">
+                                <td className="px-4 py-3 font-medium text-foreground">{segment.label}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{segment.targetSummary}</td>
+                                <td className="px-4 py-3 text-foreground">{segment.actualSummary}</td>
+                                <td className="px-4 py-3 text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{segment.maxHeartRate !== null ? `${segment.maxHeartRate} ppm` : '—'}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{formatSegmentDelta(segment.delta, segment.deltaUnit)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}
+
+function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
+    const points = session.chartPoints || []
+    if (points.length < 2) {
+        return (
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4 text-sm text-muted-foreground">
+                No hay streams suficientes para dibujar ritmo y pulso. Se muestra la tabla con el mejor dato disponible.
+            </div>
+        )
+    }
+
+    const xKey = session.chartAxis === 'time' ? 'timeMin' : 'distanceKm'
+    const xLabel = session.chartAxis === 'time' ? 'min' : 'km'
+
+    return (
+        <div className="grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    <h5 className="font-medium text-foreground">Ritmo</h5>
+                </div>
+                <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={points} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" vertical={false} />
+                            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}${xLabel}`} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatPaceSeconds} axisLine={false} tickLine={false} width={58} />
+                            <Tooltip
+                                formatter={(value) => [formatPaceSeconds(Number(value)), 'Ritmo']}
+                                labelFormatter={(value) => `${value} ${xLabel}`}
+                            />
+                            <Area type="monotone" dataKey="paceSecondsPerKm" stroke="#2563eb" fill="#2563eb22" strokeWidth={2} dot={false} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                    <Heart className="h-4 w-4 text-rose-600" />
+                    <h5 className="font-medium text-foreground">Pulso</h5>
+                </div>
+                <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={points} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" vertical={false} />
+                            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}${xLabel}`} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}`} axisLine={false} tickLine={false} width={42} />
+                            <Tooltip
+                                formatter={(value) => [`${Math.round(Number(value))} ppm`, 'Pulso']}
+                                labelFormatter={(value) => `${value} ${xLabel}`}
+                            />
+                            <Area type="monotone" dataKey="heartRate" stroke="#e11d48" fill="#e11d4822" strokeWidth={2} dot={false} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function SessionCard({ session }: { session: CardioSessionProgress }) {
     const [open, setOpen] = useState(false)
     const statusMeta = getSessionStatusMeta(session)
     const StatusIcon = statusMeta.icon
     const displayMetric = getDisplayMetric(session)
-    const structureLines = useMemo(() => getStructureLines(session.plannedStructure), [session.plannedStructure])
+    const structureLines = useMemo(() => getCardioStructureLines(session.plannedStructure), [session.plannedStructure])
+    const compactStructure = useMemo(() => summarizeCardioStructure(session.plannedStructure), [session.plannedStructure])
     const progressPct = displayMetric.progressPct
     const overTarget = progressPct !== null && progressPct > 100
     const subtypeLabel = getTrainingTypeLabel(session.trainingType)
     const discipline = getDiscipline(session.trainingType)
     const disciplineMeta = DISCIPLINE_META[discipline]
+    const mainDistance = session.actualDistanceKm ?? session.targetDistanceKm
+    const distanceDeltaLabel = session.distanceDeltaKm !== null
+        ? formatDistanceDelta(session.distanceDeltaKm)
+        : session.targetDistanceKm !== null
+            ? `${formatDistance(session.targetDistanceKm)} programados`
+            : 'Sin objetivo de km'
+    const feedbackPreview = session.feedbackNotes?.trim()
+    const avgPaceSeconds = paceToSeconds(session.actualAvgPace)
 
     return (
         <Collapsible open={open} onOpenChange={setOpen}>
             <Card className="overflow-hidden border-border/70 bg-card/95">
-                <div className="p-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-3">
-                            {/* Jerarquía: disciplina → estado → fecha */}
+                <div className="p-4 sm:p-5">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-3">
                             <div className="flex flex-wrap items-center gap-2">
-                                {/* Nivel 1: Tipo de disciplina (Running / Bicicleta / Natación / Híbrido) */}
                                 <DisciplineBadge trainingType={session.trainingType} />
-                                {/* Nivel 2: Estado */}
                                 <Badge variant="outline" className={statusMeta.className}>
                                     <StatusIcon className="mr-1 h-3.5 w-3.5" />
                                     {statusMeta.label}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">{formatDate(session.scheduledDate)}</span>
                             </div>
-                            <div>
-                                <h4 className="text-base font-semibold text-foreground">{session.title}</h4>
-                                {/* Subtipo solo si es distinto al título y existe */}
+                            <div className="min-w-0">
+                                <h4 className="break-words text-base font-semibold text-foreground sm:text-lg">{session.title}</h4>
                                 {subtypeLabel && subtypeLabel.toLowerCase() !== session.title.toLowerCase() && (
                                     <p className="mt-0.5 text-xs font-medium text-muted-foreground">
                                         <span className={cn('inline-flex items-center gap-1', disciplineMeta.badgeClass.split(' ').find(c => c.startsWith('text-')))}>
@@ -488,70 +686,57 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                                         </span>
                                     </p>
                                 )}
-                                <p className="mt-1 text-sm text-muted-foreground">{displayMetric.summary}</p>
                             </div>
+                            <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                                <span className="text-3xl font-bold tracking-tight text-foreground">
+                                    {mainDistance !== null && mainDistance !== undefined ? formatDistance(mainDistance) : 'Sin km'}
+                                </span>
+                                <span className={cn(
+                                    'pb-1 text-sm font-semibold',
+                                    session.distanceDeltaKm !== null && session.distanceDeltaKm >= 0 ? 'text-emerald-700' : 'text-amber-700'
+                                )}>
+                                    {distanceDeltaLabel}
+                                </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Ritmo {session.actualAvgPace || '—'} · FC {session.avgHeartRate ?? '—'}{session.maxHeartRate !== null ? `/${session.maxHeartRate}` : ''} · RPE {session.rpe !== null ? `${session.rpe}/10` : '—'}
+                            </p>
                         </div>
 
-                        <div className="min-w-[220px] space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-4">
+                        <div className="w-full space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-4 xl:max-w-sm">
                             <div className="flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
                                 <span>Cumplimiento</span>
                                 <span>{formatPct(progressPct)}</span>
                             </div>
                             <Progress value={clampProgress(progressPct)} className="h-2.5 bg-muted" />
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>
-                                    {displayMetric.key === 'duration'
-                                        ? displayMetric.planned !== null
-                                            ? `Objetivo ${formatHours(displayMetric.planned)}`
-                                            : 'Sin objetivo marcado'
-                                        : displayMetric.planned !== null
-                                            ? `Objetivo ${displayMetric.planned.toFixed(1)} km`
-                                            : 'Sin objetivo marcado'}
-                                </span>
+                            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                                <span className="min-w-0 truncate">{displayMetric.summary}</span>
                                 {overTarget ? (
-                                    <span className="font-medium text-emerald-700">+{Math.round((progressPct ?? 0) - 100)}%</span>
+                                    <span className="shrink-0 font-medium text-emerald-700">+{Math.round((progressPct ?? 0) - 100)}%</span>
                                 ) : null}
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <SessionMetricCard
-                            label="Planificado"
-                            value={session.targetDistanceKm !== null
-                                ? formatDistance(session.targetDistanceKm)
-                                : session.targetDurationMin !== null
-                                    ? formatHours(session.targetDurationMin)
-                                    : 'Sin objetivo'}
-                            hint={session.targetPace ? `Ritmo objetivo ${session.targetPace}` : null}
-                        />
-                        <SessionMetricCard
-                            label="Realizado"
-                            value={session.actualDistanceKm !== null
-                                ? formatDistance(session.actualDistanceKm)
-                                : session.actualDurationMin !== null
-                                    ? formatHours(session.actualDurationMin)
-                                    : 'Sin registro'}
-                            hint={session.actualAvgPace ? `Ritmo medio ${session.actualAvgPace}` : null}
-                        />
-                        <SessionMetricCard
-                            label="Tiempo"
-                            value={session.actualDurationMin !== null
-                                ? formatHours(session.actualDurationMin)
-                                : session.targetDurationMin !== null
-                                    ? `Objetivo ${formatHours(session.targetDurationMin)}`
-                                    : '—'}
-                            hint={session.durationDeltaMin !== null ? `${session.durationDeltaMin > 0 ? '+' : ''}${session.durationDeltaMin.toFixed(0)} min vs objetivo` : null}
-                        />
-                        <SessionMetricCard
-                            label="Distancia"
-                            value={session.actualDistanceKm !== null
-                                ? formatDistance(session.actualDistanceKm)
-                                : session.targetDistanceKm !== null
-                                    ? `Objetivo ${formatDistance(session.targetDistanceKm)}`
-                                    : '—'}
-                            hint={session.distanceDeltaKm !== null ? `${session.distanceDeltaKm > 0 ? '+' : ''}${session.distanceDeltaKm.toFixed(1)} km vs objetivo` : null}
-                        />
+                    {feedbackPreview ? (
+                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
+                            <span className="font-medium text-emerald-700">Feedback: </span>
+                            <span className="break-words line-clamp-2">{feedbackPreview}</span>
+                        </div>
+                    ) : null}
+
+                    {compactStructure ? (
+                        <div className="mt-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm leading-6 text-muted-foreground">
+                            <span className="font-medium text-foreground">Plan: </span>
+                            <span className="break-words">{compactStructure}</span>
+                        </div>
+                    ) : null}
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <SessionMetricCard label="Ritmo" value={session.actualAvgPace || '—'} hint={avgPaceSeconds ? `${formatPaceSeconds(avgPaceSeconds)}` : null} />
+                        <SessionMetricCard label="RPE" value={session.rpe !== null ? `${session.rpe}/10` : '—'} />
+                        <SessionMetricCard label="Pulso" value={session.avgHeartRate !== null ? `${session.avgHeartRate} ppm` : '—'} hint={session.maxHeartRate !== null ? `Max ${session.maxHeartRate} ppm` : null} />
+                        <SessionMetricCard label="Tiempo" value={session.actualDurationMin !== null ? formatHours(session.actualDurationMin) : '—'} hint={session.durationDeltaMin !== null ? `${session.durationDeltaMin > 0 ? '+' : ''}${session.durationDeltaMin.toFixed(0)} min vs plan` : null} />
                     </div>
 
                     <div className="mt-4 flex justify-end">
@@ -565,167 +750,90 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                 </div>
 
                 <CollapsibleContent>
-                    <div className="border-t border-border/70 bg-muted/[0.16] px-5 py-5">
-                        <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-                            <div className="space-y-4">
-                                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                                    <div className="mb-3 flex items-center gap-2">
-                                        <CalendarDays className="h-4 w-4 text-primary" />
-                                        <h5 className="font-medium text-foreground">Plan de la sesión</h5>
-                                    </div>
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        <SessionMetricCard
-                                            label="Distancia objetivo"
-                                            value={session.targetDistanceKm !== null ? formatDistance(session.targetDistanceKm) : '—'}
-                                            hint={session.targetPace ? `Ritmo objetivo ${session.targetPace}` : null}
-                                        />
-                                        <SessionMetricCard
-                                            label="Duración objetivo"
-                                            value={session.targetDurationMin !== null ? formatHours(session.targetDurationMin) : '—'}
-                                            hint={subtypeLabel ?? undefined}
-                                        />
-                                    </div>
-                                    {session.description ? (
-                                        <p className="mt-4 text-sm leading-6 text-muted-foreground">{session.description}</p>
-                                    ) : null}
-                                    {structureLines.length > 0 ? (
-                                        <div className="mt-4 space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-4">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                                <RouteIcon className="h-4 w-4 text-primary" />
-                                                Estructura prevista
-                                            </div>
-                                            <div className="space-y-2">
-                                                {structureLines.map((line, index) => (
-                                                    <div key={`${session.id}-structure-${index}`} className="flex items-start gap-2 text-sm text-muted-foreground">
-                                                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/70" />
-                                                        <span className="leading-6">{line}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                    {session.coachNotes ? (
-                                        <div className="mt-4 rounded-2xl border border-blue-500/15 bg-blue-500/[0.05] p-4">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
-                                                <MessageSquareText className="h-4 w-4" />
-                                                Notas del coach
-                                            </div>
-                                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                                                {session.coachNotes}
-                                            </p>
-                                        </div>
-                                    ) : null}
-                                </div>
+                    <div className="space-y-5 border-t border-border/70 bg-muted/[0.16] px-4 py-5 sm:px-5">
+                        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                            <div className="mb-4 flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-emerald-600" />
+                                <h5 className="font-medium text-foreground">Análisis de la sesión</h5>
                             </div>
-
-                            <div className="space-y-4">
-                                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                                    <div className="mb-3 flex items-center gap-2">
-                                        <Activity className="h-4 w-4 text-emerald-600" />
-                                        <h5 className="font-medium text-foreground">Ejecución real</h5>
-                                    </div>
-                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
-                                        <SessionMetricCard
-                                            label="Distancia real"
-                                            value={session.actualDistanceKm !== null ? formatDistance(session.actualDistanceKm) : 'Sin registrar'}
-                                            hint={session.distanceProgressPct !== null ? `${formatPct(session.distanceProgressPct)} del objetivo` : null}
-                                        />
-                                        <SessionMetricCard
-                                            label="Tiempo real"
-                                            value={session.actualDurationMin !== null ? formatHours(session.actualDurationMin) : 'Sin registrar'}
-                                            hint={session.durationProgressPct !== null ? `${formatPct(session.durationProgressPct)} del objetivo` : null}
-                                        />
-                                        <SessionMetricCard
-                                            label="Ritmo medio"
-                                            value={session.actualAvgPace || session.targetPace || '—'}
-                                            hint={session.actualAvgPace ? 'Registrado por el cliente' : session.targetPace ? 'Objetivo del plan' : null}
-                                        />
-                                        <SessionMetricCard
-                                            label="Esfuerzo"
-                                            value={session.rpe !== null ? `RPE ${session.rpe}/10` : '—'}
-                                            hint={session.avgHeartRate !== null || session.maxHeartRate !== null
-                                                ? `FC media ${session.avgHeartRate ?? '—'} · máxima ${session.maxHeartRate ?? '—'}`
-                                                : null}
-                                        />
-                                    </div>
-                                    {session.feedbackNotes ? (
-                                        <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] p-4">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                                                <MessageSquareText className="h-4 w-4" />
-                                                Feedback del cliente
-                                            </div>
-                                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                                                {session.feedbackNotes}
-                                            </p>
-                                        </div>
-                                    ) : null}
-                                </div>
-
-                                <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                                    <div className="mb-3 flex items-center gap-2">
-                                        <TrendingUp className="h-4 w-4 text-primary" />
-                                        <h5 className="font-medium text-foreground">Comparativa plan vs real</h5>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {session.targetDistanceKm !== null ? (
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-muted-foreground">Distancia</span>
-                                                    <span className="font-medium text-foreground">
-                                                        {(session.actualDistanceKm ?? 0).toFixed(1)} km de {session.targetDistanceKm.toFixed(1)} km
-                                                    </span>
-                                                </div>
-                                                <Progress value={clampProgress(session.distanceProgressPct)} className="h-2.5 bg-muted" />
-                                            </div>
-                                        ) : null}
-
-                                        {session.targetDurationMin !== null ? (
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-muted-foreground">Tiempo</span>
-                                                    <span className="font-medium text-foreground">
-                                                        {formatHours(session.actualDurationMin ?? 0)} de {formatHours(session.targetDurationMin)}
-                                                    </span>
-                                                </div>
-                                                <Progress value={clampProgress(session.durationProgressPct)} className="h-2.5 bg-muted" />
-                                            </div>
-                                        ) : null}
-
-                                        {session.targetDistanceKm === null && session.targetDurationMin === null ? (
-                                            <p className="text-sm text-muted-foreground">
-                                                Esta sesión no tenía un objetivo cuantificado guardado. Mostramos el registro realizado y el contexto disponible.
-                                            </p>
-                                        ) : null}
-
-                                        <div className="grid gap-3 md:grid-cols-2">
-                                            <SessionMetricCard
-                                                label="Fecha"
-                                                value={formatFullDate(session.scheduledDate)}
-                                            />
-                                            <SessionMetricCard
-                                                label="Estado"
-                                                value={statusMeta.label}
-                                                hint={session.completionStatus === 'partial'
-                                                    ? 'Hay trabajo registrado, pero no se completó toda la sesión.'
-                                                    : session.completionStatus === 'not_completed'
-                                                        ? 'No hay registro de ejecución para esta sesión.'
-                                                        : 'La sesión quedó registrada como completada.'}
-                                            />
-                                        </div>
-                                        {(session.avgHeartRate !== null || session.maxHeartRate !== null) ? (
-                                            <div className="rounded-2xl border border-rose-500/15 bg-rose-500/[0.05] p-4">
-                                                <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
-                                                    <Heart className="h-4 w-4" />
-                                                    Pulsaciones
-                                                </div>
-                                                <p className="mt-2 text-sm text-muted-foreground">
-                                                    Media {session.avgHeartRate ?? '—'} bpm · Máxima {session.maxHeartRate ?? '—'} bpm
-                                                </p>
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                <SessionMetricCard label="Km hechos" value={session.actualDistanceKm !== null ? formatDistance(session.actualDistanceKm) : 'Sin km'} hint={distanceDeltaLabel} />
+                                <SessionMetricCard label="Ritmo medio" value={session.actualAvgPace || '—'} />
+                                <SessionMetricCard label="RPE" value={session.rpe !== null ? `${session.rpe}/10` : '—'} />
+                                <SessionMetricCard label="FC media" value={session.avgHeartRate !== null ? `${session.avgHeartRate} ppm` : '—'} />
+                                <SessionMetricCard label="FC máxima" value={session.maxHeartRate !== null ? `${session.maxHeartRate} ppm` : '—'} />
                             </div>
+                            {session.feedbackNotes ? (
+                                <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] p-4">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+                                        <MessageSquareText className="h-4 w-4" />
+                                        Feedback del atleta
+                                    </div>
+                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                                        {session.feedbackNotes}
+                                    </p>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                            <div className="mb-3 flex items-center gap-2">
+                                <CalendarDays className="h-4 w-4 text-primary" />
+                                <h5 className="font-medium text-foreground">Entreno programado</h5>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <SessionMetricCard label="Fecha" value={formatFullDate(session.scheduledDate)} />
+                                <SessionMetricCard label="Objetivo km" value={session.targetDistanceKm !== null ? formatDistance(session.targetDistanceKm) : '—'} />
+                                <SessionMetricCard label="Objetivo tiempo" value={session.targetDurationMin !== null ? formatHours(session.targetDurationMin) : '—'} />
+                                <SessionMetricCard label="Ritmo objetivo" value={session.targetPace || '—'} />
+                            </div>
+                            {session.description && (!compactStructure || session.description.trim() !== compactStructure.trim()) ? (
+                                <p className="mt-4 break-words text-sm leading-6 text-muted-foreground">{session.description}</p>
+                            ) : null}
+                            {structureLines.length > 0 ? (
+                                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                    {structureLines.map((line, index) => (
+                                        <div key={`${session.id}-structure-${index}`} className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm leading-6 text-muted-foreground">
+                                            {line}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                            {session.coachNotes ? (
+                                <div className="mt-4 rounded-2xl border border-blue-500/15 bg-blue-500/[0.05] p-4">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                                        <MessageSquareText className="h-4 w-4" />
+                                        Notas del coach
+                                    </div>
+                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                                        {session.coachNotes}
+                                    </p>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
+                            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-2">
+                                    <RouteIcon className="h-4 w-4 text-primary" />
+                                    <h5 className="font-medium text-foreground">Ejecución por bloques</h5>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                    Fuente: {session.analysisSource === 'streams' ? 'streams propios' : session.analysisSource === 'laps' ? 'laps Strava' : 'resumen actividad'}
+                                </span>
+                            </div>
+                            <SegmentExecutionView session={session} />
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-primary" />
+                                <h5 className="font-medium text-foreground">Gráficas</h5>
+                                <span className="text-xs text-muted-foreground">
+                                    eje por {session.chartAxis === 'time' ? 'tiempo' : 'distancia'}
+                                </span>
+                            </div>
+                            <ExecutionCharts session={session} />
                         </div>
                     </div>
                 </CollapsibleContent>
@@ -898,6 +1006,8 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                 onChange={setDisciplineFilter}
                 sessionCounts={sessionCounts}
             />
+
+            <WeeklyAnalysisSummary weeks={filteredWeeks} sessions={filteredSessions} />
 
             {/* KPI Cards — recalculated with filter */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -1,12 +1,18 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -35,33 +41,47 @@ import {
     Apple,
     Moon,
     Utensils,
+    MoreHorizontal,
+    Copy,
+    ClipboardPaste,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { MacroPlan } from '@/types/training'
 import {
     getNutritionLogForDate,
+    addNutritionLogEntriesBatch,
     deleteNutritionLogEntry,
     setDayTypeForDate,
     getDayTypeForDate,
+    getNutritionMealSlotsForDate,
+    createNutritionMealSlot,
+    deleteNutritionMealSlot,
 } from '@/data/nutrition/log'
 import {
     type MealType,
     type DayType,
     type NutritionLogEntry,
 } from '@/data/nutrition/tracking-types'
-import { AddFoodDialog } from './AddFoodDialog'
+import { AddFoodDialog, EditNutritionEntryDialog } from './AddFoodDialog'
 import { toast } from 'sonner'
+import {
+    buildMealSlotsForDate,
+    buildPastedNutritionEntries,
+    doesEntryBelongToMeal,
+} from '@/lib/nutrition/meals'
 
 interface MacrosTrackerProps {
     macroPlan: MacroPlan | null
 }
 
 interface MealSlot {
+    id?: string
     type: MealType
     label: string
     order: number
+    canDelete?: boolean
 }
 
 const DEFAULT_MEALS: MealSlot[] = [
@@ -81,47 +101,56 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
     const [newMealName, setNewMealName] = useState('')
 
     const [addDialog, setAddDialog] = useState<MealSlot | null>(null)
+    const [editingEntry, setEditingEntry] = useState<NutritionLogEntry | null>(null)
+    const [mealClipboard, setMealClipboard] = useState<{ meal: MealSlot; entries: NutritionLogEntry[] } | null>(null)
     const [confirmDelete, setConfirmDelete] = useState<NutritionLogEntry | null>(null)
     const [deleting, setDeleting] = useState(false)
 
-    // Cargar registros y day_type cuando cambia la fecha
-    useEffect(() => {
-        let alive = true
-        ;(async () => {
-            setLoading(true)
-            const [list, dt] = await Promise.all([
-                getNutritionLogForDate(date),
-                getDayTypeForDate(date),
-            ])
-            if (!alive) return
-            setEntries(list)
-            // Detectar comidas custom presentes en las entradas
-            const seenCustom = new Map<string, MealSlot>()
-            list.forEach(e => {
-                if (e.meal_type === 'other') {
-                    const key = `other:${e.meal_label ?? 'Otra'}:${e.meal_order}`
-                    if (!seenCustom.has(key)) {
-                        seenCustom.set(key, {
-                            type: 'other',
-                            label: e.meal_label ?? 'Otra',
-                            order: e.meal_order,
-                        })
-                    }
+    const loadDay = useCallback(async () => {
+        setLoading(true)
+        const [list, dt, slots] = await Promise.all([
+            getNutritionLogForDate(date),
+            getDayTypeForDate(date),
+            getNutritionMealSlotsForDate(date),
+        ])
+        setEntries(list)
+        const persistentMeals = buildMealSlotsForDate(DEFAULT_MEALS, slots).filter((meal: MealSlot) => meal.type === 'other')
+
+        // Mantener visibles comidas custom legacy si tienen entradas en el día.
+        const seenCustom = new Map<string, MealSlot>()
+        persistentMeals.forEach((meal: MealSlot) => {
+            seenCustom.set(`other:${meal.label}:${meal.order}`, meal)
+        })
+        list.forEach(e => {
+            if (e.meal_type === 'other') {
+                const key = `other:${e.meal_label ?? 'Otra'}:${e.meal_order}`
+                if (!seenCustom.has(key)) {
+                    seenCustom.set(key, {
+                        type: 'other',
+                        label: e.meal_label ?? 'Otra',
+                        order: e.meal_order,
+                    })
                 }
-            })
-            setExtraMeals(Array.from(seenCustom.values()))
-            // day_type: prioridad → setting persistido > snapshot en entries > default
-            if (dt) {
-                setDayType(dt)
-            } else if (list.length > 0 && list[0].day_type) {
-                setDayType(list[0].day_type)
             }
-            setLoading(false)
-        })()
-        return () => {
-            alive = false
+        })
+        setExtraMeals(Array.from(seenCustom.values()))
+        // day_type: prioridad → setting persistido > snapshot en entries > default
+        if (dt) {
+            setDayType(dt)
+        } else if (list.length > 0 && list[0].day_type) {
+            setDayType(list[0].day_type)
         }
+        setLoading(false)
     }, [date])
+
+    // Cargar registros, day_type y comidas extra cuando cambia la fecha
+    useEffect(() => {
+        void loadDay()
+    }, [loadDay])
+
+    const getEntriesForMeal = useCallback((meal: MealSlot, sourceEntries = entries) => {
+        return sourceEntries.filter(entry => doesEntryBelongToMeal(entry, meal))
+    }, [entries])
 
     const allMeals = useMemo<MealSlot[]>(() => {
         return [...DEFAULT_MEALS, ...extraMeals].sort((a, b) => a.order - b.order)
@@ -175,14 +204,81 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
         const name = newMealName.trim()
         if (!name) return
         const newOrder = Math.max(...allMeals.map(m => m.order), 3) + 1
-        setExtraMeals(prev => [...prev, { type: 'other', label: name, order: newOrder }])
-        setNewMealName('')
-        setAddingMealName(false)
+        ;(async () => {
+            const slot = await createNutritionMealSlot(name, newOrder, date)
+            if (!slot) {
+                toast.error('No se pudo guardar la comida extra')
+                return
+            }
+            setExtraMeals(prev => [...prev, {
+                id: slot.id,
+                type: 'other',
+                label: slot.label,
+                order: slot.order_index,
+                canDelete: true,
+            }])
+            setNewMealName('')
+            setAddingMealName(false)
+        })()
     }
 
     const refreshEntries = async () => {
         const list = await getNutritionLogForDate(date)
         setEntries(list)
+    }
+
+    const pasteEntriesIntoMeal = async (sourceEntries: NutritionLogEntry[], targetMeal: MealSlot, successMessage: string) => {
+        if (sourceEntries.length === 0) {
+            toast.error('No hay alimentos para pegar')
+            return
+        }
+        const payload = buildPastedNutritionEntries(sourceEntries, {
+            date: format(date, 'yyyy-MM-dd'),
+            dayType,
+            targetMeal,
+        })
+        const inserted = await addNutritionLogEntriesBatch(payload)
+        if (inserted.length === 0) {
+            toast.error('No se pudo pegar la comida')
+            return
+        }
+        toast.success(successMessage)
+        await refreshEntries()
+    }
+
+    const handleCopyMeal = (meal: MealSlot) => {
+        const mealEntries = getEntriesForMeal(meal)
+        if (mealEntries.length === 0) {
+            toast.error('Esta comida no tiene alimentos para copiar')
+            return
+        }
+        setMealClipboard({ meal, entries: mealEntries })
+        toast.success(`${meal.label} copiada`)
+    }
+
+    const handlePasteMeal = async (meal: MealSlot) => {
+        if (!mealClipboard) {
+            toast.error('Primero copia una comida')
+            return
+        }
+        await pasteEntriesIntoMeal(mealClipboard.entries, meal, 'Comida pegada')
+    }
+
+    const handlePastePreviousDay = async (meal: MealSlot) => {
+        const previousEntries = await getNutritionLogForDate(subDays(date, 1))
+        const mealEntries = getEntriesForMeal(meal, previousEntries)
+        await pasteEntriesIntoMeal(mealEntries, meal, 'Comida del día anterior pegada')
+    }
+
+    const handleDeleteCustomMeal = async (meal: MealSlot) => {
+        if (!meal.canDelete || !meal.id) return
+        const ok = await deleteNutritionMealSlot(meal.id, date)
+        if (!ok) {
+            toast.error('No se pudo eliminar la comida extra')
+            return
+        }
+        toast.success('Comida extra eliminada')
+        await loadDay()
     }
 
     const handleDelete = async () => {
@@ -306,11 +402,16 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
                         key={`${meal.type}:${meal.label}:${meal.order}`}
                         meal={meal}
                         entries={entries.filter(e =>
-                            e.meal_type === meal.type &&
-                            (meal.type !== 'other' || (e.meal_label === meal.label && e.meal_order === meal.order))
+                            doesEntryBelongToMeal(e, meal)
                         )}
                         onAdd={() => setAddDialog(meal)}
+                        onCopy={() => handleCopyMeal(meal)}
+                        onPaste={() => handlePasteMeal(meal)}
+                        onPastePreviousDay={() => handlePastePreviousDay(meal)}
+                        onDeleteMeal={() => handleDeleteCustomMeal(meal)}
+                        canPaste={!!mealClipboard}
                         onDelete={(entry) => setConfirmDelete(entry)}
+                        onEditEntry={setEditingEntry}
                     />
                 ))}
 
@@ -349,6 +450,13 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
                     onAdded={refreshEntries}
                 />
             )}
+
+            <EditNutritionEntryDialog
+                open={!!editingEntry}
+                onOpenChange={(open) => { if (!open) setEditingEntry(null) }}
+                entry={editingEntry}
+                onSaved={refreshEntries}
+            />
 
             {/* Confirm delete */}
             <AlertDialog open={!!confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(null) }}>
@@ -454,12 +562,24 @@ function MealCard({
     meal,
     entries,
     onAdd,
+    onCopy,
+    onPaste,
+    onPastePreviousDay,
+    onDeleteMeal,
+    canPaste,
     onDelete,
+    onEditEntry,
 }: {
     meal: MealSlot
     entries: NutritionLogEntry[]
     onAdd: () => void
+    onCopy: () => void
+    onPaste: () => void
+    onPastePreviousDay: () => void
+    onDeleteMeal: () => void
+    canPaste: boolean
     onDelete: (e: NutritionLogEntry) => void
+    onEditEntry: (e: NutritionLogEntry) => void
 }) {
     const meta = MEAL_META[meal.type] ?? MEAL_META.other
     const sub = entries.reduce(
@@ -494,21 +614,67 @@ function MealCard({
                         )}
                     </div>
                 </div>
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={onAdd}
-                    className={cn('shrink-0 h-8 px-3 gap-1 font-medium', meta.accent, 'hover:bg-background/60')}
-                >
-                    <Plus className="h-3.5 w-3.5" /> Añadir
-                </Button>
+                <div className="flex shrink-0 items-center gap-1">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-9 hover:bg-background/60"
+                                aria-label={`Acciones de ${meal.label}`}
+                            >
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem onClick={onCopy} disabled={!hasEntries}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                Copiar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={onPaste} disabled={!canPaste}>
+                                <ClipboardPaste className="mr-2 h-4 w-4" />
+                                Pegar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={onPastePreviousDay}>
+                                <ClipboardPaste className="mr-2 h-4 w-4" />
+                                Pegar día anterior
+                            </DropdownMenuItem>
+                            {meal.canDelete && (
+                                <DropdownMenuItem onClick={onDeleteMeal} className="text-destructive focus:text-destructive">
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Eliminar comida
+                                </DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={onAdd}
+                        className={cn('h-9 shrink-0 px-3 gap-1 font-medium', meta.accent, 'hover:bg-background/60')}
+                    >
+                        <Plus className="h-3.5 w-3.5" /> Añadir
+                    </Button>
+                </div>
             </div>
 
             {/* Alimentos */}
             {hasEntries && (
                 <ul className="divide-y divide-border/60">
                     {entries.map(e => (
-                        <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+                        <li
+                            key={e.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => onEditEntry(e)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    onEditEntry(e)
+                                }
+                            }}
+                            className="flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
                             {/* Punto de color */}
                             <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', meta.accent.replace('text-', 'bg-'))} />
 
@@ -528,7 +694,10 @@ function MealCard({
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={() => onDelete(e)}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    onDelete(e)
+                                }}
                                 className="h-7 w-7 shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
                             >
                                 <Trash2 className="h-3.5 w-3.5" />

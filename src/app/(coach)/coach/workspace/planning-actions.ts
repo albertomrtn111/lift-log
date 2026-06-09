@@ -7,6 +7,7 @@ import { requireActiveCoachId } from "@/lib/auth/require-coach";
 import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
 import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
 import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
+import { calculateCardioStructureTotals, summarizeCardioStructure } from "@/lib/cardio/structure";
 
 type TrainingDayRow = {
     id: string;
@@ -104,18 +105,16 @@ function getCardioSummaryLine(cardio: any) {
     const parts: string[] = [];
     let distance = cardio.target_distance_km ? Number(cardio.target_distance_km) : undefined;
     let duration = cardio.target_duration_min ? Number(cardio.target_duration_min) : undefined;
+    const structureSummary = summarizeCardioStructure(cardio.structure);
+    const structureTotals = calculateCardioStructureTotals(cardio.structure);
 
-    if ((!distance || !duration) && cardio.structure?.blocks) {
-        const continuousBlock = cardio.structure.blocks.find((block: any) => block.type === 'continuous');
-        if (continuousBlock) {
-            if (!distance && continuousBlock.distance) distance = Number(continuousBlock.distance);
-            if (!duration && continuousBlock.duration) duration = Number(continuousBlock.duration);
-        }
-    }
+    if (!distance && structureTotals.distanceKm) distance = structureTotals.distanceKm;
+    if (!duration && structureTotals.durationMin) duration = structureTotals.durationMin;
 
     if (distance) parts.push(`${distance} km`);
     if (duration) parts.push(`${duration} min`);
     if (cardio.target_pace) parts.push(cardio.target_pace);
+    if (structureSummary && !parts.includes(structureSummary)) parts.push(structureSummary);
     return parts.join(' · ');
 }
 
@@ -795,9 +794,12 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
     try {
         const dateStr = date;
 
-        // structure.trainingType is needed for styling (colors/icons)
-        const finalStructure = {
-            trainingType: structure?.trainingType || 'rodaje'
+        const finalStructure: CardioStructure = {
+            ...structure,
+            mode: structure?.mode || (structure?.blocks?.length ? 'structured' : 'free_text'),
+            trainingType: structure?.trainingType || 'rodaje',
+            description: structure?.description || description || '',
+            blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
         };
 
         // If notes were passed in structure (from deprecated form logic) but not as separate arg, use them.
@@ -937,11 +939,18 @@ export async function updateCardioSession({
     const supabase = await createClient();
 
     try {
+        const finalStructure: CardioStructure = {
+            ...structure,
+            mode: structure?.mode || (structure?.blocks?.length ? 'structured' : 'free_text'),
+            trainingType: structure?.trainingType || 'rodaje',
+            description: structure?.description || description || '',
+            blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
+        };
         const payload = {
             name,
             description,
-            structure,
-            notes: structure.notes || null,
+            structure: finalStructure,
+            notes: finalStructure.notes || null,
             target_distance_km: targetDistanceKm ?? null,
             target_duration_min: targetDurationMin ?? null,
             target_pace: targetPace || null,

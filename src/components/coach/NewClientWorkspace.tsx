@@ -133,9 +133,9 @@ export function NewClientWorkspace({
         }
     }, [router, selectedClientId])
 
-    const handleClientChange = (clientId: string) => {
+    const handleClientChange = useCallback((clientId: string) => {
         router.push(`/coach/clients?client=${clientId}&tab=${activeTab}`)
-    }
+    }, [activeTab, router])
 
     const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
 
@@ -207,6 +207,7 @@ export function NewClientWorkspace({
                 <ClientSelector
                     clients={clients}
                     selectedClientId={selectedClientId}
+                    onClientChange={handleClientChange}
                 />
 
                 <Button

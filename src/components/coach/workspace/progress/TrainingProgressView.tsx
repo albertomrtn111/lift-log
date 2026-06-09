@@ -15,11 +15,12 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
-import { Dumbbell, Loader2, Sparkles, AlertTriangle } from 'lucide-react'
+import { Download, Dumbbell, Loader2, Sparkles, AlertTriangle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { ProgramSelector } from './ProgramSelector'
 import { ProgressionTable } from './ProgressionTable'
 import { TrainingProgressAIAnalysisCard } from './TrainingProgressAIAnalysisCard'
+import { buildTrainingProgressCsv } from '@/lib/training/progress-csv'
 import {
     analyzeTrainingProgressAction,
     getClientProgramsForSelector,
@@ -97,6 +98,28 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
         )
     )
 
+    const exportCsv = useCallback(() => {
+        if (!progressData) return
+
+        const csv = buildTrainingProgressCsv(progressData)
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        const safeProgramName = (progressData.program.name || 'programa-fuerza')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '')
+
+        link.href = url
+        link.download = `fuerza-${safeProgramName || 'programa'}-${new Date().toISOString().slice(0, 10)}.csv`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+    }, [progressData])
+
     const runAnalysis = useCallback(async (instruction?: string) => {
         if (!selectedProgramId) return
 
@@ -166,7 +189,16 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
                     onSelect={setSelectedProgramId}
                 />
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Button
+                        variant="outline"
+                        onClick={exportCsv}
+                        disabled={!progressData || loadingData}
+                        className="gap-2"
+                    >
+                        <Download className="h-4 w-4" />
+                        Exportar CSV
+                    </Button>
                     <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
                         <Button
                             onClick={() => setSheetOpen(true)}

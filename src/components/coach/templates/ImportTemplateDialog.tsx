@@ -34,6 +34,7 @@ import { useToast } from '@/hooks/use-toast'
 import { createTemplate, updateTemplate } from '../../../../app/(coach)/coach/templates/actions'
 import type { TemplateDay, TemplateExercise, StrengthStructure } from '@/types/templates'
 import { cn } from '@/lib/utils'
+import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
 
 // ============================================================================
 // Types
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils'
 interface ParsedExercise {
     day: string
     exercise_name: string
+    muscle_group: MuscleGroup
     sets: number
     reps: string
     rir: string
@@ -73,6 +75,7 @@ function parseCSV(text: string): ParsedExercise[] {
         const clean = h.replace(/['"]/g, '').trim()
         if (['dia', 'día', 'day'].includes(clean)) headerMap['day'] = String(i)
         if (['ejercicio', 'exercise', 'nombre', 'name'].includes(clean)) headerMap['exercise_name'] = String(i)
+        if (['grupo', 'grupo muscular', 'grupo_muscular', 'musculo', 'músculo', 'muscle', 'muscle group', 'muscle_group', 'group'].includes(clean)) headerMap['muscle_group'] = String(i)
         if (['series', 'sets'].includes(clean)) headerMap['sets'] = String(i)
         if (['reps', 'repeticiones', 'repetitions'].includes(clean)) headerMap['reps'] = String(i)
         if (['rir'].includes(clean)) headerMap['rir'] = String(i)
@@ -101,6 +104,7 @@ function parseCSV(text: string): ParsedExercise[] {
         exercises.push({
             day,
             exercise_name,
+            muscle_group: normalizeMuscleGroup(cols[parseInt(headerMap['muscle_group'])]),
             sets: parseInt(cols[parseInt(headerMap['sets'])] || '3') || 3,
             reps: cols[parseInt(headerMap['reps'])] || '10',
             rir: cols[parseInt(headerMap['rir'])] || '',
@@ -131,7 +135,7 @@ function buildStructure(grouped: Map<string, ParsedExercise[]>): StrengthStructu
             id: crypto.randomUUID(),
             exercise_name: ex.exercise_name,
             order: idx + 1,
-            muscle_group: 'otros',
+            muscle_group: normalizeMuscleGroup(ex.muscle_group),
             sets: ex.sets,
             reps: ex.reps,
             rir: ex.rir || undefined,
@@ -214,7 +218,7 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
             const exercises = parseCSV(text)
             if (exercises.length === 0) {
                 setParseError(
-                    'No se pudieron extraer ejercicios. Verifica que el CSV tenga las columnas requeridas: Dia, Ejercicio, Series, Reps, RIR, Rest, Notas'
+                    'No se pudieron extraer ejercicios. Verifica que el CSV tenga las columnas requeridas: Dia, Ejercicio, Grupo muscular, Series, Reps, RIR, Rest, Notas'
                 )
                 return
             }
@@ -304,18 +308,18 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
     }
 
     const downloadExample = () => {
-        const csvContent = `Dia,Ejercicio,Series,Reps,RIR,Rest,Notas
-Espalda,Dominadas,4,8-10,2,90,Agarre prono
-Espalda,Remo con barra,4,10-12,2,90,
-Espalda,Jalón al pecho,3,12-15,1,60,
-Espalda,Face pulls,3,15-20,0,45,
-Pecho,Press banca,4,6-8,2,120,
-Pecho,Press inclinado mancuernas,4,10-12,2,90,
-Pecho,Aperturas en polea,3,12-15,1,60,
-Pierna,Sentadilla,5,5,3,180,
-Pierna,Prensa,4,10-12,2,90,
-Pierna,Curl femoral,3,12-15,1,60,
-Pierna,Extensiones,3,15-20,0,60,`
+        const csvContent = `Dia,Ejercicio,Grupo muscular,Series,Reps,RIR,Rest,Notas
+Espalda,Dominadas,espalda,4,8-10,2,90,Agarre prono
+Espalda,Remo con barra,espalda,4,10-12,2,90,
+Espalda,Jalón al pecho,espalda,3,12-15,1,60,
+Espalda,Face pulls,hombro,3,15-20,0,45,
+Pecho,Press banca,pecho,4,6-8,2,120,
+Pecho,Press inclinado mancuernas,pecho,4,10-12,2,90,
+Pecho,Aperturas en polea,pecho,3,12-15,1,60,
+Pierna,Sentadilla,cuádriceps,5,5,3,180,
+Pierna,Prensa,cuádriceps,4,10-12,2,90,
+Pierna,Curl femoral,femorales,3,12-15,1,60,
+Pierna,Extensiones,cuádriceps,3,15-20,0,60,`
 
         const blob = new Blob([csvContent], { type: 'text/csv' })
         const url = URL.createObjectURL(blob)
@@ -390,12 +394,12 @@ Pierna,Extensiones,3,15-20,0,60,`
 
                             {/* CSV Format Guide */}
                             <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <h4 className="text-sm font-medium flex items-center gap-2">
                                         <Info className="h-4 w-4 text-primary" />
                                         Formato del CSV
                                     </h4>
-                                    <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={downloadExample}>
+                                    <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-primary sm:w-auto sm:justify-center" onClick={downloadExample}>
                                         <Download className="h-3.5 w-3.5" />
                                         Descargar ejemplo
                                     </Button>
@@ -405,11 +409,11 @@ Pierna,Extensiones,3,15-20,0,60,`
                                 </p>
                                 <div className="bg-background rounded-md border p-3 overflow-x-auto">
                                     <code className="text-xs whitespace-nowrap">
-                                        Dia, Ejercicio, Series, Reps, RIR, Rest, Notas
+                                        Dia, Ejercicio, Grupo muscular, Series, Reps, RIR, Rest, Notas
                                     </code>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Los ejercicios se agruparán automáticamente por la columna <strong>Dia</strong>.
+                                    Los ejercicios se agruparán por <strong>Dia</strong> y el grupo muscular se normalizará automáticamente.
                                 </p>
                             </div>
 
@@ -477,7 +481,7 @@ Pierna,Extensiones,3,15-20,0,60,`
                             </div>
                         </div>
 
-                        <DialogFooter>
+                        <DialogFooter className="flex-col gap-2 sm:flex-row">
                             <Button variant="outline" onClick={() => setOpen(false)}>
                                 Cancelar
                             </Button>
@@ -514,6 +518,7 @@ Pierna,Extensiones,3,15-20,0,60,`
                                             <thead>
                                                 <tr className="border-b bg-muted/30">
                                                     <th className="p-2 text-left font-medium text-xs">Ejercicio</th>
+                                                    <th className="p-2 text-left font-medium text-xs">Grupo</th>
                                                     <th className="p-2 text-center font-medium text-xs">Series</th>
                                                     <th className="p-2 text-center font-medium text-xs">Reps</th>
                                                     <th className="p-2 text-center font-medium text-xs">RIR</th>
@@ -525,6 +530,7 @@ Pierna,Extensiones,3,15-20,0,60,`
                                                 {exercises.map((ex, idx) => (
                                                     <tr key={idx} className="hover:bg-muted/20">
                                                         <td className="p-2 font-medium">{ex.exercise_name}</td>
+                                                        <td className="p-2 text-muted-foreground text-xs">{MUSCLE_GROUP_LABELS[ex.muscle_group]}</td>
                                                         <td className="p-2 text-center">{ex.sets}</td>
                                                         <td className="p-2 text-center">{ex.reps}</td>
                                                         <td className="p-2 text-center">{ex.rir || '-'}</td>

@@ -219,9 +219,12 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
             name: selectedTemplate.name,
             description: description,
             structure: {
+                ...structure,
+                mode: structure.mode || (legacyBlocks.length > 0 ? 'structured' : 'free_text'),
                 trainingType: structure.trainingType || 'rodaje',
+                description,
                 notes: structure.notes || '',
-                blocks: [],
+                blocks: legacyBlocks,
             },
         });
         setCardioMode('editor');

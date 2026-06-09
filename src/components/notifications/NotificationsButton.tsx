@@ -51,12 +51,14 @@ export function NotificationsButton() {
 
             {/* Panel lateral */}
             <Sheet open={open} onOpenChange={handleOpen}>
-                <SheetContent side="right" className="w-full sm:max-w-sm p-0 flex flex-col">
-                    <SheetHeader className="px-4 py-4 border-b flex-row items-center justify-between space-y-0">
-                        <SheetTitle className="text-base flex items-center gap-2">
-                            <Bell className="h-4 w-4" /> Notificaciones
+                <SheetContent side="right" className="flex h-dvh w-full flex-col p-0 sm:max-w-sm">
+                    <SheetHeader className="shrink-0 border-b px-4 pb-4 pr-14 pt-[calc(env(safe-area-inset-top,0px)+1rem)] text-left">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                        <SheetTitle className="flex min-w-0 items-center gap-2 truncate text-base">
+                            <Bell className="h-4 w-4 shrink-0" />
+                            <span className="truncate">Notificaciones</span>
                             {unreadCount > 0 && (
-                                <span className="bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                                <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-destructive-foreground">
                                     {unreadCount}
                                 </span>
                             )}
@@ -65,16 +67,17 @@ export function NotificationsButton() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-xs text-muted-foreground"
+                                className="h-9 shrink-0 px-2 text-xs text-muted-foreground"
                                 onClick={markAllAsRead}
                             >
-                                <CheckCheck className="h-3.5 w-3.5 mr-1" />
-                                Marcar todas
+                                <CheckCheck className="h-3.5 w-3.5 sm:mr-1" />
+                                <span className="hidden sm:inline">Marcar todas</span>
                             </Button>
                         )}
+                        </div>
                     </SheetHeader>
 
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="flex-1 pb-[env(safe-area-inset-bottom,0px)]">
                         {loading ? (
                             <div className="flex items-center justify-center py-16">
                                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

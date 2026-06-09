@@ -85,9 +85,12 @@ export function CardioSessionBuilder({ template }: CardioSessionBuilderProps) {
         name: template.name,
         description: template.description || initialDescription,
         structure: {
+            ...structure,
+            mode: structure.mode || (legacyBlocks.length > 0 ? 'structured' : 'free_text'),
             trainingType: structure.trainingType || 'rodaje',
+            description: initialDescription,
             notes: structure.notes || '',
-            blocks: [] as CardioBlock[],
+            blocks: legacyBlocks,
         } as CardioStructure,
     }
 
@@ -97,12 +100,7 @@ export function CardioSessionBuilder({ template }: CardioSessionBuilderProps) {
             const result = await updateTemplate(template.id, {
                 name: data.name,
                 description: data.description || null,
-                structure: {
-                    trainingType: data.structure.trainingType,
-                    description: data.description,
-                    notes: data.structure.notes,
-                    blocks: [], // Always empty in simple mode
-                },
+                structure: data.structure,
             })
 
             if (result.success) {

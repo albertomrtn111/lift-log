@@ -14,22 +14,38 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card } from '@/components/ui/card'
-import { Search, Plus, Loader2, ChefHat, Clock, Library, ArrowLeft } from 'lucide-react'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Search, Plus, Loader2, ChefHat, Clock, Library, ArrowLeft, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     searchFoods,
     createFood,
     getRecentFoodsForCurrentClient,
+    getFoodById,
 } from '@/data/nutrition/foods'
-import { searchRecipes, createRecipe } from '@/data/nutrition/recipes'
-import { addNutritionLogEntry } from '@/data/nutrition/log'
+import {
+    searchRecipes,
+    createRecipe,
+    getRecipeById,
+    getRecipeWithIngredients,
+    updateRecipe,
+    deleteRecipe,
+} from '@/data/nutrition/recipes'
+import { addNutritionLogEntry, updateNutritionLogEntry } from '@/data/nutrition/log'
 import {
     macrosForFood,
     macrosForRecipe,
     type Food,
     type Recipe,
+    type RecipeWithIngredients,
     type MealType,
     type DayType,
+    type NutritionLogEntry,
 } from '@/data/nutrition/tracking-types'
 import { format } from 'date-fns'
 
@@ -79,6 +95,7 @@ export function AddFoodDialog({
 
     // Create-new-recipe form
     const [creatingRecipe, setCreatingRecipe] = useState(false)
+    const [editingRecipe, setEditingRecipe] = useState<RecipeWithIngredients | null>(null)
 
     useEffect(() => {
         if (!open) return
@@ -88,11 +105,17 @@ export function AddFoodDialog({
         setSelectedRecipe(null)
         setCreating(false)
         setCreatingRecipe(false)
+        setEditingRecipe(null)
         setTab('recent')
         ;(async () => {
             setLoading(true)
             const [r, lib, recs] = await Promise.all([
-                getRecentFoodsForCurrentClient(20),
+                getRecentFoodsForCurrentClient({
+                    limit: 20,
+                    mealType,
+                    mealLabel: mealLabel ?? null,
+                    mealOrder,
+                }),
                 searchFoods('', 50),
                 searchRecipes('', 30),
             ])
@@ -101,7 +124,7 @@ export function AddFoodDialog({
             setRecipes(recs)
             setLoading(false)
         })()
-    }, [open])
+    }, [open, mealType, mealLabel, mealOrder])
 
     // Re-search when query changes (debounced)
     useEffect(() => {
@@ -153,19 +176,53 @@ export function AddFoodDialog({
         )
     }
 
-    if (creatingRecipe) {
+    const handleEditRecipe = async (recipe: Recipe) => {
+        setLoading(true)
+        const fullRecipe = await getRecipeWithIngredients(recipe.id)
+        setLoading(false)
+        if (!fullRecipe) {
+            toast.error('No se pudo cargar la receta')
+            return
+        }
+        setEditingRecipe(fullRecipe)
+    }
+
+    const handleDeleteRecipe = async (recipe: Recipe) => {
+        const ok = window.confirm(`¿Eliminar "${recipe.name}"?`)
+        if (!ok) return
+        const result = await deleteRecipe(recipe.id)
+        if (!result.success) {
+            toast.error(result.error ?? 'No se pudo eliminar la receta')
+            return
+        }
+        setRecipes(prev => prev.filter(r => r.id !== recipe.id))
+        toast.success('Receta eliminada')
+    }
+
+    if (creatingRecipe || editingRecipe) {
         return (
             <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Crear receta</DialogTitle>
-                        <DialogDescription>Combina alimentos en una receta reutilizable.</DialogDescription>
+                        <DialogTitle>{editingRecipe ? 'Modificar receta' : 'Crear receta'}</DialogTitle>
+                        <DialogDescription>
+                            {editingRecipe ? 'Ajusta ingredientes, gramos o porciones.' : 'Combina alimentos en una receta reutilizable.'}
+                        </DialogDescription>
                     </DialogHeader>
                     <CreateRecipeForm
-                        onCancel={() => setCreatingRecipe(false)}
+                        initialRecipe={editingRecipe}
+                        onCancel={() => {
+                            setCreatingRecipe(false)
+                            setEditingRecipe(null)
+                        }}
                         onCreated={async (r) => {
                             setRecipes(prev => [r, ...prev])
                             setCreatingRecipe(false)
+                            setSelectedRecipe(r)
+                        }}
+                        onUpdated={async (r) => {
+                            setRecipes(prev => prev.map(recipe => recipe.id === r.id ? r : recipe))
+                            setEditingRecipe(null)
                             setSelectedRecipe(r)
                         }}
                     />
@@ -186,7 +243,7 @@ export function AddFoodDialog({
                         mealOrder={mealOrder}
                         dayType={dayType}
                         onBack={() => setSelectedFood(null)}
-                        onAdded={() => {
+                        onSaved={() => {
                             setSelectedFood(null)
                             onAdded()
                             onOpenChange(false)
@@ -209,7 +266,7 @@ export function AddFoodDialog({
                         mealOrder={mealOrder}
                         dayType={dayType}
                         onBack={() => setSelectedRecipe(null)}
-                        onAdded={() => {
+                        onSaved={() => {
                             setSelectedRecipe(null)
                             onAdded()
                             onOpenChange(false)
@@ -279,6 +336,8 @@ export function AddFoodDialog({
                             loading={loading}
                             empty="Aún no hay recetas. Crea una nueva."
                             onSelect={setSelectedRecipe}
+                            onEdit={handleEditRecipe}
+                            onDelete={handleDeleteRecipe}
                         />
                         <div className="px-4 py-3 border-t">
                             <Button variant="outline" className="w-full" onClick={() => setCreatingRecipe(true)}>
@@ -287,6 +346,93 @@ export function AddFoodDialog({
                         </div>
                     </TabsContent>
                 </Tabs>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+export function EditNutritionEntryDialog({
+    open,
+    onOpenChange,
+    entry,
+    onSaved,
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    entry: NutritionLogEntry | null
+    onSaved: () => void
+}) {
+    const [food, setFood] = useState<Food | null>(null)
+    const [recipe, setRecipe] = useState<Recipe | null>(null)
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        if (!open || !entry) return
+        let alive = true
+        ;(async () => {
+            setLoading(true)
+            setFood(null)
+            setRecipe(null)
+            if (entry.food_id) {
+                const f = await getFoodById(entry.food_id)
+                if (alive) setFood(f)
+            } else if (entry.recipe_id) {
+                const r = await getRecipeById(entry.recipe_id)
+                if (alive) setRecipe(r)
+            }
+            if (alive) setLoading(false)
+        })()
+        return () => {
+            alive = false
+        }
+    }, [open, entry])
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+                {loading ? (
+                    <div className="flex items-center justify-center py-10">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                ) : food && entry ? (
+                    <FoodPortionForm
+                        food={food}
+                        entry={entry}
+                        date={new Date(entry.log_date)}
+                        mealType={entry.meal_type}
+                        mealLabel={entry.meal_label ?? undefined}
+                        mealOrder={entry.meal_order}
+                        dayType={entry.day_type}
+                        onBack={() => onOpenChange(false)}
+                        onSaved={() => {
+                            onSaved()
+                            onOpenChange(false)
+                        }}
+                    />
+                ) : recipe && entry ? (
+                    <RecipePortionForm
+                        recipe={recipe}
+                        entry={entry}
+                        date={new Date(entry.log_date)}
+                        mealType={entry.meal_type}
+                        mealLabel={entry.meal_label ?? undefined}
+                        mealOrder={entry.meal_order}
+                        dayType={entry.day_type}
+                        onBack={() => onOpenChange(false)}
+                        onSaved={() => {
+                            onSaved()
+                            onOpenChange(false)
+                        }}
+                    />
+                ) : (
+                    <>
+                        <DialogHeader>
+                            <DialogTitle>Editar alimento</DialogTitle>
+                            <DialogDescription>No se pudo cargar el alimento original.</DialogDescription>
+                        </DialogHeader>
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>
+                    </>
+                )}
             </DialogContent>
         </Dialog>
     )
@@ -347,11 +493,15 @@ function RecipeList({
     loading,
     empty,
     onSelect,
+    onEdit,
+    onDelete,
 }: {
     recipes: Recipe[]
     loading: boolean
     empty: string
     onSelect: (r: Recipe) => void
+    onEdit: (r: Recipe) => void
+    onDelete: (r: Recipe) => void
 }) {
     return (
         <ScrollArea className="h-[42vh] px-4">
@@ -365,15 +515,39 @@ function RecipeList({
                 <ul className="divide-y">
                     {recipes.map(r => (
                         <li key={r.id}>
-                            <button
-                                onClick={() => onSelect(r)}
-                                className="w-full text-left py-3 hover:bg-muted/50 transition-colors px-1 rounded"
-                            >
-                                <p className="text-sm font-medium truncate">{r.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {Math.round(r.total_kcal / r.servings)} kcal/porción · {r.servings} porciones
-                                </p>
-                            </button>
+                            <div className="flex items-center gap-2 rounded px-1 py-2 hover:bg-muted/50 transition-colors">
+                                <button
+                                    onClick={() => onSelect(r)}
+                                    className="min-w-0 flex-1 text-left py-1"
+                                >
+                                    <p className="text-sm font-medium truncate">{r.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {Math.round(r.total_kcal / r.servings)} kcal/porción · {r.servings} porciones
+                                    </p>
+                                </button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-9 w-9 shrink-0"
+                                            aria-label={`Acciones de ${r.name}`}
+                                        >
+                                            <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-40">
+                                        <DropdownMenuItem onClick={() => onEdit(r)}>
+                                            <Pencil className="mr-2 h-4 w-4" />
+                                            Modificar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onDelete(r)} className="text-destructive focus:text-destructive">
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Eliminar
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -387,34 +561,36 @@ function RecipeList({
 // ----------------------------------------------------------------------------
 function FoodPortionForm({
     food,
+    entry,
     date,
     mealType,
     mealLabel,
     mealOrder,
     dayType,
     onBack,
-    onAdded,
+    onSaved,
 }: {
     food: Food
+    entry?: NutritionLogEntry | null
     date: Date
     mealType: MealType
     mealLabel?: string
     mealOrder: number
     dayType: DayType | null
     onBack: () => void
-    onAdded: () => void
+    onSaved: () => void
 }) {
-    const [grams, setGrams] = useState<number>(food.serving_size_g || 100)
+    const [grams, setGrams] = useState<number>(entry?.quantity_g || food.serving_size_g || 100)
     const [saving, setSaving] = useState(false)
     const macros = macrosForFood(food, grams || 0)
 
-    const handleAdd = async () => {
+    const handleSave = async () => {
         if (!grams || grams <= 0) {
             toast.error('Introduce los gramos')
             return
         }
         setSaving(true)
-        const res = await addNutritionLogEntry({
+        const payload = {
             log_date: format(date, 'yyyy-MM-dd'),
             meal_type: mealType,
             meal_label: mealLabel ?? null,
@@ -429,14 +605,17 @@ function FoodPortionForm({
             fat_g: macros.fat_g,
             item_name: food.name + (food.brand ? ` · ${food.brand}` : ''),
             day_type: dayType ?? null,
-        })
+        }
+        const res = entry
+            ? await updateNutritionLogEntry(entry.id, payload)
+            : await addNutritionLogEntry(payload)
         setSaving(false)
         if (!res) {
             toast.error('No se pudo guardar')
             return
         }
-        toast.success('Añadido')
-        onAdded()
+        toast.success(entry ? 'Alimento actualizado' : 'Añadido')
+        onSaved()
     }
 
     return (
@@ -479,9 +658,9 @@ function FoodPortionForm({
                     </div>
                 </Card>
 
-                <Button onClick={handleAdd} className="w-full" disabled={saving}>
+                <Button onClick={handleSave} className="w-full" disabled={saving}>
                     {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    Añadir a {mealLabel ?? 'la comida'}
+                    {entry ? 'Guardar cambios' : `Añadir a ${mealLabel ?? 'la comida'}`}
                 </Button>
             </div>
         </>
@@ -490,34 +669,36 @@ function FoodPortionForm({
 
 function RecipePortionForm({
     recipe,
+    entry,
     date,
     mealType,
     mealLabel,
     mealOrder,
     dayType,
     onBack,
-    onAdded,
+    onSaved,
 }: {
     recipe: Recipe
+    entry?: NutritionLogEntry | null
     date: Date
     mealType: MealType
     mealLabel?: string
     mealOrder: number
     dayType: DayType | null
     onBack: () => void
-    onAdded: () => void
+    onSaved: () => void
 }) {
-    const [servings, setServings] = useState<number>(1)
+    const [servings, setServings] = useState<number>(entry?.servings || 1)
     const [saving, setSaving] = useState(false)
     const macros = macrosForRecipe(recipe, servings || 0)
 
-    const handleAdd = async () => {
+    const handleSave = async () => {
         if (!servings || servings <= 0) {
             toast.error('Introduce las porciones')
             return
         }
         setSaving(true)
-        const res = await addNutritionLogEntry({
+        const payload = {
             log_date: format(date, 'yyyy-MM-dd'),
             meal_type: mealType,
             meal_label: mealLabel ?? null,
@@ -532,14 +713,17 @@ function RecipePortionForm({
             fat_g: macros.fat_g,
             item_name: recipe.name,
             day_type: dayType ?? null,
-        })
+        }
+        const res = entry
+            ? await updateNutritionLogEntry(entry.id, payload)
+            : await addNutritionLogEntry(payload)
         setSaving(false)
         if (!res) {
             toast.error('No se pudo guardar')
             return
         }
-        toast.success('Añadido')
-        onAdded()
+        toast.success(entry ? 'Alimento actualizado' : 'Añadido')
+        onSaved()
     }
 
     return (
@@ -577,9 +761,9 @@ function RecipePortionForm({
                     </div>
                 </Card>
 
-                <Button onClick={handleAdd} className="w-full" disabled={saving}>
+                <Button onClick={handleSave} className="w-full" disabled={saving}>
                     {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    Añadir a {mealLabel ?? 'la comida'}
+                    {entry ? 'Guardar cambios' : `Añadir a ${mealLabel ?? 'la comida'}`}
                 </Button>
             </div>
         </>
@@ -700,18 +884,29 @@ function CreateFoodForm({
 // Crear receta
 // ----------------------------------------------------------------------------
 function CreateRecipeForm({
+    initialRecipe,
     onCancel,
     onCreated,
+    onUpdated,
 }: {
+    initialRecipe?: RecipeWithIngredients | null
     onCancel: () => void
     onCreated: (r: Recipe) => void
+    onUpdated?: (r: Recipe) => void
 }) {
-    const [name, setName] = useState('')
-    const [servings, setServings] = useState('1')
+    const [name, setName] = useState(initialRecipe?.name ?? '')
+    const [servings, setServings] = useState(String(initialRecipe?.servings ?? 1))
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<Food[]>([])
     const [searching, setSearching] = useState(false)
-    const [items, setItems] = useState<Array<{ food: Food; grams: number }>>([])
+    const [items, setItems] = useState<Array<{ food: Food; grams: number }>>(
+        (initialRecipe?.ingredients ?? [])
+            .filter((ingredient) => ingredient.food)
+            .map((ingredient) => ({
+                food: ingredient.food as Food,
+                grams: Number(ingredient.grams) || 0,
+            }))
+    )
     const [saving, setSaving] = useState(false)
 
     useEffect(() => {
@@ -751,19 +946,26 @@ function CreateRecipeForm({
         if (items.length === 0) return toast.error('Añade al menos un ingrediente')
         const s = parseDecimalInput(servings, 1)
         setSaving(true)
-        const r = await createRecipe({
+        const payload = {
             name: name.trim(),
             servings: s,
             ingredients: items,
             is_public: true,
-        })
+        }
+        const r = initialRecipe
+            ? await updateRecipe(initialRecipe.id, payload)
+            : await createRecipe(payload)
         setSaving(false)
         if (!r) {
-            toast.error('No se pudo crear')
+            toast.error(initialRecipe ? 'No se pudo modificar' : 'No se pudo crear')
             return
         }
-        toast.success('Receta creada')
-        onCreated(r)
+        toast.success(initialRecipe ? 'Receta modificada' : 'Receta creada')
+        if (initialRecipe && onUpdated) {
+            onUpdated(r)
+        } else {
+            onCreated(r)
+        }
     }
 
     return (
@@ -846,7 +1048,8 @@ function CreateRecipeForm({
             <div className="flex gap-2 pt-2">
                 <Button variant="outline" onClick={onCancel} disabled={saving} className="flex-1">Cancelar</Button>
                 <Button onClick={handleSubmit} disabled={saving} className="flex-1">
-                    {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null} Crear receta
+                    {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    {initialRecipe ? 'Guardar cambios' : 'Crear receta'}
                 </Button>
             </div>
         </div>
