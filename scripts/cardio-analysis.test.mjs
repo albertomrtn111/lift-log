@@ -18,7 +18,7 @@ test('analyzeCardioSessionExecution slices structured intervals from streams', (
     structure: {
       mode: 'structured',
       blocks: [
-        { id: 'warmup', type: 'continuous', label: 'Calentamiento', duration: 10, targetPace: 'suave' },
+        { id: 'warmup', type: 'warmup', label: 'Calentamiento', duration: 10, targetPace: 'suave' },
         { id: 'main', type: 'intervals', sets: 2, workDistance: 1, workTargetPace: '4:15/km', restDuration: 2 },
         { id: 'cooldown', type: 'cooldown', label: 'Vuelta calma', duration: 5, targetPace: 'suave' },
       ],
@@ -68,6 +68,8 @@ test('analyzeCardioSessionExecution uses time axis for duration-only plans', () 
   })
 
   assert.equal(result.chartAxis, 'time')
+  assert.equal(result.segments[0].kind, 'steady')
+  assert.equal(result.segments[0].label, 'Continuo')
   assert.equal(result.segments[0].actualDurationSec, 1200)
 })
 
@@ -117,4 +119,3 @@ test('analyzeCardioSessionExecution falls back to whole activity without streams
   assert.equal(result.segments[0].actualDistanceMeters, 10000)
   assert.equal(result.segments[0].avgHeartRate, 145)
 })
-

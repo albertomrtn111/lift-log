@@ -78,7 +78,10 @@ export default function RoutinePageClient({
         if (markedDays.current.has(markKey)) return
 
         markedDays.current.add(markKey)
-        await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId, sessionDate)
+        const result = await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId, sessionDate)
+        if (!result.success) {
+            console.error('[RoutinePageClient] Could not mark strength day complete:', result.error)
+        }
         router.refresh()
     }, [clientId, getSessionDate, program.id, router, selectedDayId, selectedWeek])
 

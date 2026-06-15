@@ -264,13 +264,13 @@ async function advanceReviewScheduleForCheckin(
 ) {
     const { data: checkin } = await supabase
         .from('checkins')
-        .select('id, period_end, review_schedule_id, review_template_id')
+        .select('id, period_start, period_end, submitted_at, created_at, review_schedule_id, review_template_id')
         .eq('id', checkinId)
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
         .maybeSingle()
 
-    if (!checkin?.period_end) return null
+    if (!checkin) return null
 
     type ScheduleRow = {
         id: string
@@ -279,6 +279,12 @@ async function advanceReviewScheduleForCheckin(
         next_due_date: string | null
         is_active: boolean
     }
+
+    const submittedDate = checkin.submitted_at?.slice(0, 10) ?? null
+    const createdDate = checkin.created_at?.slice(0, 10) ?? null
+    let effectivePeriodEnd = checkin.period_end ?? submittedDate ?? createdDate
+
+    if (!effectivePeriodEnd) return null
 
     let schedules: ScheduleRow[] = []
 
@@ -302,21 +308,52 @@ async function advanceReviewScheduleForCheckin(
             .order('next_due_date', { ascending: true, nullsFirst: false })
 
         const activeSchedules = (data ?? []) as ScheduleRow[]
-        const exactMatches = activeSchedules.filter((schedule) => schedule.next_due_date === checkin.period_end)
+        const exactMatches = activeSchedules.filter((schedule) => schedule.next_due_date === effectivePeriodEnd)
         if (exactMatches.length === 1) {
             schedules = exactMatches
         } else {
             const dueMatches = activeSchedules.filter((schedule) => {
-                return schedule.next_due_date != null && schedule.next_due_date <= checkin.period_end!
+                return schedule.next_due_date != null && schedule.next_due_date <= effectivePeriodEnd!
             })
-            if (dueMatches.length === 1) schedules = dueMatches
+            if (dueMatches.length === 1) {
+                schedules = dueMatches
+            } else if (activeSchedules.length === 1) {
+                schedules = activeSchedules
+                effectivePeriodEnd = activeSchedules[0].next_due_date ?? effectivePeriodEnd
+            }
         }
     }
 
     const schedule = schedules[0]
-    if (!schedule?.next_due_date) return null
+    if (!schedule) return null
 
-    if (schedule.next_due_date > checkin.period_end) {
+    const scheduleAnchorDate = schedule.next_due_date ?? effectivePeriodEnd
+    const periodStart = checkin.period_start ?? (() => {
+        const start = new Date(`${effectivePeriodEnd}T12:00:00`)
+        start.setDate(start.getDate() - schedule.frequency_days)
+        return toLocalDateStr(start)
+    })()
+
+    if (
+        !checkin.review_schedule_id ||
+        !checkin.review_template_id ||
+        !checkin.period_end ||
+        !checkin.period_start
+    ) {
+        await supabase
+            .from('checkins')
+            .update({
+                review_schedule_id: checkin.review_schedule_id ?? schedule.id,
+                review_template_id: checkin.review_template_id ?? schedule.review_template_id,
+                period_start: periodStart,
+                period_end: checkin.period_end ?? effectivePeriodEnd,
+            })
+            .eq('id', checkinId)
+            .eq('coach_id', coachId)
+            .eq('client_id', clientId)
+    }
+
+    if (schedule.next_due_date && schedule.next_due_date > effectivePeriodEnd) {
         return {
             scheduleId: schedule.id,
             nextDueDate: schedule.next_due_date,
@@ -324,7 +361,7 @@ async function advanceReviewScheduleForCheckin(
         }
     }
 
-    const nextDueDate = advanceDateByFrequency(schedule.next_due_date, schedule.frequency_days)
+    const nextDueDate = advanceDateByFrequency(scheduleAnchorDate, schedule.frequency_days)
     const { error: scheduleError } = await supabase
         .from('client_review_schedules')
         .update({ next_due_date: nextDueDate })
@@ -335,18 +372,6 @@ async function advanceReviewScheduleForCheckin(
     if (scheduleError) {
         console.error('[advanceReviewScheduleForCheckin] schedule update failed:', scheduleError)
         return null
-    }
-
-    if (!checkin.review_schedule_id) {
-        await supabase
-            .from('checkins')
-            .update({
-                review_schedule_id: schedule.id,
-                review_template_id: checkin.review_template_id ?? schedule.review_template_id,
-            })
-            .eq('id', checkinId)
-            .eq('coach_id', coachId)
-            .eq('client_id', clientId)
     }
 
     await supabase

@@ -72,6 +72,8 @@ interface CalendarViewProps {
     initialData: CalendarData
     initialYear: number
     initialMonth: number
+    initialViewMode?: ViewMode
+    initialWeekStart?: string
 }
 
 const MONTH_NAMES = [
@@ -232,7 +234,14 @@ function MiniInfo({
     )
 }
 
-export function CalendarView({ coachId, initialData, initialYear, initialMonth }: CalendarViewProps) {
+export function CalendarView({
+    coachId,
+    initialData,
+    initialYear,
+    initialMonth,
+    initialViewMode = 'week',
+    initialWeekStart,
+}: CalendarViewProps) {
     const [year, setYear] = useState(initialYear)
     const [month, setMonth] = useState(initialMonth)
     const [events, setEvents] = useState<CalendarEvent[]>(sortEvents(initialData.events))
@@ -240,9 +249,13 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
     const [tasksEnabled, setTasksEnabled] = useState(initialData.tasksEnabled)
     const [clientOptions, setClientOptions] = useState(initialData.clientOptions)
     const [loading, setLoading] = useState(false)
-    const [viewMode, setViewMode] = useState<ViewMode>('month')
+    const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
     const [selectedDate, setSelectedDate] = useState<string | null>(null)
-    const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+    const [weekStart, setWeekStart] = useState(() =>
+        initialWeekStart
+            ? startOfWeek(toDateAtNoon(initialWeekStart), { weekStartsOn: 1 })
+            : startOfWeek(new Date(), { weekStartsOn: 1 })
+    )
     const [activeFilter, setActiveFilter] = useState<CalendarFilter>('all')
     const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false)
     const [taskDate, setTaskDate] = useState(() => formatDateKey(new Date()))
@@ -361,8 +374,18 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         }
     }, [applyData])
 
-    const syncUrl = useCallback((date: Date) => {
-        window.history.replaceState(null, '', `/coach/calendar?year=${date.getFullYear()}&month=${date.getMonth()}`)
+    const syncUrl = useCallback((date: Date, mode: ViewMode) => {
+        const searchParams = new URLSearchParams({
+            view: mode,
+            year: String(date.getFullYear()),
+            month: String(date.getMonth()),
+        })
+
+        if (mode === 'week') {
+            searchParams.set('start', formatDateKey(startOfWeek(date, { weekStartsOn: 1 })))
+        }
+
+        window.history.replaceState(null, '', `/coach/calendar?${searchParams.toString()}`)
     }, [])
 
     const loadMonth = useCallback(async (targetYear: number, targetMonth: number) => {
@@ -372,7 +395,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         })
         setYear(targetYear)
         setMonth(targetMonth)
-        syncUrl(new Date(targetYear, targetMonth, 1))
+        syncUrl(new Date(targetYear, targetMonth, 1), 'month')
         await fetchData(searchParams)
     }, [fetchData, syncUrl])
 
@@ -385,7 +408,7 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
         setWeekStart(targetWeekStart)
         setYear(targetWeekStart.getFullYear())
         setMonth(targetWeekStart.getMonth())
-        syncUrl(targetWeekStart)
+        syncUrl(targetWeekStart, 'week')
         await fetchData(searchParams)
     }, [fetchData, syncUrl])
 
@@ -643,8 +666,8 @@ export function CalendarView({ coachId, initialData, initialYear, initialMonth }
 
                     <div className="flex items-center justify-center gap-1 rounded-lg bg-muted/50 p-1 lg:justify-end">
                         {[
-                            { key: 'month' as ViewMode, label: 'Mes' },
                             { key: 'week' as ViewMode, label: 'Semana' },
+                            { key: 'month' as ViewMode, label: 'Mes' },
                         ].map((tab) => (
                             <button
                                 key={tab.key}

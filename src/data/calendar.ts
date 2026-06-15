@@ -118,6 +118,52 @@ function compareEvents(left: CalendarEvent, right: CalendarEvent) {
     return left.clientName.localeCompare(right.clientName, 'es')
 }
 
+function calendarEventDedupeKey(event: CalendarEvent) {
+    return [
+        event.clientId,
+        event.date,
+        event.type,
+        event.status,
+        event.source ?? '',
+        event.reviewScheduleId ?? '',
+        event.checkinId ?? '',
+    ].join(':')
+}
+
+function dedupeCalendarEvents(events: CalendarEvent[]) {
+    const seen = new Set<string>()
+    const deduped: CalendarEvent[] = []
+
+    for (const event of events) {
+        const exactKey = calendarEventDedupeKey(event)
+        if (seen.has(exactKey)) continue
+        seen.add(exactKey)
+
+        if (event.status === 'scheduled') {
+            const sameClientDayScheduled = deduped.find((existing) =>
+                existing.status === 'scheduled' &&
+                existing.source === 'scheduled' &&
+                existing.clientId === event.clientId &&
+                existing.date === event.date
+            )
+
+            if (sameClientDayScheduled) {
+                const existingHasSchedule = !!sameClientDayScheduled.reviewScheduleId
+                const incomingHasSchedule = !!event.reviewScheduleId
+                if (existingHasSchedule || !incomingHasSchedule) continue
+
+                const index = deduped.indexOf(sameClientDayScheduled)
+                deduped[index] = event
+                continue
+            }
+        }
+
+        deduped.push(event)
+    }
+
+    return deduped
+}
+
 function buildSubmittedEvent(
     checkin: CheckinRecord,
     review: ReviewRecord | undefined,
@@ -567,6 +613,10 @@ export async function getCalendarData(
             if (pendingCheckin && client.next_checkin_date) {
                 const dueDate = pendingCheckin.period_end || client.next_checkin_date
                 if (dueDate >= range.startDate && dueDate <= range.endDate) {
+                    const hasScheduleOnSameDate = clientSchedules.some((schedule) => schedule.next_due_date === dueDate)
+                    if (hasScheduleOnSameDate) {
+                        continue
+                    }
                     if (resolvedSubmittedKeys.has(getClientResolutionKey(client.id, dueDate))) {
                         continue
                     }
@@ -639,7 +689,7 @@ export async function getCalendarData(
     }
 
     return {
-        events: events.sort((left, right) => {
+        events: dedupeCalendarEvents(events).sort((left, right) => {
             const dateDiff = left.date.localeCompare(right.date)
             if (dateDiff !== 0) return dateDiff
             return compareEvents(left, right)

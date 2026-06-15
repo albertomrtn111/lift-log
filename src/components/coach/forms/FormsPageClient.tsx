@@ -18,6 +18,7 @@ import {
 } from '@/data/form-templates'
 import {
     deleteReviewTemplateAction,
+    duplicateReviewTemplateAction,
     toggleReviewTemplateActiveAction,
 } from './review-template-actions'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -66,6 +67,7 @@ import {
 
 type FormTabType = 'onboarding'
 type TabType = FormTabType | 'review-templates'
+type BuilderTemplateType = 'onboarding' | 'checkin'
 
 const TAB_CONFIG: { value: TabType; label: string }[] = [
     { value: 'review-templates', label: 'Revisiones' },
@@ -92,6 +94,7 @@ export function FormsPageClient({
     const [isPending, startTransition] = useTransition()
     const [activeTab, setActiveTab] = useState<TabType>('review-templates')
     const [builderOpen, setBuilderOpen] = useState(false)
+    const [builderTemplateType, setBuilderTemplateType] = useState<BuilderTemplateType>('onboarding')
     const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null)
     const [builderInitialData, setBuilderInitialData] = useState<FormBuilderInitialData | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<FormTemplate | null>(null)
@@ -114,12 +117,14 @@ export function FormsPageClient({
             setReviewDialogOpen(true)
             return
         }
+        setBuilderTemplateType('onboarding')
         setEditingTemplate(null)
         setBuilderInitialData(null)
         setBuilderOpen(true)
     }
 
     const handleEdit = (template: FormTemplate) => {
+        setBuilderTemplateType(template.type === 'checkin' ? 'checkin' : 'onboarding')
         setBuilderInitialData(null)
         setEditingTemplate(template)
         setBuilderOpen(true)
@@ -148,6 +153,18 @@ export function FormsPageClient({
         setDeleteReviewTarget(rt)
     }
 
+    const handleDuplicateReview = (rt: ReviewTemplate) => {
+        startTransition(async () => {
+            const result = await duplicateReviewTemplateAction(rt.id)
+            if (result.success) {
+                toast({ title: 'Revisión duplicada' })
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        })
+    }
+
     const confirmDeleteReview = () => {
         if (!deleteReviewTarget) return
         startTransition(async () => {
@@ -168,10 +185,10 @@ export function FormsPageClient({
     }
 
     const handleGeneratedDraft = (type: 'onboarding' | 'checkin', data: FormBuilderInitialData) => {
-        if (type !== 'onboarding') return
+        setBuilderTemplateType(type)
         setEditingTemplate(null)
         setBuilderInitialData(data)
-        setActiveTab(type)
+        setActiveTab(type === 'onboarding' ? 'onboarding' : 'review-templates')
         setBuilderOpen(true)
     }
 
@@ -200,12 +217,14 @@ export function FormsPageClient({
         } else {
             const result = await createFormTemplate({
                 title: data.title,
-                type: 'onboarding',
+                type: builderTemplateType,
                 schema: data.schema,
-                assigned_client_ids: data.assigned_client_ids,
+                assigned_client_ids: builderTemplateType === 'onboarding'
+                    ? data.assigned_client_ids
+                    : undefined,
             })
             if (result.success) {
-                toast({ title: 'Plantilla creada' })
+                toast({ title: builderTemplateType === 'checkin' ? 'Formulario creado' : 'Plantilla creada' })
                 handleBuilderOpenChange(false)
                 router.refresh()
             } else {
@@ -286,19 +305,17 @@ export function FormsPageClient({
                             )
                         })}
                     </TabsList>
-                    <div className="flex items-center gap-2">
-                        {!isReviewTab && (
-                            <AIFormDialog
-                                defaultType="onboarding"
-                                allowedTypes={['onboarding']}
-                                onGenerated={handleGeneratedDraft}
-                                trigger={
-                                    <AIActionButton>
-                                        Generar con IA
-                                    </AIActionButton>
-                                }
-                            />
-                        )}
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <AIFormDialog
+                            defaultType={isReviewTab ? 'checkin' : 'onboarding'}
+                            allowedTypes={[isReviewTab ? 'checkin' : 'onboarding']}
+                            onGenerated={handleGeneratedDraft}
+                            trigger={
+                                <AIActionButton>
+                                    Generar con IA
+                                </AIActionButton>
+                            }
+                        />
                         <Button onClick={handleCreate} className="gap-1.5 shrink-0">
                             <Plus className="h-4 w-4" />
                             {isReviewTab ? 'Crear revisión' : 'Crear onboarding'}
@@ -323,6 +340,7 @@ export function FormsPageClient({
                         formTemplatesById={Object.fromEntries(templates.map(t => [t.id, t]))}
                         isPending={isPending}
                         onEdit={handleEditReview}
+                        onDuplicate={handleDuplicateReview}
                         onToggleActive={handleToggleReviewActive}
                         onDelete={handleDeleteReview}
                     />
@@ -333,7 +351,7 @@ export function FormsPageClient({
             <FormBuilderModal
                 open={builderOpen}
                 onOpenChange={handleBuilderOpenChange}
-                templateType="onboarding"
+                templateType={builderTemplateType}
                 editingTemplate={editingTemplate}
                 initialData={builderInitialData}
                 activeClients={activeClients}
@@ -533,6 +551,7 @@ function ReviewTemplatesTable({
     formTemplatesById,
     isPending,
     onEdit,
+    onDuplicate,
     onToggleActive,
     onDelete,
 }: {
@@ -540,6 +559,7 @@ function ReviewTemplatesTable({
     formTemplatesById: Record<string, FormTemplate>
     isPending: boolean
     onEdit: (rt: ReviewTemplate) => void
+    onDuplicate: (rt: ReviewTemplate) => void
     onToggleActive: (rt: ReviewTemplate) => void
     onDelete: (rt: ReviewTemplate) => void
 }) {
@@ -637,6 +657,10 @@ function ReviewTemplatesTable({
                                             <DropdownMenuItem onClick={() => onEdit(rt)}>
                                                 <Pencil className="mr-2 h-4 w-4" />
                                                 Editar
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => onDuplicate(rt)}>
+                                                <Copy className="mr-2 h-4 w-4" />
+                                                Duplicar
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => onToggleActive(rt)}>
                                                 <Power className="mr-2 h-4 w-4" />

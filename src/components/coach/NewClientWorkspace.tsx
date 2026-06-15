@@ -314,8 +314,8 @@ export function NewClientWorkspace({
                         </TabsTrigger>
                     </TabsList>
 
-                        <div className="mt-4 min-h-[500px] min-w-0 max-w-full overflow-x-hidden">
-                            <TabsContent value="athlete-profile" className="min-w-0">
+                        <div className="min-h-[500px] min-w-0 max-w-full overflow-x-hidden">
+                            <TabsContent value="athlete-profile" className="mt-0 min-w-0">
                                 <AthleteProfileTab
                                     key={selectedClient.id}
                                     clientId={selectedClient.id}
@@ -324,7 +324,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="onboarding" className="min-w-0">
+                            <TabsContent value="onboarding" className="mt-0 min-w-0">
                                 <OnboardingTab
                                     clientId={selectedClient.id}
                                     coachId={coachId}
@@ -332,7 +332,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="resumen" className="min-w-0">
+                            <TabsContent value="resumen" className="mt-0 min-w-0">
                                 <ResumenTab
                                     coachId={coachId}
                                     clientId={selectedClient.id}
@@ -350,7 +350,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="nextia" className="min-w-0">
+                            <TabsContent value="nextia" className="mt-0 min-w-0">
                                 <NextIAChatPanel
                                     coachId={coachId}
                                     clientId={selectedClient.id}
@@ -359,7 +359,7 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="plan" className="min-w-0">
+                            <TabsContent value="plan" className="mt-0 min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -373,7 +373,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="events" className="min-w-0">
+                            <TabsContent value="events" className="mt-0 min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -386,7 +386,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="checkins" className="min-w-0">
+                            <TabsContent value="checkins" className="mt-0 min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (
@@ -401,7 +401,7 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="progreso" className="min-w-0">
+                            <TabsContent value="progreso" className="mt-0 min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
                                 ) : (

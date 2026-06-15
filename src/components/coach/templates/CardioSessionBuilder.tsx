@@ -19,14 +19,15 @@ function blocksToText(blocks: CardioBlock[]): string {
         const parts: string[] = []
         const prefix = `Bloque ${i + 1}`
 
-        if (block.type === 'continuous') {
+        if (block.type === 'warmup' || block.type === 'continuous' || block.type === 'cooldown') {
             const details: string[] = []
             if (block.distance) details.push(`${block.distance}km`)
             if (block.duration) details.push(`${block.duration} min`)
             const pacing = block.targetPace || block.intensity
             if (pacing) details.push(`@ ${pacing}`)
             if (block.targetHR) details.push(`[${block.targetHR}]`)
-            parts.push(`${prefix} – Continuo: ${details.join(' – ') || 'Sin detalles'}`)
+            const label = block.type === 'warmup' ? 'Calentamiento' : block.type === 'cooldown' ? 'Enfriamiento' : 'Continuo'
+            parts.push(`${prefix} – ${label}: ${details.join(' – ') || 'Sin detalles'}`)
         } else if (block.type === 'intervals') {
             const details: string[] = []
             const sets = block.sets || '?'
@@ -49,11 +50,6 @@ function blocksToText(blocks: CardioBlock[]): string {
             parts.push(`${prefix} – Estación: ${details.join(' – ') || 'Sin detalles'}`)
         } else {
             parts.push(`${prefix}: ${block.notes || 'Sin detalles'}`)
-        }
-
-        // Append block-level notes if not already used
-        if (block.notes && block.type !== 'station') {
-            parts.push(`  Notas: ${block.notes}`)
         }
 
         return parts.join('\n')

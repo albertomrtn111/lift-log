@@ -32,7 +32,7 @@ export interface CardioStructure {
     notes?: string
 }
 
-export type CardioBlockType = 'continuous' | 'intervals' | 'cooldown' | 'station'
+export type CardioBlockType = 'warmup' | 'continuous' | 'intervals' | 'cooldown' | 'station'
 
 export interface CardioBlock {
     id: string

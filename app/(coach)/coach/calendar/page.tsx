@@ -1,11 +1,31 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import { getCalendarDataForMonth } from '@/data/calendar'
+import { getCalendarData, getCalendarDataForMonth } from '@/data/calendar'
 import { CalendarView } from '@/components/coach/CalendarView'
 import { Calendar } from 'lucide-react'
 
 interface CalendarPageProps {
-    searchParams: Promise<{ month?: string; year?: string }>
+    searchParams: Promise<{ month?: string; year?: string; view?: string; start?: string }>
+}
+
+function formatDateKey(date: Date) {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
+function startOfMondayWeek(date: Date) {
+    const copy = new Date(date)
+    const offset = (copy.getDay() + 6) % 7
+    copy.setDate(copy.getDate() - offset)
+    copy.setHours(12, 0, 0, 0)
+    return copy
+}
+
+function parseLocalDate(dateStr?: string) {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
+    return new Date(`${dateStr}T12:00:00`)
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
@@ -21,8 +41,16 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     const now = new Date()
     const year = params.year ? parseInt(params.year) : now.getFullYear()
     const month = params.month ? parseInt(params.month) : now.getMonth()
+    const hasExplicitMonth = Boolean(params.year || params.month)
+    const initialViewMode = params.view === 'month' || (!params.view && hasExplicitMonth) ? 'month' : 'week'
+    const initialWeekStart = startOfMondayWeek(parseLocalDate(params.start) ?? now)
 
-    const calendarData = await getCalendarDataForMonth(coachId, year, month)
+    const calendarData = initialViewMode === 'month'
+        ? await getCalendarDataForMonth(coachId, year, month)
+        : await getCalendarData(coachId, {
+            startDate: formatDateKey(initialWeekStart),
+            endDate: formatDateKey(new Date(initialWeekStart.getFullYear(), initialWeekStart.getMonth(), initialWeekStart.getDate() + 6)),
+        })
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
@@ -48,6 +76,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                     initialData={calendarData}
                     initialYear={year}
                     initialMonth={month}
+                    initialViewMode={initialViewMode}
+                    initialWeekStart={formatDateKey(initialWeekStart)}
                 />
             </div>
         </div>

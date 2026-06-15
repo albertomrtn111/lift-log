@@ -54,14 +54,15 @@ function blocksToText(blocks: CardioBlock[]): string {
     if (!blocks || blocks.length === 0) return ''
     return blocks.map((block, i) => {
         const prefix = `Bloque ${i + 1}`
-        if (block.type === 'continuous') {
+        if (block.type === 'warmup' || block.type === 'continuous' || block.type === 'cooldown') {
             const d: string[] = []
             if (block.distance) d.push(`${block.distance}km`)
             if (block.duration) d.push(`${block.duration} min`)
             const pace = block.targetPace || block.intensity
             if (pace) d.push(`@ ${pace}`)
             if (block.targetHR) d.push(`[${block.targetHR}]`)
-            return `${prefix} – Continuo: ${d.join(' – ') || 'Sin detalles'}`
+            const label = block.type === 'warmup' ? 'Calentamiento' : block.type === 'cooldown' ? 'Enfriamiento' : 'Continuo'
+            return `${prefix} – ${label}: ${d.join(' – ') || 'Sin detalles'}`
         }
         if (block.type === 'intervals') {
             const sets = block.sets || '?'

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClientId, getActiveClientProgram } from '@/data/client-schedule'
+import { resolveRoutineInitialSelection } from '@/lib/training/routine-defaults'
 import RoutinePageClient from './RoutinePageClient'
 import { Dumbbell } from 'lucide-react'
 
@@ -57,9 +58,14 @@ export default async function RoutinePage(
         )
     }
 
-    const initialWeek = searchParams.week ? parseInt(searchParams.week) : 1
-    const initialDayId = searchParams.dayId
-    const initialSessionDate = searchParams.date
+    const defaultSelection = resolveRoutineInitialSelection({
+        program: data.program,
+        days: data.days,
+    })
+    const parsedWeek = searchParams.week ? parseInt(searchParams.week) : null
+    const initialWeek = parsedWeek && Number.isFinite(parsedWeek) ? parsedWeek : defaultSelection.week
+    const initialDayId = searchParams.dayId || defaultSelection.dayId
+    const initialSessionDate = searchParams.date || defaultSelection.sessionDate || undefined
 
     return (
         <RoutinePageClient

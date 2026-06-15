@@ -7,10 +7,12 @@ import {
     createReviewTemplate,
     updateReviewTemplate,
     deleteReviewTemplate,
+    getReviewTemplate,
     setReviewTemplateMetrics,
     listReviewTemplateMetrics,
     type ReviewTemplateInput,
 } from '@/data/review-templates'
+import { buildDuplicatedReviewTemplateInput } from '@/lib/reviews/review-template-copy'
 
 export async function listReviewTemplateMetricsAction(
     reviewTemplateId: string
@@ -168,6 +170,40 @@ export async function updateReviewTemplateAction(
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Error al actualizar la plantilla',
+        }
+    }
+}
+
+export async function duplicateReviewTemplateAction(id: string): Promise<ActionResult> {
+    try {
+        const { coachId } = await requireActiveCoachId()
+        await assertReviewTemplateBelongsToCoach(id, coachId)
+
+        const source = await getReviewTemplate(id)
+        if (!source) {
+            return { success: false, error: 'No se ha encontrado la plantilla' }
+        }
+
+        await assertFormTemplateBelongsToCoach(source.form_template_id, coachId)
+        const metricIds = (await listReviewTemplateMetrics(id)).map((metric) => metric.metric_id)
+        await assertMetricIdsBelongToCoach(metricIds, coachId)
+
+        const created = await createReviewTemplate(
+            coachId,
+            buildDuplicatedReviewTemplateInput(source) as ReviewTemplateInput
+        )
+
+        if (metricIds.length > 0) {
+            await setReviewTemplateMetrics(created.id, metricIds)
+        }
+
+        revalidatePath('/coach/forms')
+        return { success: true, id: created.id }
+    } catch (error) {
+        console.error('[duplicateReviewTemplateAction]', error)
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Error al duplicar la plantilla',
         }
     }
 }

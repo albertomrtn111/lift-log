@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { roundToDecimals } from '@/lib/format/number'
 
@@ -230,30 +231,35 @@ export async function getClientWeeklySchedule(
         .gte('scheduled_date', startStr)
         .lte('scheduled_date', endStr)
 
-    const cardioItems: CalendarItem[] = (cardioData || []).map((c: any) => ({
-        id: c.id,
-        kind: 'cardio' as const,
-        date: c.scheduled_date,
-        title: c.name || c.structure?.trainingType || c.training_type || c.activity_type || 'Cardio',
-        subtitle: buildCardioSubtitle(c),
-        isCompleted: c.is_completed ?? false,
-        cardioSessionId: c.id,
-        activityType: c.activity_type,
-        trainingType: c.structure?.trainingType || c.training_type || undefined,
-        description: c.description,
-        targetDistanceKm: c.target_distance_km ? Number(c.target_distance_km) : undefined,
-        targetDurationMin: c.target_duration_min ? Number(c.target_duration_min) : undefined,
-        targetPace: c.target_pace,
-        coachNotes: c.coach_notes || c.notes, // Priority: coach_notes > notes
-        plannedStructure: c.planned_structure || c.structure, // Priority: planned_structure > structure
-        actualDistanceKm: c.actual_distance_km ? Number(c.actual_distance_km) : undefined,
-        actualDurationMin: c.actual_duration_min ? Number(c.actual_duration_min) : undefined,
-        actualAvgPace: c.actual_avg_pace,
-        rpe: c.rpe,
-        feedbackNotes: c.feedback_notes,
-        avgHeartRate: c.avg_heart_rate ? Number(c.avg_heart_rate) : undefined,
-        maxHeartRate: c.max_heart_rate ? Number(c.max_heart_rate) : undefined,
-    }))
+    const cardioItems: CalendarItem[] = (cardioData || []).map((c: any) => {
+        const plannedStructure = resolveCardioPlannedStructure(c)
+        const hasStructuredPlan = hasStructuredCardioBlocks(plannedStructure)
+
+        return {
+            id: c.id,
+            kind: 'cardio' as const,
+            date: c.scheduled_date,
+            title: c.name || c.structure?.trainingType || c.training_type || c.activity_type || 'Cardio',
+            subtitle: buildCardioSubtitle(c),
+            isCompleted: c.is_completed ?? false,
+            cardioSessionId: c.id,
+            activityType: c.activity_type,
+            trainingType: c.structure?.trainingType || c.training_type || undefined,
+            description: hasStructuredPlan ? undefined : c.description,
+            targetDistanceKm: c.target_distance_km ? Number(c.target_distance_km) : undefined,
+            targetDurationMin: c.target_duration_min ? Number(c.target_duration_min) : undefined,
+            targetPace: c.target_pace,
+            coachNotes: c.coach_notes || c.notes, // Priority: coach_notes > notes
+            plannedStructure,
+            actualDistanceKm: c.actual_distance_km ? Number(c.actual_distance_km) : undefined,
+            actualDurationMin: c.actual_duration_min ? Number(c.actual_duration_min) : undefined,
+            actualAvgPace: c.actual_avg_pace,
+            rpe: c.rpe,
+            feedbackNotes: c.feedback_notes,
+            avgHeartRate: c.avg_heart_rate ? Number(c.avg_heart_rate) : undefined,
+            maxHeartRate: c.max_heart_rate ? Number(c.max_heart_rate) : undefined,
+        }
+    })
 
     // ----- 4. Combine, sort by date -----
     const allItems = [...allStrength, ...cardioItems].sort(
@@ -326,6 +332,28 @@ export async function saveCardioSessionLog(
     return { success: true }
 }
 
+function hasStructuredCardioBlocks(structure: any) {
+    const blocks = Array.isArray(structure) ? structure : structure?.blocks
+    return Array.isArray(blocks) && blocks.some((block: any) =>
+        ['warmup', 'continuous', 'intervals', 'cooldown'].includes(block?.type)
+    )
+}
+
+function hasContent(value: any) {
+    if (!value) return false
+    if (Array.isArray(value)) return value.length > 0
+    if (typeof value === 'object') return Object.keys(value).length > 0
+    return true
+}
+
+function resolveCardioPlannedStructure(session: any) {
+    if (hasStructuredCardioBlocks(session?.planned_structure)) return session.planned_structure
+    if (hasStructuredCardioBlocks(session?.structure)) return session.structure
+    if (hasContent(session?.planned_structure)) return session.planned_structure
+    if (hasContent(session?.structure)) return session.structure
+    return null
+}
+
 // ------------------------------------------------------------------
 // Mark a strength session as completed
 // ------------------------------------------------------------------
@@ -382,7 +410,7 @@ export async function markStrengthSessionCompleted(
 /**
  * Marca automáticamente una sesión de fuerza como completada
  * cuando el cliente registra cualquier ejercicio del día.
- * Si ya existe una sesión programada para hoy la actualiza;
+ * Si ya existe una sesión programada para la fecha calculada la actualiza;
  * si no existe (sesión virtual) la crea.
  */
 export async function autoMarkStrengthDayComplete(
@@ -390,50 +418,71 @@ export async function autoMarkStrengthDayComplete(
     programId: string,
     dayId: string,
     scheduledDate?: string,
-): Promise<void> {
+): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
     const sessionDate = scheduledDate || new Date().toISOString().split('T')[0]
+    const { data: { user } } = await supabase.auth.getUser()
 
-    // ¿Ya existe una sesión para la fecha planificada?
-    const { data: existing } = await supabase
+    if (!user) {
+        return { success: false, error: 'Unauthorized' }
+    }
+
+    const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('id, coach_id')
+        .eq('id', clientId)
+        .eq('status', 'active')
+        .or(`user_id.eq.${user.id},auth_user_id.eq.${user.id}`)
+        .maybeSingle()
+
+    if (clientError || !clientData?.coach_id) {
+        const message = clientError?.message || 'Client not found for authenticated user'
+        console.error('[autoMarkStrengthDayComplete] client authorization failed:', message)
+        return { success: false, error: message }
+    }
+
+    const admin = createAdminClient()
+
+    const { data: updatedSessions, error: updateError } = await admin
         .from('scheduled_strength_sessions')
-        .select('id, is_completed')
+        .update({
+            is_completed: true,
+            updated_at: new Date().toISOString(),
+        })
         .eq('client_id', clientId)
         .eq('program_id', programId)
         .eq('day_id', dayId)
         .eq('scheduled_date', sessionDate)
-        .maybeSingle()
+        .select('id')
 
-    if (existing) {
-        if (!existing.is_completed) {
-            await supabase
-                .from('scheduled_strength_sessions')
-                .update({ is_completed: true })
-                .eq('id', existing.id)
-        }
-    } else {
-        // Sesión virtual: materializarla como completada
-        const { data: clientData } = await supabase
-            .from('clients')
-            .select('coach_id')
-            .eq('id', clientId)
-            .single()
+    if (updateError) {
+        console.error('[autoMarkStrengthDayComplete] update failed:', updateError.message)
+        return { success: false, error: updateError.message }
+    }
 
-        if (clientData?.coach_id) {
-            await supabase
-                .from('scheduled_strength_sessions')
-                .insert({
-                    client_id: clientId,
-                    coach_id: clientData.coach_id,
-                    program_id: programId,
-                    day_id: dayId,
-                    scheduled_date: sessionDate,
-                    is_completed: true,
-                })
-        }
+    if (updatedSessions && updatedSessions.length > 0) {
+        revalidatePath('/planning')
+        return { success: true }
+    }
+
+    const { error: insertError } = await admin
+        .from('scheduled_strength_sessions')
+        .insert({
+            client_id: clientId,
+            coach_id: clientData.coach_id,
+            program_id: programId,
+            day_id: dayId,
+            scheduled_date: sessionDate,
+            is_completed: true,
+        })
+
+    if (insertError) {
+        console.error('[autoMarkStrengthDayComplete] insert failed:', insertError.message)
+        return { success: false, error: insertError.message }
     }
 
     revalidatePath('/planning')
+    return { success: true }
 }
 
 // ------------------------------------------------------------------

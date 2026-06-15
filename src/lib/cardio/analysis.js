@@ -103,9 +103,9 @@ function expandPlannedSegments(structure) {
       continue
     }
 
-    const kind = block.type === 'cooldown' ? 'cooldown' : 'warmup'
+    const kind = block.type === 'cooldown' ? 'cooldown' : block.type === 'warmup' ? 'warmup' : 'steady'
     segments.push({
-      label: block.label || (block.type === 'cooldown' ? 'Vuelta calma' : 'Calentamiento'),
+      label: block.label || (block.type === 'cooldown' ? 'Vuelta calma' : block.type === 'warmup' ? 'Calentamiento' : 'Continuo'),
       kind,
       targetDistanceMeters: positiveNumberOrNull(block.distance) ? Number(block.distance) * 1000 : null,
       targetDurationSec: positiveNumberOrNull(block.duration) ? Number(block.duration) * 60 : null,
@@ -311,4 +311,3 @@ export function analyzeCardioSessionExecution({ structure, streams, laps, sessio
     || analyzeFromLaps(laps)
     || analyzeFromSummary(session)
 }
-

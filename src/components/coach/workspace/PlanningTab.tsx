@@ -34,6 +34,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { buildPlanningCardioSummary } from '@/lib/cardio/planning-card-summary'
 
 // ---------------------------------------------------------------------------
 // Metrics helpers
@@ -558,22 +559,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         return planningSnapshot?.dayContexts.find((day) => day.date === dateStr)
     }
 
-    const getCardioSummary = (item: UnifiedCalendarItem & { type: 'cardio' }) => {
-        const parts = []
-        let distance = item.distance_km ?? item.target_distance_km
-        let duration = item.duration_minutes ?? item.target_duration_min
-        if (!distance && !duration && item.structure?.blocks) {
-            const continuousBlock = item.structure.blocks.find(b => b.type === 'continuous')
-            if (continuousBlock) {
-                distance = continuousBlock.distance
-                duration = continuousBlock.duration
-            }
-        }
-        if (distance) parts.push(`${distance}km`)
-        if (duration) parts.push(`${duration}'`)
-        return parts.join(' / ')
-    }
-
     const isToday = (date: Date) => isSameDay(date, new Date())
     const selectedLabel = viewMode === 'week'
         ? `${format(startDate, 'd MMM', { locale: es })} - ${format(endDate, 'd MMM', { locale: es })}`
@@ -757,7 +742,6 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         ) : (
                                                             <CardioCard
                                                                 item={item}
-                                                                getCardioSummary={getCardioSummary}
                                                                 onEdit={() => setEditingSession(item)}
                                                                 onDuplicate={(e) => handleDuplicateCardio(e, item.id)}
                                                                 onDuplicateToDate={() => setDuplicatingItem(item)}
@@ -1127,14 +1111,12 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
 
 function CardioCard({
     item,
-    getCardioSummary,
     onEdit,
     onDuplicate,
     onDuplicateToDate,
     onDelete
 }: {
     item: UnifiedCalendarItem & { type: 'cardio' }
-    getCardioSummary: (item: UnifiedCalendarItem & { type: 'cardio' }) => string
     onEdit: () => void
     onDuplicate: (e: React.MouseEvent) => void
     onDuplicateToDate?: () => void
@@ -1142,7 +1124,7 @@ function CardioCard({
 }) {
     const structure = item.structure as any
     const type = structure?.trainingType || 'rodaje'
-    const summaryLine = item.summary_line || getCardioSummary(item)
+    const summaryLine = buildPlanningCardioSummary(item)
 
     return (
         <Card className={cn("border-none shadow-sm hover:opacity-80 transition-opacity cursor-pointer relative overflow-hidden group",
@@ -1206,9 +1188,9 @@ function CardioCard({
                 <h4 className="font-bold text-sm mb-1 leading-snug">{item.name}</h4>
 
                 {summaryLine && (
-                    <div className="inline-flex items-center gap-1 rounded-md bg-white/50 dark:bg-black/15 px-2 py-1 text-[10px] font-medium">
-                        <Timer className="h-3 w-3" />
-                        {summaryLine}
+                    <div className="inline-flex max-w-full items-center gap-1 rounded-md bg-white/50 dark:bg-black/15 px-2 py-1 text-[10px] font-medium">
+                        <Timer className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{summaryLine}</span>
                     </div>
                 )}
             </CardContent>

@@ -5,12 +5,15 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import {
+    ArrowDown,
+    ArrowUp,
     Bike,
     CircleEllipsis,
     Clock,
     Dumbbell,
     Footprints,
     Gauge,
+    GripVertical,
     Plus,
     Repeat,
     Shuffle,
@@ -19,6 +22,16 @@ import {
     Waves,
     Zap,
 } from 'lucide-react'
+import {
+    DndContext,
+    PointerSensor,
+    useDraggable,
+    useDroppable,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -151,21 +164,47 @@ function defaultBlock(type: CardioBlockType): CardioBlock {
         }
     }
 
+    if (type === 'warmup') {
+        return {
+            id: makeId(),
+            type,
+            label: 'Calentamiento',
+            duration: 10,
+            targetPace: 'suave',
+        }
+    }
+
+    if (type === 'cooldown') {
+        return {
+            id: makeId(),
+            type,
+            label: 'Vuelta a la calma',
+            duration: 10,
+            targetPace: 'suave',
+        }
+    }
+
     return {
         id: makeId(),
         type,
-        label: type === 'cooldown' ? 'Vuelta a la calma' : 'Calentamiento',
-        duration: 10,
-        targetPace: 'suave',
+        label: 'Continuo',
+        duration: 20,
+        targetPace: 'Z2',
     }
 }
 
 function defaultStructuredBlocks(): CardioBlock[] {
     return [
-        defaultBlock('continuous'),
+        defaultBlock('warmup'),
         defaultBlock('intervals'),
         defaultBlock('cooldown'),
     ]
+}
+
+function isLegacyWarmupBlock(block: CardioBlock) {
+    if (block.type !== 'continuous') return false
+    const label = `${block.label || block.notes || ''}`.toLowerCase()
+    return label.includes('calent')
 }
 
 function normalizeInitialBlocks(initialData?: CardioSessionFormProps['initialData']) {
@@ -173,8 +212,9 @@ function normalizeInitialBlocks(initialData?: CardioSessionFormProps['initialDat
     if (!Array.isArray(blocks)) return []
     return blocks.map((block) => ({
         ...block,
+        type: isLegacyWarmupBlock(block) ? 'warmup' : block.type,
         id: block.id || makeId(),
-        label: block.label || block.notes || (block.type === 'intervals' ? 'Bloque principal' : block.type === 'cooldown' ? 'Vuelta a la calma' : 'Bloque'),
+        label: block.label || block.notes || (block.type === 'intervals' ? 'Bloque principal' : block.type === 'cooldown' ? 'Vuelta a la calma' : isLegacyWarmupBlock(block) ? 'Calentamiento' : 'Continuo'),
     }))
 }
 
@@ -189,10 +229,52 @@ function parseNumericInput(value: string) {
 }
 
 function blockTypeLabel(type: CardioBlockType) {
+    if (type === 'warmup') return 'Calentamiento'
     if (type === 'intervals') return 'Series'
     if (type === 'cooldown') return 'Vuelta a la calma'
     if (type === 'station') return 'Estacion'
     return 'Continuo'
+}
+
+function blockTone(type: CardioBlockType) {
+    if (type === 'warmup') {
+        return {
+            icon: Zap,
+            card: 'border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/20',
+            handle: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
+            badge: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
+        }
+    }
+    if (type === 'cooldown') {
+        return {
+            icon: Clock,
+            card: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20',
+            handle: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+            badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+        }
+    }
+    return {
+        icon: type === 'intervals' ? Repeat : Footprints,
+        card: 'border-blue-200 bg-blue-50/60 dark:border-blue-900/50 dark:bg-blue-950/20',
+        handle: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
+        badge: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
+    }
+}
+
+function reorderBlocks(blocks: CardioBlock[], activeId: string, overId: string) {
+    const fromIndex = blocks.findIndex((block) => block.id === activeId)
+    const toIndex = blocks.findIndex((block) => block.id === overId)
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return blocks
+    const next = [...blocks]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    return next
+}
+
+function stripBlockNotes(block: CardioBlock): CardioBlock {
+    const cleanBlock = { ...block }
+    delete cleanBlock.notes
+    return cleanBlock
 }
 
 export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCancel, hideTypeSelector, visibleSections }: CardioSessionFormProps) {
@@ -201,6 +283,11 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
     const initialBlocks = normalizeInitialBlocks(initialData)
     const initialMode = initialData?.structure?.mode || (initialBlocks.length > 0 ? 'structured' : 'free_text')
     const [blocks, setBlocks] = useState<CardioBlock[]>(initialBlocks)
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 },
+        })
+    )
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -241,6 +328,25 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         setBlocks((current) => [...current, defaultBlock(type)])
     }
 
+    function moveBlock(id: string, direction: -1 | 1) {
+        setBlocks((current) => {
+            const index = current.findIndex((block) => block.id === id)
+            const targetIndex = index + direction
+            if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current
+            const next = [...current]
+            const [moved] = next.splice(index, 1)
+            next.splice(targetIndex, 0, moved)
+            return next
+        })
+    }
+
+    function handleBlockDragEnd(event: DragEndEvent) {
+        const activeId = String(event.active.id)
+        const overId = event.over?.id ? String(event.over.id) : null
+        if (!overId || activeId === overId) return
+        setBlocks((current) => reorderBlocks(current, activeId, overId))
+    }
+
     const handleSubmit = async (values: FormValues) => {
         const selectedType = SESSION_TYPES.find(t => t.id === values.trainingType)
         const isOther = values.trainingType === 'other'
@@ -248,13 +354,14 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         const notes = values.notes?.trim() || undefined
         const isStructured = values.mode === 'structured'
         const description = isStructured ? structuredSummary : values.description?.trim()
+        const structureBlocks = blocks.map(stripBlockNotes)
         const structure: CardioStructure = isStructured
             ? {
                 mode: 'structured',
                 trainingType: isOther ? 'other' : values.trainingType,
                 description,
                 notes,
-                blocks,
+                blocks: structureBlocks,
             }
             : {
                 mode: 'free_text',
@@ -478,139 +585,39 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('continuous')} className="gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('warmup')} className="gap-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+                                <Zap className="h-4 w-4" />
+                                Calentamiento
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('continuous')} className="gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-300">
                                 <Plus className="h-4 w-4" />
                                 Continuo
                             </Button>
-                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('intervals')} className="gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('intervals')} className="gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-300">
                                 <Repeat className="h-4 w-4" />
                                 Series
                             </Button>
-                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('cooldown')} className="gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => addBlock('cooldown')} className="gap-2 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">
                                 <Clock className="h-4 w-4" />
-                                Vuelta calma
+                                Enfriamiento
                             </Button>
                         </div>
 
-                        <div className="space-y-3">
-                            {blocks.map((block, index) => (
-                                <div key={block.id} className="rounded-lg border border-border bg-background p-4">
-                                    <div className="mb-3 flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-semibold">
-                                                {index + 1}. {block.label || blockTypeLabel(block.type)}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">{blockTypeLabel(block.type)}</p>
-                                        </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => removeBlock(block.id)}
-                                            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
-                                            aria-label="Eliminar bloque"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        <LabeledInput
-                                            label="Nombre"
-                                            value={block.label || ''}
-                                            placeholder="Ej: Calentamiento"
-                                            onChange={(value) => updateBlock(block.id, { label: value })}
-                                        />
-                                        {block.type === 'intervals' ? (
-                                            <>
-                                                <LabeledInput
-                                                    label="Repeticiones"
-                                                    type="number"
-                                                    value={toInputValue(block.sets)}
-                                                    placeholder="3"
-                                                    onChange={(value) => updateBlock(block.id, { sets: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Trabajo distancia (km)"
-                                                    type="number"
-                                                    step="0.1"
-                                                    value={toInputValue(block.workDistance)}
-                                                    placeholder="1"
-                                                    onChange={(value) => updateBlock(block.id, { workDistance: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Trabajo duracion (min)"
-                                                    type="number"
-                                                    value={toInputValue(block.workDuration)}
-                                                    placeholder="Opcional"
-                                                    onChange={(value) => updateBlock(block.id, { workDuration: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Ritmo/objetivo trabajo"
-                                                    value={block.workTargetPace || ''}
-                                                    placeholder="Ej: 4:15/km"
-                                                    onChange={(value) => updateBlock(block.id, { workTargetPace: value })}
-                                                />
-                                                <LabeledInput
-                                                    label="Recuperacion (min)"
-                                                    type="number"
-                                                    value={toInputValue(block.restDuration)}
-                                                    placeholder="2"
-                                                    onChange={(value) => updateBlock(block.id, { restDuration: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Recuperacion (km)"
-                                                    type="number"
-                                                    step="0.1"
-                                                    value={toInputValue(block.restDistance)}
-                                                    placeholder="Opcional"
-                                                    onChange={(value) => updateBlock(block.id, { restDistance: parseNumericInput(value) })}
-                                                />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <LabeledInput
-                                                    label="Distancia (km)"
-                                                    type="number"
-                                                    step="0.1"
-                                                    value={toInputValue(block.distance)}
-                                                    placeholder="Opcional"
-                                                    onChange={(value) => updateBlock(block.id, { distance: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Duracion (min)"
-                                                    type="number"
-                                                    value={toInputValue(block.duration)}
-                                                    placeholder="10"
-                                                    onChange={(value) => updateBlock(block.id, { duration: parseNumericInput(value) })}
-                                                />
-                                                <LabeledInput
-                                                    label="Ritmo/objetivo"
-                                                    value={block.targetPace || ''}
-                                                    placeholder="Ej: suave, Z2, 5:30/km"
-                                                    onChange={(value) => updateBlock(block.id, { targetPace: value })}
-                                                />
-                                                <LabeledInput
-                                                    label="FC objetivo"
-                                                    value={block.targetHR || ''}
-                                                    placeholder="Ej: 140-150 ppm"
-                                                    onChange={(value) => updateBlock(block.id, { targetHR: value })}
-                                                />
-                                            </>
-                                        )}
-                                    </div>
-
-                                    <div className="mt-3">
-                                        <LabeledInput
-                                            label="Notas del bloque"
-                                            value={block.notes || ''}
-                                            placeholder="Opcional"
-                                            onChange={(value) => updateBlock(block.id, { notes: value })}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <DndContext sensors={sensors} onDragEnd={handleBlockDragEnd}>
+                            <div className="space-y-3">
+                                {blocks.map((block, index) => (
+                                    <StructuredBlockCard
+                                        key={block.id}
+                                        block={block}
+                                        index={index}
+                                        totalBlocks={blocks.length}
+                                        onUpdate={updateBlock}
+                                        onRemove={removeBlock}
+                                        onMove={moveBlock}
+                                    />
+                                ))}
+                            </div>
+                        </DndContext>
                     </div>
                 ) : (
                     <FormField
@@ -673,6 +680,193 @@ Vuelta a la calma:
                 </div>
             </form>
         </Form>
+    )
+}
+
+function StructuredBlockCard({
+    block,
+    index,
+    totalBlocks,
+    onUpdate,
+    onRemove,
+    onMove,
+}: {
+    block: CardioBlock
+    index: number
+    totalBlocks: number
+    onUpdate: (id: string, patch: Partial<CardioBlock>) => void
+    onRemove: (id: string) => void
+    onMove: (id: string, direction: -1 | 1) => void
+}) {
+    const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({ id: block.id })
+    const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: block.id })
+    const tone = blockTone(block.type)
+    const Icon = tone.icon
+
+    const setRefs = (node: HTMLDivElement | null) => {
+        setDraggableRef(node)
+        setDroppableRef(node)
+    }
+
+    return (
+        <div
+            ref={setRefs}
+            style={{ transform: CSS.Translate.toString(transform) }}
+            className={cn(
+                'rounded-lg border p-4 shadow-sm transition-all',
+                tone.card,
+                isDragging && 'z-10 opacity-60 shadow-lg',
+                isOver && !isDragging && 'ring-2 ring-primary/30'
+            )}
+        >
+            <div className="mb-3 flex items-start gap-3">
+                <button
+                    type="button"
+                    className={cn(
+                        'mt-0.5 flex h-10 w-10 shrink-0 cursor-grab items-center justify-center rounded-md active:cursor-grabbing',
+                        tone.handle
+                    )}
+                    aria-label="Arrastrar bloque"
+                    {...listeners}
+                    {...attributes}
+                >
+                    <GripVertical className="h-5 w-5" />
+                </button>
+
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="min-w-0 truncate text-sm font-semibold">
+                            {index + 1}. {block.label || blockTypeLabel(block.type)}
+                        </p>
+                        <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold', tone.badge)}>
+                            <Icon className="h-3 w-3" />
+                            {blockTypeLabel(block.type)}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onMove(block.id, -1)}
+                        disabled={index === 0}
+                        className="h-9 w-9 text-muted-foreground"
+                        aria-label="Subir bloque"
+                    >
+                        <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onMove(block.id, 1)}
+                        disabled={index === totalBlocks - 1}
+                        className="h-9 w-9 text-muted-foreground"
+                        aria-label="Bajar bloque"
+                    >
+                        <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onRemove(block.id)}
+                        className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                        aria-label="Eliminar bloque"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+                <LabeledInput
+                    label="Nombre"
+                    value={block.label || ''}
+                    placeholder={blockTypeLabel(block.type)}
+                    onChange={(value) => onUpdate(block.id, { label: value })}
+                />
+                {block.type === 'intervals' ? (
+                    <>
+                        <LabeledInput
+                            label="Repeticiones"
+                            type="number"
+                            value={toInputValue(block.sets)}
+                            placeholder="3"
+                            onChange={(value) => onUpdate(block.id, { sets: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Trabajo distancia (km)"
+                            type="number"
+                            step="0.1"
+                            value={toInputValue(block.workDistance)}
+                            placeholder="1"
+                            onChange={(value) => onUpdate(block.id, { workDistance: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Trabajo duracion (min)"
+                            type="number"
+                            value={toInputValue(block.workDuration)}
+                            placeholder="Opcional"
+                            onChange={(value) => onUpdate(block.id, { workDuration: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Ritmo/objetivo trabajo"
+                            value={block.workTargetPace || ''}
+                            placeholder="Ej: 4:15/km"
+                            onChange={(value) => onUpdate(block.id, { workTargetPace: value })}
+                        />
+                        <LabeledInput
+                            label="Recuperacion (min)"
+                            type="number"
+                            value={toInputValue(block.restDuration)}
+                            placeholder="2"
+                            onChange={(value) => onUpdate(block.id, { restDuration: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Recuperacion (km)"
+                            type="number"
+                            step="0.1"
+                            value={toInputValue(block.restDistance)}
+                            placeholder="Opcional"
+                            onChange={(value) => onUpdate(block.id, { restDistance: parseNumericInput(value) })}
+                        />
+                    </>
+                ) : (
+                    <>
+                        <LabeledInput
+                            label="Distancia (km)"
+                            type="number"
+                            step="0.1"
+                            value={toInputValue(block.distance)}
+                            placeholder="Opcional"
+                            onChange={(value) => onUpdate(block.id, { distance: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Duracion (min)"
+                            type="number"
+                            value={toInputValue(block.duration)}
+                            placeholder={block.type === 'continuous' ? '20' : '10'}
+                            onChange={(value) => onUpdate(block.id, { duration: parseNumericInput(value) })}
+                        />
+                        <LabeledInput
+                            label="Ritmo/objetivo"
+                            value={block.targetPace || ''}
+                            placeholder="Ej: suave, Z2, 5:30/km"
+                            onChange={(value) => onUpdate(block.id, { targetPace: value })}
+                        />
+                        <LabeledInput
+                            label="FC objetivo"
+                            value={block.targetHR || ''}
+                            placeholder="Ej: 140-150 ppm"
+                            onChange={(value) => onUpdate(block.id, { targetHR: value })}
+                        />
+                    </>
+                )}
+            </div>
+        </div>
     )
 }
 

@@ -93,6 +93,7 @@ export function CardioSessionDetail({
 
   const isRest = item.kind === 'rest'
   const isStrength = item.kind === 'strength'
+  const hasStructuredPlan = hasStructuredCardioPlan(item.plannedStructure)
 
   const handleSave = async () => {
     setSaveStatus('saving')
@@ -175,13 +176,12 @@ export function CardioSessionDetail({
             {/* Body: description + structure */}
             <div className="px-4 pb-4 space-y-3">
               {/* Description (main text block) */}
-              {item.description && (
+              {item.description && !hasStructuredPlan && (
                 <p className="text-sm leading-relaxed whitespace-pre-line">
                   {item.description}
                 </p>
               )}
 
-              {/* Structure rendered as clean bullet list — no "ESTRUCTURA" label */}
               {item.plannedStructure && (
                 <div className="space-y-1.5">
                   {renderStructure(item.plannedStructure)}
@@ -356,12 +356,144 @@ export function CardioSessionDetail({
   )
 }
 
-// Render the planned_structure JSONB — supports both array of blocks and object formats
+function hasStructuredCardioBlocks(structure: any) {
+  const blocks = Array.isArray(structure) ? structure : structure?.blocks
+  return Array.isArray(blocks) && blocks.some((block: any) =>
+    ['warmup', 'continuous', 'intervals', 'cooldown'].includes(block?.type)
+  )
+}
+
+function hasStructuredCardioPlan(structure: any) {
+  if (hasStructuredCardioBlocks(structure)) return true
+  return structure?.mode === 'structured'
+    && typeof structure?.description === 'string'
+    && structure.description.trim().length > 0
+}
+
+function formatDistance(km?: number, { preferMeters = false } = {}) {
+  const value = Number(km)
+  if (!Number.isFinite(value) || value <= 0) return null
+  if (value < 1) return `${Math.round(value * 1000)} m`
+  if (preferMeters && value <= 5) return `${Math.round(value * 1000)} m`
+  if (value <= 5) return `${Number.isInteger(value) ? value : value.toFixed(1)} km`
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} km`
+}
+
+function formatDuration(minutes?: number) {
+  const value = Number(minutes)
+  if (!Number.isFinite(value) || value <= 0) return null
+  return Number.isInteger(value) ? `${value}'` : `${value.toFixed(1)} min`
+}
+
+function joinClean(parts: Array<string | null | undefined>) {
+  return parts.filter(Boolean).join(' ')
+}
+
+function normalizeBlockLabel(block: any) {
+  const raw = `${block?.label || block?.name || ''}`.trim()
+  const lower = raw.toLowerCase()
+  if (lower === 'bloque principal') return 'Principal'
+  if (lower === 'vuelta a la calma' || lower === 'vuelta calma') return 'Enfriamiento'
+  if (raw) return raw
+  if (block?.type === 'warmup') return 'Calentamiento'
+  if (block?.type === 'cooldown') return 'Enfriamiento'
+  if (block?.type === 'intervals') return 'Principal'
+  if (block?.type === 'continuous') return 'Continuo'
+  return 'Bloque'
+}
+
+function describeStructuredBlock(block: any) {
+  if (block?.type === 'intervals') {
+    const sets = Number(block.sets)
+    const effort = formatDistance(block.workDistance, { preferMeters: true }) || formatDuration(block.workDuration)
+    const work = Number.isFinite(sets) && sets > 0 && effort ? `${sets} x ${effort}` : effort
+    const target = block.workTargetPace || block.workIntensity || block.workTargetHR
+    const rest = formatDistance(block.restDistance, { preferMeters: true }) || formatDuration(block.restDuration)
+    return joinClean([
+      work,
+      target ? `@ ${target}` : null,
+      rest ? `rec ${rest}` : null,
+    ])
+  }
+
+  return joinClean([
+    formatDistance(block?.distance),
+    formatDuration(block?.duration),
+    block?.targetPace || block?.intensity,
+    block?.targetHR,
+  ])
+}
+
+function renderStructuredBlocks(blocks: any[]) {
+  const rows = blocks
+    .map((block, idx) => ({
+      id: block?.id || idx,
+      label: normalizeBlockLabel(block),
+      detail: describeStructuredBlock(block),
+    }))
+    .filter((row) => row.label || row.detail)
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="space-y-2 pt-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Estructura
+      </p>
+      <ul className="space-y-1.5">
+        {rows.map((row) => (
+          <li key={row.id} className="flex min-w-0 items-start gap-2 text-sm leading-relaxed">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/70" />
+            <p className="min-w-0 break-words">
+              <span className="font-semibold">{row.label}: </span>
+              <span>{row.detail || 'Sin detalles'}</span>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function renderStructuredSummary(description: string) {
+  const parts = description
+    .split(/\s*·\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length === 0) return null
+
+  const rows = parts.map((detail, idx) => {
+    const isFirst = idx === 0
+    const isLast = idx === parts.length - 1
+    const label = isFirst
+      ? 'Calentamiento'
+      : isLast
+        ? 'Enfriamiento'
+        : parts.length > 3
+          ? `Principal ${idx}`
+          : 'Principal'
+
+    return { id: `${idx}-${detail}`, label, detail }
+  })
+
+  return renderStructuredBlocks(rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    type: 'summary',
+    targetPace: row.detail,
+  })))
+}
+
+// Render the planned_structure JSONB — supports both structured and legacy formats.
 function renderStructure(structure: any): any {
-  // Array of blocks: [{ name, description }, ...]
-  if (Array.isArray(structure)) {
-    if (structure.length === 0) return null
-    return structure.map((block: any, idx: number) => {
+  const blocks = Array.isArray(structure) ? structure : structure?.blocks
+  if (Array.isArray(blocks) && blocks.length > 0) {
+    if (hasStructuredCardioBlocks(blocks)) {
+      return renderStructuredBlocks(blocks)
+    }
+
+    return blocks.map((block: any, idx: number) => {
       const detail = block.description || block.duration || block.distance || ''
       if (!block.name && !detail) return null
       return (
@@ -379,9 +511,8 @@ function renderStructure(structure: any): any {
     })
   }
 
-  // Object with blocks array: { blocks: [...] }
-  if (structure?.blocks && Array.isArray(structure.blocks) && structure.blocks.length > 0) {
-    return renderStructure(structure.blocks)
+  if (structure?.mode === 'structured' && typeof structure.description === 'string') {
+    return renderStructuredSummary(structure.description)
   }
 
   // Object with description field (simple mode from CardioSessionForm)

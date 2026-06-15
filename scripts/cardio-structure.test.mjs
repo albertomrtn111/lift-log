@@ -13,7 +13,7 @@ const structuredSession = {
   blocks: [
     {
       id: 'warmup',
-      type: 'continuous',
+      type: 'warmup',
       label: 'Calentamiento',
       duration: 10,
       targetPace: 'suave',
@@ -49,7 +49,7 @@ test('summarizeCardioStructure keeps continuous long distances in kilometers', (
   assert.equal(
     summarizeCardioStructure({
       mode: 'structured',
-      blocks: [{ id: 'steady', type: 'continuous', distance: 10, targetPace: 'suave' }],
+      blocks: [{ id: 'steady', type: 'continuous', label: 'Continuo', distance: 10, targetPace: 'suave' }],
     }),
     '10 km suave'
   )

@@ -27,14 +27,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Camera, Activity, Dumbbell, Layers, Sliders, FileText, Pencil, Plus, Wand2 } from 'lucide-react'
-import type { FormBuilderInitialData, FormField, FormTemplate } from '@/types/forms'
+import { Loader2, Camera, Activity, Dumbbell, Layers, Sliders, FileText } from 'lucide-react'
+import type { FormTemplate } from '@/types/forms'
 import type { MetricCategory, MetricDefinition } from '@/types/metrics'
 import type { ReviewTemplate, ReviewType } from '@/data/review-templates'
-import { createFormTemplate, updateFormTemplate } from '@/data/form-templates'
-import { FormBuilderModal } from './FormBuilderModal'
-import { AIFormDialog } from './AIFormDialog'
-import { AIActionButton } from '@/components/ui/ai-action-button'
 import {
     createReviewTemplateAction,
     updateReviewTemplateAction,
@@ -90,19 +86,11 @@ export function ReviewTemplateDialog({
     const [isActive, setIsActive] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [activeSection, setActiveSection] = useState<'form' | 'settings'>('form')
-    const [localCheckinForms, setLocalCheckinForms] = useState<FormTemplate[]>(checkinForms)
-    const [formBuilderOpen, setFormBuilderOpen] = useState(false)
-    const [editingForm, setEditingForm] = useState<FormTemplate | null>(null)
-    const [formInitialData, setFormInitialData] = useState<FormBuilderInitialData | null>(null)
 
     // Nivel 2: selección avanzada por métrica
     const [advancedMode, setAdvancedMode] = useState(false)
     const [selectedMetricIds, setSelectedMetricIds] = useState<Set<string>>(new Set())
     const [loadingMetrics, setLoadingMetrics] = useState(false)
-
-    useEffect(() => {
-        setLocalCheckinForms(checkinForms)
-    }, [checkinForms])
 
     // Reset al abrir / cambiar editingTemplate
     useEffect(() => {
@@ -185,79 +173,6 @@ export function ReviewTemplateDialog({
             // Solo preseleccionar si no había selección previa
             if (selectedMetricIds.size === 0) setSelectedMetricIds(preselected)
         }
-    }
-
-    const openEmptyFormBuilder = () => {
-        setEditingForm(null)
-        setFormInitialData(null)
-        setFormBuilderOpen(true)
-    }
-
-    const openSelectedFormBuilder = () => {
-        const selected = localCheckinForms.find((form) => form.id === formTemplateId)
-        if (!selected) return
-        setEditingForm(selected)
-        setFormInitialData(null)
-        setFormBuilderOpen(true)
-    }
-
-    const handleGeneratedForm = (type: 'onboarding' | 'checkin', data: FormBuilderInitialData) => {
-        if (type !== 'checkin') return
-        setEditingForm(null)
-        setFormInitialData(data)
-        setFormBuilderOpen(true)
-    }
-
-    const handleFormBuilderOpenChange = (value: boolean) => {
-        setFormBuilderOpen(value)
-        if (!value) {
-            setEditingForm(null)
-            setFormInitialData(null)
-        }
-    }
-
-    const handleSaveAssociatedForm = async (data: { title: string; schema: FormField[] }) => {
-        if (editingForm) {
-            const result = await updateFormTemplate(editingForm.id, {
-                title: data.title,
-                schema: data.schema,
-            })
-            if (!result.success) {
-                toast({ title: 'Error', description: result.error, variant: 'destructive' })
-                return
-            }
-
-            setLocalCheckinForms((prev) =>
-                prev.map((form) =>
-                    form.id === editingForm.id
-                        ? { ...form, title: data.title, schema: data.schema }
-                        : form
-                )
-            )
-            toast({ title: 'Formulario actualizado' })
-            handleFormBuilderOpenChange(false)
-            setActiveSection('settings')
-            router.refresh()
-            return
-        }
-
-        const result = await createFormTemplate({
-            title: data.title,
-            type: 'checkin',
-            schema: data.schema,
-        })
-
-        if (!result.success || !result.template) {
-            toast({ title: 'Error', description: result.error, variant: 'destructive' })
-            return
-        }
-
-        setLocalCheckinForms((prev) => [result.template!, ...prev])
-        setFormTemplateId(result.template.id)
-        toast({ title: 'Formulario creado' })
-        handleFormBuilderOpenChange(false)
-        setActiveSection('settings')
-        router.refresh()
     }
 
     const handleSave = () => {
@@ -347,7 +262,7 @@ export function ReviewTemplateDialog({
         })
     }
 
-    const selectedForm = localCheckinForms.find((form) => form.id === formTemplateId) ?? null
+    const selectedForm = checkinForms.find((form) => form.id === formTemplateId) ?? null
     const metricsByCategory: Record<MetricCategory, MetricDefinition[]> = { body: [], performance: [], general: [] }
     for (const m of metrics) {
         const cat = m.category as MetricCategory
@@ -384,7 +299,7 @@ export function ReviewTemplateDialog({
                                         <div>
                                             <h4 className="text-sm font-semibold">Preguntas de esta revisión</h4>
                                             <p className="text-xs text-muted-foreground">
-                                                Crea o edita aquí el formulario que verá el atleta. Ya no se asigna desde otra pestaña.
+                                                Elige aquí el formulario que verá el atleta en esta revisión.
                                             </p>
                                         </div>
 
@@ -401,7 +316,7 @@ export function ReviewTemplateDialog({
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">Sin formulario</SelectItem>
-                                                    {localCheckinForms.map(f => (
+                                                    {checkinForms.map(f => (
                                                         <SelectItem key={f.id} value={f.id}>
                                                             {f.title}{!f.is_active && ' (inactivo)'}
                                                         </SelectItem>
@@ -426,45 +341,9 @@ export function ReviewTemplateDialog({
                                             </div>
                                         ) : (
                                             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400">
-                                                Esta revisión no tiene formulario. Puede funcionar solo con métricas o fotos, pero si quieres preguntas crea uno aquí.
+                                                Esta revisión no tiene formulario. Puede funcionar solo con métricas o fotos.
                                             </div>
                                         )}
-
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button type="button" variant="outline" size="sm" onClick={openEmptyFormBuilder} className="gap-1.5">
-                                                <Plus className="h-3.5 w-3.5" />
-                                                Crear formulario
-                                            </Button>
-                                            <AIFormDialog
-                                                defaultType="checkin"
-                                                allowedTypes={['checkin']}
-                                                onGenerated={handleGeneratedForm}
-                                                trigger={
-                                                    <AIActionButton icon={null} className="h-9 px-3 text-xs">
-                                                        <Wand2 className="h-3.5 w-3.5" />
-                                                        Generar con IA
-                                                    </AIActionButton>
-                                                }
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={openSelectedFormBuilder}
-                                                disabled={!selectedForm}
-                                                className="gap-1.5"
-                                            >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                                Editar formulario
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                onClick={() => setActiveSection('settings')}
-                                            >
-                                                Continuar a configuración
-                                            </Button>
-                                        </div>
                                     </div>
                                 </div>
                             </Card>
@@ -724,15 +603,6 @@ export function ReviewTemplateDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-        <FormBuilderModal
-            open={formBuilderOpen}
-            onOpenChange={handleFormBuilderOpenChange}
-            templateType="checkin"
-            editingTemplate={editingForm}
-            initialData={formInitialData}
-            activeClients={[]}
-            onSave={handleSaveAssociatedForm}
-        />
         </>
     )
 }
