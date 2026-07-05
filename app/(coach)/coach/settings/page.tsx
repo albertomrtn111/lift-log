@@ -24,9 +24,10 @@ import { Badge } from '@/components/ui/badge'
 import { AIActionButton } from '@/components/ui/ai-action-button'
 import { LogoutButton } from '@/components/coach/LogoutButton'
 import { AppearanceSettingsPanel, SupportSettingsPanel } from '@/components/coach/settings/SettingsClientPanels'
+import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPanel'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'email' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -43,6 +44,12 @@ const SETTINGS_TABS: Array<{
         label: 'Perfil',
         description: 'Cuenta, atletas y perfil IA',
         icon: User,
+    },
+    {
+        id: 'email',
+        label: 'Email de envío',
+        description: 'Tu cuenta para enviar revisiones',
+        icon: Mail,
     },
     {
         id: 'apariencia',
@@ -130,6 +137,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
 
                     <main className="min-w-0">
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
+                        {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'apariencia' && <AppearanceSettingsPanel />}
                         {activeTab === 'soporte' && <SupportSettingsPanel />}
                     </main>
@@ -181,7 +189,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab?: string): SettingsTab {
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email') return tab
     return 'perfil'
 }
 

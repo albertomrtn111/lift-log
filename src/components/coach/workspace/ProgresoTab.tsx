@@ -27,15 +27,23 @@ import {
     Pill,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getProgressData, getCardioProgressData, ProgressData, CardioProgressData } from '@/app/(coach)/coach/workspace/progress-actions'
+import {
+    getProgressData,
+    getCardioProgressData,
+    getDietProgressData,
+    ProgressData,
+    CardioProgressData,
+    DietProgressData,
+} from '@/app/(coach)/coach/workspace/progress-actions'
 import { TrainingProgressView } from './progress/TrainingProgressView'
 import { CardioProgressView } from './progress/CardioProgressView'
+import { DietProgressView } from './progress/DietProgressView'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type SubTab = 'general' | 'training' | 'cardio'
+type SubTab = 'general' | 'training' | 'cardio' | 'diet'
 
 // Slider works in "days since (today - MAX_DAYS_BACK)"
 // 0 = MAX_DAYS_BACK days ago, MAX_DAYS_BACK = today
@@ -356,6 +364,8 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [previousData, setPreviousData] = useState<ProgressData | null>(null)
     const [cardioData, setCardioData] = useState<CardioProgressData | null>(null)
     const [cardioLoading, setCardioLoading] = useState(false)
+    const [dietData, setDietData] = useState<DietProgressData | null>(null)
+    const [dietLoading, setDietLoading] = useState(false)
 
     const dateFrom = useMemo(() => toDateStr(offsetToDate(offsets[0])), [offsets])
     const dateTo = useMemo(() => toDateStr(offsetToDate(offsets[1])), [offsets])
@@ -389,6 +399,14 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
         setCardioLoading(false)
     }, [clientId])
 
+    const fetchDiet = useCallback(async (from: string, to: string) => {
+        setDietLoading(true)
+        const result = await getDietProgressData(clientId, from, to, coachId)
+        if (result.success && result.data) setDietData(result.data)
+        else setDietData(null)
+        setDietLoading(false)
+    }, [clientId, coachId])
+
     // Fetch general on mount and when dates change
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -407,6 +425,16 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
         }, 300)
         return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
     }, [subTab, fetchCardio, dateFrom, dateTo])
+
+    // Fetch diet when on diet tab and dates change
+    useEffect(() => {
+        if (subTab !== 'diet') return
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => {
+            fetchDiet(dateFrom, dateTo)
+        }, 300)
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    }, [subTab, fetchDiet, dateFrom, dateTo])
 
     // -----------------------------------------------------------------------
     // Computed KPIs
@@ -469,25 +497,28 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     return (
         <div className="space-y-6">
             {/* Sub-tab toggle */}
-            <div className="flex w-fit items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
-                {[
-                    { key: 'general' as SubTab, label: 'General' },
-                    { key: 'training' as SubTab, label: 'Entrenamiento' },
-                    { key: 'cardio' as SubTab, label: 'Cardio' },
-                ].map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setSubTab(tab.key)}
-                        className={cn(
-                            "px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                            subTab === tab.key
-                                ? "bg-background text-foreground shadow-sm dark:bg-card"
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
+            <div className="max-w-full overflow-x-auto pb-1">
+                <div className="flex w-max items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
+                    {[
+                        { key: 'general' as SubTab, label: 'General' },
+                        { key: 'training' as SubTab, label: 'Entrenamiento' },
+                        { key: 'cardio' as SubTab, label: 'Cardio' },
+                        { key: 'diet' as SubTab, label: 'Dieta' },
+                    ].map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setSubTab(tab.key)}
+                            className={cn(
+                                "min-h-10 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
+                                subTab === tab.key
+                                    ? "bg-background text-foreground shadow-sm dark:bg-card"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {subTab === 'training' ? (
@@ -501,6 +532,17 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                         </div>
                     ) : cardioData ? (
                         <CardioProgressView data={cardioData} />
+                    ) : null}
+                </>
+            ) : subTab === 'diet' ? (
+                <>
+                    <DateRangeFilter value={offsets} onChange={setOffsets} />
+                    {dietLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : dietData ? (
+                        <DietProgressView data={dietData} />
                     ) : null}
                 </>
             ) : (

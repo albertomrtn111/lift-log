@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { analyzeCardioSessionExecution } from '@/lib/cardio/analysis'
+import { buildDietProgressData } from '@/lib/nutrition/progress'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,62 @@ export interface ProgressData {
         scheduledDoses: number
         skippedDoses: number
         loggedDoses: number
+    }
+}
+
+export interface DietMacroTotals {
+    kcal: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+}
+
+export interface DietMacroAdherence {
+    kcalPct: number | null
+    proteinPct: number | null
+    carbsPct: number | null
+    fatPct: number | null
+    overallPct: number | null
+}
+
+export interface DietMealItemProgress extends DietMacroTotals {
+    id: string
+    name: string
+    quantity_g: number | null
+    servings: number | null
+    notes: string | null
+}
+
+export interface DietMealProgress {
+    key: string
+    mealType: string
+    label: string
+    order: number
+    totals: DietMacroTotals
+    items: DietMealItemProgress[]
+}
+
+export interface DietDayProgress {
+    date: string
+    dayType: 'training' | 'rest'
+    hasEntries: boolean
+    totals: DietMacroTotals
+    target: DietMacroTotals | null
+    adherence: DietMacroAdherence
+    meals: DietMealProgress[]
+    status: 'empty' | 'tracked' | 'under' | 'in_range' | 'over'
+}
+
+export interface DietProgressData {
+    days: DietDayProgress[]
+    summary: {
+        trackedDays: number
+        totalDays: number
+        avgKcal: number
+        avgProteinG: number
+        avgCarbsG: number
+        avgFatG: number
+        avgOverallAdherencePct: number | null
     }
 }
 
@@ -238,6 +295,96 @@ export async function getProgressData(
         }
     } catch (error: any) {
         console.error('[getProgressData] Error:', error.message)
+        return { success: false, error: error.message }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch diet macro progress with meal-level detail
+// ---------------------------------------------------------------------------
+
+export async function getDietProgressData(
+    clientId: string,
+    dateFrom: string,
+    dateTo: string,
+    coachIdFromClient?: string | null
+): Promise<{ success: boolean; data?: DietProgressData; error?: string }> {
+    try {
+        const { supabase, coachId } = await requireActiveCoachId(coachIdFromClient)
+
+        const { data: clientAccess, error: clientAccessError } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('coach_id', coachId)
+            .maybeSingle()
+
+        if (clientAccessError) throw new Error(clientAccessError.message)
+        if (!clientAccess) throw new Error('No tienes acceso a este cliente')
+
+        const [
+            { data: entries, error: entriesError },
+            { data: daySettings, error: daySettingsError },
+            { data: macroPlans, error: macroPlansError },
+        ] = await Promise.all([
+            supabase
+                .from('nutrition_log_entries')
+                .select(`
+                    id,
+                    log_date,
+                    meal_type,
+                    meal_label,
+                    meal_order,
+                    item_name,
+                    quantity_g,
+                    servings,
+                    kcal,
+                    protein_g,
+                    carbs_g,
+                    fat_g,
+                    day_type,
+                    notes,
+                    created_at
+                `)
+                .eq('client_id', clientId)
+                .gte('log_date', dateFrom)
+                .lte('log_date', dateTo)
+                .order('log_date', { ascending: true })
+                .order('meal_order', { ascending: true })
+                .order('created_at', { ascending: true }),
+            supabase
+                .from('nutrition_day_settings')
+                .select('log_date, day_type')
+                .eq('client_id', clientId)
+                .gte('log_date', dateFrom)
+                .lte('log_date', dateTo)
+                .order('log_date', { ascending: true }),
+            supabase
+                .from('macro_plans')
+                .select('id, effective_from, effective_to, kcal, protein_g, carbs_g, fat_g, day_type_config, created_at')
+                .eq('client_id', clientId)
+                .eq('coach_id', coachId)
+                .lte('effective_from', dateTo)
+                .or(`effective_to.is.null,effective_to.gte.${dateFrom}`)
+                .order('effective_from', { ascending: false })
+                .order('created_at', { ascending: false }),
+        ])
+
+        if (entriesError) throw new Error(entriesError.message)
+        if (daySettingsError) throw new Error(daySettingsError.message)
+        if (macroPlansError) throw new Error(macroPlansError.message)
+
+        const data = buildDietProgressData({
+            entries: (entries || []) as any[],
+            daySettings: (daySettings || []) as any[],
+            macroPlans: (macroPlans || []) as any[],
+            dateFrom,
+            dateTo,
+        }) as DietProgressData
+
+        return { success: true, data }
+    } catch (error: any) {
+        console.error('[getDietProgressData] Error:', error.message)
         return { success: false, error: error.message }
     }
 }

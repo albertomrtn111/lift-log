@@ -3,7 +3,8 @@
 import { createNewClient, setClientStatus, updateClientDetails, UpdateClientInput } from '@/data/members'
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendInviteEmail } from '@/lib/n8n'
+import { sendInviteEmailSmtp } from '@/lib/email/mailer'
+import { getAppUrl } from '@/lib/app-url'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
@@ -244,15 +245,15 @@ export async function createClientAction(data: {
 
             console.log(`[createClientAction] auth_user_id linked successfully`)
 
-            // 4. Send invite webhook with temp password (non-blocking)
-            sendInviteEmail({
-                clientId: client.id,
-                coachId,
-                clientEmail: client.email,
-                clientName: client.full_name ?? '',
+            // 4. Send invite email with temp password (non-blocking)
+            sendInviteEmailSmtp({
+                to: client.email,
+                clientName: client.full_name ?? undefined,
                 tempPassword: data.password,
+                appUrl: getAppUrl(),
+                coachId,
             }).catch((err) => {
-                console.warn('[createClientAction] n8n invite webhook failed (non-blocking):', err)
+                console.warn('[createClientAction] invite email failed (non-blocking):', err)
             })
         } catch (err: any) {
             console.error(`[createClientAction] Unexpected error in auth user creation:`, err)
@@ -263,14 +264,14 @@ export async function createClientAction(data: {
             }
         }
     } else {
-        // No password — fire n8n invite webhook without password (non-blocking)
-        sendInviteEmail({
-            clientId: client.id,
+        // No password — send invite email without password (non-blocking)
+        sendInviteEmailSmtp({
+            to: client.email,
+            clientName: client.full_name ?? undefined,
+            appUrl: getAppUrl(),
             coachId,
-            clientEmail: client.email,
-            clientName: client.full_name ?? '',
         }).catch((err) => {
-            console.warn('[createClientAction] n8n invite webhook failed (non-blocking):', err)
+            console.warn('[createClientAction] invite email failed (non-blocking):', err)
         })
     }
 

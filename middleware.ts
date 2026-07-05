@@ -7,8 +7,9 @@ export async function middleware(req: NextRequest) {
     const pathname = req.nextUrl.pathname
     const isDev = process.env.NODE_ENV === 'development'
 
-    if (searchParams.get('debugAuth') === '1') {
-        if (isDev) console.log(`[Middleware] Debug escape hatch active for ${pathname}`)
+    // SECURITY: debug escape hatch only exists in development — never in production
+    if (isDev && searchParams.get('debugAuth') === '1') {
+        console.log(`[Middleware] Debug escape hatch active for ${pathname}`)
         return NextResponse.next()
     }
 

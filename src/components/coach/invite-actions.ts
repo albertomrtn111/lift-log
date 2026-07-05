@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendInviteEmail } from '@/lib/n8n'
+import { sendInviteEmailSmtp } from '@/lib/email/mailer'
+import { getAppUrl } from '@/lib/app-url'
 
 interface InviteResult {
     success: boolean
@@ -30,12 +31,12 @@ export async function sendInviteAction(
         return { success: false, error: 'Client not found' }
     }
 
-    // Call n8n webhook with Basic Auth
-    const result = await sendInviteEmail({
-        clientId: client.id,
+    // Email directo desde la app (sustituye al webhook de n8n)
+    const result = await sendInviteEmailSmtp({
+        to: client.email,
+        clientName: client.full_name ?? undefined,
+        appUrl: getAppUrl(),
         coachId: validatedCoachId,
-        clientEmail: client.email,
-        clientName: client.full_name ?? '',
     })
 
     if (!result.ok) {

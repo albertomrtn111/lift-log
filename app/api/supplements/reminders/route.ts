@@ -33,10 +33,12 @@ function getCronSecret() {
 
 function isAuthorized(request: NextRequest) {
     const secret = getCronSecret()
-    if (!secret) return process.env.NODE_ENV !== 'production'
+    // SECURITY: fail closed — without a configured secret nobody is authorized,
+    // and the secret is only accepted via Authorization header (never query param,
+    // to avoid leaking it in logs/proxies).
+    if (!secret) return false
     const header = request.headers.get('authorization')
-    const querySecret = new URL(request.url).searchParams.get('secret')
-    return header === `Bearer ${secret}` || querySecret === secret
+    return header === `Bearer ${secret}`
 }
 
 function nowInTimezone(timezone: string) {

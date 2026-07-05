@@ -1,7 +1,7 @@
 'use server'
 
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendOnboardingEmail } from '@/lib/n8n'
+import { sendOnboardingEmailSmtp } from '@/lib/email/mailer'
 import { revalidatePath } from 'next/cache'
 import { resolveOnboardingTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
@@ -94,19 +94,16 @@ export async function sendOnboardingAction(
     // 6) Build URL
     const formUrl = getFormUrl(checkinId)
 
-    // 7) Call n8n (non-blocking)
-    const webhookResult = await sendOnboardingEmail({
-        clientId: client.id,
-        coachId: validatedCoachId,
-        clientEmail: client.email,
-        clientName: client.full_name ?? '',
-        checkinId,
-        formTemplateId: template.id,
+    // 7) Email directo desde la app (sustituye al webhook de n8n) — non-blocking
+    const emailResult = await sendOnboardingEmailSmtp({
+        to: client.email,
+        clientName: client.full_name ?? undefined,
         formUrl,
+        coachId: validatedCoachId,
     })
 
-    if (!webhookResult.ok) {
-        console.warn('[sendOnboardingAction] n8n webhook failed (non-blocking):', webhookResult.error)
+    if (!emailResult.ok) {
+        console.warn('[sendOnboardingAction] email failed (non-blocking):', emailResult.error)
     }
 
     revalidatePath('/coach/members')

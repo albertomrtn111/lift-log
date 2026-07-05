@@ -14,6 +14,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachDashboardData } from '@/data/dashboard'
+import { getCoachEmailSettingsPublic } from '@/lib/email/coach-settings'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,10 +44,37 @@ export default async function CoachDashboardPage() {
 
     const dashboard = await getCoachDashboardData(coachId, user.id)
     const todayFormatted = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
+    const emailSettings = await getCoachEmailSettingsPublic(coachId).catch(() => null)
+    const showEmailSetupBanner = !emailSettings?.configured
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
             <DashboardFreshness />
+            {showEmailSetupBanner && (
+                <div className="px-4 pt-4 lg:px-8">
+                    <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                                <Bell className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="space-y-0.5">
+                                <p className="text-sm font-semibold">Configura tu email de envío</p>
+                                <p className="text-xs text-muted-foreground max-w-xl">
+                                    Las revisiones e invitaciones a tus atletas se envían ahora desde la
+                                    cuenta general de la app. Conecta tu propia cuenta para que salgan
+                                    con tu nombre y dirección.
+                                </p>
+                            </div>
+                        </div>
+                        <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
+                            <Link href="/coach/settings?tab=email">
+                                Configurar ahora
+                                <ArrowRight className="h-4 w-4 ml-1.5" />
+                            </Link>
+                        </Button>
+                    </Card>
+                </div>
+            )}
             <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
                 <div className="px-4 py-6 lg:px-8">
                     <div className="flex items-start justify-between gap-4">

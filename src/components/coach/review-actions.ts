@@ -1,7 +1,7 @@
 'use server'
 
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendReviewEmail } from '@/lib/n8n'
+import { sendReviewEmailSmtp } from '@/lib/email/mailer'
 import { revalidatePath } from 'next/cache'
 import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
@@ -173,22 +173,18 @@ export async function sendReviewAction(
             .eq('id', chosenSchedule.id)
     }
 
-    // 8) Webhook n8n — campos legacy + extras nuevos opcionales (aditivos, no rompen flows existentes)
-    const webhookResult = await sendReviewEmail({
-        clientId: client.id,
-        coachId: validatedCoachId,
-        clientEmail: client.email,
-        clientName: client.full_name ?? '',
-        checkinId,
-        formTemplateId: formTemplateId ?? undefined,
+    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking
+    const emailResult = await sendReviewEmailSmtp({
+        to: client.email,
+        clientName: client.full_name ?? undefined,
         formUrl,
-        reviewTemplateId: chosenSchedule?.review_template_id,
         reviewTemplateName: chosenSchedule?.review_template?.name,
-        reviewType: chosenSchedule?.review_template?.review_type,
+        periodEnd: scheduledDate,
+        coachId: validatedCoachId,
     })
 
-    if (!webhookResult.ok) {
-        console.warn('[sendReviewAction] n8n webhook failed (non-blocking):', webhookResult.error)
+    if (!emailResult.ok) {
+        console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
     }
 
     try {
