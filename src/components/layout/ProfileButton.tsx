@@ -26,9 +26,9 @@ export function ProfileButton() {
         <Link
             href="/profile"
             className={cn(
-                'fixed top-[calc(var(--safe-area-top,0px)+10px)] right-4 z-50',
+                'fixed top-[calc(var(--safe-area-top,0px)+18px)] right-4 z-50',
                 'flex items-center justify-center w-9 h-9 rounded-full',
-                'ring-2 transition-all',
+                'bg-background shadow-sm ring-2 transition-all',
                 isActive
                     ? 'ring-primary shadow-md shadow-primary/20'
                     : 'ring-border hover:ring-primary/50'

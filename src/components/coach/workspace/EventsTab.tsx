@@ -109,7 +109,13 @@ function getDaysUntil(eventDate: string) {
 function formatDaysUntil(days: number) {
     if (days === 0) return 'Hoy'
     if (days === 1) return 'Mañana'
-    if (days > 1) return `${days} días`
+    if (days > 1 && days < 7) return `${days} días`
+    if (days >= 7) {
+        const weeks = Math.floor(days / 7)
+        const rest = days % 7
+        const weeksLabel = rest === 0 ? `${weeks} sem` : `${weeks} sem ${rest} d`
+        return `${weeksLabel} · ${days} días`
+    }
     if (days === -1) return 'Ayer'
     return `Hace ${Math.abs(days)} días`
 }

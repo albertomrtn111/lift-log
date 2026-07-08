@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Check, Clock, HeartPulse, Loader2, Route } from 'lucide-react'
+import { Activity, ArrowLeft, Check, Clock, HeartPulse, Loader2, Route } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -93,6 +93,7 @@ export function StravaPendingFeedback() {
     const [selectedSessionId, setSelectedSessionId] = useState('')
     const [saving, setSaving] = useState(false)
     const [ignoring, setIgnoring] = useState(false)
+    const [step, setStep] = useState<'import' | 'feedback'>('import')
 
     async function loadPending() {
         try {
@@ -121,6 +122,7 @@ export function StravaPendingFeedback() {
             setRpe(5)
             setNotes('')
             setSelectedSessionId(activity.matched_planned_session_id || '')
+            setStep('import')
         }
     }, [activity?.id])
 
@@ -184,10 +186,13 @@ export function StravaPendingFeedback() {
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
                         <Activity className="h-5 w-5 text-orange-600" />
                     </div>
-                    <DialogTitle className="leading-tight">Nueva actividad importada</DialogTitle>
+                    <DialogTitle className="leading-tight">
+                        {step === 'import' ? 'Nueva actividad importada' : '¿Cómo fue la sesión?'}
+                    </DialogTitle>
                     <DialogDescription className="break-words">{activity.name || 'Actividad importada'}</DialogDescription>
                 </DialogHeader>
 
+                {step === 'import' ? (
                 <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
                     <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="min-w-0 rounded-lg border border-border p-3">
@@ -269,6 +274,12 @@ export function StravaPendingFeedback() {
                             </RadioGroup>
                         </div>
                     )}
+                </div>
+                ) : (
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+                    <p className="text-sm text-muted-foreground">
+                        Cuéntale a tu coach cómo te ha ido esta actividad.
+                    </p>
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -282,29 +293,50 @@ export function StravaPendingFeedback() {
                             step={1}
                             onValueChange={(value) => setRpe(value[0] ?? 5)}
                         />
+                        <p className="text-xs text-muted-foreground">
+                            1 = muy suave · 10 = esfuerzo máximo
+                        </p>
                     </div>
 
-                    <Textarea
-                        value={notes}
-                        onChange={(event) => setNotes(event.target.value)}
-                        placeholder="Notas, sensaciones o contexto para tu coach"
-                        className="min-h-[96px] resize-none"
-                    />
+                    <div className="space-y-2">
+                        <Label htmlFor="strava-notes" className="text-sm font-medium">Notas</Label>
+                        <Textarea
+                            id="strava-notes"
+                            value={notes}
+                            onChange={(event) => setNotes(event.target.value)}
+                            placeholder="Notas, sensaciones o contexto para tu coach"
+                            className="min-h-[96px] resize-none"
+                        />
+                    </div>
                 </div>
+                )}
 
+                {step === 'import' ? (
                 <DialogFooter className="shrink-0 flex-col gap-2 border-t px-4 py-3 sm:flex-row sm:px-5 sm:py-4">
-                    <Button variant="outline" onClick={dismissCurrent} disabled={saving} className="w-full sm:w-auto">
+                    <Button variant="outline" onClick={dismissCurrent} disabled={ignoring} className="w-full sm:w-auto">
                         Ahora no
                     </Button>
-                    <Button variant="ghost" onClick={ignoreCurrent} disabled={saving || ignoring} className="w-full text-destructive hover:text-destructive sm:w-auto">
+                    <Button variant="ghost" onClick={ignoreCurrent} disabled={ignoring} className="w-full text-destructive hover:text-destructive sm:w-auto">
                         {ignoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         No importar
                     </Button>
-                    <Button onClick={saveFeedback} disabled={saving || ignoring || requiresSessionChoice} className="w-full gap-2 sm:w-auto">
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    <Button onClick={() => setStep('feedback')} disabled={ignoring || requiresSessionChoice} className="w-full gap-2 sm:w-auto">
+                        <Check className="h-4 w-4" />
                         Importar
                     </Button>
                 </DialogFooter>
+                ) : (
+                <DialogFooter className="shrink-0 flex-col gap-2 border-t px-4 py-3 sm:flex-row sm:px-5 sm:py-4">
+                    <Button variant="outline" onClick={() => setStep('import')} disabled={saving} className="w-full gap-2 sm:w-auto">
+                        <ArrowLeft className="h-4 w-4" />
+                        Atrás
+                    </Button>
+                    <Button onClick={saveFeedback} disabled={saving} className="w-full gap-2 sm:w-auto">
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        Guardar
+                    </Button>
+                </DialogFooter>
+                )}
             </DialogContent>
         </Dialog>
     )

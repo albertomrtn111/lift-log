@@ -212,7 +212,14 @@ function getEventDaysUntil(eventDate: string) {
 function formatEventDaysUntil(days: number) {
     if (days === 0) return 'Hoy'
     if (days === 1) return 'Mañana'
-    if (days > 1) return `${days} días`
+    if (days > 1 && days < 7) return `${days} días`
+    if (days >= 7) {
+        const weeks = Math.floor(days / 7)
+        const rest = days % 7
+        return rest === 0
+            ? `${weeks} sem`
+            : `${weeks} sem ${rest} d`
+    }
     if (days === -1) return 'Ayer'
     return `Hace ${Math.abs(days)} días`
 }
@@ -327,8 +334,15 @@ function UpcomingEventsCard({
                                         {event.target || event.location || 'Objetivo sin detalle'}
                                     </p>
                                 </div>
-                                <span className="shrink-0 text-xs font-semibold text-muted-foreground">
-                                    {formatEventDaysUntil(daysUntil)}
+                                <span className="flex shrink-0 flex-col items-end">
+                                    <span className="text-xs font-semibold text-muted-foreground">
+                                        {formatEventDaysUntil(daysUntil)}
+                                    </span>
+                                    {daysUntil >= 7 && (
+                                        <span className="text-[10px] text-muted-foreground/60">
+                                            {daysUntil} días
+                                        </span>
+                                    )}
                                 </span>
                             </button>
                         )

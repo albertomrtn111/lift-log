@@ -183,7 +183,7 @@ export default function ProfilePage() {
             <div className="app-mobile-page min-h-screen pb-4">
                 <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                     <div className="px-4 py-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 pr-24">
                             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                                 <User className="h-5 w-5 text-primary" />
                             </div>
@@ -214,7 +214,7 @@ export default function ProfilePage() {
             <div className="app-mobile-page min-h-screen pb-4">
                 <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                     <div className="px-4 py-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 pr-24">
                             <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
                                 <AlertCircle className="h-5 w-5 text-destructive" />
                             </div>
@@ -260,7 +260,7 @@ export default function ProfilePage() {
             {/* Header */}
             <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="px-4 py-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pr-24">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                             <User className="h-5 w-5 text-primary" />
                         </div>

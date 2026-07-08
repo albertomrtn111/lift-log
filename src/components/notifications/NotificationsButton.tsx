@@ -35,9 +35,9 @@ export function NotificationsButton() {
                 onClick={() => setOpen(true)}
                 aria-label="Notificaciones"
                 className={cn(
-                    'fixed top-[calc(var(--safe-area-top,0px)+10px)] right-[calc(2.25rem+1.75rem)] z-50',
+                    'fixed top-[calc(var(--safe-area-top,0px)+18px)] right-[3.75rem] z-50',
                     'flex items-center justify-center w-9 h-9 rounded-full',
-                    'ring-2 ring-border bg-background hover:ring-primary/50 transition-all',
+                    'ring-2 ring-border bg-background shadow-sm hover:ring-primary/50 transition-all',
                     open && 'ring-primary'
                 )}
             >

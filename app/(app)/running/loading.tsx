@@ -6,7 +6,7 @@ export default function RunningLoading() {
             {/* Header skeleton */}
             <header className="app-mobile-header bg-background border-b border-border">
                 <div className="px-4 py-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pr-24">
                         <Skeleton className="w-10 h-10 rounded-xl" />
                         <div className="space-y-2">
                             <Skeleton className="h-5 w-24" />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     Dialog,
@@ -27,8 +27,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Camera, Activity, Dumbbell, Layers, Sliders, FileText } from 'lucide-react'
-import type { FormTemplate } from '@/types/forms'
+import { Loader2, Camera, Activity, Dumbbell, Layers, Sliders, FileText, Plus, Pencil } from 'lucide-react'
+import type { FormField, FormTemplate } from '@/types/forms'
 import type { MetricCategory, MetricDefinition } from '@/types/metrics'
 import type { ReviewTemplate, ReviewType } from '@/data/review-templates'
 import {
@@ -36,6 +36,8 @@ import {
     updateReviewTemplateAction,
     listReviewTemplateMetricsAction,
 } from './review-template-actions'
+import { createFormTemplate, updateFormTemplate } from '@/data/form-templates'
+import { FormBuilderModal } from './FormBuilderModal'
 
 const REVIEW_TYPE_OPTIONS: { value: ReviewType; label: string }[] = [
     { value: 'weekly', label: 'Semanal' },
@@ -92,6 +94,19 @@ export function ReviewTemplateDialog({
     const [selectedMetricIds, setSelectedMetricIds] = useState<Set<string>>(new Set())
     const [loadingMetrics, setLoadingMetrics] = useState(false)
 
+    // Editor de preguntas (crear/editar formularios de check-in sin salir del diálogo)
+    const [formBuilderOpen, setFormBuilderOpen] = useState(false)
+    const [formBuilderEditing, setFormBuilderEditing] = useState<FormTemplate | null>(null)
+    // Formularios creados/editados en esta sesión del diálogo, antes de que llegue el refresh del servidor
+    const [formOverrides, setFormOverrides] = useState<Record<string, FormTemplate>>({})
+
+    const effectiveForms = useMemo(() => {
+        const base = checkinForms.map(f => formOverrides[f.id] ?? f)
+        const knownIds = new Set(base.map(f => f.id))
+        const created = Object.values(formOverrides).filter(f => !knownIds.has(f.id))
+        return [...base, ...created]
+    }, [checkinForms, formOverrides])
+
     // Reset al abrir / cambiar editingTemplate
     useEffect(() => {
         if (!open) return
@@ -145,10 +160,49 @@ export function ReviewTemplateDialog({
                 setSelectedMetricIds(new Set())
             }
             setError(null)
+            setFormOverrides({})
+            setFormBuilderEditing(null)
         }
         init()
         return () => { cancelled = true }
     }, [open, editingTemplate])
+
+    const handleFormBuilderSave = async (data: { title: string; schema: FormField[] }) => {
+        if (formBuilderEditing) {
+            const result = await updateFormTemplate(formBuilderEditing.id, {
+                title: data.title,
+                schema: data.schema,
+            })
+            if (result.success) {
+                setFormOverrides(prev => ({
+                    ...prev,
+                    [formBuilderEditing.id]: { ...formBuilderEditing, title: data.title, schema: data.schema },
+                }))
+                toast({ title: 'Formulario actualizado' })
+                setFormBuilderOpen(false)
+                setFormBuilderEditing(null)
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        } else {
+            const result = await createFormTemplate({
+                title: data.title,
+                type: 'checkin',
+                schema: data.schema,
+            })
+            if (result.success && result.template) {
+                const created = result.template
+                setFormOverrides(prev => ({ ...prev, [created.id]: created }))
+                setFormTemplateId(created.id)
+                toast({ title: 'Formulario creado', description: 'Ya está seleccionado en esta revisión.' })
+                setFormBuilderOpen(false)
+                router.refresh()
+            } else {
+                toast({ title: 'Error', description: result.error, variant: 'destructive' })
+            }
+        }
+    }
 
     const toggleMetric = (id: string) => {
         setSelectedMetricIds(prev => {
@@ -262,7 +316,10 @@ export function ReviewTemplateDialog({
         })
     }
 
-    const selectedForm = checkinForms.find((form) => form.id === formTemplateId) ?? null
+    const selectedForm = effectiveForms.find((form) => form.id === formTemplateId) ?? null
+    const selectedFormFields = (selectedForm?.schema ?? []).filter(
+        (field) => field.id !== 'progress_photos'
+    )
     const metricsByCategory: Record<MetricCategory, MetricDefinition[]> = { body: [], performance: [], general: [] }
     for (const m of metrics) {
         const cat = m.category as MetricCategory
@@ -316,7 +373,7 @@ export function ReviewTemplateDialog({
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">Sin formulario</SelectItem>
-                                                    {checkinForms.map(f => (
+                                                    {effectiveForms.map(f => (
                                                         <SelectItem key={f.id} value={f.id}>
                                                             {f.title}{!f.is_active && ' (inactivo)'}
                                                         </SelectItem>
@@ -325,19 +382,67 @@ export function ReviewTemplateDialog({
                                             </Select>
                                         </div>
 
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedForm && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-1.5"
+                                                    onClick={() => {
+                                                        setFormBuilderEditing(selectedForm)
+                                                        setFormBuilderOpen(true)
+                                                    }}
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                    Editar preguntas
+                                                </Button>
+                                            )}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-1.5"
+                                                onClick={() => {
+                                                    setFormBuilderEditing(null)
+                                                    setFormBuilderOpen(true)
+                                                }}
+                                            >
+                                                <Plus className="h-3.5 w-3.5" />
+                                                Crear formulario nuevo
+                                            </Button>
+                                        </div>
+
                                         {selectedForm ? (
-                                            <div className="rounded-lg border bg-muted/20 p-3">
-                                                <div className="flex items-start justify-between gap-3">
+                                            <div className="rounded-lg border bg-muted/20 overflow-hidden">
+                                                <div className="flex items-start justify-between gap-3 p-3 border-b">
                                                     <div className="min-w-0">
                                                         <p className="truncate text-sm font-medium">{selectedForm.title}</p>
                                                         <p className="text-xs text-muted-foreground">
-                                                            {(selectedForm.schema?.filter(field => field.id !== 'progress_photos').length ?? 0)} preguntas editables
+                                                            {selectedFormFields.length} pregunta{selectedFormFields.length === 1 ? '' : 's'}
                                                         </p>
                                                     </div>
                                                     <Badge variant={selectedForm.is_active ? 'outline' : 'secondary'}>
                                                         {selectedForm.is_active ? 'Activo' : 'Inactivo'}
                                                     </Badge>
                                                 </div>
+                                                {selectedFormFields.length > 0 ? (
+                                                    <div className="divide-y max-h-64 overflow-y-auto">
+                                                        {selectedFormFields.map((field, i) => (
+                                                            <div key={field.id} className="flex items-center gap-2 px-3 py-2">
+                                                                <span className="w-5 shrink-0 text-[10px] font-mono text-muted-foreground">{i + 1}.</span>
+                                                                <span className="min-w-0 flex-1 truncate text-sm">
+                                                                    {field.label}
+                                                                    {field.required && <span className="ml-0.5 text-destructive">*</span>}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="p-3 text-xs text-muted-foreground">
+                                                        Este formulario no tiene preguntas todavía. Pulsa &quot;Editar preguntas&quot; para añadirlas.
+                                                    </p>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400">
@@ -583,13 +688,14 @@ export function ReviewTemplateDialog({
                                 </div>
                             </div>
 
-                            {error && (
-                                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3">
-                                    <p className="text-sm text-destructive">{error}</p>
-                                </div>
-                            )}
                         </TabsContent>
                     </Tabs>
+
+                    {error && (
+                        <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+                            <p className="text-sm text-destructive">{error}</p>
+                        </div>
+                    )}
                 </div>
 
                 <DialogFooter>
@@ -603,6 +709,17 @@ export function ReviewTemplateDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <FormBuilderModal
+            open={formBuilderOpen}
+            onOpenChange={(v) => {
+                setFormBuilderOpen(v)
+                if (!v) setFormBuilderEditing(null)
+            }}
+            templateType="checkin"
+            editingTemplate={formBuilderEditing}
+            onSave={handleFormBuilderSave}
+        />
         </>
     )
 }
