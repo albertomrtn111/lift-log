@@ -17,7 +17,6 @@ import {
     Clock,
     Dumbbell,
     FileText,
-    Filter,
     Loader2,
     Scale,
     Sparkles,
@@ -33,6 +32,7 @@ import type {
 import {
     completeCoachTaskAction,
     createCoachTaskAction,
+    rescheduleReviewEventAction,
     snoozeCoachTaskAction,
 } from '@/components/coach/calendar-actions'
 import { Badge } from '@/components/ui/badge'
@@ -270,6 +270,8 @@ export function CalendarView({
     const [isSavingTask, startSavingTask] = useTransition()
     const [isCompletingTask, startCompletingTask] = useTransition()
     const [isSnoozingTask, startSnoozingTask] = useTransition()
+    const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null)
+    const [dragOverDate, setDragOverDate] = useState<string | null>(null)
 
     const now = new Date()
     const todayStr = formatDateKey(now)
@@ -565,6 +567,72 @@ export function CalendarView({
         })
     }
 
+    // ------------------------------------------------------------------
+    // Drag & drop de revisiones programadas (solo eventos aún sin respuesta)
+    // ------------------------------------------------------------------
+
+    const isDraggableEvent = (event: CalendarEvent) => event.source === 'scheduled'
+
+    const handleEventDragStart = (event: CalendarEvent) => (dragEvent: React.DragEvent) => {
+        dragEvent.dataTransfer.setData('text/plain', event.id)
+        dragEvent.dataTransfer.effectAllowed = 'move'
+        setDraggedEvent(event)
+    }
+
+    const handleEventDragEnd = () => {
+        setDraggedEvent(null)
+        setDragOverDate(null)
+    }
+
+    const handleDayDragOver = (dateStr: string) => (dragEvent: React.DragEvent) => {
+        if (!draggedEvent) return
+        dragEvent.preventDefault()
+        dragEvent.dataTransfer.dropEffect = 'move'
+        if (dragOverDate !== dateStr) setDragOverDate(dateStr)
+    }
+
+    const handleDayDrop = (dateStr: string) => (dragEvent: React.DragEvent) => {
+        dragEvent.preventDefault()
+        setDragOverDate(null)
+        const eventToMove = draggedEvent
+        setDraggedEvent(null)
+        if (!eventToMove || eventToMove.date === dateStr) return
+
+        const previousEvents = events
+        const newStatus: CalendarEventStatus = dateStr < todayStr ? 'missing' : 'scheduled'
+
+        // Optimista: mover el evento en la UI y confirmar en servidor.
+        setEvents((current) => sortEvents(current.map((item) =>
+            item.id === eventToMove.id
+                ? {
+                    ...item,
+                    date: dateStr,
+                    expectedDate: dateStr,
+                    status: newStatus,
+                    isUrgent: newStatus === 'missing',
+                }
+                : item
+        )))
+
+        void (async () => {
+            const result = await rescheduleReviewEventAction({
+                coachId,
+                clientId: eventToMove.clientId,
+                newDate: dateStr,
+                reviewScheduleId: eventToMove.reviewScheduleId ?? null,
+                checkinId: eventToMove.checkinId ?? null,
+            })
+
+            if (!result.success) {
+                setEvents(previousEvents)
+                toast.error(result.error || 'No se pudo mover la revisión.')
+                return
+            }
+
+            toast.success(`Revisión de ${eventToMove.clientName} movida al ${formatShortDate(dateStr)}.`)
+        })()
+    }
+
     const prefillTaskForClient = (event: CalendarEvent) => {
         setSelectedDate(event.date)
         setTaskDate(event.date)
@@ -576,148 +644,110 @@ export function CalendarView({
     const panelActionCount = selectedDateEvents.filter((event) => event.status === 'missing' || event.status === 'pending_review').length
     const panelCompletedCount = selectedDateEvents.filter((event) => event.status === 'completed').length
 
-    const topSummaryCards = [
-        {
-            label: 'Recibidos',
-            value: receivedCount,
-            helper: 'Revisiones que ya entraron de verdad en el rango visible.',
-            tone: 'success' as const,
-        },
-        {
-            label: 'Revisiones pendientes',
-            value: countsByStatus.pending_review,
-            helper: 'Revisiones recibidas que aún requieren revisión o aprobación.',
-            tone: 'warning' as const,
-        },
-        {
-            label: 'Programados',
-            value: countsByStatus.scheduled,
-            helper: 'Formularios enviados y aún dentro de su ventana esperada.',
-            tone: 'default' as const,
-        },
-        {
-            label: 'No recibidos',
-            value: countsByStatus.missing,
-            helper: 'Solo aparecen cuando existe un formulario real vencido sin respuesta.',
-            tone: 'danger' as const,
-        },
-    ]
+    const isOnToday = (viewMode === 'month' && isCurrentMonth) || (viewMode === 'week' && isCurrentWeek)
+    const rangeTitle = viewMode === 'month'
+        ? `${MONTH_NAMES[month]} ${year}`
+        : `${format(weekDays[0].date, 'd', { locale: es })} – ${format(weekDays[6].date, "d 'de' MMMM yyyy", { locale: es })}`
 
     const filterOptions: CalendarFilter[] = ['all', 'pending_review', 'missing', 'scheduled', 'completed']
 
     return (
         <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {topSummaryCards.map((card) => (
-                    <SummaryCard
-                        key={card.label}
-                        label={card.label}
-                        value={card.value}
-                        helper={card.helper}
-                        tone={card.tone}
-                    />
-                ))}
-            </div>
-
-            <Card className="p-4 space-y-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center justify-between gap-3">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={viewMode === 'month' ? goToPrevMonth : goToPrevWeek}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-
-                        <div className="text-center">
-                            <h2 className="text-lg font-semibold">
-                                {viewMode === 'month'
-                                    ? `${MONTH_NAMES[month]} ${year}`
-                                    : `${format(weekDays[0].date, "d MMM", { locale: es })} - ${format(weekDays[6].date, "d MMM yyyy", { locale: es })}`
-                                }
-                            </h2>
-                            <Button
-                                variant={
-                                    (viewMode === 'month' && isCurrentMonth) || (viewMode === 'week' && isCurrentWeek)
-                                        ? 'ghost'
-                                        : 'outline'
-                                }
-                                size="sm"
-                                onClick={goToToday}
-                                className="mt-1 text-xs"
-                            >
-                                {(viewMode === 'month' && isCurrentMonth) || (viewMode === 'week' && isCurrentWeek)
-                                    ? 'Hoy'
-                                    : viewMode === 'month'
-                                        ? `Volver a ${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`
-                                        : 'Volver a esta semana'}
-                            </Button>
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={viewMode === 'month' ? goToNextMonth : goToNextWeek}
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-1 rounded-lg bg-muted/50 p-1 lg:justify-end">
-                        {[
-                            { key: 'week' as ViewMode, label: 'Semana' },
-                            { key: 'month' as ViewMode, label: 'Mes' },
-                        ].map((tab) => (
+            {/* Toolbar compacta: navegación + vista + filtros en un solo bloque */}
+            <Card className="p-3 sm:px-4">
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <div className="flex items-center rounded-lg border">
                             <button
-                                key={tab.key}
-                                onClick={() => switchView(tab.key)}
+                                onClick={viewMode === 'month' ? goToPrevMonth : goToPrevWeek}
+                                className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                aria-label="Anterior"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={goToToday}
+                                disabled={isOnToday}
                                 className={cn(
-                                    'rounded-md px-4 py-1.5 text-sm font-medium transition-all',
-                                    viewMode === tab.key
-                                        ? 'bg-background text-foreground shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                    'h-8 border-x px-3 text-sm font-medium transition-colors',
+                                    isOnToday
+                                        ? 'text-muted-foreground/60'
+                                        : 'text-foreground hover:bg-muted/60'
                                 )}
                             >
-                                {tab.label}
+                                Hoy
                             </button>
-                        ))}
+                            <button
+                                onClick={viewMode === 'month' ? goToNextMonth : goToNextWeek}
+                                className="flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                aria-label="Siguiente"
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <h2 className="ml-2 min-w-0 truncate text-base font-semibold capitalize sm:text-lg">
+                            {rangeTitle}
+                        </h2>
+                        {loading && <Loader2 className="ml-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
                     </div>
-                </div>
 
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Filter className="h-4 w-4" />
-                        <span>Filtros rápidos</span>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+                            {[
+                                { key: 'week' as ViewMode, label: 'Semana' },
+                                { key: 'month' as ViewMode, label: 'Mes' },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => switchView(tab.key)}
+                                    className={cn(
+                                        'rounded-md px-3 py-1 text-sm font-medium transition-all',
+                                        viewMode === tab.key
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        <Button size="sm" onClick={() => openTaskDialog()} className="shrink-0">
+                            <Bell className="mr-1.5 h-4 w-4" />
+                            Crear tarea
+                        </Button>
                     </div>
 
-                    <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
-                        <ScrollArea className="w-full lg:w-auto">
-                            <div className="flex gap-2 pb-1">
+                    <div className="flex w-full items-center justify-between gap-3 border-t pt-3">
+                        <ScrollArea className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 pb-0.5">
                                 {filterOptions.map((filter) => (
                                     <button
                                         key={filter}
                                         onClick={() => setActiveFilter(filter)}
                                         className={cn(
-                                            'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                                            'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                                             activeFilter === filter
-                                                ? 'border-primary bg-primary/10 text-primary'
-                                                : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                                                ? 'border-primary/40 bg-primary/10 text-primary'
+                                                : 'border-transparent bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
                                         )}
                                     >
+                                        {filter !== 'all' && (
+                                            <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_COLORS[filter])} />
+                                        )}
                                         <span>{getFilterLabel(filter)}</span>
-                                        <span className="rounded-full bg-background/80 px-1.5 py-0.5 text-xs">
+                                        <span className={cn(
+                                            'tabular-nums',
+                                            activeFilter === filter ? 'text-primary' : 'text-muted-foreground/70'
+                                        )}>
                                             {countsByStatus[filter]}
                                         </span>
                                     </button>
                                 ))}
                             </div>
                         </ScrollArea>
-
-                        <Button onClick={() => openTaskDialog()} className="shrink-0">
-                            <Bell className="mr-2 h-4 w-4" />
-                            Crear tarea
-                        </Button>
+                        <span className="hidden shrink-0 text-xs text-muted-foreground lg:block">
+                            {receivedCount} recibida{receivedCount !== 1 ? 's' : ''} en el rango
+                        </span>
                     </div>
                 </div>
             </Card>
@@ -759,11 +789,14 @@ export function CalendarView({
                                 <button
                                     key={dateStr}
                                     onClick={() => setSelectedDate(dateStr)}
+                                    onDragOver={handleDayDragOver(dateStr)}
+                                    onDrop={handleDayDrop(dateStr)}
                                     className={cn(
                                         'min-h-[88px] rounded-xl border p-2 text-left transition-all sm:min-h-[148px]',
                                         isToday && 'border-primary bg-primary/5',
                                         hasUrgent && !isToday && 'border-red-500/30 bg-red-500/[0.03]',
-                                        !isToday && !hasUrgent && 'hover:border-primary/30 hover:bg-muted/20'
+                                        !isToday && !hasUrgent && 'hover:border-primary/30 hover:bg-muted/20',
+                                        draggedEvent && dragOverDate === dateStr && 'border-primary bg-primary/10 ring-2 ring-primary/30'
                                     )}
                                 >
                                     <div className="flex items-start justify-between gap-2">
@@ -784,9 +817,15 @@ export function CalendarView({
                                         {visibleDayEvents.map((event) => (
                                             <div
                                                 key={event.id}
+                                                draggable={isDraggableEvent(event)}
+                                                onDragStart={isDraggableEvent(event) ? handleEventDragStart(event) : undefined}
+                                                onDragEnd={isDraggableEvent(event) ? handleEventDragEnd : undefined}
+                                                title={isDraggableEvent(event) ? 'Arrastra para mover a otro día' : undefined}
                                                 className={cn(
                                                     'rounded-md border px-1.5 py-1 text-[10px] leading-tight',
-                                                    STATUS_BADGE_VARIANTS[event.status]
+                                                    STATUS_BADGE_VARIANTS[event.status],
+                                                    isDraggableEvent(event) && 'cursor-grab active:cursor-grabbing',
+                                                    draggedEvent?.id === event.id && 'opacity-40'
                                                 )}
                                             >
                                                 <div className="flex items-center gap-1.5">
@@ -851,10 +890,13 @@ export function CalendarView({
                         return (
                             <Card
                                 key={dateStr}
+                                onDragOver={handleDayDragOver(dateStr)}
+                                onDrop={handleDayDrop(dateStr)}
                                 className={cn(
                                     'min-w-0 overflow-hidden',
                                     urgentCount > 0 && 'border-red-500/25',
-                                    isToday && 'border-primary/30'
+                                    isToday && 'border-primary/30',
+                                    draggedEvent && dragOverDate === dateStr && 'border-primary ring-2 ring-primary/30'
                                 )}
                             >
                                 <div className={cn(
@@ -897,10 +939,16 @@ export function CalendarView({
                                             <button
                                                 key={event.id}
                                                 onClick={() => setSelectedDate(dateStr)}
+                                                draggable={isDraggableEvent(event)}
+                                                onDragStart={isDraggableEvent(event) ? handleEventDragStart(event) : undefined}
+                                                onDragEnd={isDraggableEvent(event) ? handleEventDragEnd : undefined}
+                                                title={isDraggableEvent(event) ? 'Arrastra para mover a otro día' : undefined}
                                                 className={cn(
                                                     'w-full overflow-hidden rounded-md border p-1.5 text-left transition-all hover:border-primary/30 hover:bg-muted/20',
                                                     event.status === 'missing' && 'border-red-500/20',
-                                                    event.status === 'pending_review' && 'border-amber-500/20'
+                                                    event.status === 'pending_review' && 'border-amber-500/20',
+                                                    isDraggableEvent(event) && 'cursor-grab active:cursor-grabbing',
+                                                    draggedEvent?.id === event.id && 'opacity-40'
                                                 )}
                                             >
                                                 <div className="flex min-w-0 flex-col gap-1.5">
@@ -1018,6 +1066,9 @@ export function CalendarView({
                     </div>
                     <span>Tareas del coach</span>
                 </div>
+                <span className="text-xs text-muted-foreground/70">
+                    Arrastra una revisión programada o vencida a otro día para moverla.
+                </span>
             </div>
 
             <Sheet open={!!selectedDate} onOpenChange={(open) => { if (!open) setSelectedDate(null) }}>

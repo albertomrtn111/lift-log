@@ -116,6 +116,23 @@ export async function sendPushToClient(
     clientId: string,
     payload: PushPayload
 ): Promise<PushSendResult> {
+    return sendPushToSubscribers('push_subscriptions', 'client_id', clientId, payload)
+}
+
+/** Igual que sendPushToClient pero para los dispositivos del coach. */
+export async function sendPushToCoach(
+    coachId: string,
+    payload: PushPayload
+): Promise<PushSendResult> {
+    return sendPushToSubscribers('coach_push_subscriptions', 'coach_id', coachId, payload)
+}
+
+async function sendPushToSubscribers(
+    table: 'push_subscriptions' | 'coach_push_subscriptions',
+    ownerColumn: 'client_id' | 'coach_id',
+    ownerId: string,
+    payload: PushPayload
+): Promise<PushSendResult> {
     const config = getPushConfig()
     if (!config) {
         console.info('[push] Configuración ausente o incompleta; se omite el envío.')
@@ -130,9 +147,9 @@ export async function sendPushToClient(
     try {
         const adminSupabase = getAdminSupabase(config)
         const { data: subscriptions, error } = await adminSupabase
-            .from('push_subscriptions')
+            .from(table)
             .select('endpoint, p256dh, auth, id')
-            .eq('client_id', clientId)
+            .eq(ownerColumn, ownerId)
 
         if (error) {
             console.error('[push] Error al leer suscripciones:', error)
@@ -173,7 +190,7 @@ export async function sendPushToClient(
 
                 if (error?.statusCode === 404 || error?.statusCode === 410) {
                     const { error: deleteError } = await adminSupabase
-                        .from('push_subscriptions')
+                        .from(table)
                         .delete()
                         .eq('id', subscription.id)
 
@@ -193,7 +210,7 @@ export async function sendPushToClient(
             prunedCount,
         }
     } catch (error) {
-        console.error('[push] Error inesperado en sendPushToClient:', error)
+        console.error(`[push] Error inesperado enviando a ${ownerColumn}=${ownerId}:`, error)
         return { ok: false, reason: 'unexpected' }
     }
 }

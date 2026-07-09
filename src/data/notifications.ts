@@ -14,17 +14,33 @@ export interface ClientNotification {
     created_at: string
 }
 
-async function getCurrentClientId(): Promise<string | null> {
+// Cache del clientId por usuario: getNotifications, getUnreadCount y la
+// suscripción realtime lo comparten en vez de repetir auth + query cada vez.
+const clientIdCache = new Map<string, Promise<string | null>>()
+
+export async function getCurrentClientId(): Promise<string | null> {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data: client } = await supabase
-        .from('clients')
-        .select('id')
-        .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
-        .eq('status', 'active')
-        .maybeSingle()
-    return client?.id ?? null
+    // getSession lee del storage local (sin roundtrip); RLS valida el token igualmente
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+    if (!userId) return null
+
+    let cached = clientIdCache.get(userId)
+    if (!cached) {
+        cached = (async () => {
+            const { data } = await supabase
+                .from('clients')
+                .select('id')
+                .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
+                .eq('status', 'active')
+                .maybeSingle()
+            return data?.id ?? null
+        })()
+        clientIdCache.set(userId, cached)
+        // No cachear fallos: permite reintentar en el siguiente refresh
+        void cached.then((id) => { if (!id) clientIdCache.delete(userId) })
+    }
+    return cached
 }
 
 export async function getNotifications(limit = 50): Promise<ClientNotification[]> {

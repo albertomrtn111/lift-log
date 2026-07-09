@@ -26,6 +26,7 @@ import {
     Pill,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
@@ -58,6 +59,7 @@ function deleteCookie(name: string) {
 
 export default function ProfilePage() {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
     const [uploading, setUploading] = useState(false)
@@ -166,6 +168,9 @@ export default function ProfilePage() {
             if (!result.success) throw new Error(result.error)
 
             toast.success('Foto de perfil actualizada')
+            // El avatar del header y del perfil vienen de react-query, no del
+            // server render: invalidar para que la foto nueva se vea al momento.
+            await queryClient.invalidateQueries({ queryKey: ['client-context'] })
             router.refresh()
         } catch (err) {
             console.error('[handleAvatarUpload]', err)

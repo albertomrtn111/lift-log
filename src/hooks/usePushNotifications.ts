@@ -18,7 +18,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 
 export type PushPermissionState = 'default' | 'granted' | 'denied' | 'unsupported'
 
-export function usePushNotifications() {
+export function usePushNotifications(subscribeEndpoint: string = '/api/push/subscribe') {
     const [permissionState, setPermissionState] = useState<PushPermissionState>('default')
     const [isSubscribed, setIsSubscribed] = useState(false)
     const [isServerSynced, setIsServerSynced] = useState(false)
@@ -57,7 +57,7 @@ export function usePushNotifications() {
                 // (el servidor hace upsert, así que es idempotente)
                 try {
                     const subJson = existing.toJSON()
-                    const response = await fetch('/api/push/subscribe', {
+                    const response = await fetch(subscribeEndpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -82,7 +82,7 @@ export function usePushNotifications() {
             }
         }
         checkAndSyncSubscription()
-    }, [permissionState])
+    }, [permissionState, subscribeEndpoint])
 
     const subscribe = useCallback(async (): Promise<boolean> => {
         if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return false
@@ -112,7 +112,7 @@ export function usePushNotifications() {
 
             // 3. Enviar suscripción al servidor
             const subJson = subscription.toJSON()
-            const response = await fetch('/api/push/subscribe', {
+            const response = await fetch(subscribeEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -142,7 +142,7 @@ export function usePushNotifications() {
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [subscribeEndpoint])
 
     const unsubscribe = useCallback(async (): Promise<boolean> => {
         setIsLoading(true)
@@ -154,7 +154,7 @@ export function usePushNotifications() {
                 return true
             }
 
-            await fetch('/api/push/subscribe', {
+            await fetch(subscribeEndpoint, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -170,7 +170,7 @@ export function usePushNotifications() {
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [subscribeEndpoint])
 
     return { permissionState, isSubscribed, isServerSynced, isLoading, subscribe, unsubscribe, lastError }
 }

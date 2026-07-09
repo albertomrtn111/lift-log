@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { notifyCoach } from '@/lib/notifications/coach'
 import type { Message } from '@/types/messages'
 
 interface ClientChatContext {
@@ -127,6 +128,25 @@ export async function sendClientChatMessageAction(content: string): Promise<Clie
             context,
             error: 'No se pudo enviar el mensaje.',
         }
+    }
+
+    // Push al coach (respeta sus preferencias; nunca bloquea el envío)
+    try {
+        const { data: clientRow } = await admin
+            .from('clients')
+            .select('full_name')
+            .eq('id', context.clientId)
+            .single()
+
+        const preview = trimmed.length > 100 ? `${trimmed.substring(0, 97)}...` : trimmed
+        await notifyCoach(context.coachId, 'messages', {
+            title: `Mensaje de ${clientRow?.full_name ?? 'un atleta'}`,
+            body: preview,
+            url: `/coach/messages?client=${context.clientId}`,
+            tag: `coach-message-${context.clientId}`,
+        })
+    } catch (notifyError) {
+        console.warn('[client-chat] Push al coach falló (non-blocking):', notifyError)
     }
 
     return {

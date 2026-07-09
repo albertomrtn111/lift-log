@@ -18,6 +18,14 @@ interface ActionResult {
     error?: string
 }
 
+// Los schedules alimentan la lista de miembros, el workspace, el calendario y el dashboard.
+function revalidateReviewPaths() {
+    revalidatePath('/coach/members')
+    revalidatePath('/coach/clients')
+    revalidatePath('/coach/calendar')
+    revalidatePath('/coach/dashboard')
+}
+
 async function assertClientBelongsToCoach(clientId: string, coachId: string): Promise<void> {
     const supabase = await createClient()
     const { data, error } = await supabase
@@ -85,8 +93,7 @@ export async function createScheduleAction(
         }
 
         const created = await createSchedule(coachId, input)
-        revalidatePath('/coach/members')
-        revalidatePath('/coach/clients')
+        revalidateReviewPaths()
         return { success: true, id: created.id }
     } catch (error) {
         const msg = error instanceof Error ? error.message : 'Error al crear la revisión'
@@ -112,8 +119,33 @@ export async function updateScheduleAction(
             }
         }
         await updateSchedule(id, patch)
-        revalidatePath('/coach/members')
-        revalidatePath('/coach/clients')
+
+        // Si el coach cambia la fecha, mover también la revisión pendiente ya enviada
+        // de este schedule para que el atleta y el calendario vean la nueva fecha.
+        if (patch.next_due_date) {
+            const supabase = await createClient()
+            const { data: schedule } = await supabase
+                .from('client_review_schedules')
+                .select('frequency_days')
+                .eq('id', id)
+                .single()
+
+            const frequency = patch.frequency_days ?? schedule?.frequency_days ?? 14
+            const periodStart = new Date(`${patch.next_due_date}T12:00:00`)
+            periodStart.setDate(periodStart.getDate() - frequency)
+
+            await supabase
+                .from('checkins')
+                .update({
+                    period_end: patch.next_due_date,
+                    period_start: periodStart.toISOString().slice(0, 10),
+                })
+                .eq('review_schedule_id', id)
+                .eq('status', 'pending')
+                .is('submitted_at', null)
+        }
+
+        revalidateReviewPaths()
         return { success: true, id }
     } catch (error) {
         console.error('[updateScheduleAction]', error)
@@ -128,9 +160,20 @@ export async function deleteScheduleAction(id: string): Promise<ActionResult> {
     try {
         const { coachId } = await requireActiveCoachId()
         await assertScheduleBelongsToCoach(id, coachId)
+
+        // Archivar las revisiones pendientes de este schedule antes de borrarlo:
+        // el FK las dejaría huérfanas (SET NULL) y el atleta conservaría un
+        // formulario vivo que ya no aparecería en el calendario del coach.
+        const supabase = await createClient()
+        await supabase
+            .from('checkins')
+            .update({ status: 'archived' })
+            .eq('review_schedule_id', id)
+            .eq('status', 'pending')
+            .is('submitted_at', null)
+
         await deleteSchedule(id)
-        revalidatePath('/coach/members')
-        revalidatePath('/coach/clients')
+        revalidateReviewPaths()
         return { success: true }
     } catch (error) {
         console.error('[deleteScheduleAction]', error)

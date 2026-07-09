@@ -306,3 +306,120 @@ export async function snoozeCoachTaskAction(
         return { success: false, error: message }
     }
 }
+
+interface RescheduleReviewEventInput {
+    coachId: string
+    clientId: string
+    newDate: string
+    reviewScheduleId?: string | null
+    checkinId?: string | null
+}
+
+/**
+ * Mueve una revisión programada a otra fecha (drag & drop del calendario).
+ * - Revisión ya enviada (checkin pendiente): mueve period_end/period_start del checkin.
+ *   Si es legacy (sin schedule), sincroniza también clients.next_checkin_date para
+ *   que el evento no desaparezca del calendario.
+ * - Revisión aún no enviada de un schedule: mueve next_due_date del schedule.
+ * - Evento legacy sin schedule ni checkin: mueve clients.next_checkin_date.
+ */
+export async function rescheduleReviewEventAction(
+    input: RescheduleReviewEventInput
+): Promise<{ success: boolean; error?: string }> {
+    if (!input.newDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.newDate)) {
+        return { success: false, error: 'Fecha no válida.' }
+    }
+
+    try {
+        const { supabase, coachId } = await requireActiveCoachId(input.coachId)
+
+        if (input.checkinId) {
+            // Revisión ya enviada al atleta: mover el periodo del checkin pendiente
+            const { data: checkin, error: checkinErr } = await supabase
+                .from('checkins')
+                .select('id, review_schedule_id, status, submitted_at')
+                .eq('id', input.checkinId)
+                .eq('coach_id', coachId)
+                .single()
+
+            if (checkinErr || !checkin) {
+                return { success: false, error: 'Revisión no encontrada.' }
+            }
+            if (checkin.status !== 'pending' || checkin.submitted_at) {
+                return { success: false, error: 'Solo se pueden mover revisiones aún no respondidas.' }
+            }
+
+            let frequency = 14
+            if (checkin.review_schedule_id) {
+                const { data: schedule } = await supabase
+                    .from('client_review_schedules')
+                    .select('frequency_days')
+                    .eq('id', checkin.review_schedule_id)
+                    .single()
+                frequency = schedule?.frequency_days ?? 14
+            } else {
+                const { data: client } = await supabase
+                    .from('clients')
+                    .select('checkin_frequency_days')
+                    .eq('id', input.clientId)
+                    .eq('coach_id', coachId)
+                    .single()
+                frequency = client?.checkin_frequency_days ?? 14
+            }
+
+            const periodStart = new Date(`${input.newDate}T12:00:00`)
+            periodStart.setDate(periodStart.getDate() - frequency)
+
+            const { error: updateErr } = await supabase
+                .from('checkins')
+                .update({
+                    period_end: input.newDate,
+                    period_start: periodStart.toISOString().slice(0, 10),
+                })
+                .eq('id', checkin.id)
+
+            if (updateErr) {
+                return { success: false, error: updateErr.message }
+            }
+
+            // Legacy sin schedule: el calendario ancla el pendiente a next_checkin_date
+            if (!checkin.review_schedule_id) {
+                await supabase
+                    .from('clients')
+                    .update({ next_checkin_date: input.newDate })
+                    .eq('id', input.clientId)
+                    .eq('coach_id', coachId)
+            }
+        } else if (input.reviewScheduleId) {
+            // Revisión programada aún no enviada: mover la próxima fecha del schedule
+            const { error: scheduleErr } = await supabase
+                .from('client_review_schedules')
+                .update({ next_due_date: input.newDate })
+                .eq('id', input.reviewScheduleId)
+                .eq('coach_id', coachId)
+
+            if (scheduleErr) {
+                return { success: false, error: scheduleErr.message }
+            }
+        } else {
+            // Evento legacy: mover la fecha del cliente
+            const { error: clientErr } = await supabase
+                .from('clients')
+                .update({ next_checkin_date: input.newDate })
+                .eq('id', input.clientId)
+                .eq('coach_id', coachId)
+
+            if (clientErr) {
+                return { success: false, error: clientErr.message }
+            }
+        }
+
+        revalidateCalendarSurfaces()
+        revalidatePath('/coach/members')
+        revalidatePath('/coach/clients')
+        return { success: true }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo mover la revisión.'
+        return { success: false, error: message }
+    }
+}

@@ -76,7 +76,9 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              prefetch={false}
+              // Prefetch de las 5 pestañas principales: la navegación entre
+              // tabs pasa de "fetch completo al pulsar" a casi instantánea.
+              prefetch={true}
               onClick={(e) => handleNavClick(e, item.href)}
               className={cn(
                 'client-bottom-nav-item flex-1 max-w-[80px]',

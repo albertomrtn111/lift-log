@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
+    getCurrentClientId,
     getNotifications,
     getUnreadCount,
     markAsRead,
@@ -32,26 +33,18 @@ export function useClientNotifications() {
         let channel: ReturnType<typeof supabase.channel> | null = null
 
         ;(async () => {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            const { data: clientRow } = await supabase
-                .from('clients')
-                .select('id')
-                .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
-                .eq('status', 'active')
-                .maybeSingle()
-            if (!clientRow) return
+            const clientId = await getCurrentClientId()
+            if (!clientId) return
 
             channel = supabase
-                .channel('client_notifications_' + clientRow.id)
+                .channel('client_notifications_' + clientId)
                 .on(
                     'postgres_changes',
                     {
                         event: '*',
                         schema: 'public',
                         table: 'client_notifications',
-                        filter: `client_id=eq.${clientRow.id}`,
+                        filter: `client_id=eq.${clientId}`,
                     },
                     () => { refresh() }
                 )

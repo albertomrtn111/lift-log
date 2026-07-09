@@ -102,10 +102,6 @@ function addDaysToDateStr(date: string, days: number) {
     return toDateStr(d)
 }
 
-function formatLabel(d: Date) {
-    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 function formatDetailDate(date: string) {
     return new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
         weekday: 'short',
@@ -217,6 +213,17 @@ const PRESETS: { label: string; days: number }[] = [
 // DateRangeSlider
 // ---------------------------------------------------------------------------
 
+function formatRangeLabel(from: Date, to: Date): string {
+    const sameYear = from.getFullYear() === to.getFullYear()
+    const fromLabel = from.toLocaleDateString('es-ES', {
+        day: 'numeric',
+        month: 'short',
+        ...(sameYear ? {} : { year: 'numeric' }),
+    })
+    const toLabel = to.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+    return `${fromLabel} – ${toLabel}`
+}
+
 function DateRangeSlider({
     value,
     onChange,
@@ -245,64 +252,39 @@ function DateRangeSlider({
         onChange(next)
     }
 
-    // Left thumb label position (as % across the track)
-    const leftPct = (localValue[0] / MAX_DAYS_BACK) * 100
-    const rightPct = (localValue[1] / MAX_DAYS_BACK) * 100
-
     return (
-        <div className="space-y-4">
-            {/* Slider track */}
-            <div className="relative px-2.5">
-                <SliderPrimitive.Root
-                    min={0}
-                    max={MAX_DAYS_BACK}
-                    step={1}
-                    value={localValue}
-                    onValueChange={handleChange}
-                    onValueCommit={handleCommit}
-                    className="relative flex w-full touch-none select-none items-center"
-                    minStepsBetweenThumbs={1}
-                >
-                    <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-muted">
-                        <SliderPrimitive.Range className="absolute h-full bg-primary" />
-                    </SliderPrimitive.Track>
-                    <SliderPrimitive.Thumb
-                        className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
-                        aria-label="Fecha de inicio"
-                    />
-                    <SliderPrimitive.Thumb
-                        className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
-                        aria-label="Fecha de fin"
-                    />
-                </SliderPrimitive.Root>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+            <SliderPrimitive.Root
+                min={0}
+                max={MAX_DAYS_BACK}
+                step={1}
+                value={localValue}
+                onValueChange={handleChange}
+                onValueCommit={handleCommit}
+                className="relative flex min-w-[140px] flex-1 touch-none select-none items-center"
+                minStepsBetweenThumbs={1}
+            >
+                <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted">
+                    <SliderPrimitive.Range className="absolute h-full bg-primary" />
+                </SliderPrimitive.Track>
+                <SliderPrimitive.Thumb
+                    className="block h-4 w-4 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
+                    aria-label="Fecha de inicio"
+                />
+                <SliderPrimitive.Thumb
+                    className="block h-4 w-4 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-grab active:cursor-grabbing shadow-sm"
+                    aria-label="Fecha de fin"
+                />
+            </SliderPrimitive.Root>
 
-                {/* Floating date labels under each thumb */}
-                <div className="relative mt-3 h-5 select-none pointer-events-none">
-                    <span
-                        className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-primary"
-                        style={{ left: `${leftPct}%` }}
-                    >
-                        {formatLabel(dateFrom)}
-                    </span>
-                    <span
-                        className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-primary"
-                        style={{ left: `${rightPct}%` }}
-                    >
-                        {formatLabel(dateTo)}
-                    </span>
-                </div>
-            </div>
-
-            {/* Range summary pill */}
-            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <CalendarDays className="h-3.5 w-3.5" />
-                <span>
-                    {totalDays === 0
-                        ? 'Selecciona un rango'
-                        : `${totalDays} día${totalDays !== 1 ? 's' : ''} seleccionado${totalDays !== 1 ? 's' : ''}`
-                    }
+            {/* Resumen del rango: una sola etiqueta, sin solapes al juntar fechas */}
+            <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-medium tabular-nums">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>{formatRangeLabel(dateFrom, dateTo)}</span>
+                <span className="text-muted-foreground">
+                    · {totalDays} d
                 </span>
-            </div>
+            </span>
         </div>
     )
 }
@@ -323,31 +305,31 @@ function DateRangeFilter({
     )
 
     return (
-        <Card className="p-4 border-border/70 space-y-4">
-            {/* Preset pills */}
-            <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground mr-1">Rápido:</span>
-                {PRESETS.map(preset => {
-                    const isActive = activePreset?.label === preset.label
-                    return (
-                        <button
-                            key={preset.label}
-                            onClick={() => onChange([MAX_DAYS_BACK - preset.days, MAX_DAYS_BACK])}
-                            className={cn(
-                                'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
-                                isActive
-                                    ? 'border-primary/30 bg-primary/10 text-primary'
-                                    : 'border-border/70 text-muted-foreground hover:border-border hover:text-foreground'
-                            )}
-                        >
-                            {preset.label}
-                        </button>
-                    )
-                })}
-            </div>
+        <Card className="border-border/70 px-3 py-2.5">
+            {/* Una sola fila: presets + slider + resumen (hace wrap en pantallas estrechas) */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+                <div className="flex items-center gap-1">
+                    {PRESETS.map(preset => {
+                        const isActive = activePreset?.label === preset.label
+                        return (
+                            <button
+                                key={preset.label}
+                                onClick={() => onChange([MAX_DAYS_BACK - preset.days, MAX_DAYS_BACK])}
+                                className={cn(
+                                    'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                                    isActive
+                                        ? 'border-primary/30 bg-primary/10 text-primary'
+                                        : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                                )}
+                            >
+                                {preset.label}
+                            </button>
+                        )
+                    })}
+                </div>
 
-            {/* Dual-handle slider */}
-            <DateRangeSlider value={value} onChange={onChange} />
+                <DateRangeSlider value={value} onChange={onChange} />
+            </div>
         </Card>
     )
 }

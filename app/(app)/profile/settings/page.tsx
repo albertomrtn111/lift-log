@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
 import { updateProfileNameAction } from '../actions'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ interface ProfileData {
 
 export default function ProfileSettingsPage() {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const { toast } = useToast()
     const supabase = createClient()
 
@@ -96,6 +98,8 @@ export default function ProfileSettingsPage() {
 
         if (result.success) {
             setProfile((prev) => prev ? { ...prev, full_name: name.trim() } : prev)
+            // El nombre del header/perfil viene de react-query: refrescarlo ya.
+            void queryClient.invalidateQueries({ queryKey: ['client-context'] })
             toast({ title: 'Nombre actualizado ✓', description: 'Tu nombre ha sido guardado correctamente.' })
         } else {
             toast({ title: 'Error', description: result.error || 'No se pudo actualizar el nombre', variant: 'destructive' })

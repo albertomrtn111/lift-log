@@ -23,7 +23,7 @@ interface ChatSession {
 }
 
 export function ClientChat() {
-    const { client, isLoading: contextLoading } = useClientAppContext()
+    const { client } = useClientAppContext()
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(true)
@@ -41,7 +41,9 @@ export function ClientChat() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [])
 
-    // Load initial messages + mark coach messages as read
+    // Load initial messages + mark coach messages as read.
+    // No esperamos al contexto (/api/me): la acción resuelve su propia sesión,
+    // así el chat carga en paralelo con el contexto en vez de en cascada.
     useEffect(() => {
         let cancelled = false
 
@@ -62,9 +64,9 @@ export function ClientChat() {
             setLoading(false)
         }
 
-        if (!contextLoading) load()
+        load()
         return () => { cancelled = true }
-    }, [contextLoading])
+    }, [])
 
     // Auto-scroll when messages change
     useEffect(() => {
@@ -170,7 +172,7 @@ export function ClientChat() {
         })
     }
 
-    if (contextLoading) {
+    if (loading && !chatSession) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

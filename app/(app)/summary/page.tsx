@@ -19,11 +19,7 @@ import {
     TrendingUp,
 } from 'lucide-react'
 import {
-    getActiveStrengthProgramSummary,
-    getClientCardioProgress,
-    getClientDailyMetrics,
-    getWeightSeries,
-    getMacroAdherence,
+    getClientSummaryBundle,
     type ClientDailyMetricEntry,
     type ClientCardioProgressData,
     type ProgramSummary,
@@ -319,18 +315,13 @@ export default function SummaryPage() {
     const loadData = useCallback(async () => {
         setLoading(true)
         try {
-            const [prog, weight, adh, cardio, metrics] = await Promise.all([
-                getActiveStrengthProgramSummary(),
-                getWeightSeries(range),
-                getMacroAdherence(range),
-                getClientCardioProgress(range),
-                getClientDailyMetrics(range),
-            ])
-            setProgram(prog)
-            setWeightData(weight)
-            setAdherenceData(adh)
-            setCardioData(cardio)
-            setDailyMetrics(metrics)
+            // Una sola server action: el servidor paraleliza las 5 consultas
+            const bundle = await getClientSummaryBundle(range)
+            setProgram(bundle.program)
+            setWeightData(bundle.weight)
+            setAdherenceData(bundle.adherence)
+            setCardioData(bundle.cardio)
+            setDailyMetrics(bundle.dailyMetrics)
         } catch (error) {
             console.error('Error loading summary data:', error)
         } finally {

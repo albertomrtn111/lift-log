@@ -14,6 +14,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
 import { sendReviewCreatedNotification } from '@/lib/notifications/client'
+import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid'
@@ -124,6 +125,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
 
     const schedules = (data ?? []) as unknown as DueScheduleRow[]
     const items: DispatchResultItem[] = []
+    const sentByCoach = new Map<string, string[]>()
 
     for (const schedule of schedules) {
         const clientName = schedule.client?.full_name ?? null
@@ -254,9 +256,30 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 detail: `Checkin creado (${periodStart} → ${periodEnd}), próxima ${nextDue}, ${emailDetail}`,
                 checkinId,
             })
+
+            const coachList = sentByCoach.get(schedule.coach_id) ?? []
+            coachList.push(clientName ?? 'Atleta')
+            sentByCoach.set(schedule.coach_id, coachList)
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err)
             items.push({ ...base, status: 'error', detail: message })
+        }
+    }
+
+    // Aviso push al coach: sus revisiones de hoy acaban de salir (non-blocking)
+    for (const [coachId, names] of sentByCoach) {
+        const shown = names.slice(0, 3)
+        const rest = names.length - shown.length
+        const body = rest > 0 ? `${shown.join(', ')} y ${rest} más` : shown.join(', ')
+        try {
+            await notifyCoach(coachId, 'reviews', {
+                title: `${names.length} revisión${names.length !== 1 ? 'es' : ''} enviada${names.length !== 1 ? 's' : ''} hoy`,
+                body,
+                url: '/coach/calendar',
+                tag: `coach-reviews-sent-${today}`,
+            })
+        } catch (err) {
+            console.warn('[scheduler] Push al coach falló (non-blocking):', err)
         }
     }
 

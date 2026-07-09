@@ -163,7 +163,24 @@ export async function updateReviewTemplateAction(
             await setReviewTemplateMetrics(id, metricIds)
         }
 
+        // Las revisiones pendientes resuelven métricas y fotos en vivo desde la
+        // plantilla, pero las preguntas vienen del form_template_id guardado en el
+        // checkin. Si el coach cambia el formulario, sincronizamos los pendientes
+        // para que el atleta no vea preguntas viejas con métricas nuevas.
+        if (patch.form_template_id !== undefined) {
+            const supabase = await createClient()
+            await supabase
+                .from('checkins')
+                .update({ form_template_id: patch.form_template_id })
+                .eq('review_template_id', id)
+                .eq('status', 'pending')
+                .is('submitted_at', null)
+        }
+
         revalidatePath('/coach/forms')
+        revalidatePath('/coach/members')
+        revalidatePath('/coach/clients')
+        revalidatePath('/coach/calendar')
         return { success: true, id }
     } catch (error) {
         console.error('[updateReviewTemplateAction]', error)
@@ -242,6 +259,9 @@ export async function toggleReviewTemplateActiveAction(
         await assertReviewTemplateBelongsToCoach(id, coachId)
         await updateReviewTemplate(id, { is_active: isActive })
         revalidatePath('/coach/forms')
+        revalidatePath('/coach/members')
+        revalidatePath('/coach/clients')
+        revalidatePath('/coach/calendar')
         return { success: true }
     } catch (error) {
         console.error('[toggleReviewTemplateActiveAction]', error)

@@ -1,6 +1,7 @@
 
 'use server'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { format, differenceInDays, subDays } from 'date-fns'
@@ -58,8 +59,9 @@ export interface ClientDailyMetricEntry {
     notes: string | null
 }
 
-// Helper to get current client
-async function getClientContext() {
+// Helper to get current client — cache() dedupes las llamadas dentro de la
+// misma request (el bundle lanza 5 consultas en paralelo que lo comparten).
+const getClientContext = cache(async () => {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -74,7 +76,7 @@ async function getClientContext() {
         .maybeSingle()
 
     return client
-}
+})
 
 function getTotalWeeks(program: any) {
     const totalWeeks = Number(program.total_weeks ?? program.weeks ?? 1)
@@ -424,4 +426,30 @@ export async function getClientCardioProgress(range: MetricsRange): Promise<Clie
         totalSessions: detailedSessions.length,
         completedSessions: detailedSessions.filter((session) => session.completionStatus === 'completed').length,
     }
+}
+
+export interface ClientSummaryBundle {
+    program: ProgramSummary | null
+    weight: { data: { date: string; weight: number }[]; avg: string; trend: string | null }
+    adherence: { percent: number | string; days: number; totalDays: number }
+    cardio: ClientCardioProgressData
+    dailyMetrics: ClientDailyMetricEntry[]
+}
+
+/**
+ * Carga todo el resumen del cliente en UNA sola server action.
+ * Las server actions se ejecutan en serie desde el navegador, así que llamar
+ * a las 5 funciones por separado costaba ~5 roundtrips secuenciales; aquí se
+ * resuelven en paralelo en el servidor y getClientContext se dedupea via cache().
+ */
+export async function getClientSummaryBundle(range: MetricsRange): Promise<ClientSummaryBundle> {
+    const [program, weight, adherence, cardio, dailyMetrics] = await Promise.all([
+        getActiveStrengthProgramSummary(),
+        getWeightSeries(range),
+        getMacroAdherence(range),
+        getClientCardioProgress(range),
+        getClientDailyMetrics(range),
+    ])
+
+    return { program, weight, adherence, cardio, dailyMetrics }
 }

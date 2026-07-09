@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ElementType } from 'react'
 import {
     Apple,
+    Bell,
     Brain,
     Calendar,
     CheckCircle2,
@@ -25,9 +26,10 @@ import { AIActionButton } from '@/components/ui/ai-action-button'
 import { LogoutButton } from '@/components/coach/LogoutButton'
 import { AppearanceSettingsPanel, SupportSettingsPanel } from '@/components/coach/settings/SettingsClientPanels'
 import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPanel'
+import { NotificationSettingsPanel } from '@/components/coach/settings/NotificationSettingsPanel'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'email' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -50,6 +52,12 @@ const SETTINGS_TABS: Array<{
         label: 'Email de envío',
         description: 'Tu cuenta para enviar revisiones',
         icon: Mail,
+    },
+    {
+        id: 'notificaciones',
+        label: 'Notificaciones',
+        description: 'Recordatorios de tareas, revisiones y mensajes',
+        icon: Bell,
     },
     {
         id: 'apariencia',
@@ -138,6 +146,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                     <main className="min-w-0">
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
+                        {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
                         {activeTab === 'apariencia' && <AppearanceSettingsPanel />}
                         {activeTab === 'soporte' && <SupportSettingsPanel />}
                     </main>
@@ -189,7 +198,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab?: string): SettingsTab {
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones') return tab
     return 'perfil'
 }
 

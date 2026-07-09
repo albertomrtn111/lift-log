@@ -86,6 +86,13 @@ export async function sendReviewAction(
             formTemplateId = s.review_template?.form_template_id ?? null
             frequencyDays = s.frequency_days
             scheduledDate = s.next_due_date ?? scheduledDate
+        } else if (allSchedules.some(s => s.is_active && s.review_template && !s.review_template.is_active)) {
+            // Hay asignaciones activas pero sus plantillas están desactivadas:
+            // no caer en silencio al flujo legacy (enviaría un formulario equivocado).
+            return {
+                success: false,
+                error: 'Las plantillas de revisión de este atleta están desactivadas. Reactívalas en Formularios → Revisiones o asígnale otra.',
+            }
         } else {
             // Caso C: fallback legacy — usar resolveCheckinTemplateForClient
             const legacyTemplate = await resolveCheckinTemplateForClient({
@@ -201,6 +208,8 @@ export async function sendReviewAction(
 
     revalidatePath('/coach/members')
     revalidatePath('/coach/clients')
+    revalidatePath('/coach/calendar')
+    revalidatePath('/coach/dashboard')
 
     return {
         success: true,
