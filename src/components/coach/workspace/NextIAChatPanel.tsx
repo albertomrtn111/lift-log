@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bot, Loader2, MessageSquareText, Send, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 import { getMarkdownLineKind, tokenizeBoldMarkdown } from '@/lib/markdown/simple-markdown'
 import {
     getNextIAMessagesAction,
-    sendNextIAMessageAction,
     type NextIAChatMessage,
 } from './nextia-actions'
 
@@ -30,7 +29,9 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [isPending, startTransition] = useTransition()
+    const [isPending, setIsPending] = useState(false)
+    /** Respuesta del assistant mientras se escribe en streaming */
+    const [streamingText, setStreamingText] = useState<string | null>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -59,7 +60,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
 
     useEffect(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages, isPending])
+    }, [messages, isPending, streamingText])
 
     const resizeTextarea = () => {
         const element = textareaRef.current
@@ -73,7 +74,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
         requestAnimationFrame(resizeTextarea)
     }
 
-    const handleSend = () => {
+    const handleSend = async () => {
         const content = input.trim()
         if (!content || isPending) return
 
@@ -90,18 +91,53 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
         setMessages(prev => [...prev, optimisticMessage])
         setInput('')
         setError(null)
+        setIsPending(true)
         requestAnimationFrame(resizeTextarea)
 
-        startTransition(async () => {
-            const result = await sendNextIAMessageAction({ coachId, clientId, content })
-            if (result.success && result.messages) {
-                setMessages(result.messages)
-                return
+        try {
+            // Streaming: la respuesta se ve escribirse según la genera el modelo
+            const response = await fetch('/api/nextia/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId, content }),
+            })
+
+            if (!response.ok || !response.body) {
+                const message = await response.text().catch(() => '')
+                throw new Error(message || 'No se pudo generar la respuesta de NextIA.')
             }
 
+            setStreamingText('')
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            let accumulated = ''
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                accumulated += decoder.decode(value, { stream: true })
+                setStreamingText(accumulated)
+            }
+
+            const answer = accumulated.trim()
+            if (!answer) throw new Error('NextIA no devolvió contenido.')
+
+            setMessages(prev => [...prev, {
+                id: `assistant-${Date.now()}`,
+                coach_id: coachId,
+                client_id: clientId,
+                role: 'assistant',
+                content: answer,
+                context_version: 'nextia-athlete-v1',
+                created_at: new Date().toISOString(),
+            }])
+        } catch (err) {
             setMessages(prev => prev.filter(message => message.id !== optimisticMessage.id))
-            setError(result.error || 'No se pudo generar la respuesta de NextIA.')
-        })
+            setError(err instanceof Error ? err.message : 'No se pudo generar la respuesta de NextIA.')
+        } finally {
+            setStreamingText(null)
+            setIsPending(false)
+        }
     }
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -188,7 +224,15 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                                 </div>
                             )
                         })}
-                        {isPending ? (
+                        {streamingText !== null && streamingText.length > 0 ? (
+                            <div className="flex min-w-0 max-w-full flex-col items-start">
+                                <div className="min-w-0 max-w-[92%] break-words rounded-2xl rounded-bl-md border bg-background px-3 py-2 text-sm leading-6 text-foreground shadow-sm">
+                                    <NextIAMarkdown content={streamingText} />
+                                    <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-primary align-middle" />
+                                </div>
+                                <span className="mt-1 px-1 text-[10px] text-muted-foreground">NextIA · escribiendo…</span>
+                            </div>
+                        ) : isPending ? (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 NextIA esta leyendo el contexto

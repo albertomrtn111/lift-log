@@ -101,3 +101,71 @@ export async function callGemini(
 
     return text
 }
+
+/**
+ * Igual que callGemini pero en streaming (SSE): devuelve un ReadableStream de
+ * fragmentos de texto según los genera el modelo. Para chats donde la latencia
+ * percibida importa.
+ */
+export async function streamGemini(
+    prompt: string,
+    options: GeminiCallOptions = {}
+): Promise<ReadableStream<string>> {
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+        throw new Error('GEMINI_API_KEY no está configurada en las variables de entorno.')
+    }
+
+    const model = process.env.GEMINI_MODEL ?? DEFAULT_MODEL
+    const apiVer = process.env.GEMINI_API_VER ?? DEFAULT_API_VER
+    const url = `${GEMINI_API_BASE}/${apiVer}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
+
+    const generationConfig: Record<string, unknown> = {
+        temperature: options.temperature ?? 0.7,
+        maxOutputTokens: options.maxOutputTokens ?? 8192,
+    }
+    if (options.thinkingBudget !== undefined) {
+        generationConfig.thinkingConfig = { thinkingBudget: options.thinkingBudget }
+    }
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig,
+        }),
+    })
+
+    if (!res.ok || !res.body) {
+        const errorBody = await res.text().catch(() => '')
+        console.error(`[Gemini] Stream HTTP ${res.status} — model=${model}`, errorBody)
+        throw new Error(`Error HTTP ${res.status} al llamar a la API de IA. Inténtalo de nuevo.`)
+    }
+
+    // Parsear SSE (`data: {json}`) → fragmentos de texto planos
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    return res.body.pipeThrough(new TransformStream<Uint8Array, string>({
+        transform(chunk, controller) {
+            buffer += decoder.decode(chunk, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() ?? ''
+
+            for (const line of lines) {
+                const trimmed = line.trim()
+                if (!trimmed.startsWith('data:')) continue
+                const payload = trimmed.slice(5).trim()
+                if (!payload || payload === '[DONE]') continue
+                try {
+                    const parsed = JSON.parse(payload)
+                    const text: string | undefined = parsed?.candidates?.[0]?.content?.parts?.[0]?.text
+                    if (text) controller.enqueue(text)
+                } catch {
+                    // Fragmento incompleto: se acumula en el buffer del siguiente chunk
+                }
+            }
+        },
+    }))
+}

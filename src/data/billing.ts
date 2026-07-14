@@ -12,6 +12,21 @@ export type { PaymentRecord, BillingSummary, YearTotal, BillingDashboardData, Bi
 export async function getBillingDashboard(coachId: string, year: number, month: number): Promise<BillingDashboardData> {
     const supabase = await createClient()
 
+    // 0. Vencidos automáticos: si el periodo consultado ya pasó, los pagos que
+    // sigan "pendientes" pasan a "vencidos". Migración perezosa al navegar.
+    const now = new Date()
+    const isPastPeriod = year < now.getFullYear()
+        || (year === now.getFullYear() && month < now.getMonth() + 1)
+    if (isPastPeriod) {
+        await supabase
+            .from('payment_records')
+            .update({ status: 'overdue', updated_at: new Date().toISOString() })
+            .eq('coach_id', coachId)
+            .eq('year', year)
+            .eq('month', month)
+            .eq('status', 'pending')
+    }
+
     // 1. Get active clients with payment_amount
     const { data: clients } = await supabase
         .from('clients')

@@ -61,8 +61,16 @@ export interface Checkin {
     review_schedule_id: string | null
 }
 
+export interface CheckinReviewTemplateInfo {
+    name: string
+    include_progress_photos: boolean
+    photos_required: boolean
+}
+
 export interface CheckinWithReview extends Checkin {
     review: Review | null
+    /** Config de la plantilla de revisión (null en checkins legacy sin plantilla) */
+    review_template?: CheckinReviewTemplateInfo | null
 }
 
 export interface ClientStatus {
@@ -333,7 +341,7 @@ export async function listCheckins(coachId: string, clientId: string): Promise<C
 
     const { data: checkins, error } = await supabase
         .from('checkins')
-        .select('*')
+        .select('*, review_template:review_templates(name, include_progress_photos, photos_required)')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
         .eq('type', 'checkin')

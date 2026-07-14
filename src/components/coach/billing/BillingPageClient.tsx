@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import type { BillingClientOption, BillingDashboardData, PaymentRecord } from '@/types/billing'
 import {
     createManualPaymentAction,
-    generateMonthlyRecordsAction,
     markVisibleMonthRecordsPaidAction,
     updatePaymentStatusAction,
 } from './billing-actions'
@@ -36,7 +35,6 @@ import {
     Loader2,
     Calendar as CalendarIcon,
     FileX,
-    CreditCard,
     Plus,
     Search,
     Filter,
@@ -161,7 +159,6 @@ export default function BillingPageClient({
     const [period, setPeriod] = useState({ year: initialYear, month: initialMonth })
     const [data, setData] = useState<BillingDashboardData>(initialData)
     const [isLoading, setIsLoading] = useState(false)
-    const [isGenerating, setIsGenerating] = useState(false)
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [manualDialogOpen, setManualDialogOpen] = useState(false)
@@ -233,30 +230,6 @@ export default function BillingPageClient({
     const handleViewModeChange = (mode: ViewMode) => {
         setViewMode(mode)
         router.replace(`/coach/billing?year=${period.year}&month=${period.month}`, { scroll: false })
-    }
-
-    const handleGenerateRecords = async () => {
-        setIsGenerating(true)
-        try {
-            const result = await generateMonthlyRecordsAction(coachId, period.year, period.month)
-            if (!result.success) {
-                throw new Error(result.error || 'No se pudieron generar los registros.')
-            }
-            const freshData = await fetchBillingData(period.year, period.month)
-            if (freshData) {
-                setData(freshData)
-            }
-            toast({
-                title: 'Registros actualizados',
-                description: (result.generatedCount ?? 0) > 0
-                    ? `Se autogeneraron ${result.generatedCount ?? 0} registros para ${FULL_MONTHS[period.month - 1]}.`
-                    : 'No había nuevos registros por generar en este periodo.',
-            })
-        } catch (error: any) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' })
-        } finally {
-            setIsGenerating(false)
-        }
     }
 
     const handleStatusChange = async (
@@ -499,7 +472,7 @@ export default function BillingPageClient({
                         <BillingKpiCard icon={CheckCircle2} label="Cobrado" value={`${data.summary.totalCollected.toFixed(2)}€`} tone="success" />
                         <BillingKpiCard icon={Clock} label="Pendiente" value={`${data.summary.totalPending.toFixed(2)}€`} tone="warning" />
                         <BillingKpiCard icon={Receipt} label="Total mes" value={`${(data.summary.totalCollected + data.summary.totalPending).toFixed(2)}€`} />
-                        <BillingKpiCard icon={Users} label="Cobrables" value={String(data.summary.clientCount)} />
+                        <BillingKpiCard icon={Users} label="Clientes de pago" value={String(data.summary.clientCount)} />
                     </>
                 ) : (
                     <>
@@ -564,13 +537,29 @@ export default function BillingPageClient({
                                 <CheckCheck className="h-4 w-4" />
                                 Marcar visibles cobrados
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={handleGenerateRecords} disabled={isGenerating || isLoading} className="gap-2">
-                                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                                Autogenerar
-                            </Button>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-4 p-5">
+                        {/* Progreso de cobro del mes */}
+                        {(data.summary.totalCollected + data.summary.totalPending) > 0 && (
+                            <div className="rounded-xl border bg-muted/20 p-3.5">
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">
+                                        Cobrado <span className="font-semibold text-foreground">{data.summary.totalCollected.toFixed(2)}€</span> de {(data.summary.totalCollected + data.summary.totalPending).toFixed(2)}€
+                                    </span>
+                                    <span className="font-semibold tabular-nums">
+                                        {Math.round((data.summary.totalCollected / (data.summary.totalCollected + data.summary.totalPending)) * 100)}%
+                                    </span>
+                                </div>
+                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full bg-emerald-500 transition-all"
+                                        style={{ width: `${Math.min(100, (data.summary.totalCollected / (data.summary.totalCollected + data.summary.totalPending)) * 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex flex-1 flex-col gap-3 sm:flex-row">
                                 <div className="relative max-w-md flex-1">
@@ -643,20 +632,33 @@ export default function BillingPageClient({
                                                 </td>
                                                 <td className="px-4 py-3 font-semibold">{Number(record.amount).toFixed(2)}€</td>
                                                 <td className="px-4 py-3">
-                                                    <Select
-                                                        value={record.status}
-                                                        onValueChange={(value: PaymentRecord['status']) => handleStatusChange(record.id, value, record.status, record.payment_method || 'Transferencia')}
-                                                    >
-                                                        <SelectTrigger className={cn('h-9 w-[140px] border text-xs font-semibold shadow-none', STATUS_CONFIG[record.status].color)}>
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="pending">Pendiente</SelectItem>
-                                                            <SelectItem value="paid">Pagado</SelectItem>
-                                                            <SelectItem value="overdue">Vencido</SelectItem>
-                                                            <SelectItem value="waived">Exento</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Select
+                                                            value={record.status}
+                                                            onValueChange={(value: PaymentRecord['status']) => handleStatusChange(record.id, value, record.status, record.payment_method || 'Transferencia')}
+                                                        >
+                                                            <SelectTrigger className={cn('h-9 w-[140px] border text-xs font-semibold shadow-none', STATUS_CONFIG[record.status].color)}>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="pending">Pendiente</SelectItem>
+                                                                <SelectItem value="paid">Pagado</SelectItem>
+                                                                <SelectItem value="overdue">Vencido</SelectItem>
+                                                                <SelectItem value="waived">Exento</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {(record.status === 'pending' || record.status === 'overdue') && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 shrink-0 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                                                                title="Marcar como cobrado"
+                                                                onClick={() => handleStatusChange(record.id, 'paid', record.status, record.payment_method || 'Transferencia')}
+                                                            >
+                                                                <CheckCircle2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-muted-foreground">{record.payment_method || '—'}</td>
                                                 <td className="px-4 py-3 text-muted-foreground">

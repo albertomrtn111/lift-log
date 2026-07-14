@@ -35,6 +35,7 @@ import {
     YAxis,
 } from 'recharts'
 import { cn } from '@/lib/utils'
+import { describeHrZone, HR_ZONE_NAMES, ZONE_BADGE_CLASSES, ZONE_COLORS, zonesFromHistogram } from '@/lib/training/zones'
 import { getCardioStructureLines, summarizeCardioStructure } from '@/lib/cardio/structure'
 import type {
     CardioProgressData,
@@ -49,8 +50,16 @@ import type {
 type MetricMode = 'km' | 'horas'
 type DisciplineFilter = 'all' | 'running' | 'bicicleta' | 'natacion' | 'hibrido'
 
+export interface CardioZoneThresholds {
+    /** Límites efectivos de zona [inicio Z2..Z5] — método + overrides del coach */
+    runBounds: number[] | null
+    bikeBounds: number[] | null
+}
+
 interface CardioProgressViewProps {
     data: CardioProgressData
+    /** Límites de zona del atleta para etiquetar cada sesión */
+    thresholds?: CardioZoneThresholds | null
 }
 
 // ---------------------------------------------------------------------------
@@ -642,7 +651,7 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
     )
 }
 
-function SessionCard({ session }: { session: CardioSessionProgress }) {
+function SessionCard({ session, thresholds }: { session: CardioSessionProgress; thresholds?: CardioZoneThresholds | null }) {
     const [open, setOpen] = useState(false)
     const statusMeta = getSessionStatusMeta(session)
     const StatusIcon = statusMeta.icon
@@ -654,6 +663,28 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
     const subtypeLabel = getTrainingTypeLabel(session.trainingType)
     const discipline = getDiscipline(session.trainingType)
     const disciplineMeta = DISCIPLINE_META[discipline]
+
+    // Límites de zona según la disciplina (bici usa sus propios límites)
+    const boundsForDiscipline = discipline === 'bicicleta'
+        ? (thresholds?.bikeBounds ?? thresholds?.runBounds ?? null)
+        : (thresholds?.runBounds ?? null)
+
+    // Distribución real intra-sesión desde el stream de Strava; si no hay,
+    // aproximación por FC media
+    const zoneDistribution = zonesFromHistogram(session.hrHistogram, boundsForDiscipline)
+    const dominantZoneIndex = zoneDistribution
+        ? zoneDistribution.secondsByZone.indexOf(Math.max(...zoneDistribution.secondsByZone))
+        : null
+    const hrZone = zoneDistribution && dominantZoneIndex !== null
+        ? {
+            zone: dominantZoneIndex + 1,
+            name: HR_ZONE_NAMES[dominantZoneIndex],
+            label: `Z${dominantZoneIndex + 1} · ${HR_ZONE_NAMES[dominantZoneIndex]}`,
+            badgeClass: ZONE_BADGE_CLASSES[dominantZoneIndex + 1],
+        }
+        : boundsForDiscipline && session.avgHeartRate
+            ? describeHrZone(boundsForDiscipline, session.avgHeartRate)
+            : null
     const mainDistance = session.actualDistanceKm ?? session.targetDistanceKm
     const distanceDeltaLabel = session.distanceDeltaKm !== null
         ? formatDistanceDelta(session.distanceDeltaKm)
@@ -698,8 +729,42 @@ function SessionCard({ session }: { session: CardioSessionProgress }) {
                                     {distanceDeltaLabel}
                                 </span>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                                Ritmo {session.actualAvgPace || '—'} · FC {session.avgHeartRate ?? '—'}{session.maxHeartRate !== null ? `/${session.maxHeartRate}` : ''} · RPE {session.rpe !== null ? `${session.rpe}/10` : '—'}
+                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                                <span>
+                                    Ritmo {session.actualAvgPace || '—'} · FC {session.avgHeartRate ?? '—'}{session.maxHeartRate !== null ? `/${session.maxHeartRate}` : ''} · RPE {session.rpe !== null ? `${session.rpe}/10` : '—'}
+                                </span>
+                                {hrZone && (
+                                    <span
+                                        className={cn(
+                                            'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                            hrZone.badgeClass
+                                        )}
+                                        title={zoneDistribution
+                                            ? 'Zona dominante por tiempo real en zona (stream de Strava, zonas del atleta)'
+                                            : `FC media ${session.avgHeartRate} ppm sobre las zonas configuradas del atleta`}
+                                    >
+                                        {hrZone.label}
+                                    </span>
+                                )}
+                                {zoneDistribution && (
+                                    <span
+                                        className="inline-flex h-2 w-28 overflow-hidden rounded-full"
+                                        title={zoneDistribution.secondsByZone
+                                            .map((secs, i) => secs > 0 ? `Z${i + 1} ${Math.round((secs / zoneDistribution.totalSeconds) * 100)}%` : null)
+                                            .filter(Boolean)
+                                            .join(' · ')}
+                                    >
+                                        {zoneDistribution.secondsByZone.map((secs, i) => (
+                                            secs > 0 ? (
+                                                <span
+                                                    key={i}
+                                                    className={cn('h-full', ZONE_COLORS[i])}
+                                                    style={{ width: `${(secs / zoneDistribution.totalSeconds) * 100}%` }}
+                                                />
+                                            ) : null
+                                        ))}
+                                    </span>
+                                )}
                             </p>
                         </div>
 
@@ -901,10 +966,149 @@ function DisciplineFilterBar({
 }
 
 // ---------------------------------------------------------------------------
+// Distribución de tiempo por zonas de FC
+// ---------------------------------------------------------------------------
+
+function ZoneDistributionCard({
+    sessions,
+    thresholds,
+}: {
+    sessions: CardioSessionProgress[]
+    thresholds?: CardioZoneThresholds | null
+}) {
+    const distribution = useMemo(() => {
+        if (!thresholds || (!thresholds.runBounds && !thresholds.bikeBounds)) return null
+
+        const minutesByZone = [0, 0, 0, 0, 0]
+        let classifiedMinutes = 0
+        let unclassifiedMinutes = 0
+        let exactSessions = 0
+        let approxSessions = 0
+
+        for (const session of sessions) {
+            const discipline = getDiscipline(session.trainingType)
+            const bounds = discipline === 'bicicleta'
+                ? (thresholds.bikeBounds ?? thresholds.runBounds)
+                : thresholds.runBounds
+            if (!bounds) continue
+
+            // 1º: distribución real intra-sesión desde el stream de Strava
+            const real = zonesFromHistogram(session.hrHistogram, bounds)
+            if (real) {
+                real.secondsByZone.forEach((secs, i) => { minutesByZone[i] += secs / 60 })
+                classifiedMinutes += real.totalSeconds / 60
+                exactSessions += 1
+                continue
+            }
+
+            // 2º: aproximación por FC media de la sesión
+            const duration = session.actualDurationMin
+            if (!duration || duration <= 0) continue
+            const zoneInfo = session.avgHeartRate ? describeHrZone(bounds, session.avgHeartRate) : null
+            if (zoneInfo) {
+                minutesByZone[zoneInfo.zone - 1] += duration
+                classifiedMinutes += duration
+                approxSessions += 1
+            } else {
+                unclassifiedMinutes += duration
+            }
+        }
+
+        if (classifiedMinutes === 0) return null
+
+        const pct = (min: number) => (min / classifiedMinutes) * 100
+        return {
+            minutesByZone,
+            classifiedMinutes,
+            unclassifiedMinutes,
+            exactSessions,
+            approxSessions,
+            lowPct: pct(minutesByZone[0] + minutesByZone[1]),
+            midPct: pct(minutesByZone[2]),
+            highPct: pct(minutesByZone[3] + minutesByZone[4]),
+        }
+    }, [sessions, thresholds])
+
+    if (!distribution) return null
+
+    return (
+        <Card className="overflow-hidden border-border/70">
+            <div className="border-b border-border/70 bg-muted/10 px-5 py-4">
+                <h4 className="font-semibold text-foreground">Distribución por zonas de FC</h4>
+                <p className="text-xs text-muted-foreground">
+                    Tiempo en cada zona según la FC media de cada sesión (método Friel).
+                </p>
+            </div>
+            <div className="space-y-4 p-5">
+                {/* Barra apilada */}
+                <div className="flex h-4 w-full overflow-hidden rounded-full">
+                    {distribution.minutesByZone.map((minutes, index) => {
+                        if (minutes <= 0) return null
+                        return (
+                            <div
+                                key={index}
+                                className={cn('h-full transition-all', ZONE_COLORS[index])}
+                                style={{ width: `${(minutes / distribution.classifiedMinutes) * 100}%` }}
+                                title={`Z${index + 1} ${HR_ZONE_NAMES[index]} · ${formatHours(minutes)}`}
+                            />
+                        )
+                    })}
+                </div>
+
+                {/* Desglose por zona */}
+                <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {distribution.minutesByZone.map((minutes, index) => {
+                        if (minutes <= 0) return null
+                        const share = (minutes / distribution.classifiedMinutes) * 100
+                        return (
+                            <div key={index} className="flex items-center gap-2 text-sm">
+                                <span className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', ZONE_COLORS[index])} />
+                                <span className="w-7 shrink-0 font-semibold">Z{index + 1}</span>
+                                <span className="w-24 shrink-0 text-muted-foreground">{HR_ZONE_NAMES[index]}</span>
+                                <span className="font-medium tabular-nums">{formatHours(minutes)}</span>
+                                <span className="text-xs text-muted-foreground tabular-nums">· {Math.round(share)}%</span>
+                            </div>
+                        )
+                    })}
+                </div>
+
+                {/* Lectura polarizada */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border bg-muted/20 px-3.5 py-2.5 text-sm">
+                    <span>
+                        Baja (Z1-Z2): <span className="font-semibold text-emerald-600 tabular-nums">{Math.round(distribution.lowPct)}%</span>
+                    </span>
+                    <span>
+                        Media (Z3): <span className="font-semibold text-yellow-600 tabular-nums">{Math.round(distribution.midPct)}%</span>
+                    </span>
+                    <span>
+                        Alta (Z4-Z5): <span className="font-semibold text-red-500 tabular-nums">{Math.round(distribution.highPct)}%</span>
+                    </span>
+                    <span className="ml-auto text-[11px] text-muted-foreground">
+                        Referencia polarizada: ~80% baja · ~20% alta
+                    </span>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                    {distribution.exactSessions > 0
+                        ? `${distribution.exactSessions} sesión${distribution.exactSessions !== 1 ? 'es' : ''} con distribución real del pulsómetro (segundo a segundo)`
+                        : 'Sin streams de FC disponibles'}
+                    {distribution.approxSessions > 0
+                        ? ` · ${distribution.approxSessions} aproximada${distribution.approxSessions !== 1 ? 's' : ''} por FC media`
+                        : ''}
+                    {distribution.unclassifiedMinutes > 0
+                        ? ` · ${formatHours(distribution.unclassifiedMinutes)} sin FC, excluidas`
+                        : ''}.
+                </p>
+            </div>
+        </Card>
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function CardioProgressView({ data }: CardioProgressViewProps) {
+export function CardioProgressView({ data, thresholds }: CardioProgressViewProps) {
     const [mode, setMode] = useState<MetricMode>('km')
     const [disciplineFilter, setDisciplineFilter] = useState<DisciplineFilter>('all')
 
@@ -1022,6 +1226,9 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                     />
                 ))}
             </div>
+
+            {/* Distribución de intensidad — solo con umbrales configurados */}
+            <ZoneDistributionCard sessions={filteredSessions} thresholds={thresholds} />
 
             {/* Chart — recalculated with filter */}
             <Card className="overflow-hidden border-border/70">
@@ -1205,7 +1412,7 @@ export function CardioProgressView({ data }: CardioProgressViewProps) {
                 ) : (
                     <div className="space-y-4">
                         {filteredSessions.map((session) => (
-                            <SessionCard key={session.id} session={session} />
+                            <SessionCard key={session.id} session={session} thresholds={thresholds} />
                         ))}
                     </div>
                 )}

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendCoachMessageNotification } from '@/lib/notifications/client'
-import type { Message } from '@/types/messages'
+import type { Message, MessageAttachment } from '@/types/messages'
 
 export async function getMessagesAction(
     coachId: string,
@@ -37,13 +37,19 @@ export async function getMessagesAction(
 export async function sendMessageAction(
     coachId: string,
     clientId: string,
-    content: string
+    content: string,
+    attachment?: MessageAttachment
 ): Promise<{ success: boolean; message?: Message; error?: string }> {
     const { supabase, coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId)
 
     const trimmed = content.trim()
-    if (!trimmed || trimmed.length > 4000) {
+    if ((!trimmed && !attachment) || trimmed.length > 4000) {
         return { success: false, error: 'Mensaje vacío o demasiado largo (máx 4000 caracteres)' }
+    }
+
+    // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
+    if (attachment && !attachment.url.startsWith(`${validatedCoachId}/${clientId}/`)) {
+        return { success: false, error: 'Adjunto no válido para esta conversación' }
     }
 
     const { data, error } = await supabase
@@ -54,6 +60,12 @@ export async function sendMessageAction(
             sender_role: 'coach',
             sender_id: userId,
             content: trimmed,
+            attachment_type: attachment?.type ?? null,
+            attachment_url: attachment?.url ?? null,
+            attachment_name: attachment?.name ?? null,
+            attachment_size: attachment?.size ?? null,
+            attachment_mime: attachment?.mime ?? null,
+            attachment_duration: attachment?.duration ?? null,
         })
         .select()
         .single()
@@ -64,7 +76,11 @@ export async function sendMessageAction(
     }
 
     if (data) {
-        await sendCoachMessageNotification(clientId, trimmed)
+        const preview = trimmed
+            || (attachment?.type === 'audio' ? '🎤 Mensaje de voz'
+                : attachment?.type === 'image' ? '📷 Imagen'
+                : `📎 ${attachment?.name ?? 'Documento'}`)
+        await sendCoachMessageNotification(clientId, preview)
     }
 
     return { success: true, message: data as Message }

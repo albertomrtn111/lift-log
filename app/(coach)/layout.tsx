@@ -1,4 +1,5 @@
 import { CoachSidebar } from '@/components/coach/CoachSidebar'
+import { CoachAssistantWidget } from '@/components/coach/assistant/CoachAssistantWidget'
 import { CoachProvider } from '@/contexts/CoachContext'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
@@ -37,6 +38,7 @@ export default async function CoachLayout({
                 <main className="min-w-0 flex-1 overflow-x-hidden lg:pl-64">
                     {children}
                 </main>
+                <CoachAssistantWidget />
             </div>
         </CoachProvider>
     )

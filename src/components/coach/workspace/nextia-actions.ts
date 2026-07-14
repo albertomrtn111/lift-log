@@ -1,8 +1,8 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { buildNextIAAthleteContext } from '@/lib/ai/nextia-athlete-context'
+import { buildNextIAPrompt } from '@/lib/ai/nextia-prompt'
 import { callGemini } from '@/lib/ai/gemini'
 
 export type NextIAChatMessage = {
@@ -73,27 +73,6 @@ export async function getNextIAMessagesAction(
     return (data || []) as NextIAChatMessage[]
 }
 
-function buildNextIAPrompt(userMessage: string, athleteContext: string) {
-    return `Eres NextIA, un asistente privado para coaches de entrenamiento.
-
-Tu objetivo es ayudar al coach a tomar mejores decisiones sobre este atleta usando el contexto disponible.
-
-Reglas:
-- Responde siempre en español.
-- Sé concreto, accionable y prudente.
-- No inventes datos que no aparezcan en el contexto.
-- Si falta información, dilo y sugiere qué revisar.
-- No escribas como si hablaras directamente al atleta, salvo que el coach te pida redactar un mensaje.
-- Prioriza salud, fatiga, eventos cercanos, adherencia y coherencia entre fuerza/cardio/progreso.
-- Mantén la respuesta normalmente entre 4 y 10 bullets o 2-5 párrafos cortos.
-
-# Contexto del atleta
-${athleteContext}
-
-# Pregunta del coach
-${userMessage}`
-}
-
 export async function sendNextIAMessageAction(input: SendNextIAMessageInput): Promise<{
     success: boolean
     messages?: NextIAChatMessage[]
@@ -147,7 +126,7 @@ export async function sendNextIAMessageAction(input: SendNextIAMessageInput): Pr
 
         const rawAnswer = await callGemini(buildNextIAPrompt(content, athleteContext), {
             temperature: 0.4,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 2048,
             thinkingBudget: 0,
         })
 
@@ -171,7 +150,6 @@ export async function sendNextIAMessageAction(input: SendNextIAMessageInput): Pr
         }
 
         const messages = await getNextIAMessagesAction(coachId, input.clientId)
-        revalidatePath('/coach/clients')
         return { success: true, messages }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo generar la respuesta de NextIA.'

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, ArrowLeft, Check, Clock, HeartPulse, Loader2, Route } from 'lucide-react'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
+import { describeHrZone, resolveHrBounds, type CustomZones, type HrZoneMethod } from '@/lib/training/zones'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -94,6 +97,30 @@ export function StravaPendingFeedback() {
     const [saving, setSaving] = useState(false)
     const [ignoring, setIgnoring] = useState(false)
     const [step, setStep] = useState<'import' | 'feedback'>('import')
+    const [zoneBounds, setZoneBounds] = useState<{ run: number[] | null; bike: number[] | null } | null>(null)
+
+    // Límites de zona del atleta (RLS devuelve solo su fila): método configurado
+    // por el coach + posibles intervalos personalizados
+    useEffect(() => {
+        const supabase = createClient()
+        supabase
+            .from('athlete_thresholds')
+            .select('run_lthr, bike_lthr, max_hr, resting_hr, hr_zone_method, custom_zones')
+            .maybeSingle()
+            .then(({ data }) => {
+                if (!data) return
+                const method = (data.hr_zone_method ?? 'friel_lthr') as HrZoneMethod
+                const common = {
+                    method,
+                    maxHr: data.max_hr as number | null,
+                    restingHr: data.resting_hr as number | null,
+                    custom: data.custom_zones as CustomZones | null,
+                }
+                const run = resolveHrBounds({ ...common, sport: 'run', lthr: data.run_lthr })
+                const bike = resolveHrBounds({ ...common, sport: 'bike', lthr: data.bike_lthr })
+                setZoneBounds({ run: run?.bounds ?? null, bike: bike?.bounds ?? null })
+            })
+    }, [])
 
     async function loadPending() {
         try {
@@ -179,6 +206,13 @@ export function StravaPendingFeedback() {
     const plannedSessions = activity.planned_sessions || []
     const requiresSessionChoice = plannedSessions.length > 0 && !selectedSessionId
 
+    // Zona de FC de la actividad según los límites del deporte
+    const isRide = /ride|bike|cycl/i.test(sportType)
+    const activityBounds = isRide ? (zoneBounds?.bike ?? zoneBounds?.run ?? null) : (zoneBounds?.run ?? null)
+    const hrZone = activityBounds && activity.average_heartrate
+        ? describeHrZone(activityBounds, Math.round(Number(activity.average_heartrate)))
+        : null
+
     return (
         <Dialog open={!!activity} onOpenChange={(open) => !open && dismissCurrent()}>
             <DialogContent className="flex max-h-[calc(100dvh-var(--safe-area-top,0px)-0.75rem)] w-[calc(100vw-1rem)] max-w-md flex-col gap-0 overflow-hidden p-0 [&>button]:top-[calc(var(--safe-area-top,0px)+1rem)] sm:max-h-[90vh] sm:w-[calc(100vw-1.5rem)] sm:[&>button]:top-4">
@@ -225,6 +259,11 @@ export function StravaPendingFeedback() {
                             <span className="rounded-full bg-muted px-2 py-1">
                                 <HeartPulse className="mr-1 inline h-3 w-3" />
                                 {Math.round(Number(activity.average_heartrate))} ppm
+                            </span>
+                        )}
+                        {hrZone && (
+                            <span className={cn('rounded-full border px-2 py-1 font-semibold', hrZone.badgeClass)}>
+                                {hrZone.label}
                             </span>
                         )}
                     </div>

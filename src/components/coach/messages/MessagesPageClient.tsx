@@ -262,6 +262,11 @@ function getPreview(message: Message | null) {
     if (!message) return 'Sin mensajes todavía'
     if (message.message_type === 'review_feedback') return 'Revisión enviada'
     const prefix = message.sender_role === 'coach' ? 'Tú: ' : ''
+    if (message.attachment_type === 'audio') return `${prefix}🎤 Nota de voz`
+    if (message.attachment_type === 'image') return `${prefix}📷 Imagen`
+    if (message.attachment_type === 'document') {
+        return `${prefix}📎 ${message.attachment_name ?? 'Documento'}`
+    }
     return `${prefix}${message.content}`
 }
 

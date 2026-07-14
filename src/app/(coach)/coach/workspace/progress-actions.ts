@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { analyzeCardioSessionExecution } from '@/lib/cardio/analysis'
+import { buildHrHistogramFromStreamSet } from '@/lib/strava/hr-histogram'
 import { buildDietProgressData } from '@/lib/nutrition/progress'
 
 // ---------------------------------------------------------------------------
@@ -423,6 +424,8 @@ export interface CardioSessionProgress {
     avgHeartRate: number | null
     maxHeartRate: number | null
     rpe: number | null
+    /** Segundos por pulsación desde el stream de Strava (null si no hay FC) */
+    hrHistogram: Record<string, number> | null
     analysisSource: 'streams' | 'laps' | 'summary'
     analysisSegments: {
         label: string
@@ -654,6 +657,13 @@ export async function getCardioProgressData(
                 },
             })
 
+            // Histograma de FC (segundos por ppm) desde el stream real de Strava.
+            // Compacto (<2KB) e independiente del umbral: el cliente lo convierte
+            // en zonas con el LTHR vigente del atleta.
+            const hrHistogram = s.strava_activity_id
+                ? buildHrHistogramFromStreamSet(streamsByActivityId.get(s.strava_activity_id))
+                : null
+
             if (weekMap.has(key)) {
                 const w = weekMap.get(key)!
                 w.plannedSessionsCount += 1
@@ -684,6 +694,7 @@ export async function getCardioProgressData(
                 avgHeartRate,
                 maxHeartRate,
                 rpe: toNullableNumber(s.rpe),
+                hrHistogram,
                 analysisSource: analysis.source as CardioSessionProgress['analysisSource'],
                 analysisSegments: analysis.segments,
                 chartAxis: analysis.chartAxis as CardioSessionProgress['chartAxis'],

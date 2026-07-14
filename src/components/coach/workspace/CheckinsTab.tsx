@@ -10,7 +10,11 @@ import { FormTemplate } from '@/types/forms'
 import {
     FileText,
     Activity,
+    Camera,
     ChevronRight,
+    ImageOff,
+    Images,
+    Ruler,
     X,
     Sparkles,
     Loader2,
@@ -21,6 +25,8 @@ import {
 import { cn } from '@/lib/utils'
 import { deleteCheckinAction, regenerateReviewAIAction } from './actions'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
+import { GalleryTab } from './GalleryTab'
+import { MeasurementsTab } from './MeasurementsTab'
 import {
     CheckinAIAnalysisSheet,
     getParsedAIAnalysis,
@@ -90,7 +96,16 @@ function getReviewActionLabel(checkin: CheckinWithReview) {
     return 'Cerrar revisión'
 }
 
+type CheckinsSection = 'listado' | 'galeria' | 'medidas'
+
+const CHECKINS_SECTIONS: { value: CheckinsSection; label: string; icon: React.ReactNode }[] = [
+    { value: 'listado', label: 'Revisiones', icon: <FileText className="h-4 w-4" /> },
+    { value: 'galeria', label: 'Galería', icon: <Images className="h-4 w-4" /> },
+    { value: 'medidas', label: 'Medidas', icon: <Ruler className="h-4 w-4" /> },
+]
+
 export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
+    const [section, setSection] = useState<CheckinsSection>('listado')
     const [selectedCheckin, setSelectedCheckin] = useState<CheckinWithReview | null>(null)
     const liveSelectedCheckin = selectedCheckin
         ? checkins.find((checkin) => checkin.id === selectedCheckin.id) ?? selectedCheckin
@@ -105,6 +120,30 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
         setReviewDialogCheckinId(checkinId)
     }
 
+    const sectionSwitcher = (
+        <div className="flex w-fit items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+            {CHECKINS_SECTIONS.map(item => (
+                <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => {
+                        setSection(item.value)
+                        setSelectedCheckin(null)
+                    }}
+                    className={cn(
+                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                        section === item.value
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                    )}
+                >
+                    {item.icon}
+                    <span>{item.label}</span>
+                </button>
+            ))}
+        </div>
+    )
+
     if (checkins.length === 0) {
         return (
             <Card className="p-8 text-center">
@@ -114,6 +153,24 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                     El cliente aún no ha enviado ninguna revisión
                 </p>
             </Card>
+        )
+    }
+
+    if (section === 'galeria') {
+        return (
+            <div className="space-y-4">
+                {sectionSwitcher}
+                <GalleryTab coachId={coachId} clientId={clientId} checkins={checkins} />
+            </div>
+        )
+    }
+
+    if (section === 'medidas') {
+        return (
+            <div className="space-y-4">
+                {sectionSwitcher}
+                <MeasurementsTab checkins={checkins} metricDefinitions={metricDefinitions} />
+            </div>
         )
     }
 
@@ -151,7 +208,8 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     }
 
     return (
-        <>
+        <div className="space-y-4">
+            {sectionSwitcher}
             <Card className="flex-1">
                 <div className="p-4 border-b flex items-center justify-between">
                     <h3 className="font-semibold flex items-center gap-2">
@@ -183,7 +241,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                 checkin={reviewDialogCheckin}
                 onCompleted={onRefresh}
             />
-        </>
+        </div>
     )
 }
 
@@ -487,14 +545,37 @@ function CheckinDetailPanel({
 
                 {/* Fotos */}
                 <div className="space-y-4">
-                    <h4 className="font-semibold text-lg flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        Fotos de progreso
-                    </h4>
-                    <CheckinPhotosViewer
-                        checkinId={checkin.id}
-                        coachId={coachId}
-                    />
+                    <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-lg flex items-center gap-2">
+                            <Camera className="h-5 w-5 text-muted-foreground" />
+                            Fotos de progreso
+                        </h4>
+                        {checkin.review_template && (
+                            checkin.review_template.include_progress_photos ? (
+                                <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/20 text-xs">
+                                    {checkin.review_template.photos_required ? 'Obligatorias' : 'Solicitadas'}
+                                </Badge>
+                            ) : (
+                                <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20 text-xs">
+                                    No activadas
+                                </Badge>
+                            )
+                        )}
+                    </div>
+                    {checkin.review_template && !checkin.review_template.include_progress_photos ? (
+                        <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/20 p-6">
+                            <ImageOff className="h-5 w-5 shrink-0 text-muted-foreground/60" />
+                            <p className="text-sm text-muted-foreground">
+                                Esta revisión no pedía fotos de progreso. Puedes activarlas en la plantilla
+                                {checkin.review_template.name ? ` "${checkin.review_template.name}"` : ''}.
+                            </p>
+                        </div>
+                    ) : (
+                        <CheckinPhotosViewer
+                            checkinId={checkin.id}
+                            coachId={coachId}
+                        />
+                    )}
                 </div>
 
                 {/* Review */}

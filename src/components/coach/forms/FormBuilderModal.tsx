@@ -84,6 +84,11 @@ const TYPE_LABELS: Record<string, string> = {
     general: 'General',
 }
 
+// Constante estable: un `= []` inline crearía un array nuevo en cada render y,
+// al estar en las dependencias del useEffect, provocaría un bucle infinito
+// cuando el padre no pasa la prop (p. ej. desde el diálogo de revisión).
+const NO_CLIENTS: Pick<Client, 'id' | 'full_name'>[] = []
+
 /**
  * Compute nextFieldNumber from existing IDs matching "campo_N".
  */
@@ -106,7 +111,7 @@ export function FormBuilderModal({
     templateType,
     editingTemplate,
     initialData,
-    activeClients = [],
+    activeClients = NO_CLIENTS,
     onSave,
 }: FormBuilderModalProps) {
     const getInitialFields = useCallback(() => {
@@ -359,8 +364,8 @@ export function FormBuilderModal({
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+            <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+                <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
                     <DialogTitle className="flex items-center gap-2">
                         {editingTemplate ? `Editar ${entityLabel}` : initialData ? 'Revisar Formulario IA' : `Crear ${entityLabel}`}
                         <Badge variant="outline" className="text-xs">
@@ -369,6 +374,7 @@ export function FormBuilderModal({
                     </DialogTitle>
                 </DialogHeader>
 
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 {step === 'builder' && (
                     <div className="space-y-6 py-2">
                         {initialData && !editingTemplate && (
@@ -563,8 +569,9 @@ export function FormBuilderModal({
                         )}
                     </div>
                 )}
+                </div>
 
-                <DialogFooter>
+                <DialogFooter className="shrink-0 border-t px-6 py-4">
                     {step === 'builder' ? (
                         <>
                             <Button

@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notifyCoach } from '@/lib/notifications/coach'
-import type { Message } from '@/types/messages'
+import type { Message, MessageAttachment } from '@/types/messages'
 
 interface ClientChatContext {
     userId: string
@@ -89,7 +89,10 @@ export async function getClientChatMessagesAction(): Promise<ClientChatResult> {
     }
 }
 
-export async function sendClientChatMessageAction(content: string): Promise<ClientChatResult> {
+export async function sendClientChatMessageAction(
+    content: string,
+    attachment?: MessageAttachment
+): Promise<ClientChatResult> {
     const context = await getCurrentClientChatContext()
     if (!context) {
         return {
@@ -99,11 +102,20 @@ export async function sendClientChatMessageAction(content: string): Promise<Clie
     }
 
     const trimmed = content.trim()
-    if (!trimmed || trimmed.length > 4000) {
+    if ((!trimmed && !attachment) || trimmed.length > 4000) {
         return {
             success: false,
             context,
             error: 'Mensaje vacío o demasiado largo (máx 4000 caracteres).',
+        }
+    }
+
+    // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
+    if (attachment && !attachment.url.startsWith(`${context.coachId}/${context.clientId}/`)) {
+        return {
+            success: false,
+            context,
+            error: 'Adjunto no válido para esta conversación.',
         }
     }
 
@@ -117,6 +129,12 @@ export async function sendClientChatMessageAction(content: string): Promise<Clie
             sender_id: context.userId,
             content: trimmed,
             message_type: 'chat',
+            attachment_type: attachment?.type ?? null,
+            attachment_url: attachment?.url ?? null,
+            attachment_name: attachment?.name ?? null,
+            attachment_size: attachment?.size ?? null,
+            attachment_mime: attachment?.mime ?? null,
+            attachment_duration: attachment?.duration ?? null,
         })
         .select()
         .single()
@@ -138,7 +156,11 @@ export async function sendClientChatMessageAction(content: string): Promise<Clie
             .eq('id', context.clientId)
             .single()
 
-        const preview = trimmed.length > 100 ? `${trimmed.substring(0, 97)}...` : trimmed
+        const previewSource = trimmed
+            || (attachment?.type === 'audio' ? '🎤 Nota de voz'
+                : attachment?.type === 'image' ? '📷 Imagen'
+                : `📎 ${attachment?.name ?? 'Documento'}`)
+        const preview = previewSource.length > 100 ? `${previewSource.substring(0, 97)}...` : previewSource
         await notifyCoach(context.coachId, 'messages', {
             title: `Mensaje de ${clientRow?.full_name ?? 'un atleta'}`,
             body: preview,

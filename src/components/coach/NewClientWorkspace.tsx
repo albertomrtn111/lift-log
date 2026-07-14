@@ -31,11 +31,11 @@ import {
     ChevronRight,
     UserRound,
     Bot,
-    Images,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
 import { AthleteProfileTab } from './workspace/AthleteProfileTab'
+import { AthleteConfigSection } from './workspace/AthleteConfigSection'
 import { ResumenTab } from './workspace/ResumenTab'
 import { CheckinsTab } from './workspace/CheckinsTab'
 import { ProgresoTab } from './workspace/ProgresoTab'
@@ -43,7 +43,6 @@ import { EventsTab } from './workspace/EventsTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
-import { GalleryTab } from './workspace/GalleryTab'
 import { NextIAChatPanel } from './workspace/NextIAChatPanel'
 
 interface NewClientWorkspaceProps {
@@ -306,15 +305,6 @@ export function NewClientWorkspace({
                             {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
                         </TabsTrigger>
                         <TabsTrigger
-                            value="galeria"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <Images className="h-4 w-4" />
-                            <span className="hidden sm:inline">Galería</span>
-                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                        </TabsTrigger>
-                        <TabsTrigger
                             value="events"
                             disabled={isPendingSignup}
                             className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
@@ -326,7 +316,11 @@ export function NewClientWorkspace({
                     </TabsList>
 
                         <div className="min-h-[500px] min-w-0 max-w-full overflow-x-hidden">
-                            <TabsContent value="athlete-profile" className="mt-0 min-w-0">
+                            <TabsContent value="athlete-profile" className="mt-0 min-w-0 space-y-6">
+                                <AthleteConfigSection
+                                    key={`config-${selectedClient.id}`}
+                                    clientId={selectedClient.id}
+                                />
                                 <AthleteProfileTab
                                     key={selectedClient.id}
                                     clientId={selectedClient.id}
@@ -412,19 +406,6 @@ export function NewClientWorkspace({
                                 )}
                             </TabsContent>
 
-                            <TabsContent value="galeria" className="mt-0 min-w-0">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <GalleryTab
-                                        key={selectedClient.id}
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        checkins={checkins}
-                                    />
-                                )}
-                            </TabsContent>
-
                             <TabsContent value="progreso" className="mt-0 min-w-0">
                                 {isPendingSignup ? (
                                     <BlockedTabContent />
@@ -458,11 +439,13 @@ function normalizeWorkspaceTab(tab: string | null) {
         tab === 'plan' ||
         tab === 'events' ||
         tab === 'checkins' ||
-        tab === 'galeria' ||
         tab === 'progreso'
     ) {
         return tab
     }
+
+    // Galería y Medidas viven ahora dentro de Revisiones
+    if (tab === 'galeria' || tab === 'medidas') return 'checkins'
 
     return 'resumen'
 }

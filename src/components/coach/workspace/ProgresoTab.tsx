@@ -37,6 +37,8 @@ import {
 } from '@/app/(coach)/coach/workspace/progress-actions'
 import { TrainingProgressView } from './progress/TrainingProgressView'
 import { CardioProgressView } from './progress/CardioProgressView'
+import { getAthleteThresholdsAction } from './athlete-thresholds-actions'
+import { resolveHrBounds } from '@/lib/training/zones'
 import { DietProgressView } from './progress/DietProgressView'
 
 // ---------------------------------------------------------------------------
@@ -348,6 +350,31 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [cardioLoading, setCardioLoading] = useState(false)
     const [dietData, setDietData] = useState<DietProgressData | null>(null)
     const [dietLoading, setDietLoading] = useState(false)
+    const [zoneThresholds, setZoneThresholds] = useState<{ runBounds: number[] | null; bikeBounds: number[] | null } | null>(null)
+
+    // Límites de zona efectivos del atleta (método configurado + overrides del
+    // coach) para etiquetar las sesiones de cardio
+    useEffect(() => {
+        let cancelled = false
+        getAthleteThresholdsAction(clientId).then(thresholds => {
+            if (cancelled || !thresholds) return
+            const method = thresholds.hr_zone_method ?? 'friel_lthr'
+            const common = {
+                method,
+                lthr: null as number | null,
+                maxHr: thresholds.max_hr,
+                restingHr: thresholds.resting_hr,
+                custom: thresholds.custom_zones,
+            }
+            const run = resolveHrBounds({ ...common, sport: 'run', lthr: thresholds.run_lthr })
+            const bike = resolveHrBounds({ ...common, sport: 'bike', lthr: thresholds.bike_lthr })
+            setZoneThresholds({
+                runBounds: run?.bounds ?? null,
+                bikeBounds: bike?.bounds ?? null,
+            })
+        })
+        return () => { cancelled = true }
+    }, [clientId])
 
     const dateFrom = useMemo(() => toDateStr(offsetToDate(offsets[0])), [offsets])
     const dateTo = useMemo(() => toDateStr(offsetToDate(offsets[1])), [offsets])
@@ -513,7 +540,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                         </div>
                     ) : cardioData ? (
-                        <CardioProgressView data={cardioData} />
+                        <CardioProgressView data={cardioData} thresholds={zoneThresholds} />
                     ) : null}
                 </>
             ) : subTab === 'diet' ? (

@@ -120,9 +120,12 @@ export function ReviewTemplateDialog({
                 setReviewType(editingTemplate.review_type)
                 setFormTemplateId(editingTemplate.form_template_id ?? '')
                 setDefaultFrequencyDays(editingTemplate.default_frequency_days)
-                setIncludeBody(editingTemplate.include_body_metrics)
-                setIncludePerformance(editingTemplate.include_performance_metrics)
-                setIncludeGeneral(editingTemplate.include_general_metrics)
+                // Coerción: un grupo marcado pero sin métricas activas en el catálogo
+                // se desmarca (su switch se muestra apagado y deshabilitado, así que
+                // el coach no podría corregirlo a mano)
+                setIncludeBody(editingTemplate.include_body_metrics && metricCounts.body > 0)
+                setIncludePerformance(editingTemplate.include_performance_metrics && metricCounts.performance > 0)
+                setIncludeGeneral(editingTemplate.include_general_metrics && metricCounts.general > 0)
                 setIncludePhotos(editingTemplate.include_progress_photos)
                 setPhotosRequired(editingTemplate.photos_required)
                 setPhotosMaxItems(editingTemplate.photos_max_items)
@@ -260,7 +263,12 @@ export function ReviewTemplateDialog({
             finalIncludePerformance = metrics.some(m => selectedMetricIds.has(m.id) && m.category === 'performance')
             finalIncludeGeneral = metrics.some(m => selectedMetricIds.has(m.id) && m.category === 'general')
         } else {
-            hasAnyMetric = includeBody || includePerformance || includeGeneral
+            // Coerción en vez de bloqueo: un grupo marcado sin métricas activas
+            // en el catálogo no aporta nada, se guarda desmarcado.
+            finalIncludeBody = includeBody && metricCounts.body > 0
+            finalIncludePerformance = includePerformance && metricCounts.performance > 0
+            finalIncludeGeneral = includeGeneral && metricCounts.general > 0
+            hasAnyMetric = finalIncludeBody || finalIncludePerformance || finalIncludeGeneral
             metricIdsPayload = [] // Limpia cualquier selección Nivel 2 anterior
         }
 
@@ -269,21 +277,6 @@ export function ReviewTemplateDialog({
         if (!hasForm && !hasAnyMetric && !hasPhotos) {
             fail('La revisión está vacía. Selecciona al menos un formulario, métricas o activa las fotos.')
             return
-        }
-
-        if (!advancedMode) {
-            if (includeBody && metricCounts.body === 0) {
-                fail('Has marcado "Métricas corporales" pero no tienes ninguna activa en tu catálogo.')
-                return
-            }
-            if (includePerformance && metricCounts.performance === 0) {
-                fail('Has marcado "Métricas de rendimiento" pero no tienes ninguna activa en tu catálogo.')
-                return
-            }
-            if (includeGeneral && metricCounts.general === 0) {
-                fail('Has marcado "Métricas generales" pero no tienes ninguna activa en tu catálogo.')
-                return
-            }
         }
 
         const payload = {
@@ -329,8 +322,8 @@ export function ReviewTemplateDialog({
     return (
         <>
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+            <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+                <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
                     <DialogTitle>
                         {editingTemplate ? 'Editar revisión' : 'Nueva revisión'}
                     </DialogTitle>
@@ -339,7 +332,7 @@ export function ReviewTemplateDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="py-2">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                     <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as 'form' | 'settings')}>
                         <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="form">Formulario</TabsTrigger>
@@ -698,7 +691,7 @@ export function ReviewTemplateDialog({
                     )}
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="shrink-0 border-t px-6 py-4">
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
                         Cancelar
                     </Button>
