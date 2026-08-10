@@ -356,7 +356,10 @@ export function EditClientModal({
                                     </div>
                                     <div>
                                         <p className="text-sm font-medium">Strava</p>
-                                        <p className="text-xs text-muted-foreground">Sincroniza entrenamientos cardio del atleta.</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Sincroniza entrenamientos cardio del atleta. Sirve también para
+                                            Garmin, Polar, Coros o Suunto si enlaza su reloj con Strava.
+                                        </p>
                                     </div>
                                 </div>
                                 <Badge variant="outline" className="text-[10px]">Gestionado por el atleta</Badge>
@@ -370,7 +373,7 @@ export function EditClientModal({
                                 <Badge variant="outline" className="text-[10px]">Próximamente</Badge>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                                Garmin, Apple Health, Whoop…
+                                Métricas de salud diarias (sueño, HRV, FC en reposo) desde wearables.
                             </p>
                         </Card>
                     </TabsContent>

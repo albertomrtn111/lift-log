@@ -307,7 +307,20 @@ function analyzeFromSummary(session) {
 }
 
 export function analyzeCardioSessionExecution({ structure, streams, laps, session = {} }) {
-  return analyzeFromStreams(structure, streams)
+  const analysis = analyzeFromStreams(structure, streams)
     || analyzeFromLaps(laps)
     || analyzeFromSummary(session)
+
+  // Los gráficos de ritmo/FC dependen solo de que existan streams útiles, no de
+  // que el coach haya planificado bloques. Antes solo la rama 'streams' los
+  // generaba, así que una sesión escrita en texto libre (blocks: []) se quedaba
+  // sin gráfica aunque el reloj hubiera enviado todos los datos.
+  if (analysis.chartPoints.length === 0 && hasUsefulStreams(streams)) {
+    analysis.chartPoints = buildChartPoints(streams)
+    if (analysis.chartPoints.length > 0) {
+      analysis.chartAxis = streamData(streams, 'distance').length > 1 ? 'distance' : 'time'
+    }
+  }
+
+  return analysis
 }

@@ -24,8 +24,20 @@ import {
     Settings2,
     Download,
     ArrowUp,
-    ArrowDown
+    ArrowDown,
+    GripVertical,
 } from 'lucide-react'
+import {
+    DndContext,
+    KeyboardSensor,
+    PointerSensor,
+    useDraggable,
+    useDroppable,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
 import { TemplateImportDialog } from './TemplateImportDialog'
@@ -38,7 +50,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { addExerciseAction, deleteExerciseAction, reorderExerciseAction } from '../actions'
+import { addExerciseAction, deleteExerciseAction, reorderExerciseAction, reorderExercisesAction } from '../actions'
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
 import { cn } from '@/lib/utils'
 
@@ -941,6 +953,11 @@ function StepProgramTable({
     programId: string
 }) {
     const { toast } = useToast()
+    const [isReorderingExercises, setIsReorderingExercises] = useState(false)
+    const exerciseSensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor)
+    )
     const activeDayExercises = exercises
         .filter(e => e.day_id === activeDayId)
         .sort((a, b) => {
@@ -994,6 +1011,57 @@ function StepProgramTable({
         }))
     }
 
+    async function handleExerciseDragEnd(event: DragEndEvent) {
+        if (!activeDayId || !event.over || event.active.id === event.over.id) return
+
+        const activeExerciseId = event.active.data.current?.exerciseId as string | undefined
+        const overExerciseId = event.over.data.current?.exerciseId as string | undefined
+        if (!activeExerciseId || !overExerciseId) return
+
+        const currentIndex = activeDayExercises.findIndex(exercise => exercise.id === activeExerciseId)
+        const targetIndex = activeDayExercises.findIndex(exercise => exercise.id === overExerciseId)
+        if (currentIndex === -1 || targetIndex === -1) return
+
+        const previousExercises = exercises
+        const reorderedDayExercises = [...activeDayExercises]
+        const [movedExercise] = reorderedDayExercises.splice(currentIndex, 1)
+        reorderedDayExercises.splice(targetIndex, 0, movedExercise)
+
+        const orderByExerciseId = new Map(
+            reorderedDayExercises.map((exercise, index) => [exercise.id, index + 1])
+        )
+        setExercises(exercises.map(exercise => {
+            const nextOrder = orderByExerciseId.get(exercise.id)
+            return nextOrder ? { ...exercise, order_index: nextOrder } : exercise
+        }))
+
+        setIsReorderingExercises(true)
+        try {
+            const result = await reorderExercisesAction(
+                activeDayId,
+                reorderedDayExercises.map(exercise => exercise.id)
+            )
+
+            if (result.success) return
+
+            setExercises(previousExercises)
+            toast({
+                title: 'No se pudo guardar el orden',
+                description: result.error,
+                variant: 'destructive',
+            })
+        } catch (error) {
+            setExercises(previousExercises)
+            toast({
+                title: 'No se pudo guardar el orden',
+                description: error instanceof Error ? error.message : 'Error inesperado al reordenar los ejercicios.',
+                variant: 'destructive',
+            })
+        } finally {
+            setIsReorderingExercises(false)
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col xl:flex-row gap-6 justify-between items-start xl:items-center bg-background/50 p-4 rounded-2xl border border-primary/5">
@@ -1027,7 +1095,8 @@ function StepProgramTable({
                 </div>
             </div>
 
-            <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl bg-background outline outline-1 outline-primary/5">
+            <DndContext sensors={exerciseSensors} onDragEnd={handleExerciseDragEnd}>
+                <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl bg-background outline outline-1 outline-primary/5">
                 <div className="p-5 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="p-2 rounded-lg bg-primary/10">
@@ -1050,8 +1119,8 @@ function StepProgramTable({
                     </Button>
                 </div>
 
-                <div className="scrollbar-thin scrollbar-thumb-primary/10">
-                    <table className="w-full border-collapse">
+                <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-primary/10">
+                    <table className="w-full min-w-[720px] border-collapse">
                         <thead>
                             <tr className="bg-muted/30 text-left text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
                                 <th className="p-5 border-b font-bold min-w-[250px]">Ejercicio</th>
@@ -1087,6 +1156,7 @@ function StepProgramTable({
                                     }}
                                     onMoveUp={() => moveExerciseLocally(ex.id, 'up')}
                                     onMoveDown={() => moveExerciseLocally(ex.id, 'down')}
+                                    dragDisabled={isReorderingExercises}
                                 />
                             ))}
                             {activeDayExercises.length === 0 && activeDayId && (
@@ -1109,12 +1179,13 @@ function StepProgramTable({
                         </tbody>
                     </table>
                 </div>
-            </Card>
+                </Card>
+            </DndContext>
         </div>
     )
 }
 
-function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, allCells, onUpdate, onDelete, onCellUpdate, onMoveUp, onMoveDown }: {
+function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, allCells, onUpdate, onDelete, onCellUpdate, onMoveUp, onMoveDown, dragDisabled }: {
     exercise: any,
     programId: string,
     coachId: string,
@@ -1126,9 +1197,26 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
     onDelete: () => void,
     onCellUpdate: (colId: string, val: string) => void,
     onMoveUp: () => void,
-    onMoveDown: () => void
+    onMoveDown: () => void,
+    dragDisabled: boolean
 }) {
     const { toast } = useToast()
+    const {
+        attributes,
+        listeners,
+        setNodeRef: setDraggableRef,
+        transform,
+        isDragging,
+    } = useDraggable({
+        id: `exercise-${exercise.id}`,
+        data: { exerciseId: exercise.id },
+        disabled: dragDisabled,
+    })
+    const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+        id: `exercise-${exercise.id}`,
+        data: { exerciseId: exercise.id },
+        disabled: dragDisabled,
+    })
     const [rowCells, setRowCells] = useState<Record<string, string>>({})
     const [isSaving, setIsSaving] = useState<Record<string, boolean>>({})
 
@@ -1225,13 +1313,35 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
     }
 
     const [isProcessing, setIsProcessing] = useState(false)
+    const setRowRef = (node: HTMLTableRowElement | null) => {
+        setDraggableRef(node)
+        setDroppableRef(node)
+    }
 
     return (
-        <tr className="hover:bg-primary/5 transition-all group border-b last:border-0 border-muted-foreground/10">
+        <tr
+            ref={setRowRef}
+            style={{ transform: CSS.Translate.toString(transform) }}
+            className={cn(
+                'group border-b border-muted-foreground/10 transition-all last:border-0 hover:bg-primary/5',
+                isDragging && 'z-10 opacity-40',
+                isOver && !isDragging && 'bg-primary/10 ring-2 ring-inset ring-primary/20'
+            )}
+        >
             <td className="p-4 px-5">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-6 bg-primary/20 rounded-full group-hover:bg-primary/50 transition-colors shrink-0" />
+                        <button
+                            type="button"
+                            disabled={dragDisabled || isProcessing}
+                            className="flex h-10 w-10 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label={`Reordenar ${exercise.exercise_name || 'ejercicio'}`}
+                            title="Arrastrar para reordenar"
+                            {...listeners}
+                            {...attributes}
+                        >
+                            <GripVertical className="h-5 w-5" />
+                        </button>
                         <Input
                             className="font-bold bg-transparent border-0 focus-visible:ring-1 focus-visible:ring-primary shadow-none h-11 px-2 text-md transition-all placeholder:italic"
                             value={exercise.exercise_name}

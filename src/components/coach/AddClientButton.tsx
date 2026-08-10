@@ -21,7 +21,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Loader2, Send, Save, Copy, Check, Eye, EyeOff } from 'lucide-react'
+import { Plus, Loader2, Send, Save, Copy, Check, Eye, EyeOff, Sparkles } from 'lucide-react'
 import { createClientAction } from './actions'
 import { sendInviteAction } from './invite-actions'
 import { useToast } from '@/hooks/use-toast'
@@ -96,6 +96,18 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
             return 'Las contraseñas no coinciden'
         }
         return null
+    }
+
+    /** Genera una contraseña segura y rellena ambos campos a la vez. */
+    const handleGeneratePassword = () => {
+        const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        const bytes = new Uint32Array(14)
+        crypto.getRandomValues(bytes)
+        const generated = Array.from(bytes, (n) => alphabet[n % alphabet.length]).join('')
+
+        setFormData(prev => ({ ...prev, password: generated, confirmPassword: generated }))
+        setShowPassword(true)
+        setError(null)
     }
 
     const handleCopyPassword = async () => {
@@ -382,17 +394,37 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
 
                     {/* ---- Password section ---- */}
                     <div className="border-t pt-4 mt-4 space-y-3">
-                        <div>
-                            <Label className="text-sm font-medium">Contraseña inicial</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Opcional. Si la estableces, el cliente podrá iniciar sesión directamente sin invitación.
-                            </p>
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <Label className="text-sm font-medium">Contraseña inicial</Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Opcional. Si la estableces, el cliente podrá iniciar sesión directamente sin invitación.
+                                </p>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleGeneratePassword}
+                                disabled={isPending}
+                                className="shrink-0 gap-1.5"
+                            >
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Generar
+                            </Button>
                         </div>
 
+                        {/*
+                          Ambos campos van SIEMPRE montados y sin semántica de
+                          registro: si el de confirmación aparecía al escribir, el
+                          navegador re-evaluaba el formulario y disparaba su
+                          "contraseña segura", sobrescribiendo lo tecleado.
+                        */}
                         <div className="space-y-2">
                             <div className="relative">
                                 <Input
-                                    id="password"
+                                    id="client-initial-password"
+                                    name="client-initial-password"
                                     type={showPassword ? 'text' : 'password'}
                                     value={formData.password}
                                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -400,6 +432,11 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                                     minLength={8}
                                     disabled={isPending}
                                     className="pr-20"
+                                    autoComplete="new-password"
+                                    data-form-type="other"
+                                    data-1p-ignore
+                                    data-lpignore="true"
+                                    data-bwignore
                                 />
                                 <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
                                     {formData.password && (
@@ -430,20 +467,26 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                                     </button>
                                 </div>
                             </div>
-                        </div>
 
-                        {formData.password && (
-                            <div className="space-y-2">
-                                <Input
-                                    id="confirmPassword"
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={formData.confirmPassword}
-                                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                    placeholder="Repetir contraseña"
-                                    disabled={isPending}
-                                />
-                            </div>
-                        )}
+                            <Input
+                                id="client-initial-password-confirm"
+                                name="client-initial-password-confirm"
+                                type={showPassword ? 'text' : 'password'}
+                                value={formData.confirmPassword}
+                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                placeholder="Repetir contraseña"
+                                disabled={isPending || !formData.password}
+                                autoComplete="new-password"
+                                data-form-type="other"
+                                data-1p-ignore
+                                data-lpignore="true"
+                                data-bwignore
+                            />
+
+                            {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                                <p className="text-xs text-destructive">Las contraseñas no coinciden.</p>
+                            )}
+                        </div>
                     </div>
 
                     {error && (

@@ -924,6 +924,60 @@ export async function reorderExerciseAction(exerciseId: string, direction: 'up' 
     }
 }
 
+export async function reorderExercisesAction(dayId: string, orderedExerciseIds: string[]) {
+    const supabase = await createClient()
+    const uniqueIds = [...new Set(orderedExerciseIds)]
+
+    if (!dayId || uniqueIds.length === 0 || uniqueIds.length !== orderedExerciseIds.length) {
+        return { success: false, error: 'El nuevo orden de ejercicios no es válido' }
+    }
+
+    const { data: dayExercises, error } = await supabase
+        .from('training_exercises')
+        .select('id, order_index')
+        .eq('day_id', dayId)
+
+    if (error || !dayExercises) {
+        return { success: false, error: error?.message || 'No se pudieron cargar los ejercicios' }
+    }
+
+    const currentIds = new Set(dayExercises.map(exercise => exercise.id))
+    const containsEveryExercise = uniqueIds.length === currentIds.size
+        && uniqueIds.every(exerciseId => currentIds.has(exerciseId))
+
+    if (!containsEveryExercise) {
+        return { success: false, error: 'La lista de ejercicios ha cambiado. Recarga el programa e inténtalo de nuevo.' }
+    }
+
+    const updatedAt = new Date().toISOString()
+    const updates = await Promise.all(
+        uniqueIds.map((exerciseId, index) =>
+            supabase
+                .from('training_exercises')
+                .update({ order_index: index + 1, updated_at: updatedAt })
+                .eq('id', exerciseId)
+                .eq('day_id', dayId)
+        )
+    )
+
+    const updateError = updates.find(result => result.error)?.error
+    if (updateError) {
+        await Promise.all(
+            dayExercises.map((exercise, index) =>
+                supabase
+                    .from('training_exercises')
+                    .update({ order_index: exercise.order_index ?? index + 1, updated_at: updatedAt })
+                    .eq('id', exercise.id)
+                    .eq('day_id', dayId)
+            )
+        )
+        return { success: false, error: updateError.message }
+    }
+
+    revalidatePath('/coach/clients')
+    return { success: true }
+}
+
 // ============================================================================
 // CHECK-IN ADVANCE ACTIONS
 // ============================================================================

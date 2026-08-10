@@ -327,6 +327,129 @@ export function zonesFromHistogram(
     return totalSeconds > 0 ? { secondsByZone, totalSeconds } : null
 }
 
+// ---------------------------------------------------------------------------
+// Caracterización de una sesión a partir de su distribución
+// ---------------------------------------------------------------------------
+
+/**
+ * Una zona cuenta como "trabajada" si acumula al menos este tiempo. El umbral
+ * relativo evita que un pico de 30 s (o un artefacto del pulsómetro) marque la
+ * sesión; el mínimo absoluto evita que en sesiones muy largas se exija tanto
+ * tiempo que las series cortas de calidad queden invisibles.
+ */
+const SIGNIFICANT_ZONE_SECONDS = 120
+const SIGNIFICANT_ZONE_RATIO = 0.04
+/** Tiempo mínimo para considerar que la zona se llegó a tocar. */
+const TOUCHED_ZONE_SECONDS = 30
+
+export type SessionCharacter = 'suave' | 'continuo' | 'tempo' | 'umbral' | 'intervalos'
+
+export const SESSION_CHARACTER_LABELS: Record<SessionCharacter, string> = {
+    suave: 'Rodaje suave',
+    continuo: 'Continuo',
+    tempo: 'Tempo',
+    umbral: 'Umbral',
+    intervalos: 'Intervalos',
+}
+
+export interface SessionZoneSummary {
+    secondsByZone: [number, number, number, number, number]
+    totalSeconds: number
+    /** Zona con más tiempo acumulado. Describe el relleno, no el estímulo. */
+    dominantZone: number
+    /**
+     * Zona más alta con tiempo significativo. Es la que mejor describe para qué
+     * sirvió la sesión: en un fartlek, el calentamiento y las recuperaciones
+     * suman más minutos que las series, pero el estímulo son las series.
+     */
+    stimulusZone: number
+    /** Zona más alta que se llegó a tocar, aunque fuese poco tiempo. */
+    peakZone: number
+    /** % del tiempo en Z1-Z2, Z3 y Z4-Z5 */
+    lowPct: number
+    midPct: number
+    highPct: number
+    /** Segundos acumulados en Z4-Z5 */
+    highSeconds: number
+    character: SessionCharacter
+}
+
+/**
+ * Resume una sesión a partir de su histograma de FC.
+ *
+ * Clasificar por la zona dominante (la de más minutos) o por la FC media
+ * etiqueta como Z1 sesiones que en realidad han tenido series en Z4-Z5: el
+ * calentamiento, las recuperaciones y la vuelta a la calma casi siempre suman
+ * más tiempo que el trabajo de calidad. Por eso la etiqueta principal usa
+ * `stimulusZone` y no `dominantZone`.
+ */
+export function summarizeSessionZones(
+    histogram: Record<string, number> | null | undefined,
+    bounds: number[] | null | undefined
+): SessionZoneSummary | null {
+    const distribution = zonesFromHistogram(histogram, bounds)
+    if (!distribution) return null
+
+    const { secondsByZone, totalSeconds } = distribution
+    const significantThreshold = Math.max(
+        SIGNIFICANT_ZONE_SECONDS,
+        totalSeconds * SIGNIFICANT_ZONE_RATIO
+    )
+
+    // Desempate hacia la zona más alta: ante 22 min en Z1 y 22 min en Z4, la
+    // sesión se parece mucho más a un entreno de umbral que a un rodaje.
+    let dominantZone = 1
+    for (let i = 0; i < secondsByZone.length; i++) {
+        if (secondsByZone[i] >= secondsByZone[dominantZone - 1]) dominantZone = i + 1
+    }
+
+    let stimulusZone = 1
+    let peakZone = 1
+    for (let i = 0; i < secondsByZone.length; i++) {
+        if (secondsByZone[i] >= significantThreshold) stimulusZone = i + 1
+        if (secondsByZone[i] >= TOUCHED_ZONE_SECONDS) peakZone = i + 1
+    }
+
+    const pct = (seconds: number) => (seconds / totalSeconds) * 100
+    const lowPct = pct(secondsByZone[0] + secondsByZone[1])
+    const midPct = pct(secondsByZone[2])
+    const highSeconds = secondsByZone[3] + secondsByZone[4]
+    const highPct = pct(highSeconds)
+
+    // El orden importa: primero se detecta la forma polarizada (mucho tiempo
+    // fácil + un bloque duro claro), que es la que peor describía la moda.
+    const character: SessionCharacter =
+        highPct >= 15 && lowPct >= 35 ? 'intervalos'
+            : highPct >= 25 ? 'umbral'
+                : midPct >= 35 ? 'tempo'
+                    : lowPct >= 80 ? 'suave'
+                        : 'continuo'
+
+    return {
+        secondsByZone,
+        totalSeconds,
+        dominantZone,
+        stimulusZone,
+        peakZone,
+        lowPct,
+        midPct,
+        highPct,
+        highSeconds,
+        character,
+    }
+}
+
+/** Describe una zona (1-5) sin necesidad de una FC concreta. */
+export function describeZoneNumber(zone: number): ZoneDescription | null {
+    if (!Number.isFinite(zone) || zone < 1 || zone > HR_ZONE_NAMES.length) return null
+    return {
+        zone,
+        name: HR_ZONE_NAMES[zone - 1],
+        label: `Z${zone} · ${HR_ZONE_NAMES[zone - 1]}`,
+        badgeClass: ZONE_BADGE_CLASSES[zone],
+    }
+}
+
 /** Días desde el último test; null si nunca se testó. */
 export function daysSinceTested(testedAt: string | null): number | null {
     if (!testedAt) return null

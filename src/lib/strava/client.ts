@@ -9,6 +9,10 @@ import { sendStravaActivityImportedNotification } from '@/lib/notifications/clie
 import { calculateStravaLapMetrics } from '@/lib/strava/lap-metrics'
 import { buildStravaCardioPrivacyReset } from '@/lib/strava/cardio-cleanup'
 import { mapStravaSportToDiscipline, shouldImportStravaActivity } from '@/lib/strava/sport-mapping'
+import {
+    hasRequiredStravaActivityScope,
+    STRAVA_ACTIVITY_PERMISSION_ERROR,
+} from '@/lib/strava/scopes'
 import { roundToDecimals } from '@/lib/format/number'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
@@ -31,6 +35,13 @@ const STATE_TTL_SECONDS = 10 * 60
 const TOKEN_REFRESH_SKEW_SECONDS = 5 * 60
 
 export type StravaIntegrationStatus = 'connected' | 'disconnected' | 'error' | 'revoked'
+
+export class StravaPermissionError extends Error {
+    constructor() {
+        super(STRAVA_ACTIVITY_PERMISSION_ERROR)
+        this.name = 'StravaPermissionError'
+    }
+}
 
 export interface AuthenticatedClientContext {
     userId: string
@@ -230,7 +241,7 @@ export function buildStravaAuthorizeUrl(state: string) {
     url.searchParams.set('client_id', env.clientId)
     url.searchParams.set('redirect_uri', env.redirectUri)
     url.searchParams.set('response_type', 'code')
-    url.searchParams.set('approval_prompt', 'auto')
+    url.searchParams.set('approval_prompt', 'force')
     url.searchParams.set('scope', 'read,activity:read_all')
     url.searchParams.set('state', state)
     return url
@@ -279,6 +290,9 @@ export async function saveStravaIntegration(params: {
     const athleteId = params.tokenResponse.athlete?.id
     if (!athleteId) throw new Error('Strava token response did not include athlete id')
 
+    const grantedScope = params.scope || params.tokenResponse.scope || null
+    const hasActivityPermission = hasRequiredStravaActivityScope(grantedScope)
+
     const supabase = createAdminClient()
     const { error } = await supabase
         .from('athlete_integrations')
@@ -290,13 +304,14 @@ export async function saveStravaIntegration(params: {
             access_token: params.tokenResponse.access_token,
             refresh_token: params.tokenResponse.refresh_token,
             expires_at: toIsoFromEpochSeconds(params.tokenResponse.expires_at),
-            scope: params.scope,
-            status: 'connected',
-            error_message: null,
+            scope: grantedScope,
+            status: hasActivityPermission ? 'connected' : 'error',
+            error_message: hasActivityPermission ? null : STRAVA_ACTIVITY_PERMISSION_ERROR,
             connected_at: new Date().toISOString(),
         }, { onConflict: 'client_id,provider' })
 
     if (error) throw new Error(error.message)
+    return { hasActivityPermission }
 }
 
 export async function getStravaStatus(context: AuthenticatedClientContext) {
@@ -357,7 +372,15 @@ export async function getValidStravaAccessToken(clientId: string) {
     const supabase = createAdminClient()
     const integration = await getIntegrationForClient(clientId)
 
-    if (!integration || integration.status !== 'connected') {
+    if (!integration) {
+        throw new Error('Activity connector is not connected for this client')
+    }
+
+    if (!hasRequiredStravaActivityScope(integration.scope)) {
+        throw new StravaPermissionError()
+    }
+
+    if (integration.status !== 'connected') {
         throw new Error('Activity connector is not connected for this client')
     }
 
@@ -659,7 +682,9 @@ export async function importStravaActivityForIntegration(integration: any, activ
 export async function syncRecentStravaActivities(context: AuthenticatedClientContext, perPage = 20) {
     const supabase = createAdminClient()
     const integration = await getIntegrationForClient(context.clientId)
-    if (!integration || integration.status !== 'connected') throw new Error('Activity connector is not connected')
+    if (!integration) throw new Error('Activity connector is not connected')
+    if (!hasRequiredStravaActivityScope(integration.scope)) throw new StravaPermissionError()
+    if (integration.status !== 'connected') throw new Error('Activity connector is not connected')
 
     const accessToken = await getValidStravaAccessToken(context.clientId)
     const activities = await fetchStravaApi<StravaActivityPayload[]>(
@@ -988,6 +1013,16 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
 
     if (error) throw new Error(error.message)
     if (!integration) return
+
+    if (!hasRequiredStravaActivityScope(integration.scope)) {
+        const { error: permissionError } = await supabase
+            .from('athlete_integrations')
+            .update({ status: 'error', error_message: STRAVA_ACTIVITY_PERMISSION_ERROR })
+            .eq('id', integration.id)
+
+        if (permissionError) throw new Error(permissionError.message)
+        return
+    }
 
     if (event.aspect_type === 'delete') {
         await handleDeletedStravaActivity(String(event.object_id))

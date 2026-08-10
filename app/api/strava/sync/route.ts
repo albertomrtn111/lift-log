@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthenticatedClientContext, syncRecentStravaActivities } from '@/lib/strava/client'
+import {
+    getAuthenticatedClientContext,
+    StravaPermissionError,
+    syncRecentStravaActivities,
+} from '@/lib/strava/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +17,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true, ...result })
     } catch (error) {
         console.error('[strava/sync]', error)
+        if (error instanceof StravaPermissionError) {
+            return NextResponse.json({
+                error: error.message,
+                code: 'STRAVA_REAUTHORIZATION_REQUIRED',
+            }, { status: 409 })
+        }
         return NextResponse.json({ error: 'No se pudo sincronizar el conector' }, { status: 500 })
     }
 }

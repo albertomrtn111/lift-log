@@ -1,153 +1,209 @@
 /**
  * Centralized Gemini API client.
  *
- * To change model or API version, update the env vars — never touch this file:
- *   GEMINI_API_KEY   — required
- *   GEMINI_MODEL     — optional, defaults to gemini-3-flash-preview
- *   GEMINI_API_VER   — optional, defaults to v1beta
+ * Environment variables:
+ *   GEMINI_API_KEY          - required
+ *   GEMINI_MODEL            - optional, defaults to gemini-3.5-flash
+ *   GEMINI_FALLBACK_MODEL   - optional, defaults to gemini-3.1-flash-lite
+ *   GEMINI_API_VER          - optional, defaults to v1beta
+ *   GEMINI_RETRY_BASE_MS    - optional, defaults to 700
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com'
-const DEFAULT_MODEL = 'gemini-3-flash-preview'
+const DEFAULT_MODEL = 'gemini-3.5-flash'
+const DEFAULT_FALLBACK_MODEL = 'gemini-3.1-flash-lite'
 const DEFAULT_API_VER = 'v1beta'
+const DEFAULT_RETRY_BASE_MS = 700
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504])
 
 export interface GeminiCallOptions {
     temperature?: number
     maxOutputTokens?: number
     /** Only set if you are certain the model+version supports it. Defaults to omitted. */
     responseMimeType?: 'application/json' | 'text/plain'
-    /**
-     * For gemini-2.5-x thinking models, set to 0 to disable thinking tokens
-     * and reserve the full output budget for visible content.
-     * Useful for structured JSON generation where reasoning is not needed.
-     */
+    /** Set to 0 when visible output is more important than model reasoning. */
     thinkingBudget?: number
 }
 
-/**
- * Call the Gemini generateContent endpoint with a single user prompt.
- * Returns the raw text from the first candidate.
- */
+type GeminiAction = 'generateContent' | 'streamGenerateContent'
+
+interface GeminiRequestInput {
+    apiKey: string
+    apiVer: string
+    action: GeminiAction
+    body: Record<string, unknown>
+}
+
+interface GeminiRequestResult {
+    response: Response
+    model: string
+}
+
+function getConfiguredModels() {
+    const primary = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL
+    const fallback = process.env.GEMINI_FALLBACK_MODEL?.trim() || DEFAULT_FALLBACK_MODEL
+    return fallback && fallback !== primary ? [primary, fallback] : [primary]
+}
+
+function getRetryBaseMs() {
+    const configured = Number(process.env.GEMINI_RETRY_BASE_MS)
+    return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_RETRY_BASE_MS
+}
+
+function buildGenerationConfig(options: GeminiCallOptions) {
+    const generationConfig: Record<string, unknown> = {
+        temperature: options.temperature ?? 0.7,
+        maxOutputTokens: options.maxOutputTokens ?? 8192,
+    }
+    if (options.responseMimeType) {
+        generationConfig.responseMimeType = options.responseMimeType
+    }
+    if (options.thinkingBudget !== undefined) {
+        generationConfig.thinkingConfig = { thinkingBudget: options.thinkingBudget }
+    }
+    return generationConfig
+}
+
+function createGeminiHttpError(status: number, errorBody: string) {
+    let providerMessage = ''
+    try {
+        const parsed = JSON.parse(errorBody)
+        providerMessage = typeof parsed?.error?.message === 'string' ? parsed.error.message : ''
+    } catch {
+        providerMessage = ''
+    }
+
+    return new Error(providerMessage
+        ? `Error de Gemini (${status}): ${providerMessage}`
+        : `Error HTTP ${status} al llamar a la API de IA. Intentalo de nuevo.`)
+}
+
+async function waitBeforeRetry(attempt: number) {
+    const baseMs = getRetryBaseMs()
+    if (baseMs === 0) return
+    const jitterMs = Math.floor(Math.random() * 250)
+    const delayMs = baseMs * (2 ** attempt) + jitterMs
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+}
+
+async function requestGemini(input: GeminiRequestInput): Promise<GeminiRequestResult> {
+    const models = getConfiguredModels()
+    let lastError: Error | null = null
+
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+        const model = models[modelIndex]
+        const attempts = modelIndex === 0 ? 2 : 1
+
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+            const query = input.action === 'streamGenerateContent' ? '&alt=sse' : ''
+            const url = `${GEMINI_API_BASE}/${input.apiVer}/models/${model}:${input.action}?key=${input.apiKey}${query}`
+
+            let response: Response
+            try {
+                response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(input.body),
+                })
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error('Error de red al llamar a Gemini.')
+                console.error(`[Gemini] ${input.action} network error model=${model} attempt=${attempt + 1}: ${lastError.message}`)
+                if (attempt < attempts - 1) {
+                    await waitBeforeRetry(attempt)
+                }
+                continue
+            }
+
+            if (response.ok) {
+                console.log(`[Gemini] ${input.action} model=${model} attempt=${attempt + 1}`)
+                return { response, model }
+            }
+
+            const errorBody = await response.text().catch(() => '')
+            const error = createGeminiHttpError(response.status, errorBody)
+            console.error(`[Gemini] ${input.action} HTTP ${response.status} model=${model} attempt=${attempt + 1}: ${error.message}`)
+
+            if (!RETRYABLE_STATUSES.has(response.status)) {
+                throw error
+            }
+
+            lastError = error
+            if (attempt < attempts - 1) {
+                await waitBeforeRetry(attempt)
+            }
+        }
+
+        if (modelIndex < models.length - 1) {
+            console.warn(`[Gemini] Switching from ${model} to fallback model ${models[modelIndex + 1]}`)
+        }
+    }
+
+    throw lastError || new Error('No se pudo obtener respuesta de la API de IA.')
+}
+
+/** Call Gemini generateContent and return the first candidate text. */
 export async function callGemini(
     prompt: string,
     options: GeminiCallOptions = {}
 ): Promise<string> {
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-        throw new Error('GEMINI_API_KEY no está configurada en las variables de entorno.')
+        throw new Error('GEMINI_API_KEY no esta configurada en las variables de entorno.')
     }
 
-    const model = process.env.GEMINI_MODEL ?? DEFAULT_MODEL
     const apiVer = process.env.GEMINI_API_VER ?? DEFAULT_API_VER
-    const url = `${GEMINI_API_BASE}/${apiVer}/models/${model}:generateContent?key=${apiKey}`
-
-    console.log(`[Gemini] model=${model} apiVer=${apiVer} endpoint=${GEMINI_API_BASE}/${apiVer}/models/${model}:generateContent`)
-
-    const generationConfig: Record<string, unknown> = {
-        temperature: options.temperature ?? 0.7,
-        maxOutputTokens: options.maxOutputTokens ?? 8192,
-    }
-    // Only include responseMimeType when explicitly requested — not all models support it
-    if (options.responseMimeType) {
-        generationConfig.responseMimeType = options.responseMimeType
-    }
-    // For gemini-2.5-x thinking models: control thinking token budget
-    // thinkingBudget: 0 disables thinking entirely, freeing the full output budget for visible tokens
-    if (options.thinkingBudget !== undefined) {
-        generationConfig.thinkingConfig = { thinkingBudget: options.thinkingBudget }
-    }
-
-    console.log(`[Gemini] generationConfig: maxOutputTokens=${generationConfig.maxOutputTokens} thinkingBudget=${(generationConfig.thinkingConfig as any)?.thinkingBudget ?? 'default'}`)
-
-    const body = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig,
-    }
-
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+    const generationConfig = buildGenerationConfig(options)
+    const { response, model } = await requestGemini({
+        apiKey,
+        apiVer,
+        action: 'generateContent',
+        body: {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig,
+        },
     })
 
-    if (!res.ok) {
-        const errorBody = await res.text()
-        console.error(`[Gemini] HTTP ${res.status} — model=${model} apiVer=${apiVer}`)
-        console.error(`[Gemini] Response body: ${errorBody}`)
-
-        // Extract Gemini's own error message when available
-        try {
-            const parsed = JSON.parse(errorBody)
-            const geminiMsg: string | undefined = parsed?.error?.message
-            if (geminiMsg) {
-                throw new Error(`Error de Gemini (${res.status}): ${geminiMsg}`)
-            }
-        } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message.startsWith('Error de Gemini')) {
-                throw parseErr
-            }
-        }
-
-        throw new Error(`Error HTTP ${res.status} al llamar a la API de IA. Inténtalo de nuevo.`)
-    }
-
-    const data = await res.json()
+    const data = await response.json()
     const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text
 
     if (!text) {
-        console.error('[Gemini] Empty response:', JSON.stringify(data))
-        throw new Error('La IA no devolvió contenido. Inténtalo de nuevo.')
+        console.error(`[Gemini] Empty response from model=${model}`)
+        throw new Error('La IA no devolvio contenido. Intentalo de nuevo.')
     }
 
     return text
 }
 
-/**
- * Igual que callGemini pero en streaming (SSE): devuelve un ReadableStream de
- * fragmentos de texto según los genera el modelo. Para chats donde la latencia
- * percibida importa.
- */
+/** Stream Gemini SSE responses as plain text chunks. */
 export async function streamGemini(
     prompt: string,
     options: GeminiCallOptions = {}
 ): Promise<ReadableStream<string>> {
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-        throw new Error('GEMINI_API_KEY no está configurada en las variables de entorno.')
+        throw new Error('GEMINI_API_KEY no esta configurada en las variables de entorno.')
     }
 
-    const model = process.env.GEMINI_MODEL ?? DEFAULT_MODEL
     const apiVer = process.env.GEMINI_API_VER ?? DEFAULT_API_VER
-    const url = `${GEMINI_API_BASE}/${apiVer}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
-
-    const generationConfig: Record<string, unknown> = {
-        temperature: options.temperature ?? 0.7,
-        maxOutputTokens: options.maxOutputTokens ?? 8192,
-    }
-    if (options.thinkingBudget !== undefined) {
-        generationConfig.thinkingConfig = { thinkingBudget: options.thinkingBudget }
-    }
-
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    const generationConfig = buildGenerationConfig(options)
+    const { response, model } = await requestGemini({
+        apiKey,
+        apiVer,
+        action: 'streamGenerateContent',
+        body: {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig,
-        }),
+        },
     })
 
-    if (!res.ok || !res.body) {
-        const errorBody = await res.text().catch(() => '')
-        console.error(`[Gemini] Stream HTTP ${res.status} — model=${model}`, errorBody)
-        throw new Error(`Error HTTP ${res.status} al llamar a la API de IA. Inténtalo de nuevo.`)
+    if (!response.body) {
+        throw new Error(`La IA no devolvio un stream de contenido (model=${model}).`)
     }
 
-    // Parsear SSE (`data: {json}`) → fragmentos de texto planos
     const decoder = new TextDecoder()
     let buffer = ''
 
-    return res.body.pipeThrough(new TransformStream<Uint8Array, string>({
+    return response.body.pipeThrough(new TransformStream<Uint8Array, string>({
         transform(chunk, controller) {
             buffer += decoder.decode(chunk, { stream: true })
             const lines = buffer.split('\n')
@@ -163,7 +219,7 @@ export async function streamGemini(
                     const text: string | undefined = parsed?.candidates?.[0]?.content?.parts?.[0]?.text
                     if (text) controller.enqueue(text)
                 } catch {
-                    // Fragmento incompleto: se acumula en el buffer del siguiente chunk
+                    // Ignore malformed SSE lines; incomplete data remains in the buffer.
                 }
             }
         },

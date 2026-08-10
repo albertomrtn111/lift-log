@@ -218,11 +218,41 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
     const runPace = thresholds ? resolvePaceBounds({ thresholdPaceSec: thresholds.run_threshold_pace_sec, custom: thresholds.custom_zones }) : null
     const bikePower = thresholds ? resolvePowerBounds({ ftp: thresholds.bike_ftp_watts, custom: thresholds.custom_zones }) : null
 
-    const zoneBlocks: { key: ZoneBlockKey; resolved: ResolvedZoneBounds | null; zones: TrainingZone[] | null; methodLabel: string }[] = [
-        { key: 'run_hr', resolved: runHr, zones: runHr ? hrZonesFromBounds(runHr.bounds) : null, methodLabel: methodMeta?.label ?? '' },
-        { key: 'run_pace', resolved: runPace, zones: runPace ? paceZonesFromBounds(runPace.bounds) : null, methodLabel: 'Ritmo umbral · Friel' },
-        { key: 'bike_hr', resolved: bikeHr, zones: bikeHr ? hrZonesFromBounds(bikeHr.bounds) : null, methodLabel: methodMeta?.label ?? '' },
-        { key: 'bike_power', resolved: bikePower, zones: bikePower ? powerZonesFromBounds(bikePower.bounds) : null, methodLabel: 'FTP · Coggan' },
+    // Qué falta para poder calcular cada bloque. Se muestra en vez de ocultar
+    // el bloque: si no, el coach no sabe que a ese deporte le faltan zonas.
+    const hrMissingHint = method === 'pct_max'
+        ? 'Falta la FC máxima.'
+        : method === 'hrr'
+            ? 'Faltan la FC máxima y la FC en reposo.'
+            : null
+
+    const zoneBlocks: {
+        key: ZoneBlockKey
+        resolved: ResolvedZoneBounds | null
+        zones: TrainingZone[] | null
+        methodLabel: string
+        missingHint: string
+    }[] = [
+        {
+            key: 'run_hr', resolved: runHr, zones: runHr ? hrZonesFromBounds(runHr.bounds) : null,
+            methodLabel: methodMeta?.label ?? '',
+            missingHint: hrMissingHint ?? 'Falta el LTHR de carrera.',
+        },
+        {
+            key: 'run_pace', resolved: runPace, zones: runPace ? paceZonesFromBounds(runPace.bounds) : null,
+            methodLabel: 'Ritmo umbral · Friel',
+            missingHint: 'Falta el ritmo umbral de carrera.',
+        },
+        {
+            key: 'bike_hr', resolved: bikeHr, zones: bikeHr ? hrZonesFromBounds(bikeHr.bounds) : null,
+            methodLabel: methodMeta?.label ?? '',
+            missingHint: hrMissingHint ?? 'Falta el LTHR de ciclismo. No se reutiliza el de carrera porque en bici suele ser 5-10 ppm más bajo.',
+        },
+        {
+            key: 'bike_power', resolved: bikePower, zones: bikePower ? powerZonesFromBounds(bikePower.bounds) : null,
+            methodLabel: 'FTP · Coggan',
+            missingHint: 'Falta el FTP de ciclismo.',
+        },
     ]
 
     const hasAnyThreshold = !!thresholds && (
@@ -311,11 +341,11 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div>
                                     <Label htmlFor="th-maxhr" className="text-xs">FC máxima (ppm)</Label>
-                                    <Input id="th-maxhr" type="number" inputMode="numeric" placeholder="190" value={form.max_hr} onChange={set('max_hr')} className="mt-1.5" />
+                                    <Input id="th-maxhr" type="number" inputMode="numeric" min={100} max={250} placeholder="190" value={form.max_hr} onChange={set('max_hr')} className="mt-1.5" />
                                 </div>
                                 <div>
                                     <Label htmlFor="th-rhr" className="text-xs">FC en reposo (ppm)</Label>
-                                    <Input id="th-rhr" type="number" inputMode="numeric" placeholder="52" value={form.resting_hr} onChange={set('resting_hr')} className="mt-1.5" />
+                                    <Input id="th-rhr" type="number" inputMode="numeric" min={25} max={120} placeholder="52" value={form.resting_hr} onChange={set('resting_hr')} className="mt-1.5" />
                                 </div>
                             </div>
                         </fieldset>
@@ -328,7 +358,7 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div>
                                     <Label htmlFor="th-runlthr" className="text-xs">LTHR carrera (ppm)</Label>
-                                    <Input id="th-runlthr" type="number" inputMode="numeric" placeholder="172" value={form.run_lthr} onChange={set('run_lthr')} className="mt-1.5" />
+                                    <Input id="th-runlthr" type="number" inputMode="numeric" min={80} max={230} placeholder="172" value={form.run_lthr} onChange={set('run_lthr')} className="mt-1.5" />
                                     <p className="mt-1 text-[10px] text-muted-foreground">Media de FC de los últimos 20 min de un test de 30 min.</p>
                                 </div>
                                 <div>
@@ -347,11 +377,11 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div>
                                     <Label htmlFor="th-bikelthr" className="text-xs">LTHR ciclismo (ppm)</Label>
-                                    <Input id="th-bikelthr" type="number" inputMode="numeric" placeholder="167" value={form.bike_lthr} onChange={set('bike_lthr')} className="mt-1.5" />
+                                    <Input id="th-bikelthr" type="number" inputMode="numeric" min={80} max={230} placeholder="167" value={form.bike_lthr} onChange={set('bike_lthr')} className="mt-1.5" />
                                 </div>
                                 <div>
                                     <Label htmlFor="th-ftp" className="text-xs">FTP (W)</Label>
-                                    <Input id="th-ftp" type="number" inputMode="numeric" placeholder="250" value={form.bike_ftp} onChange={set('bike_ftp')} className="mt-1.5" />
+                                    <Input id="th-ftp" type="number" inputMode="numeric" min={50} max={600} placeholder="250" value={form.bike_ftp} onChange={set('bike_ftp')} className="mt-1.5" />
                                 </div>
                             </div>
                         </fieldset>
@@ -402,7 +432,26 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                         {/* Zonas calculadas / personalizadas */}
                         <div className="grid gap-4 lg:grid-cols-2">
                             {zoneBlocks.map(block => {
-                                if (!block.resolved || !block.zones) return null
+                                if (!block.resolved || !block.zones) {
+                                    return (
+                                        <div
+                                            key={block.key}
+                                            className="rounded-xl border border-dashed border-border bg-muted/20 p-4"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-medium text-muted-foreground">
+                                                    {BLOCK_META[block.key].title}
+                                                </p>
+                                                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                                                    Pendiente de configurar
+                                                </Badge>
+                                            </div>
+                                            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                                                {block.missingHint}
+                                            </p>
+                                        </div>
+                                    )
+                                }
                                 const isEditing = zoneEditor?.block === block.key
                                 return (
                                     <ZoneBlock

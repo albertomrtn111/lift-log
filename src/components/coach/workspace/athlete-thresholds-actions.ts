@@ -104,6 +104,28 @@ export async function saveAthleteThresholdsAction(
             return { success: false, error: 'Método de zonas no válido.' }
         }
 
+        // Rangos: se validan aquí para devolver un mensaje claro en español. Si
+        // se dejan solo a los CHECK de la base de datos, el coach recibe el
+        // error crudo de Postgres sin saber qué campo corregir.
+        const rangeChecks: { value: number | null; min: number; max: number; label: string; unit: string }[] = [
+            { value: input.max_hr, min: 100, max: 250, label: 'La FC máxima', unit: 'ppm' },
+            { value: input.resting_hr, min: 25, max: 120, label: 'La FC en reposo', unit: 'ppm' },
+            { value: input.run_lthr, min: 80, max: 230, label: 'El LTHR de carrera', unit: 'ppm' },
+            { value: input.bike_lthr, min: 80, max: 230, label: 'El LTHR de ciclismo', unit: 'ppm' },
+            { value: input.bike_ftp_watts, min: 50, max: 600, label: 'El FTP', unit: 'W' },
+            { value: input.run_threshold_pace_sec, min: 120, max: 900, label: 'El ritmo umbral', unit: '' },
+        ]
+
+        for (const check of rangeChecks) {
+            if (check.value == null) continue
+            if (!Number.isFinite(check.value) || check.value < check.min || check.value > check.max) {
+                const range = check.unit === ''
+                    ? 'entre 2:00 y 15:00 /km'
+                    : `entre ${check.min} y ${check.max} ${check.unit}`
+                return { success: false, error: `${check.label} debe estar ${range}. Revisa ese campo o déjalo vacío.` }
+            }
+        }
+
         const { zones: customZones, error: zonesError } = sanitizeCustomZones(input.custom_zones)
         if (zonesError) {
             return { success: false, error: zonesError }

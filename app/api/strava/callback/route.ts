@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
             user.id
         )
         const tokenResponse = await exchangeCodeForTokens(code)
-        await saveStravaIntegration({
+        const { hasActivityPermission } = await saveStravaIntegration({
             context: {
                 userId: user.id,
                 clientId: stateData.clientId,
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
             scope,
         })
 
-        return responseWithClearedCookie(redirectToProfile(request, 'connected'))
+        return responseWithClearedCookie(redirectToProfile(request, hasActivityPermission ? 'connected' : 'error'))
     } catch (error) {
         console.error('[strava/callback]', error)
         return responseWithClearedCookie(redirectToProfile(request, 'error'))

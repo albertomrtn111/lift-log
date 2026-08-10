@@ -626,7 +626,18 @@ export async function getCardioProgressData(
             const actualDurationMin = toNullableNumber(s.actual_duration_min)
             const avgHeartRate = toNullableNumber((s as any).avg_heart_rate)
             const maxHeartRate = toNullableNumber((s as any).max_heart_rate)
-            const plannedStructure = s.planned_structure || s.structure || null
+            // `planned_structure` suele venir como array vacío `[]`, que en JS es
+            // truthy: con `||` nunca se caía a `structure`, donde vive de verdad
+            // la descripción del entreno.
+            const plannedStructureRaw = s.planned_structure
+            const plannedStructureIsEmpty = plannedStructureRaw == null
+                || (Array.isArray(plannedStructureRaw) && plannedStructureRaw.length === 0)
+                || (typeof plannedStructureRaw === 'object'
+                    && !Array.isArray(plannedStructureRaw)
+                    && Object.keys(plannedStructureRaw).length === 0)
+            const plannedStructure = plannedStructureIsEmpty
+                ? (s.structure || null)
+                : plannedStructureRaw
             const hasActualWork = (actualDistanceKm ?? 0) > 0 || (actualDurationMin ?? 0) > 0
             const completionStatus = s.is_completed
                 ? 'completed'

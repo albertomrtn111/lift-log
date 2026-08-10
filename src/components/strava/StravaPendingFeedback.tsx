@@ -207,11 +207,20 @@ export function StravaPendingFeedback() {
     const requiresSessionChoice = plannedSessions.length > 0 && !selectedSessionId
 
     // Zona de FC de la actividad según los límites del deporte
+    // La bici no reutiliza los límites de carrera: su LTHR suele ser más bajo
+    // y las zonas saldrían infladas. Si faltan, se avisa en vez de inventarlas.
     const isRide = /ride|bike|cycl/i.test(sportType)
-    const activityBounds = isRide ? (zoneBounds?.bike ?? zoneBounds?.run ?? null) : (zoneBounds?.run ?? null)
+    const activityBounds = isRide ? (zoneBounds?.bike ?? null) : (zoneBounds?.run ?? null)
+    const bikeZonesPending = isRide && !zoneBounds?.bike && Boolean(activity.average_heartrate)
     const hrZone = activityBounds && activity.average_heartrate
         ? describeHrZone(activityBounds, Math.round(Number(activity.average_heartrate)))
         : null
+    // Aquí no hay stream, así que la media es lo único que describe el conjunto.
+    // El pico evita que una sesión con series se lea como suave solo por la media.
+    const peakZone = activityBounds && activity.max_heartrate
+        ? describeHrZone(activityBounds, Math.round(Number(activity.max_heartrate)))
+        : null
+    const showPeakZone = peakZone && (!hrZone || peakZone.zone > hrZone.zone)
 
     return (
         <Dialog open={!!activity} onOpenChange={(open) => !open && dismissCurrent()}>
@@ -262,8 +271,24 @@ export function StravaPendingFeedback() {
                             </span>
                         )}
                         {hrZone && (
-                            <span className={cn('rounded-full border px-2 py-1 font-semibold', hrZone.badgeClass)}>
+                            <span
+                                className={cn('rounded-full border px-2 py-1 font-semibold', hrZone.badgeClass)}
+                                title="Zona de la FC media de toda la actividad"
+                            >
                                 {hrZone.label}
+                            </span>
+                        )}
+                        {showPeakZone && peakZone && (
+                            <span
+                                className={cn('rounded-full border px-2 py-1 font-semibold', peakZone.badgeClass)}
+                                title={`Pico de ${Math.round(Number(activity.max_heartrate))} ppm`}
+                            >
+                                Pico Z{peakZone.zone}
+                            </span>
+                        )}
+                        {bikeZonesPending && (
+                            <span className="rounded-full border border-dashed border-amber-500/40 bg-amber-500/10 px-2 py-1 font-medium text-amber-700 dark:text-amber-400">
+                                Zonas de bici pendientes
                             </span>
                         )}
                     </div>

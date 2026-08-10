@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertCircle, CheckCircle2, Loader2, RefreshCw, Route, Unplug } from 'lucide-react'
+import { Activity, AlertCircle, CheckCircle2, ExternalLink, Loader2, RefreshCw, Route, Unplug, Watch } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ interface StravaStatus {
     lastSyncAt: string | null
     errorMessage: string | null
     scope: string | null
+    hasRequiredPermissions: boolean
+    requiresReauthorization: boolean
 }
 
 function formatDateTime(value: string | null) {
@@ -47,6 +49,8 @@ export function StravaConnectorCard() {
                 lastSyncAt: null,
                 errorMessage: 'No se pudo cargar el estado',
                 scope: null,
+                hasRequiredPermissions: false,
+                requiresReauthorization: false,
             })
         } finally {
             setLoading(false)
@@ -115,7 +119,9 @@ export function StravaConnectorCard() {
 
     const MetaIcon = meta.icon
     const isConnected = status?.status === 'connected'
-    const needsReconnect = status?.status === 'error' || status?.status === 'revoked'
+    const needsReconnect = status?.status === 'error'
+        || status?.status === 'revoked'
+        || status?.requiresReauthorization
 
     return (
         <Card className="p-4">
@@ -135,7 +141,9 @@ export function StravaConnectorCard() {
                         <p className="mt-1 text-sm text-muted-foreground">
                             {isConnected
                                 ? 'Tus actividades pueden importarse automáticamente.'
-                                : 'Conecta tu app de actividad para importar automáticamente tus entrenamientos.'}
+                                : needsReconnect
+                                    ? 'Vuelve a autorizar Strava para recuperar la sincronización de actividades.'
+                                    : 'Conecta tu app de actividad para importar automáticamente tus entrenamientos.'}
                         </p>
                     </div>
                 </div>
@@ -158,6 +166,35 @@ export function StravaConnectorCard() {
             {status?.errorMessage && status.status !== 'connected' && (
                 <p className="mt-3 text-sm text-destructive">{status.errorMessage}</p>
             )}
+
+            {/* Muchos atletas usan un reloj y no saben que llega vía Strava */}
+            <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+                <div className="flex items-start gap-2">
+                    <Watch className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 text-xs">
+                        <p className="font-medium text-foreground">
+                            ¿Usas Garmin, Polar, Coros, Suunto o Apple Watch?
+                        </p>
+                        <p className="mt-1 leading-relaxed text-muted-foreground">
+                            Enlaza tu reloj con Strava una sola vez y tus entrenos llegarán aquí solos,
+                            con ritmo, distancia y pulsaciones.
+                        </p>
+                        <p className="mt-1.5 leading-relaxed text-muted-foreground">
+                            <span className="font-medium text-foreground">Con Garmin:</span> abre Garmin Connect →
+                            Más → Configuración → Apps y servicios conectados → Strava.
+                        </p>
+                        <a
+                            href="https://www.strava.com/settings/apps"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1.5 inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                        >
+                            Ver mis apps conectadas en Strava
+                            <ExternalLink className="h-3 w-3" />
+                        </a>
+                    </div>
+                </div>
+            </div>
 
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                 {!isConnected ? (

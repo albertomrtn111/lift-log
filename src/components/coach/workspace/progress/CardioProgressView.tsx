@@ -10,7 +10,6 @@ import {
     Activity,
     AlertTriangle,
     Bike,
-    CalendarDays,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
@@ -35,7 +34,15 @@ import {
     YAxis,
 } from 'recharts'
 import { cn } from '@/lib/utils'
-import { describeHrZone, HR_ZONE_NAMES, ZONE_BADGE_CLASSES, ZONE_COLORS, zonesFromHistogram } from '@/lib/training/zones'
+import {
+    describeHrZone,
+    describeZoneNumber,
+    summarizeSessionZones,
+    HR_ZONE_NAMES,
+    SESSION_CHARACTER_LABELS,
+    ZONE_COLORS,
+    zonesFromHistogram,
+} from '@/lib/training/zones'
 import { getCardioStructureLines, summarizeCardioStructure } from '@/lib/cardio/structure'
 import type {
     CardioProgressData,
@@ -166,29 +173,34 @@ function formatDistance(km: number) {
     return `${km.toFixed(1)} km`
 }
 
+/**
+ * Distancia de un bloque, siempre en metros. Mezclar "200 m" y "1 km" en la
+ * misma columna obliga a convertir mentalmente en cada fila para comparar
+ * series entre sí, que es justo para lo que se mira esta tabla.
+ */
 function formatMeters(meters: number | null) {
     if (meters === null || !Number.isFinite(meters)) return '—'
-    if (Math.abs(meters) < 1000) return `${Math.round(meters)} m`
-    const km = meters / 1000
-    return `${Number.isInteger(km) ? km : km.toFixed(2)} km`
+    return `${Math.round(meters).toLocaleString('es-ES')} m`
 }
 
-function formatSeconds(seconds: number | null) {
-    if (seconds === null || !Number.isFinite(seconds)) return '—'
-    const sign = seconds < 0 ? '-' : ''
-    const abs = Math.abs(seconds)
-    const minutes = Math.round(abs / 60)
-    if (minutes < 60) return `${sign}${minutes} min`
-    const h = Math.floor(minutes / 60)
-    const m = minutes % 60
-    return `${sign}${h}h${m ? ` ${m}min` : ''}`
-}
 
 function formatPaceSeconds(seconds: number | null) {
     if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return '—'
     const minutes = Math.floor(seconds / 60)
     const secs = Math.round(seconds % 60).toString().padStart(2, '0')
     return `${minutes}:${secs}/km`
+}
+
+/** Duración como reloj: mm:ss, o h:mm:ss cuando pasa de la hora. */
+function formatClockTime(seconds: number | null) {
+    if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return '—'
+    const total = Math.round(seconds)
+    const h = Math.floor(total / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    return h > 0
+        ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+        : `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function paceToSeconds(value: string | null) {
@@ -204,13 +216,6 @@ function formatDistanceDelta(km: number | null) {
     return `${sign}${km.toFixed(2)} km vs plan`
 }
 
-function formatSegmentDelta(delta: number | null, unit: string | null) {
-    if (delta === null || !unit) return '—'
-    const sign = delta > 0 ? '+' : ''
-    if (unit === 'm') return `${sign}${Math.round(delta)} m`
-    if (unit === 's') return `${sign}${formatSeconds(delta)}`
-    return `${sign}${delta}`
-}
 
 function formatDate(date: string) {
     return new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
@@ -220,14 +225,6 @@ function formatDate(date: string) {
     })
 }
 
-function formatFullDate(date: string) {
-    return new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    })
-}
 
 function formatPct(value: number | null) {
     if (value === null || Number.isNaN(value)) return '—'
@@ -529,30 +526,27 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
                 {segments.map((segment, index) => (
                     <div key={`${session.id}-segment-mobile-${index}`} className="rounded-2xl border border-border/70 bg-background/90 p-4">
                         <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="font-semibold text-foreground">{segment.label}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">{segment.targetSummary}</p>
-                            </div>
+                            <p className="min-w-0 font-semibold text-foreground">{segment.label}</p>
                             <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
                                 {segment.kind}
                             </Badge>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                             <div>
-                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Real</p>
-                                <p className="font-medium text-foreground">{segment.actualSummary}</p>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Distancia</p>
+                                <p className="font-medium tabular-nums text-foreground">{formatMeters(segment.actualDistanceMeters)}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Tiempo</p>
+                                <p className="font-medium tabular-nums text-foreground">{formatClockTime(segment.actualDurationSec)}</p>
                             </div>
                             <div>
                                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Ritmo</p>
-                                <p className="font-medium text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</p>
+                                <p className="font-medium tabular-nums text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</p>
                             </div>
                             <div>
                                 <p className="text-xs uppercase tracking-wider text-muted-foreground">FC media</p>
-                                <p className="font-medium text-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Diferencia</p>
-                                <p className="font-medium text-foreground">{formatSegmentDelta(segment.delta, segment.deltaUnit)}</p>
+                                <p className="font-medium tabular-nums text-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</p>
                             </div>
                         </div>
                     </div>
@@ -564,24 +558,22 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
                     <thead className="border-b border-border/70 bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
                         <tr>
                             <th className="px-4 py-3 text-left font-medium">Bloque</th>
-                            <th className="px-4 py-3 text-left font-medium">Objetivo</th>
-                            <th className="px-4 py-3 text-left font-medium">Real</th>
-                            <th className="px-4 py-3 text-left font-medium">Ritmo</th>
-                            <th className="px-4 py-3 text-left font-medium">FC media</th>
-                            <th className="px-4 py-3 text-left font-medium">FC máx</th>
-                            <th className="px-4 py-3 text-left font-medium">Dif.</th>
+                            <th className="px-4 py-3 text-right font-medium">Distancia</th>
+                            <th className="px-4 py-3 text-right font-medium">Tiempo</th>
+                            <th className="px-4 py-3 text-right font-medium">Ritmo</th>
+                            <th className="px-4 py-3 text-right font-medium">FC media</th>
+                            <th className="px-4 py-3 text-right font-medium">FC máx</th>
                         </tr>
                     </thead>
                     <tbody>
                         {segments.map((segment, index) => (
                             <tr key={`${session.id}-segment-${index}`} className="border-b border-border/50 last:border-0">
                                 <td className="px-4 py-3 font-medium text-foreground">{segment.label}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{segment.targetSummary}</td>
-                                <td className="px-4 py-3 text-foreground">{segment.actualSummary}</td>
-                                <td className="px-4 py-3 text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{segment.maxHeartRate !== null ? `${segment.maxHeartRate} ppm` : '—'}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{formatSegmentDelta(segment.delta, segment.deltaUnit)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatMeters(segment.actualDistanceMeters)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatClockTime(segment.actualDurationSec)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{segment.maxHeartRate !== null ? `${segment.maxHeartRate} ppm` : '—'}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -591,8 +583,103 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
     )
 }
 
+/** Ritmos fuera de esta horquilla son ruido de GPS o paradas, no entreno real. */
+const PACE_MIN_SEC = 120  // 2:00/km
+const PACE_MAX_SEC = 900  // 15:00/km
+
+function percentileOf(sortedValues: number[], p: number) {
+    if (sortedValues.length === 0) return null
+    const index = Math.round((p / 100) * (sortedValues.length - 1))
+    return sortedValues[Math.min(sortedValues.length - 1, Math.max(0, index))]
+}
+
+/**
+ * Mediana móvil. Se usa antes que la media porque conserva los escalones:
+ * al entrar en una serie el ritmo cambia de golpe y una media pura redondearía
+ * ese salto, mientras que la mediana lo mantiene y solo mata los picos sueltos.
+ */
+function rollingMedian(values: (number | null)[], window: number): (number | null)[] {
+    if (window < 3) return values
+    const half = Math.floor(window / 2)
+    return values.map((value, index) => {
+        if (value === null) return null
+        const slice: number[] = []
+        for (let i = index - half; i <= index + half; i++) {
+            const candidate = values[i]
+            if (i >= 0 && i < values.length && candidate !== null) slice.push(candidate)
+        }
+        if (slice.length === 0) return value
+        slice.sort((a, b) => a - b)
+        return slice[Math.floor(slice.length / 2)]
+    })
+}
+
+/** Media móvil centrada: pule el temblor que deja la mediana. */
+function rollingMean(values: (number | null)[], window: number): (number | null)[] {
+    if (window < 3) return values
+    const half = Math.floor(window / 2)
+    return values.map((value, index) => {
+        if (value === null) return null
+        let sum = 0
+        let count = 0
+        for (let i = index - half; i <= index + half; i++) {
+            const candidate = values[i]
+            if (i >= 0 && i < values.length && candidate !== null) {
+                sum += candidate
+                count += 1
+            }
+        }
+        return count > 0 ? Math.round(sum / count) : value
+    })
+}
+
 function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
     const points = session.chartPoints || []
+
+    // Una parada (semáforo, foto) deja la velocidad casi a 0 y dispara el ritmo
+    // a valores absurdos que aplastan la escala. Se descartan y el eje se acota
+    // por percentiles para que el gráfico sea legible.
+    const { chartData, paceDomain, discardedCount } = useMemo(() => {
+        let discarded = 0
+        const cleaned = points.map((point) => {
+            const pace = point.paceSecondsPerKm
+            const isValid = pace !== null && pace >= PACE_MIN_SEC && pace <= PACE_MAX_SEC
+            if (pace !== null && !isValid) discarded += 1
+            return { ...point, paceSecondsPerKm: isValid ? pace : null }
+        })
+
+        // El ritmo instantáneo del GPS tiembla muchísimo (el pulso no, porque el
+        // cuerpo ya lo suaviza). Sin filtrar, la gráfica es una mancha ilegible.
+        // La ventana se escala con la densidad de muestreo para que en sesiones
+        // largas no quede ruido y en cortas no se coman las series.
+        const smoothingWindow = Math.min(21, Math.max(5, Math.round(cleaned.length / 150)))
+        const smoothedPace = rollingMean(
+            rollingMedian(cleaned.map((point) => point.paceSecondsPerKm), smoothingWindow),
+            smoothingWindow
+        )
+        const smoothed = cleaned.map((point, index) => ({
+            ...point,
+            paceSecondsPerKm: smoothedPace[index],
+        }))
+
+        const valid = smoothedPace
+            .filter((value): value is number => value !== null)
+            .sort((a, b) => a - b)
+
+        if (valid.length === 0) {
+            return { chartData: smoothed, paceDomain: undefined, discardedCount: discarded }
+        }
+
+        const low = percentileOf(valid, 2)!
+        const high = percentileOf(valid, 98)!
+        const padding = Math.max(15, (high - low) * 0.1)
+        return {
+            chartData: smoothed,
+            paceDomain: [Math.max(0, Math.floor(low - padding)), Math.ceil(high + padding)] as [number, number],
+            discardedCount: discarded,
+        }
+    }, [points])
+
     if (points.length < 2) {
         return (
             <div className="rounded-2xl border border-border/70 bg-background/80 p-4 text-sm text-muted-foreground">
@@ -607,21 +694,56 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
     return (
         <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    <h5 className="font-medium text-foreground">Ritmo</h5>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                        <h5 className="font-medium text-foreground">Ritmo</h5>
+                        <span className="text-[10px] text-muted-foreground">más arriba = más rápido</span>
+                    </div>
+                    <span
+                        className="text-[10px] text-muted-foreground"
+                        title={
+                            'Curva suavizada para poder leerla: el ritmo instantáneo del GPS oscila mucho.'
+                            + (discardedCount > 0
+                                ? ` ${discardedCount} punto(s) fuera de rango (paradas o ruido de GPS) excluidos.`
+                                : '')
+                        }
+                    >
+                        suavizado{discardedCount > 0 ? ` · ${discardedCount} filtrado${discardedCount !== 1 ? 's' : ''}` : ''}
+                    </span>
                 </div>
                 <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={points} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" vertical={false} />
                             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}${xLabel}`} axisLine={false} tickLine={false} />
-                            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatPaceSeconds} axisLine={false} tickLine={false} width={58} />
+                            {/* Eje invertido: en ritmo, menos seg/km es MÁS rápido.
+                                Sin invertir, las series rápidas se dibujan como valles
+                                y se lee al revés de lo que espera cualquiera. */}
+                            <YAxis
+                                tick={{ fontSize: 11 }}
+                                tickFormatter={(value) => formatPaceSeconds(Number(value)).replace('/km', '')}
+                                axisLine={false}
+                                tickLine={false}
+                                width={52}
+                                domain={paceDomain ?? ['auto', 'auto']}
+                                reversed
+                                allowDataOverflow
+                            />
                             <Tooltip
                                 formatter={(value) => [formatPaceSeconds(Number(value)), 'Ritmo']}
                                 labelFormatter={(value) => `${value} ${xLabel}`}
                             />
-                            <Area type="monotone" dataKey="paceSecondsPerKm" stroke="#2563eb" fill="#2563eb22" strokeWidth={2} dot={false} />
+                            <Area
+                                type="monotone"
+                                dataKey="paceSecondsPerKm"
+                                stroke="#2563eb"
+                                fill="#2563eb22"
+                                strokeWidth={2}
+                                dot={false}
+                                connectNulls
+                                baseValue={paceDomain ? paceDomain[1] : 'dataMax'}
+                            />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
@@ -634,15 +756,22 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
                 </div>
                 <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={points} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" vertical={false} />
                             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}${xLabel}`} axisLine={false} tickLine={false} />
-                            <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}`} axisLine={false} tickLine={false} width={42} />
+                            <YAxis
+                                tick={{ fontSize: 11 }}
+                                tickFormatter={(value) => `${value}`}
+                                axisLine={false}
+                                tickLine={false}
+                                width={42}
+                                domain={['dataMin - 8', 'dataMax + 8']}
+                            />
                             <Tooltip
                                 formatter={(value) => [`${Math.round(Number(value))} ppm`, 'Pulso']}
                                 labelFormatter={(value) => `${value} ${xLabel}`}
                             />
-                            <Area type="monotone" dataKey="heartRate" stroke="#e11d48" fill="#e11d4822" strokeWidth={2} dot={false} />
+                            <Area type="monotone" dataKey="heartRate" stroke="#e11d48" fill="#e11d4822" strokeWidth={2} dot={false} connectNulls />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
@@ -656,7 +785,6 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
     const statusMeta = getSessionStatusMeta(session)
     const StatusIcon = statusMeta.icon
     const displayMetric = getDisplayMetric(session)
-    const structureLines = useMemo(() => getCardioStructureLines(session.plannedStructure), [session.plannedStructure])
     const compactStructure = useMemo(() => summarizeCardioStructure(session.plannedStructure), [session.plannedStructure])
     const progressPct = displayMetric.progressPct
     const overTarget = progressPct !== null && progressPct > 100
@@ -664,24 +792,25 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
     const discipline = getDiscipline(session.trainingType)
     const disciplineMeta = DISCIPLINE_META[discipline]
 
-    // Límites de zona según la disciplina (bici usa sus propios límites)
+    // Límites de zona según la disciplina. La bici NO cae a los límites de
+    // carrera: el LTHR en bici suele ser 5-10 ppm más bajo, así que reutilizar
+    // los de carrera infla las zonas y da una lectura falsa. Sin bike_lthr
+    // (o sin un método que no lo necesite) se avisa de que falta configurarlo.
     const boundsForDiscipline = discipline === 'bicicleta'
-        ? (thresholds?.bikeBounds ?? thresholds?.runBounds ?? null)
+        ? (thresholds?.bikeBounds ?? null)
         : (thresholds?.runBounds ?? null)
+    const bikeZonesPending = discipline === 'bicicleta'
+        && !thresholds?.bikeBounds
+        && Boolean(session.avgHeartRate)
 
     // Distribución real intra-sesión desde el stream de Strava; si no hay,
-    // aproximación por FC media
-    const zoneDistribution = zonesFromHistogram(session.hrHistogram, boundsForDiscipline)
-    const dominantZoneIndex = zoneDistribution
-        ? zoneDistribution.secondsByZone.indexOf(Math.max(...zoneDistribution.secondsByZone))
-        : null
-    const hrZone = zoneDistribution && dominantZoneIndex !== null
-        ? {
-            zone: dominantZoneIndex + 1,
-            name: HR_ZONE_NAMES[dominantZoneIndex],
-            label: `Z${dominantZoneIndex + 1} · ${HR_ZONE_NAMES[dominantZoneIndex]}`,
-            badgeClass: ZONE_BADGE_CLASSES[dominantZoneIndex + 1],
-        }
+    // aproximación por FC media.
+    // La etiqueta usa la zona de estímulo (la más alta con tiempo relevante),
+    // no la dominante: en un fartlek el calentamiento y las recuperaciones
+    // suman más minutos que las series, y etiquetarlo "Z1" es engañoso.
+    const zoneDistribution = summarizeSessionZones(session.hrHistogram, boundsForDiscipline)
+    const hrZone = zoneDistribution
+        ? describeZoneNumber(zoneDistribution.stimulusZone)
         : boundsForDiscipline && session.avgHeartRate
             ? describeHrZone(boundsForDiscipline, session.avgHeartRate)
             : null
@@ -730,9 +859,6 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                                 </span>
                             </div>
                             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                                <span>
-                                    Ritmo {session.actualAvgPace || '—'} · FC {session.avgHeartRate ?? '—'}{session.maxHeartRate !== null ? `/${session.maxHeartRate}` : ''} · RPE {session.rpe !== null ? `${session.rpe}/10` : '—'}
-                                </span>
                                 {hrZone && (
                                     <span
                                         className={cn(
@@ -740,10 +866,33 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                                             hrZone.badgeClass
                                         )}
                                         title={zoneDistribution
-                                            ? 'Zona dominante por tiempo real en zona (stream de Strava, zonas del atleta)'
+                                            ? `Zona de estímulo: la más alta con tiempo relevante (stream de Strava). `
+                                              + `Dominante por minutos: Z${zoneDistribution.dominantZone}.`
                                             : `FC media ${session.avgHeartRate} ppm sobre las zonas configuradas del atleta`}
                                     >
                                         {hrZone.label}
+                                    </span>
+                                )}
+                                {zoneDistribution && (
+                                    <span
+                                        className="inline-flex items-center rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                                        title="Carácter de la sesión según el reparto del tiempo entre zonas"
+                                    >
+                                        {SESSION_CHARACTER_LABELS[zoneDistribution.character]}
+                                    </span>
+                                )}
+                                {zoneDistribution && zoneDistribution.highSeconds >= 60 && (
+                                    <span className="text-[11px] font-medium text-red-500 tabular-nums">
+                                        {Math.round(zoneDistribution.highSeconds / 60)} min en Z4-Z5
+                                    </span>
+                                )}
+                                {bikeZonesPending && (
+                                    <span
+                                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                                        title="Sin LTHR de ciclismo no se pueden calcular las zonas de bici. Configúralo en el perfil del atleta → Umbrales."
+                                    >
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Zonas de bici pendientes de configurar
                                     </span>
                                 )}
                                 {zoneDistribution && (
@@ -783,17 +932,18 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                         </div>
                     </div>
 
-                    {feedbackPreview ? (
-                        <div className="mt-4 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
-                            <span className="font-medium text-emerald-700">Feedback: </span>
-                            <span className="break-words line-clamp-2">{feedbackPreview}</span>
+                    {compactStructure ? (
+                        <div className="mt-4 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
+                            <p className="font-medium text-blue-700 dark:text-blue-400">Entreno programado</p>
+                            <p className="mt-0.5 whitespace-pre-wrap break-words">{compactStructure}</p>
                         </div>
                     ) : null}
 
-                    {compactStructure ? (
-                        <div className="mt-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm leading-6 text-muted-foreground">
-                            <span className="font-medium text-foreground">Plan: </span>
-                            <span className="break-words">{compactStructure}</span>
+                    {feedbackPreview ? (
+                        <div className="mt-3 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
+                            <span className="font-medium text-emerald-700">Feedback: </span>
+                            {/* Sin recortar: es el único sitio donde se muestra */}
+                            <span className="whitespace-pre-wrap break-words">{feedbackPreview}</span>
                         </div>
                     ) : null}
 
@@ -816,66 +966,19 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
 
                 <CollapsibleContent>
                     <div className="space-y-5 border-t border-border/70 bg-muted/[0.16] px-4 py-5 sm:px-5">
-                        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                            <div className="mb-4 flex items-center gap-2">
-                                <Activity className="h-4 w-4 text-emerald-600" />
-                                <h5 className="font-medium text-foreground">Análisis de la sesión</h5>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                                <SessionMetricCard label="Km hechos" value={session.actualDistanceKm !== null ? formatDistance(session.actualDistanceKm) : 'Sin km'} hint={distanceDeltaLabel} />
-                                <SessionMetricCard label="Ritmo medio" value={session.actualAvgPace || '—'} />
-                                <SessionMetricCard label="RPE" value={session.rpe !== null ? `${session.rpe}/10` : '—'} />
-                                <SessionMetricCard label="FC media" value={session.avgHeartRate !== null ? `${session.avgHeartRate} ppm` : '—'} />
-                                <SessionMetricCard label="FC máxima" value={session.maxHeartRate !== null ? `${session.maxHeartRate} ppm` : '—'} />
-                            </div>
-                            {session.feedbackNotes ? (
-                                <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] p-4">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                                        <MessageSquareText className="h-4 w-4" />
-                                        Feedback del atleta
-                                    </div>
-                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-                                        {session.feedbackNotes}
-                                    </p>
+                        {/* El feedback del atleta ya se muestra completo en la tarjeta;
+                            aquí solo va lo que no aparece fuera. */}
+                        {session.coachNotes ? (
+                            <div className="rounded-2xl border border-blue-500/15 bg-blue-500/[0.05] p-4">
+                                <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                                    <MessageSquareText className="h-4 w-4" />
+                                    Notas del coach
                                 </div>
-                            ) : null}
-                        </div>
-
-                        <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                            <div className="mb-3 flex items-center gap-2">
-                                <CalendarDays className="h-4 w-4 text-primary" />
-                                <h5 className="font-medium text-foreground">Entreno programado</h5>
+                                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                                    {session.coachNotes}
+                                </p>
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                <SessionMetricCard label="Fecha" value={formatFullDate(session.scheduledDate)} />
-                                <SessionMetricCard label="Objetivo km" value={session.targetDistanceKm !== null ? formatDistance(session.targetDistanceKm) : '—'} />
-                                <SessionMetricCard label="Objetivo tiempo" value={session.targetDurationMin !== null ? formatHours(session.targetDurationMin) : '—'} />
-                                <SessionMetricCard label="Ritmo objetivo" value={session.targetPace || '—'} />
-                            </div>
-                            {session.description && (!compactStructure || session.description.trim() !== compactStructure.trim()) ? (
-                                <p className="mt-4 break-words text-sm leading-6 text-muted-foreground">{session.description}</p>
-                            ) : null}
-                            {structureLines.length > 0 ? (
-                                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                    {structureLines.map((line, index) => (
-                                        <div key={`${session.id}-structure-${index}`} className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-sm leading-6 text-muted-foreground">
-                                            {line}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : null}
-                            {session.coachNotes ? (
-                                <div className="mt-4 rounded-2xl border border-blue-500/15 bg-blue-500/[0.05] p-4">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
-                                        <MessageSquareText className="h-4 w-4" />
-                                        Notas del coach
-                                    </div>
-                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-                                        {session.coachNotes}
-                                    </p>
-                                </div>
-                            ) : null}
-                        </div>
+                        ) : null}
 
                         <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
                             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -984,13 +1087,21 @@ function ZoneDistributionCard({
         let unclassifiedMinutes = 0
         let exactSessions = 0
         let approxSessions = 0
+        let pendingBikeMinutes = 0
 
         for (const session of sessions) {
             const discipline = getDiscipline(session.trainingType)
+            // Sin límites propios de bici no se mezcla con los de carrera:
+            // falsearía el reparto semanal. Se cuentan aparte para avisar.
             const bounds = discipline === 'bicicleta'
-                ? (thresholds.bikeBounds ?? thresholds.runBounds)
+                ? thresholds.bikeBounds
                 : thresholds.runBounds
-            if (!bounds) continue
+            if (!bounds) {
+                if (discipline === 'bicicleta') {
+                    pendingBikeMinutes += session.actualDurationMin ?? 0
+                }
+                continue
+            }
 
             // 1º: distribución real intra-sesión desde el stream de Strava
             const real = zonesFromHistogram(session.hrHistogram, bounds)
@@ -1023,6 +1134,7 @@ function ZoneDistributionCard({
             unclassifiedMinutes,
             exactSessions,
             approxSessions,
+            pendingBikeMinutes,
             lowPct: pct(minutesByZone[0] + minutesByZone[1]),
             midPct: pct(minutesByZone[2]),
             highPct: pct(minutesByZone[3] + minutesByZone[4]),
@@ -1036,7 +1148,7 @@ function ZoneDistributionCard({
             <div className="border-b border-border/70 bg-muted/10 px-5 py-4">
                 <h4 className="font-semibold text-foreground">Distribución por zonas de FC</h4>
                 <p className="text-xs text-muted-foreground">
-                    Tiempo en cada zona según la FC media de cada sesión (método Friel).
+                    Tiempo real en cada zona desde el pulsómetro, con las zonas configuradas del atleta.
                 </p>
             </div>
             <div className="space-y-4 p-5">
@@ -1099,6 +1211,15 @@ function ZoneDistributionCard({
                         ? ` · ${formatHours(distribution.unclassifiedMinutes)} sin FC, excluidas`
                         : ''}.
                 </p>
+                {distribution.pendingBikeMinutes > 0 && (
+                    <p className="flex items-start gap-1.5 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                        <span>
+                            {formatHours(distribution.pendingBikeMinutes)} de ciclismo fuera del reparto: faltan las
+                            zonas de bici. Configura el LTHR de ciclismo en el perfil del atleta → Umbrales.
+                        </span>
+                    </p>
+                )}
             </div>
         </Card>
     )
