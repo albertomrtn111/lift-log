@@ -22,28 +22,33 @@ export default async function CoachMessagesPage({ searchParams }: CoachMessagesP
 
     const clients = await getClientsForSelector(coachId)
     const conversations = await getCoachConversations(coachId, clients)
+    // On mobile the inbox should open first. A conversation is selected only when
+    // its URL was requested explicitly; the client component selects the first one
+    // automatically on desktop.
     const selectedClientId =
         params.client && conversations.some(conversation => conversation.clientId === params.client)
             ? params.client
-            : conversations[0]?.clientId ?? null
+            : null
 
     return (
-        <div className="min-h-screen pb-20 lg:pb-4">
-            <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
-                <div className="px-4 py-6 lg:px-8">
+        <div className="flex h-[calc(100dvh-4.5rem-var(--safe-area-bottom))] min-h-0 flex-col overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible lg:pb-4">
+            <header className="z-40 shrink-0 border-b border-border bg-background/95 pt-[var(--safe-area-top)] backdrop-blur-sm lg:sticky lg:top-0 lg:pt-0">
+                <div className="px-4 py-3 lg:px-8 lg:py-6">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 lg:h-10 lg:w-10">
                             <MessageCircle className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
-                            <h1 className="text-xl font-bold">Mensajes</h1>
-                            <p className="text-sm text-muted-foreground">Conversaciones con tus atletas</p>
+                        <div className="min-w-0">
+                            <h1 className="text-lg font-bold lg:text-xl">Mensajes</h1>
+                            <p className="truncate text-xs text-muted-foreground lg:text-sm">
+                                Conversaciones con tus atletas
+                            </p>
                         </div>
                     </div>
                 </div>
             </header>
 
-            <div className="px-4 pt-6 lg:px-8">
+            <div className="min-h-0 flex-1 lg:px-8 lg:pt-6">
                 <MessagesPageClient
                     coachId={coachId}
                     conversations={conversations}
