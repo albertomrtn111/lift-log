@@ -149,8 +149,10 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
 
     return (
         <Card className={cn(
-            'flex min-h-[520px] min-w-0 max-w-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm',
-            standalone ? 'h-[calc(100vh-16rem)] min-h-[640px]' : 'lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]'
+            'flex h-[calc(100dvh-var(--app-bottom-nav-height,0px)-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)-1rem)] min-h-[420px] min-w-0 max-w-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm',
+            standalone
+                ? 'lg:h-[calc(100vh-16rem)] lg:min-h-[640px]'
+                : 'lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:min-h-[520px]'
         )}>
             <header className="border-b px-4 py-3">
                 <div className="flex items-center gap-2">

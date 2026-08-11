@@ -715,7 +715,7 @@ export function AthleteProfileTab({
         return (
             <div className="space-y-4">
                 {/* Option 1: Import from onboarding */}
-                <Card className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-6 shadow-sm">
+                <Card className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 shadow-sm sm:p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex items-start gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shrink-0">
@@ -734,7 +734,7 @@ export function AthleteProfileTab({
                         <AIActionButton
                             onClick={handleImportOnboarding}
                             disabled={isImportingOnboarding}
-                            className="shrink-0"
+                            className="w-full shrink-0 lg:w-auto"
                         >
                             {isImportingOnboarding ? (
                                 <>
@@ -755,7 +755,7 @@ export function AthleteProfileTab({
                 </Card>
 
                 {/* Option 2: Manual wizard */}
-                <Card className="rounded-2xl border border-dashed border-border bg-card p-6 shadow-sm">
+                <Card className="rounded-2xl border border-dashed border-border bg-card p-4 shadow-sm sm:p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex items-start gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground shrink-0">
@@ -768,7 +768,7 @@ export function AthleteProfileTab({
                                 </p>
                             </div>
                         </div>
-                        <Button variant="outline" onClick={startWizard} className="shrink-0">
+                        <Button variant="outline" onClick={startWizard} className="w-full shrink-0 lg:w-auto">
                             Configurar perfil manualmente
                         </Button>
                     </div>
@@ -779,7 +779,7 @@ export function AthleteProfileTab({
 
     if (mode === 'generating') {
         return (
-            <Card className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+            <Card className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
                 <div className="flex flex-col items-center text-center">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <h3 className="mt-4 text-lg font-semibold">Generando perfil del atleta...</h3>

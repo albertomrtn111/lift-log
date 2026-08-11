@@ -1,7 +1,15 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -247,6 +255,21 @@ interface PlanTabProps {
     onRefresh: () => void
 }
 
+type PlanSubTab = 'schedule' | 'training' | 'diet' | 'supplements'
+
+const PLAN_SUB_TABS = [
+    { value: 'schedule', label: 'Planificación', icon: CalendarDays },
+    { value: 'training', label: 'Fuerza', icon: Dumbbell },
+    { value: 'diet', label: 'Nutrición', icon: Utensils },
+    { value: 'supplements', label: 'Suplementación', icon: FlaskConical },
+] as const
+
+function normalizePlanSubTab(value: string | null): PlanSubTab {
+    return PLAN_SUB_TABS.some(tab => tab.value === value)
+        ? value as PlanSubTab
+        : 'schedule'
+}
+
 export function PlanTab({
     coachId,
     clientId,
@@ -254,46 +277,66 @@ export function PlanTab({
     programs,
     onRefresh
 }: PlanTabProps) {
-    const [activeSubTab, setActiveSubTab] = useState('schedule')
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const [activeSubTab, setActiveSubTab] = useState<PlanSubTab>(() => normalizePlanSubTab(searchParams.get('plan')))
+
+    useEffect(() => {
+        const nextSubTab = normalizePlanSubTab(searchParams.get('plan'))
+        setActiveSubTab(previous => previous === nextSubTab ? previous : nextSubTab)
+    }, [searchParams])
+
+    const handleSubTabChange = (value: string) => {
+        const nextSubTab = normalizePlanSubTab(value)
+        const params = new URLSearchParams(searchParams.toString())
+        setActiveSubTab(nextSubTab)
+        params.set('tab', 'plan')
+        params.set('plan', nextSubTab)
+        router.replace(`/coach/clients?${params.toString()}`)
+    }
 
     return (
-        <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-            <TabsList className="workspace-tabs-list gap-3 sm:gap-4 pb-px">
-                <TabsTrigger
-                    value="schedule"
-                    className="workspace-tab-trigger sm:min-w-[9.5rem]"
-                >
-                    <CalendarDays className="h-4 w-4" />
-                    Planificación
-                </TabsTrigger>
-                <TabsTrigger
-                    value="training"
-                    className="workspace-tab-trigger sm:min-w-[8rem]"
-                >
-                    <Dumbbell className="h-4 w-4" />
-                    Fuerza
-                </TabsTrigger>
-                <TabsTrigger
-                    value="diet"
-                    className="workspace-tab-trigger sm:min-w-[8.5rem]"
-                >
-                    <Utensils className="h-4 w-4" />
-                    Nutrición
-                </TabsTrigger>
-                <TabsTrigger
-                    value="supplements"
-                    className="workspace-tab-trigger sm:min-w-[10rem]"
-                >
-                    <FlaskConical className="h-4 w-4" />
-                    Suplementación
-                </TabsTrigger>
-            </TabsList>
+        <Tabs value={activeSubTab} onValueChange={handleSubTabChange} className="w-full min-w-0">
+            <div className="mb-4 sm:hidden">
+                <Select value={activeSubTab} onValueChange={handleSubTabChange}>
+                    <SelectTrigger className="h-11 w-full" aria-label="Sección del plan">
+                        <SelectValue placeholder="Selecciona una sección del plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {PLAN_SUB_TABS.map(tab => {
+                            const Icon = tab.icon
+                            return (
+                                <SelectItem key={tab.value} value={tab.value}>
+                                    <span className="flex items-center gap-2">
+                                        <Icon className="h-4 w-4" />
+                                        <span>{tab.label}</span>
+                                    </span>
+                                </SelectItem>
+                            )
+                        })}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div className="hidden sm:block">
+                <TabsList className="workspace-tabs-list gap-3 pb-px sm:gap-4">
+                    {PLAN_SUB_TABS.map(tab => {
+                        const Icon = tab.icon
+                        return (
+                            <TabsTrigger key={tab.value} value={tab.value} className="workspace-tab-trigger sm:min-w-[8.5rem]">
+                                <Icon className="h-4 w-4" />
+                                {tab.label}
+                            </TabsTrigger>
+                        )
+                    })}
+                </TabsList>
+            </div>
 
             <TabsContent value="schedule" className="mt-0">
                 <PlanningTab
                     clientId={clientId}
                     coachId={coachId}
-                    onEditProgram={() => setActiveSubTab('training')}
+                    onEditProgram={() => handleSubTabChange('training')}
                 />
             </TabsContent>
 

@@ -94,7 +94,7 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
     // Loading
     if (loading) {
         return (
-            <Card className="p-12 text-center">
+            <Card className="p-6 text-center sm:p-12">
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
                 <p className="text-sm text-muted-foreground mt-3">Cargando onboarding...</p>
             </Card>
@@ -104,7 +104,7 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
     // Error
     if (error) {
         return (
-            <Card className="p-12 text-center">
+            <Card className="p-6 text-center sm:p-12">
                 <AlertCircle className="h-10 w-10 text-destructive/50 mx-auto mb-3" />
                 <p className="text-sm text-destructive">{error}</p>
             </Card>
@@ -114,7 +114,7 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
     // No onboarding found
     if (!checkin) {
         return (
-            <Card className="p-12 text-center">
+            <Card className="p-6 text-center sm:p-12">
                 <ClipboardList className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
                 <h3 className="font-semibold text-lg mb-2">Sin onboarding</h3>
                 <p className="text-muted-foreground text-sm max-w-md mx-auto">
@@ -159,8 +159,8 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
     return (
         <div className="space-y-4">
             {/* Header */}
-            <Card className="p-5">
-                <div className="flex items-center justify-between">
+            <Card className="p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3 sm:items-center">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
                             <ClipboardList className="h-5 w-5 text-blue-400" />
@@ -190,7 +190,7 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
                         <Activity className="h-5 w-5 text-muted-foreground" />
                         Datos de progreso
                     </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
                         {metricKeys.map((key) => (
                             <MetricBox
                                 key={key}

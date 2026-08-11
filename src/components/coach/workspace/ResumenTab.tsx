@@ -620,7 +620,7 @@ export function ResumenTab({
                         ) : null
                     }
                     emptyCopy="Sin plan activo ahora mismo."
-                    onView={() => onSwitchTab('diet')}
+                    onView={() => onSwitchTab('plan:diet')}
                 />
 
                 <ActivePlanCard
