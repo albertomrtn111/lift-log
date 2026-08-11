@@ -31,8 +31,8 @@ export default async function CoachMessagesPage({ searchParams }: CoachMessagesP
             : null
 
     return (
-        <div className="flex h-[calc(100dvh-4.5rem-var(--safe-area-bottom))] min-h-0 flex-col overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible lg:pb-4">
-            <header className="z-40 shrink-0 border-b border-border bg-background/95 pt-[var(--safe-area-top)] backdrop-blur-sm lg:sticky lg:top-0 lg:pt-0">
+        <div className="flex h-[calc(100dvh-4.5rem-var(--safe-area-top)-var(--safe-area-bottom))] min-h-0 flex-col overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible lg:pb-4">
+            <header className="z-40 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm lg:sticky lg:top-0">
                 <div className="px-4 py-3 lg:px-8 lg:py-6">
                     <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 lg:h-10 lg:w-10">
