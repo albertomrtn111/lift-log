@@ -295,7 +295,7 @@ export function CoachSidebar() {
                 aria-label="Navegación principal del coach"
                 className="fixed inset-x-0 bottom-0 z-50 border-t border-border/70 bg-card/95 shadow-[0_-16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:hidden"
             >
-                <div className="grid grid-cols-5 items-stretch px-1 pb-[var(--safe-area-bottom)] pt-1">
+                <div className="grid grid-cols-5 items-stretch pb-[var(--safe-area-bottom)] pl-[calc(var(--safe-area-left)+0.25rem)] pr-[calc(var(--safe-area-right)+0.25rem)] pt-1">
                     {mobilePrimaryItems.map((item) => {
                         const isActive = pathname?.startsWith(item.href)
                         const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
@@ -357,7 +357,7 @@ export function CoachSidebar() {
 
                         <SheetContent
                             side="bottom"
-                            className="max-h-[78dvh] overflow-y-auto rounded-t-3xl px-4 pb-[calc(var(--safe-area-bottom)+1.25rem)] pt-5"
+                            className="max-h-[78dvh] overflow-y-auto rounded-t-3xl pb-[calc(var(--safe-area-bottom)+1.25rem)] pl-[calc(var(--safe-area-left)+1rem)] pr-[calc(var(--safe-area-right)+1rem)] pt-5"
                         >
                             <SheetHeader className="pr-12 text-left">
                                 <SheetTitle>Más opciones</SheetTitle>
