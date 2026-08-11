@@ -161,7 +161,7 @@ export function MeasurementsTab({ checkins, metricDefinitions }: MeasurementsTab
 
     if (snapshots.length === 0) {
         return (
-            <Card className="p-10 text-center">
+            <Card className="p-6 text-center sm:p-10">
                 <Ruler className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-sm font-medium text-muted-foreground">Sin medidas todavía</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
@@ -191,7 +191,7 @@ export function MeasurementsTab({ checkins, metricDefinitions }: MeasurementsTab
                 </div>
 
                 {/* Línea temporal de snapshots */}
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-hide">
                     {snapshots.map((snapshot, index) => {
                         const isSelected = selectedIds.includes(snapshot.checkinId)
                         const isFirst = index === 0
@@ -229,7 +229,7 @@ export function MeasurementsTab({ checkins, metricDefinitions }: MeasurementsTab
 
                 {/* Tabla comparativa */}
                 <Card className="overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="touch-pan-x overflow-x-auto overscroll-x-contain">
                         <table className="w-full border-collapse text-sm">
                             <thead>
                                 <tr className="border-b">

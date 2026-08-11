@@ -128,9 +128,9 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         <div className="min-h-screen min-w-0 overflow-x-hidden pb-20 lg:pb-4">
             {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="min-w-0 px-4 py-6 lg:px-8">
+                <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-6">
                     <div className="flex min-w-0 items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 sm:h-10 sm:w-10">
                             <UserCog className="h-5 w-5 text-primary" />
                         </div>
                         <div className="min-w-0">
@@ -141,7 +141,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                 </div>
             </header>
 
-            <div className="min-w-0 px-4 pt-6 lg:px-8">
+            <div className="min-w-0 px-3 pt-4 sm:px-4 sm:pt-6 lg:px-8">
                 <NewClientWorkspace
                     clients={clients}
                     selectedClient={selectedClient}

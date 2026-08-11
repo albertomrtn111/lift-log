@@ -121,7 +121,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     }
 
     const sectionSwitcher = (
-        <div className="flex w-fit items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+        <div className="grid w-full grid-cols-3 items-center gap-0.5 rounded-lg bg-muted/60 p-0.5 sm:flex sm:w-fit">
             {CHECKINS_SECTIONS.map(item => (
                 <button
                     key={item.value}
@@ -131,30 +131,18 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                         setSelectedCheckin(null)
                     }}
                     className={cn(
-                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                        'flex min-w-0 items-center justify-center gap-1 rounded-md px-1.5 py-2 text-xs font-medium transition-all sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm',
                         section === item.value
                             ? 'bg-background text-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
                     )}
                 >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span className="truncate">{item.label}</span>
                 </button>
             ))}
         </div>
     )
-
-    if (checkins.length === 0) {
-        return (
-            <Card className="p-8 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-lg">Sin revisiones</h3>
-                <p className="text-muted-foreground mt-2">
-                    El cliente aún no ha enviado ninguna revisión
-                </p>
-            </Card>
-        )
-    }
 
     if (section === 'galeria') {
         return (
@@ -170,6 +158,21 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
             <div className="space-y-4">
                 {sectionSwitcher}
                 <MeasurementsTab checkins={checkins} metricDefinitions={metricDefinitions} />
+            </div>
+        )
+    }
+
+    if (checkins.length === 0) {
+        return (
+            <div className="space-y-4">
+                {sectionSwitcher}
+                <Card className="p-6 text-center sm:p-8">
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                    <h3 className="text-lg font-semibold">Sin revisiones</h3>
+                    <p className="mt-2 text-muted-foreground">
+                        El cliente aún no ha enviado ninguna revisión
+                    </p>
+                </Card>
             </div>
         )
     }
@@ -312,20 +315,20 @@ function CheckinRow({
     return (
         <div
             className={cn(
-                'p-4 cursor-pointer transition-colors hover:bg-muted/30 flex items-center justify-between',
+                'flex cursor-pointer flex-col items-stretch justify-between gap-3 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center',
                 isSelected && 'bg-primary/5'
             )}
             onClick={onClick}
         >
-            <div>
-                 <div className="flex items-center gap-2 mb-2">
+            <div className="min-w-0">
+                 <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
                     <Badge variant="outline" className={cn('text-xs', reviewMeta.className)}>
                         {reviewMeta.label}
                     </Badge>
                     {aiBadge()}
                  </div>
-                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                         <Activity className="h-3.5 w-3.5" />
                         {metricCount} métricas
@@ -337,12 +340,13 @@ function CheckinRow({
                 </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
                 {canOpenReviewFlow(checkin) && (
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={(e) => { e.stopPropagation(); onOpenReviewDialog(checkin.id) }}
+                        className="min-w-0 flex-1 sm:flex-initial"
                     >
                         <CheckCheck className="h-4 w-4 mr-2" />
                         {getReviewActionLabel(checkin)}
@@ -357,7 +361,7 @@ function CheckinRow({
                 >
                     <Trash2 className="h-4 w-4" />
                 </Button>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                <ChevronRight className="hidden h-5 w-5 text-muted-foreground sm:block" />
             </div>
         </div>
     )
@@ -487,7 +491,7 @@ function CheckinDetailPanel({
                 </div>
             </div>
 
-            <div className="p-4 sm:p-8 space-y-12">
+            <div className="space-y-8 p-4 sm:space-y-12 sm:p-8">
                 {/* Datos de Progreso */}
                 <div className="space-y-4">
                     <h4 className="font-semibold text-lg flex items-center gap-2">
@@ -582,7 +586,7 @@ function CheckinDetailPanel({
                 <div className="space-y-4 pt-8 border-t">
                     <h4 className="font-semibold text-lg">Revisión</h4>
                     {checkin.review ? (
-                        <div className="space-y-3 bg-muted/20 p-6 rounded-xl border">
+                        <div className="space-y-3 rounded-xl border bg-muted/20 p-4 sm:p-6">
                             <div className="flex items-center justify-between mb-2">
                                 <span className="font-medium text-sm text-muted-foreground">Resumen del feedback</span>
                                 <Badge

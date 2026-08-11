@@ -131,7 +131,8 @@ import {
     DragOverlay,
     useDraggable,
     useDroppable,
-    PointerSensor,
+    MouseSensor,
+    TouchSensor,
     useSensor,
     useSensors,
     type DragStartEvent,
@@ -287,9 +288,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         return weeks
     })()
 
-    // DnD sensor — require 8px movement before drag starts (avoids accidental drags)
+    // Mouse drag remains immediate; touch requires a short hold so vertical scroll
+    // stays natural on phones and tablets.
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+        useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } })
     )
 
     // Fetch
@@ -575,19 +578,19 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
         >
-            <div className="flex flex-col h-full space-y-4 p-4">
+            <div className="flex h-full flex-col space-y-4 p-0 sm:p-4">
                 {/* Controls */}
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center gap-2">
-                        <div>
-                            <h2 className="text-2xl font-bold capitalize">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                            <h2 className="text-xl font-bold capitalize sm:text-2xl">
                                 {format(currentDate, 'MMMM yyyy', { locale: es })}
                             </h2>
                             <p className="text-sm text-muted-foreground">
                                 {viewMode === 'week' ? `Vista operativa de la semana · ${selectedLabel}` : `Mapa general del bloque · ${selectedLabel}`}
                             </p>
                         </div>
-                        <div className="flex items-center rounded-md border bg-background shadow-sm ml-0 lg:ml-4">
+                        <div className="flex w-full items-center justify-between rounded-md border bg-background shadow-sm sm:w-auto lg:ml-4">
                             <Button variant="ghost" size="icon" onClick={handlePrevious}>
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
@@ -599,7 +602,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             </Button>
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-start">
                         <div className="flex items-center rounded-md border bg-background shadow-sm">
                             <Button
                                 variant="ghost"
@@ -779,7 +782,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
 
                 {/* Monthly Grid */}
                 {viewMode === 'month' && (
-                    <div className="flex flex-col h-full space-y-1.5 px-0.5">
+                    <div className="flex h-full flex-col space-y-1.5 overflow-x-auto overscroll-x-contain px-0.5 pb-2">
                         {loading ? (
                             <div className="flex justify-center items-center py-16">
                                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -787,7 +790,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                         ) : (
                             <>
                                 {/* Day headers */}
-                                <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                                <div className="mb-1 grid min-w-[700px] grid-cols-7 gap-1 text-center">
                                     {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
                                         <div
                                             key={d}
@@ -803,7 +806,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
 
                                 {/* Weeks */}
                                 {monthWeeks.map((week, wi) => (
-                                    <div key={wi} className="grid grid-cols-7 gap-1 flex-1">
+                                    <div key={wi} className="grid min-w-[700px] flex-1 grid-cols-7 gap-1">
                                         {week.map((day) => {
                                             const isCurrentMonth = day.getMonth() === currentDate.getMonth()
                                             const isTodayDate = isToday(day)
@@ -889,10 +892,10 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                                             <DropdownMenuTrigger asChild>
                                                                                 <Button
                                                                                     variant="ghost"
-                                                                                    className="h-3 w-3 p-0 opacity-0 group-hover/pill:opacity-100 transition-opacity hover:bg-black/10 dark:hover:bg-white/10 rounded-full flex-shrink-0"
+                                                                                    className="h-5 w-5 flex-shrink-0 rounded-full p-0 opacity-100 transition-opacity hover:bg-black/10 dark:hover:bg-white/10 sm:h-3 sm:w-3 sm:opacity-0 sm:group-hover/pill:opacity-100"
                                                                                     onClick={(e) => e.stopPropagation()}
                                                                                 >
-                                                                                    <MoreHorizontal className="h-2.5 w-2.5" />
+                                                                                    <MoreHorizontal className="h-3 w-3 sm:h-2.5 sm:w-2.5" />
                                                                                 </Button>
                                                                             </DropdownMenuTrigger>
                                                                             <DropdownMenuContent align="end" className="text-xs">

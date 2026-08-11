@@ -69,13 +69,13 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
 
     if (clients.length === 0) {
         return (
-            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4 sm:flex-row sm:items-center">
                 <Users className="h-5 w-5 text-muted-foreground" />
                 <div>
                     <p className="font-medium">No hay clientes</p>
                     <p className="text-sm text-muted-foreground">Crea tu primer cliente para empezar</p>
                 </div>
-                <Button variant="outline" size="sm" asChild className="ml-auto">
+                <Button variant="outline" size="sm" asChild className="w-full sm:ml-auto sm:w-auto">
                     <Link href="/coach/members">Ir a Atletas</Link>
                 </Button>
             </div>
@@ -89,16 +89,16 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-full sm:w-[300px] justify-between"
+                    className="min-w-0 w-full justify-between sm:w-[300px]"
                 >
                     {selectedClient ? (
-                        <div className="flex items-center gap-2 truncate">
+                        <div className="flex min-w-0 items-center gap-2">
                             <UrgencyDot client={selectedClient} />
                             <span className="truncate">{getClientDisplayIdentity(selectedClient).displayName}</span>
                             <Badge
                                 variant="secondary"
                                 className={cn(
-                                    'shrink-0',
+                                    'hidden shrink-0 sm:inline-flex',
                                     selectedClient.status === 'active' && 'bg-success/10 text-success',
                                     selectedClient.status === 'inactive' && 'bg-muted'
                                 )}
@@ -112,7 +112,7 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[300px] p-0">
+            <PopoverContent className="w-[min(360px,calc(100vw-var(--safe-area-left,0px)-var(--safe-area-right,0px)-1.5rem))] p-0">
                 <Command>
                     <CommandInput
                         placeholder="Buscar cliente..."
@@ -132,12 +132,12 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
                                             onSelect={() => handleSelect(client.id)}
                                             className="cursor-pointer"
                                         >
-                                            <div className="flex items-center gap-2 flex-1">
+                                            <div className="flex min-w-0 items-center gap-2 flex-1">
                                                 <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
                                                     {initials}
                                                 </div>
                                                 <UrgencyDot client={client} />
-                                                <div className="truncate">
+                                                <div className="min-w-0 flex-1">
                                                     <p className="text-sm font-medium truncate">{displayName}</p>
                                                     <p className="text-xs text-muted-foreground truncate">{client.email}</p>
                                                 </div>
@@ -164,11 +164,11 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
                                             onSelect={() => handleSelect(client.id)}
                                             className="cursor-pointer opacity-60"
                                         >
-                                            <div className="flex items-center gap-2 flex-1">
+                                            <div className="flex min-w-0 items-center gap-2 flex-1">
                                                 <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
                                                     {initials}
                                                 </div>
-                                                <div className="truncate">
+                                                <div className="min-w-0 flex-1">
                                                     <p className="text-sm font-medium truncate">{displayName}</p>
                                                     <p className="text-xs text-muted-foreground truncate">{client.email}</p>
                                                 </div>
