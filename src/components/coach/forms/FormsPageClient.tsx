@@ -17,6 +17,7 @@ import {
     deleteFormTemplate,
 } from '@/data/form-templates'
 import {
+    createGeneratedReviewAction,
     deleteReviewTemplateAction,
     duplicateReviewTemplateAction,
     toggleReviewTemplateActiveAction,
@@ -215,6 +216,24 @@ export function FormsPageClient({
                 toast({ title: 'Error', description: result.error, variant: 'destructive' })
             }
         } else {
+            if (builderTemplateType === 'checkin') {
+                const result = await createGeneratedReviewAction({
+                    title: data.title,
+                    schema: data.schema,
+                })
+                if (result.success) {
+                    toast({
+                        title: 'Revisión creada',
+                        description: 'Ya aparece en la lista. Puedes editarla para añadir métricas, fotos o cambiar la frecuencia.',
+                    })
+                    handleBuilderOpenChange(false)
+                    router.refresh()
+                } else {
+                    toast({ title: 'Error', description: result.error, variant: 'destructive' })
+                }
+                return
+            }
+
             const result = await createFormTemplate({
                 title: data.title,
                 type: builderTemplateType,
@@ -224,7 +243,7 @@ export function FormsPageClient({
                     : undefined,
             })
             if (result.success) {
-                toast({ title: builderTemplateType === 'checkin' ? 'Formulario creado' : 'Plantilla creada' })
+                toast({ title: 'Plantilla creada' })
                 handleBuilderOpenChange(false)
                 router.refresh()
             } else {

@@ -13,6 +13,7 @@ import {
     type ReviewTemplateInput,
 } from '@/data/review-templates'
 import { buildDuplicatedReviewTemplateInput } from '@/lib/reviews/review-template-copy'
+import { ensurePhotoField, type FormField } from '@/types/forms'
 
 export async function listReviewTemplateMetricsAction(
     reviewTemplateId: string
@@ -26,8 +27,106 @@ export async function listReviewTemplateMetricsAction(
 interface ActionResult {
     success: boolean
     id?: string
+    formTemplateId?: string
     error?: string
     deactivated?: boolean
+}
+
+function inferGeneratedReviewCadence(title: string): {
+    reviewType: ReviewTemplateInput['review_type']
+    frequencyDays: number
+} {
+    const normalized = title
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+
+    if (/\b(quincenal|biweekly)\b/.test(normalized)) {
+        return { reviewType: 'biweekly', frequencyDays: 14 }
+    }
+    if (/\b(semanal|weekly)\b/.test(normalized)) {
+        return { reviewType: 'weekly', frequencyDays: 7 }
+    }
+    if (/\b(mensual|monthly)\b/.test(normalized)) {
+        return { reviewType: 'monthly', frequencyDays: 30 }
+    }
+    return { reviewType: 'custom', frequencyDays: 14 }
+}
+
+export async function createGeneratedReviewAction(input: {
+    title: string
+    schema: FormField[]
+}): Promise<ActionResult> {
+    const title = input.title.trim()
+    if (!title) return { success: false, error: 'El nombre es obligatorio' }
+
+    const schema = ensurePhotoField(input.schema)
+    if (!schema.some(field => field.type !== 'photo_upload')) {
+        return { success: false, error: 'El formulario debe tener al menos una pregunta' }
+    }
+
+    try {
+        const { supabase, coachId } = await requireActiveCoachId()
+        const { data: formTemplate, error: formError } = await supabase
+            .from('form_templates')
+            .insert({
+                coach_id: coachId,
+                title,
+                type: 'checkin',
+                schema,
+                assigned_client_ids: [],
+                is_active: true,
+            })
+            .select('id')
+            .single()
+
+        if (formError || !formTemplate) {
+            throw formError ?? new Error('No se pudo crear el formulario')
+        }
+
+        try {
+            const cadence = inferGeneratedReviewCadence(title)
+            const reviewTemplate = await createReviewTemplate(coachId, {
+                name: title,
+                description: 'Creada a partir de un formulario generado con IA.',
+                review_type: cadence.reviewType,
+                form_template_id: formTemplate.id,
+                default_frequency_days: cadence.frequencyDays,
+                include_body_metrics: false,
+                include_performance_metrics: false,
+                include_general_metrics: false,
+                include_progress_photos: false,
+                photos_required: false,
+                photos_max_items: 6,
+                is_active: true,
+            })
+
+            revalidatePath('/coach/forms')
+            revalidatePath('/coach/members')
+            return {
+                success: true,
+                id: reviewTemplate.id,
+                formTemplateId: formTemplate.id,
+            }
+        } catch (reviewError) {
+            const { error: rollbackError } = await supabase
+                .from('form_templates')
+                .delete()
+                .eq('id', formTemplate.id)
+                .eq('coach_id', coachId)
+
+            if (rollbackError) {
+                console.error('[createGeneratedReviewAction] Rollback failed:', rollbackError)
+            }
+            throw reviewError
+        }
+    } catch (error) {
+        console.error('[createGeneratedReviewAction]', error)
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Error al crear la revisión generada',
+        }
+    }
 }
 
 async function assertReviewTemplateBelongsToCoach(reviewTemplateId: string, coachId: string): Promise<void> {

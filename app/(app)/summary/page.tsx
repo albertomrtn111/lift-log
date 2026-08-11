@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     AlertCircle,
     BarChart3,
+    Camera,
     ClipboardCheck,
     ClipboardList,
     Dumbbell,
@@ -31,12 +32,13 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { RegistrarSheet } from '@/components/progress/RegistrarSheet'
 import { ClientCardioEvolution } from '@/components/progress/ClientCardioEvolution'
 import { ClientReviewsTab } from '@/components/progress/ClientReviewsTab'
+import { ClientGalleryTab } from '@/components/progress/ClientGalleryTab'
 import { cn } from '@/lib/utils'
 
-type ProgressTab = 'resumen' | 'revisiones'
+type ProgressTab = 'resumen' | 'revisiones' | 'galeria'
 
 function normalizeTab(tab: string | null): ProgressTab {
-    return tab === 'revisiones' ? 'revisiones' : 'resumen'
+    return tab === 'revisiones' || tab === 'galeria' ? tab : 'resumen'
 }
 
 interface SummaryOverviewProps {
@@ -345,16 +347,26 @@ export default function SummaryPage() {
         const params = new URLSearchParams(searchParams.toString())
         if (tab === 'resumen') {
             params.delete('tab')
-            params.delete('checkin')
         } else {
             params.set('tab', tab)
         }
+        if (tab !== 'revisiones') params.delete('checkin')
 
         const query = params.toString()
         router.replace(query ? `/summary?${query}` : '/summary', { scroll: false })
     }
 
     const checkinId = searchParams.get('checkin')
+    const HeaderIcon = activeTab === 'revisiones'
+        ? ClipboardCheck
+        : activeTab === 'galeria'
+            ? Camera
+            : BarChart3
+    const headerSubtitle = activeTab === 'revisiones'
+        ? 'Pendientes e historial'
+        : activeTab === 'galeria'
+            ? 'Fotos por revisión'
+            : 'Tu evolución general'
 
     return (
         <div className="app-mobile-page min-h-screen pb-28">
@@ -362,16 +374,12 @@ export default function SummaryPage() {
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3 pr-24">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            {activeTab === 'revisiones' ? (
-                                <ClipboardCheck className="h-5 w-5 text-primary" />
-                            ) : (
-                                <BarChart3 className="h-5 w-5 text-primary" />
-                            )}
+                            <HeaderIcon className="h-5 w-5 text-primary" />
                         </div>
                         <div>
                             <h1 className="text-lg font-bold text-foreground">Progreso</h1>
                             <p className="text-sm text-muted-foreground">
-                                {activeTab === 'revisiones' ? 'Tus revisiones enviadas' : 'Tu evolución general'}
+                                {headerSubtitle}
                             </p>
                         </div>
                     </div>
@@ -380,7 +388,7 @@ export default function SummaryPage() {
 
             <Tabs value={activeTab} onValueChange={handleTabChange}>
                 <div className="border-b border-border bg-background/95 px-4">
-                    <TabsList className="grid h-12 w-full grid-cols-2 rounded-none bg-transparent p-0 text-muted-foreground">
+                    <TabsList className="grid h-12 w-full grid-cols-3 rounded-none bg-transparent p-0 text-muted-foreground">
                         <TabsTrigger
                             value="resumen"
                             className={cn(
@@ -398,6 +406,15 @@ export default function SummaryPage() {
                             )}
                         >
                             Revisiones
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="galeria"
+                            className={cn(
+                                'relative h-12 min-w-0 rounded-none border-b-2 border-transparent bg-transparent px-1 text-sm font-semibold shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none',
+                                activeTab === 'galeria' ? 'border-primary text-primary' : 'text-muted-foreground'
+                            )}
+                        >
+                            Galería
                         </TabsTrigger>
                     </TabsList>
                 </div>
@@ -417,6 +434,10 @@ export default function SummaryPage() {
 
                 <TabsContent value="revisiones" className="mt-4 px-4">
                     <ClientReviewsTab initialCheckinId={checkinId} />
+                </TabsContent>
+
+                <TabsContent value="galeria" className="mt-4 px-4">
+                    <ClientGalleryTab />
                 </TabsContent>
             </Tabs>
 

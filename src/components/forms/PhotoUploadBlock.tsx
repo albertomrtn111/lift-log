@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Camera, X, Loader2, Upload, AlertCircle } from 'lucide-react'
+import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,15 +187,6 @@ export function PhotoUploadBlock({
     }
 
     // -----------------------------------------------------------------------
-    // Get public URL for thumbnail
-    // -----------------------------------------------------------------------
-
-    const getPublicUrl = (path: string): string => {
-        const { data } = supabase.storage.from('checkin-media').getPublicUrl(path)
-        return data.publicUrl
-    }
-
-    // -----------------------------------------------------------------------
     // Render
     // -----------------------------------------------------------------------
 
@@ -235,11 +227,10 @@ export function PhotoUploadBlock({
                 <div className="grid grid-cols-3 gap-3">
                     {photos.map((photo) => (
                         <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden bg-muted">
-                            <img
-                                src={getPublicUrl(photo.path)}
+                            <ProgressPhotoImage
+                                path={photo.path}
                                 alt="Progress photo"
                                 className="w-full h-full object-cover"
-                                loading="lazy"
                             />
                             <button
                                 type="button"

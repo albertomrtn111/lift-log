@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { createClient } from '@/lib/supabase/client'
+import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
+import { getCheckinMediaImageUrl } from '@/lib/checkin-media'
 import { Badge } from '@/components/ui/badge'
 import {
     Camera,
@@ -58,10 +60,8 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
     }, [fetchPhotos])
 
     const getPublicUrl = useCallback(
-        (path: string): string => {
-            const { data } = supabase.storage.from('checkin-media').getPublicUrl(path)
-            return data.publicUrl
-        },
+        (path: string, size: 'preview' | 'original' = 'original'): string =>
+            getCheckinMediaImageUrl(supabase, path, size),
         [supabase]
     )
 
@@ -96,7 +96,7 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
         if (lightboxIndex === null || photos.length < 2) return
         const preload = (idx: number) => {
             const img = new window.Image()
-            img.src = getPublicUrl(photos[idx].path)
+            img.src = getPublicUrl(photos[idx].path, 'preview')
         }
         preload((lightboxIndex + 1) % photos.length)
         preload((lightboxIndex - 1 + photos.length) % photos.length)
@@ -199,11 +199,10 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
                         className="relative group aspect-square rounded-md overflow-hidden bg-muted border block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         title="Ver foto"
                     >
-                        <img
-                            src={getPublicUrl(photo.path)}
+                        <ProgressPhotoImage
+                            path={photo.path}
                             alt={`Foto de progreso ${idx + 1}`}
                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                            loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
                             <span
@@ -286,12 +285,15 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
                                         </button>
                                     )}
 
-                                    <img
+                                    <ProgressPhotoImage
                                         key={activePhoto.id}
-                                        src={getPublicUrl(activePhoto.path)}
+                                        path={activePhoto.path}
                                         alt={`Foto de progreso ${(lightboxIndex ?? 0) + 1} de ${photos.length}`}
                                         className="max-h-full max-w-full object-contain rounded-md select-none"
+                                        size="preview"
+                                        loading="eager"
                                         draggable={false}
+                                        showErrorLabel
                                     />
 
                                     {photos.length > 1 && (
@@ -321,11 +323,10 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
                                                 }`}
                                                 title={`Foto ${idx + 1}`}
                                             >
-                                                <img
-                                                    src={getPublicUrl(photo.path)}
+                                                <ProgressPhotoImage
+                                                    path={photo.path}
                                                     alt={`Miniatura ${idx + 1}`}
                                                     className="w-full h-full object-cover"
-                                                    loading="lazy"
                                                 />
                                             </button>
                                         ))}

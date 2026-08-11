@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { FormField } from '@/types/forms'
 import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
+import type { CheckinWithReview } from '@/data/workspace'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
 
 export type ClientReviewUiStatus = 'pending' | 'submitted' | 'feedback'
@@ -12,6 +13,9 @@ export type ClientReviewUiStatus = 'pending' | 'submitted' | 'feedback'
 export interface ClientReviewItem {
     checkinId: string
     status: ClientReviewUiStatus
+    checkinStatus: 'pending' | 'reviewed' | 'archived'
+    canEdit: boolean
+    photoCount: number
     submittedAt: string | null
     createdAt: string
     periodStart: string | null
@@ -33,6 +37,22 @@ export interface ClientReviewFormData {
     metrics: MetricDefinition[]
     initialValues: Record<string, unknown>
     photoConfig: { enabled: boolean; required: boolean; maxItems: number } | null
+}
+
+export interface ClientGalleryData {
+    coachId: string
+    clientId: string
+    checkins: CheckinWithReview[]
+    media: Array<{
+        id: string
+        checkin_id: string
+        path: string
+        taken_at: string | null
+    }>
+    weights: Array<{
+        metric_date: string
+        weight_kg: number | string
+    }>
 }
 
 type ClientContext = {
@@ -79,6 +99,22 @@ function getReview(row: any): { status: ClientReviewItem['reviewStatus']; feedba
         status: review?.status ?? null,
         feedback: review?.message_to_client ?? null,
     }
+}
+
+function hasValue(value: unknown): boolean {
+    if (value === null || value === undefined || value === '') return false
+    if (Array.isArray(value)) return value.length > 0
+    return true
+}
+
+function hasResponseEvidence(row: any): boolean {
+    const payload = row.raw_payload && typeof row.raw_payload === 'object'
+        ? row.raw_payload as Record<string, unknown>
+        : {}
+    const review = Array.isArray(row.reviews) ? row.reviews[0] : row.reviews
+    const media = Array.isArray(row.checkin_media) ? row.checkin_media : []
+
+    return Object.values(payload).some(hasValue) || Boolean(review) || media.length > 0
 }
 
 function getReviewTemplate(row: any): ReviewTemplate | null {
@@ -135,13 +171,17 @@ export async function getClientReviewsAction(): Promise<{ success: boolean; revi
                 updated_at
             ),
             reviews (
+                id,
                 status,
                 message_to_client
+            ),
+            checkin_media (
+                id,
+                media_type
             )
         `)
         .eq('client_id', client.id)
         .eq('type', 'checkin')
-        .neq('status', 'archived')
         .order('created_at', { ascending: false })
 
     if (error) {
@@ -149,7 +189,11 @@ export async function getClientReviewsAction(): Promise<{ success: boolean; revi
         return { success: false, reviews: [], error: 'No se pudieron cargar tus revisiones.' }
     }
 
-    const linkedRows = await Promise.all((data ?? []).map(async (row: any) => {
+    const visibleRows = (data ?? []).filter((row: any) =>
+        row.status !== 'archived' || hasResponseEvidence(row)
+    )
+
+    const linkedRows = await Promise.all(visibleRows.map(async (row: any) => {
         const linked = await ensureCheckinReviewTemplateLink(admin, {
             id: row.id,
             coach_id: client.coach_id,
@@ -177,10 +221,16 @@ export async function getClientReviewsAction(): Promise<{ success: boolean; revi
         const rawPayload = row.raw_payload && typeof row.raw_payload === 'object'
             ? row.raw_payload as Record<string, unknown>
             : {}
+        const photoCount = (Array.isArray(row.checkin_media) ? row.checkin_media : [])
+            .filter((media: any) => media.media_type === 'progress_photo')
+            .length
 
         return {
             checkinId: row.id,
             status: getUiStatus(row.status, review.feedback),
+            checkinStatus: row.status,
+            canEdit: row.status !== 'archived' || hasResponseEvidence(row),
+            photoCount,
             submittedAt: row.status === 'pending' ? null : row.submitted_at,
             createdAt: row.created_at,
             periodStart: row.period_start,
@@ -194,6 +244,79 @@ export async function getClientReviewsAction(): Promise<{ success: boolean; revi
     }) satisfies ClientReviewItem[]
 
     return { success: true, reviews }
+}
+
+export async function getClientGalleryAction(): Promise<{
+    success: boolean
+    gallery: ClientGalleryData | null
+    error?: string
+}> {
+    const client = await getCurrentClientContext()
+    if (!client) {
+        return {
+            success: false,
+            gallery: null,
+            error: 'No se pudo cargar tu perfil de cliente.',
+        }
+    }
+
+    const admin = createAdminClient()
+    const [checkinsResult, mediaResult, weightsResult] = await Promise.all([
+        admin
+            .from('checkins')
+            .select('*, review_template:review_templates(name, include_progress_photos, photos_required)')
+            .eq('coach_id', client.coach_id)
+            .eq('client_id', client.id)
+            .eq('type', 'checkin')
+            .order('submitted_at', { ascending: false }),
+        admin
+            .from('checkin_media')
+            .select('id, checkin_id, path, taken_at')
+            .eq('coach_id', client.coach_id)
+            .eq('client_id', client.id)
+            .eq('media_type', 'progress_photo')
+            .order('taken_at', { ascending: true }),
+        admin
+            .from('client_metrics')
+            .select('metric_date, weight_kg')
+            .eq('client_id', client.id)
+            .not('weight_kg', 'is', null)
+            .order('metric_date', { ascending: true }),
+    ])
+
+    if (checkinsResult.error || mediaResult.error) {
+        console.error('[client-gallery] Error loading gallery:', {
+            checkins: checkinsResult.error,
+            media: mediaResult.error,
+        })
+        return {
+            success: false,
+            gallery: null,
+            error: 'No se pudo cargar tu galería.',
+        }
+    }
+
+    if (weightsResult.error) {
+        console.error('[client-gallery] Error loading weights:', weightsResult.error)
+    }
+
+    const checkins = (checkinsResult.data ?? []).map((checkin) => ({
+        ...checkin,
+        review: null,
+    })) as CheckinWithReview[]
+
+    return {
+        success: true,
+        gallery: {
+            coachId: client.coach_id,
+            clientId: client.id,
+            checkins,
+            media: mediaResult.data ?? [],
+            weights: weightsResult.error
+                ? []
+                : weightsResult.data ?? [],
+        },
+    }
 }
 
 export async function getClientReviewFormAction(checkinId: string): Promise<{
@@ -212,6 +335,7 @@ export async function getClientReviewFormAction(checkinId: string): Promise<{
             coach_id,
             client_id,
             status,
+            submitted_at,
             raw_payload,
             form_template_id,
             review_template_id,
@@ -241,23 +365,32 @@ export async function getClientReviewFormAction(checkinId: string): Promise<{
                 is_active,
                 created_at,
                 updated_at
+            ),
+            reviews (
+                id
+            ),
+            checkin_media (
+                id
             )
         `)
         .eq('id', checkinId)
         .eq('client_id', client.id)
         .eq('type', 'checkin')
-        .neq('status', 'archived')
         .single()
 
     if (error || !checkin) {
-        return { success: false, error: 'No se pudo abrir esta revision.' }
+        return { success: false, error: 'No se pudo abrir esta revisión.' }
+    }
+
+    if (checkin.status === 'archived' && !hasResponseEvidence(checkin)) {
+        return { success: false, error: 'Esta revisión no llegó a completarse.' }
     }
 
     const linkedCheckin = await ensureCheckinReviewTemplateLink(admin, checkin)
     const template = getTemplate(checkin)
     const reviewTemplate = getReviewTemplate(checkin) ?? (linkedCheckin.linked_review_template as ReviewTemplate | null)
     if (template.schema.length === 0 && !reviewTemplate) {
-        return { success: false, error: 'La plantilla de esta revision no tiene campos configurados.' }
+        return { success: false, error: 'La plantilla de esta revisión no tiene campos configurados.' }
     }
 
     const { data: metrics } = await admin

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { createClient } from '@/lib/supabase/client'
+import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
 import { CheckinWithReview } from '@/data/workspace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,14 +21,14 @@ import {
     Scale,
 } from 'lucide-react'
 
-interface MediaRow {
+export interface GalleryMediaRow {
     id: string
     checkin_id: string
     path: string
     taken_at: string | null
 }
 
-interface WeightRow {
+export interface GalleryWeightRow {
     metric_date: string
     weight_kg: number | string
 }
@@ -40,7 +41,7 @@ interface CheckinWeight {
 }
 
 /** Foto enriquecida con la info de su revisión */
-interface GalleryPhoto extends MediaRow {
+interface GalleryPhoto extends GalleryMediaRow {
     checkinLabel: string
     checkinType: 'checkin' | 'onboarding'
     checkinDateIso: string | null
@@ -56,6 +57,9 @@ interface GalleryTabProps {
     coachId: string
     clientId: string
     checkins: CheckinWithReview[]
+    initialMedia?: GalleryMediaRow[]
+    initialWeights?: GalleryWeightRow[]
+    viewerRole?: 'coach' | 'client'
 }
 
 const MAX_COMPARE = 4
@@ -91,7 +95,7 @@ function formatKg(kg: number): string {
  *  usa el peso medio/puntual registrado en el propio check-in. */
 function computeCheckinWeights(
     checkins: CheckinWithReview[],
-    weights: WeightRow[]
+    weights: GalleryWeightRow[]
 ): Map<string, CheckinWeight> {
     const result = new Map<string, CheckinWeight>()
     const parsed = weights
@@ -131,11 +135,20 @@ function computeCheckinWeights(
     return result
 }
 
-export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
-    const supabase = createClient()
-    const [media, setMedia] = useState<MediaRow[]>([])
-    const [weights, setWeights] = useState<WeightRow[]>([])
-    const [loading, setLoading] = useState(true)
+export function GalleryTab({
+    coachId,
+    clientId,
+    checkins,
+    initialMedia,
+    initialWeights,
+    viewerRole = 'coach',
+}: GalleryTabProps) {
+    const supabase = useMemo(() => createClient(), [])
+    const [media, setMedia] = useState<GalleryMediaRow[]>(initialMedia ?? [])
+    const [weights, setWeights] = useState<GalleryWeightRow[]>(initialWeights ?? [])
+    const [loading, setLoading] = useState(
+        initialMedia === undefined || initialWeights === undefined
+    )
     const [error, setError] = useState<string | null>(null)
 
     // Modo comparación
@@ -164,7 +177,7 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
             setError('Error al cargar la galería')
             return
         }
-        setMedia((data as MediaRow[]) ?? [])
+        setMedia((data as GalleryMediaRow[]) ?? [])
     }, [checkins, supabase])
 
     const fetchWeights = useCallback(async () => {
@@ -180,13 +193,25 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
             console.error('[GalleryTab] Weights fetch error:', fetchErr)
             return
         }
-        setWeights((data as WeightRow[]) ?? [])
+        setWeights((data as GalleryWeightRow[]) ?? [])
     }, [clientId, supabase])
 
     useEffect(() => {
+        if (initialMedia !== undefined) setMedia(initialMedia)
+        if (initialWeights !== undefined) setWeights(initialWeights)
+
+        if (initialMedia !== undefined && initialWeights !== undefined) {
+            setLoading(false)
+            return
+        }
+
         setLoading(true)
-        Promise.all([fetchMedia(), fetchWeights()]).finally(() => setLoading(false))
-    }, [fetchMedia, fetchWeights])
+        const pending = [
+            initialMedia === undefined ? fetchMedia() : Promise.resolve(),
+            initialWeights === undefined ? fetchWeights() : Promise.resolve(),
+        ]
+        Promise.all(pending).finally(() => setLoading(false))
+    }, [fetchMedia, fetchWeights, initialMedia, initialWeights])
 
     // Peso medio 7 días por revisión
     const checkinWeights = useMemo(
@@ -194,17 +219,9 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
         [checkins, weights]
     )
 
-    const getPublicUrl = useCallback(
-        (path: string): string => {
-            const { data } = supabase.storage.from('checkin-media').getPublicUrl(path)
-            return data.publicUrl
-        },
-        [supabase]
-    )
-
     // Secciones: una por revisión (más reciente primero), solo las que tienen fotos
     const sections: GallerySection[] = useMemo(() => {
-        const byCheckin = new Map<string, MediaRow[]>()
+        const byCheckin = new Map<string, GalleryMediaRow[]>()
         for (const m of media) {
             const list = byCheckin.get(m.checkin_id) ?? []
             list.push(m)
@@ -320,7 +337,9 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                 <Camera className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-sm font-medium text-muted-foreground">Sin fotos todavía</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Cuando el cliente suba fotos en sus revisiones, aparecerán aquí agrupadas.
+                    {viewerRole === 'client'
+                        ? 'Cuando subas fotos en tus revisiones, aparecerán aquí agrupadas.'
+                        : 'Cuando el cliente suba fotos en sus revisiones, aparecerán aquí agrupadas.'}
                 </p>
             </Card>
         )
@@ -345,11 +364,17 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                             <span className="text-xs text-muted-foreground">
                                 {selectedIds.length}/{MAX_COMPARE} seleccionadas
                             </span>
-                            <Button variant="ghost" size="sm" onClick={exitCompareMode}>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-10 sm:h-9"
+                                onClick={exitCompareMode}
+                            >
                                 Cancelar
                             </Button>
                             <Button
                                 size="sm"
+                                className="h-10 sm:h-9"
                                 disabled={selectedIds.length < 2}
                                 onClick={() => setCompareOpen(true)}
                             >
@@ -358,7 +383,12 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                             </Button>
                         </>
                     ) : (
-                        <Button variant="outline" size="sm" onClick={() => setCompareMode(true)}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 sm:h-9"
+                            onClick={() => setCompareMode(true)}
+                        >
                             <GitCompareArrows className="h-4 w-4 mr-1.5" />
                             Comparar
                         </Button>
@@ -376,9 +406,9 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
             {/* Secciones por revisión */}
             {sections.map((section) => (
                 <div key={section.checkin.id} className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                        <h4 className="text-sm font-medium">{section.label}</h4>
+                        <h4 className="min-w-0 text-sm font-medium">{section.label}</h4>
                         {section.checkin.type === 'onboarding' && (
                             <Badge variant="outline" className="text-[10px] px-1.5 h-4">
                                 Inicial
@@ -403,7 +433,7 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                                 </Badge>
                             )
                         })()}
-                        <Badge variant="secondary" className="text-[10px] px-1.5 h-4 ml-auto">
+                        <Badge variant="secondary" className="ml-auto h-4 px-1.5 text-[10px]">
                             {section.photos.length} {section.photos.length === 1 ? 'foto' : 'fotos'}
                         </Badge>
                     </div>
@@ -427,13 +457,12 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                                     }`}
                                     title={compareMode ? 'Seleccionar para comparar' : 'Ver foto'}
                                 >
-                                    <img
-                                        src={getPublicUrl(photo.path)}
+                                    <ProgressPhotoImage
+                                        path={photo.path}
                                         alt={photo.checkinLabel}
                                         className={`w-full h-full object-cover transition-transform ${
                                             compareMode ? '' : 'group-hover:scale-105'
                                         }`}
-                                        loading="lazy"
                                     />
                                     {compareMode && (
                                         <div
@@ -489,7 +518,7 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                                     <DialogPrimitive.Close asChild>
                                         <button
                                             type="button"
-                                            className="rounded-md p-2 text-white/80 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+                                            className="shrink-0 rounded-md p-2.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
                                             title="Cerrar (Esc)"
                                         >
                                             <X className="h-5 w-5" />
@@ -507,12 +536,15 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                                             <ChevronLeft className="h-6 w-6" />
                                         </button>
                                     )}
-                                    <img
+                                    <ProgressPhotoImage
                                         key={activePhoto.id}
-                                        src={getPublicUrl(activePhoto.path)}
+                                        path={activePhoto.path}
                                         alt={activePhoto.checkinLabel}
                                         className="max-h-full max-w-full object-contain rounded-md select-none"
+                                        size="preview"
+                                        loading="eager"
                                         draggable={false}
+                                        showErrorLabel
                                     />
                                     {flatPhotos.length > 1 && (
                                         <button
@@ -550,7 +582,7 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                             <DialogPrimitive.Close asChild>
                                 <button
                                     type="button"
-                                    className="rounded-md p-2 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                                    className="rounded-md p-2.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
                                     title="Cerrar (Esc)"
                                 >
                                     <X className="h-5 w-5" />
@@ -623,12 +655,15 @@ export function GalleryTab({ coachId, clientId, checkins }: GalleryTabProps) {
                                             )
                                         })()}
                                     </div>
-                                    <div className="flex-1 min-h-0 flex items-center justify-center p-2">
-                                        <img
-                                            src={getPublicUrl(photo.path)}
+                                    <div className="relative flex-1 min-h-0 flex items-center justify-center p-2">
+                                        <ProgressPhotoImage
+                                            path={photo.path}
                                             alt={photo.checkinLabel}
                                             className="max-h-full max-w-full object-contain select-none"
+                                            size="preview"
+                                            loading="eager"
                                             draggable={false}
+                                            showErrorLabel
                                         />
                                     </div>
                                 </div>

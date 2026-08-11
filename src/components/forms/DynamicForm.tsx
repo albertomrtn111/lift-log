@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { CheckCircle2, ClipboardCheck, Loader2 } from 'lucide-react'
 import { submitFormAction } from '@/data/form-submit'
 import { PhotoUploadBlock } from './PhotoUploadBlock'
 
@@ -54,6 +54,7 @@ interface DynamicFormProps {
     metrics?: MetricDefinition[]
     initialValues?: Record<string, unknown>
     embedded?: boolean
+    submissionMode?: 'submit' | 'update'
     redirectOnOnboarding?: boolean
     onSubmitted?: (result: { isOnboarding: boolean }) => void
     /**
@@ -77,6 +78,7 @@ export function DynamicForm({
     metrics = [],
     initialValues,
     embedded = false,
+    submissionMode = 'submit',
     redirectOnOnboarding = true,
     onSubmitted,
     photoConfig,
@@ -221,12 +223,18 @@ export function DynamicForm({
                     <CheckCircle2 className="h-8 w-8 text-success" />
                 </div>
                 <h2 className="text-xl font-semibold">
-                    {isOnboarding ? '¡Onboarding completado!' : '¡Formulario enviado!'}
+                    {isOnboarding
+                        ? '¡Onboarding completado!'
+                        : submissionMode === 'update'
+                            ? 'Cambios guardados'
+                            : '¡Formulario enviado!'}
                 </h2>
                 <p className="text-muted-foreground">
                     {isOnboarding
                         ? 'Tu onboarding ha sido completado correctamente. Redirigiendo a tu panel...'
-                        : 'Tus respuestas han sido guardadas correctamente. Tu entrenador las revisará pronto.'
+                        : submissionMode === 'update'
+                            ? 'Tus respuestas actualizadas se han enviado de nuevo a tu entrenador.'
+                            : 'Tus respuestas han sido guardadas correctamente. Tu entrenador las revisará pronto.'
                     }
                 </p>
                 {isOnboarding && (
@@ -239,6 +247,17 @@ export function DynamicForm({
                     <p className="text-xs text-muted-foreground">
                         Puedes cerrar esta ventana o volver a editar la revision mas adelante.
                     </p>
+                )}
+                {!embedded && !isOnboarding && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2"
+                        onClick={() => router.push(`/summary?tab=revisiones&checkin=${checkinId}`)}
+                    >
+                        <ClipboardCheck className="h-4 w-4" />
+                        Ver mis revisiones
+                    </Button>
                 )}
             </Card>
         )
@@ -254,7 +273,9 @@ export function DynamicForm({
                     <Badge variant="outline">{typeLabel}</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                    Completa todos los campos obligatorios y envía tus respuestas.
+                    {submissionMode === 'update'
+                        ? 'Revisa tus respuestas y guarda los cambios cuando termines.'
+                        : 'Completa todos los campos obligatorios y envía tus respuestas.'}
                 </p>
             </div>
 
@@ -337,7 +358,11 @@ export function DynamicForm({
 
             <Button type="submit" className="w-full" size="lg" disabled={submitting}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {templateType === 'checkin' ? 'Enviar revision' : 'Enviar respuestas'}
+                {submissionMode === 'update'
+                    ? 'Guardar cambios'
+                    : templateType === 'checkin'
+                        ? 'Enviar revisión'
+                        : 'Enviar respuestas'}
             </Button>
         </form>
     )

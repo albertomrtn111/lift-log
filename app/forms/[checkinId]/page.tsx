@@ -181,6 +181,7 @@ export default async function FormPage({ params }: PageProps) {
                     metrics={filteredMetrics}
                     initialValues={(checkin.raw_payload as Record<string, unknown>) ?? {}}
                     photoConfig={photoConfig}
+                    submissionMode={checkin.status === 'pending' ? 'submit' : 'update'}
                 />
             </div>
         </div>
