@@ -26,6 +26,7 @@ import { createClientAction } from './actions'
 import { sendInviteAction } from './invite-actions'
 import { useToast } from '@/hooks/use-toast'
 import { FormTemplate } from '@/types/forms'
+import { toLocalDateStr } from '@/lib/date-utils'
 
 interface AddClientButtonProps {
     coachId: string
@@ -53,7 +54,7 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
         full_name: '',
         email: '',
         phone: '',
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: toLocalDateStr(new Date()),
         checkin_frequency_days: 14,
         password: '',
         confirmPassword: '',
@@ -72,7 +73,7 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
             full_name: '',
             email: '',
             phone: '',
-            start_date: new Date().toISOString().split('T')[0],
+            start_date: toLocalDateStr(new Date()),
             checkin_frequency_days: 14,
             password: '',
             confirmPassword: '',
@@ -164,11 +165,11 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
                 return
             }
 
-            // Show auth warning if any
-            if ((result as any).authWarning) {
+            const warnings = [(result as any).billingWarning, (result as any).authWarning].filter(Boolean)
+            if (warnings.length > 0) {
                 toast({
                     title: 'Cliente creado con advertencia',
-                    description: (result as any).authWarning,
+                    description: warnings.join(' '),
                     variant: 'destructive',
                 })
             }

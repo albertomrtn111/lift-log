@@ -121,7 +121,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     }
 
     const sectionSwitcher = (
-        <div className="flex w-fit items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+        <div className="flex w-full sm:w-fit items-center gap-0.5 rounded-lg bg-muted/60 p-0.5 overflow-x-auto">
             {CHECKINS_SECTIONS.map(item => (
                 <button
                     key={item.value}
@@ -131,7 +131,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                         setSelectedCheckin(null)
                     }}
                     className={cn(
-                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+                        'flex flex-1 sm:flex-none min-h-[40px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all sm:min-h-0',
                         section === item.value
                             ? 'bg-background text-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
@@ -312,13 +312,13 @@ function CheckinRow({
     return (
         <div
             className={cn(
-                'p-4 cursor-pointer transition-colors hover:bg-muted/30 flex items-center justify-between',
+                'p-4 cursor-pointer transition-colors hover:bg-muted/30 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
                 isSelected && 'bg-primary/5'
             )}
             onClick={onClick}
         >
-            <div>
-                 <div className="flex items-center gap-2 mb-2">
+            <div className="min-w-0">
+                 <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
                     <Badge variant="outline" className={cn('text-xs', reviewMeta.className)}>
                         {reviewMeta.label}
@@ -337,7 +337,7 @@ function CheckinRow({
                 </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 justify-end shrink-0">
                 {canOpenReviewFlow(checkin) && (
                     <Button
                         variant="outline"

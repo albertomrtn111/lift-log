@@ -8,6 +8,8 @@ import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-plannin
 import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
 import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
 import { calculateCardioStructureTotals, summarizeCardioStructure } from "@/lib/cardio/structure";
+import { requireAIClient } from '@/lib/ai/access';
+import { dateSchema } from '@/lib/ai/planning-block';
 
 type TrainingDayRow = {
     id: string;
@@ -550,8 +552,10 @@ export async function generateWeeklyPlanningAIAction({
     prompt,
 }: GenerateWeeklyPlanningAIInput) {
     try {
+        await requireAIClient(clientId, coachId);
+        dateSchema.parse(weekStart);
         const trimmedPrompt = prompt.trim();
-        if (!trimmedPrompt) {
+        if (!trimmedPrompt || trimmedPrompt.length > 6000) {
             return { success: false, error: 'Escribe una instrucción para generar la planificación semanal.' };
         }
 
@@ -615,8 +619,13 @@ export async function applyWeeklyPlanningAIAction({
     proposal,
 }: ApplyWeeklyPlanningAIInput) {
     try {
+        await requireAIClient(clientId, coachId);
+        dateSchema.parse(weekStart);
         const weekStartDate = parseLocalDate(weekStart);
         const weekEndDate = getWeekEndFromStart(weekStart);
+        if (!Array.isArray(proposal.days) || proposal.days.length !== 7 || new Set(proposal.days.map(day => day.date)).size !== 7 || proposal.days.some(day => {
+            return !dateSchema.safeParse(day.date).success || day.date < weekStart || day.date > toLocalDateStr(weekEndDate) || day.newSessions.length > 2;
+        })) return { success: false, error: 'La propuesta debe contener exactamente los siete días de esta semana.' };
 
         const scheduleResult = await getWeeklySchedule(clientId, weekStartDate, weekEndDate, weekStartDate);
         if (!scheduleResult.success || !scheduleResult.data) {
@@ -646,6 +655,7 @@ export async function applyWeeklyPlanningAIAction({
 
                 const current = strengthByRef.get(assignment.ref);
                 if (!current) continue;
+                if (current.is_completed) continue;
                 if (current.date === day.date) continue;
 
                 if (current.id.startsWith('virtual-')) {

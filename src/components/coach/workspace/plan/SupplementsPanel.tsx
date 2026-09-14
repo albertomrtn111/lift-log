@@ -222,13 +222,13 @@ export function SupplementsPanel({ coachId, clientId }: SupplementsPanelProps) {
 
     return (
         <>
-            <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
+            <Card className="p-4 sm:p-6">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold text-lg flex items-center gap-2">
                         <FlaskConical className="h-5 w-5 text-primary" />
                         Suplementación activa
                     </h3>
-                    <Button size="sm" onClick={handleCreate}>
+                    <Button size="sm" onClick={handleCreate} className="w-full sm:w-auto">
                         <Plus className="h-4 w-4 mr-1" />
                         Añadir suplemento
                     </Button>

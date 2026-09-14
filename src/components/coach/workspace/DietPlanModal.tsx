@@ -514,24 +514,24 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
                                             {/* Items */}
                                             <div className="space-y-2">
                                                 {option.items.map((item, itemIndex) => (
-                                                    <div key={itemIndex} className="flex gap-2">
+                                                    <div key={itemIndex} className="flex flex-wrap gap-2">
                                                         <Input
                                                             value={item.quantity}
                                                             onChange={e => updateItem(mealLabel, optionIndex, itemIndex, { quantity: e.target.value })}
                                                             placeholder="Cantidad"
-                                                            className="w-20"
+                                                            className="w-20 shrink-0"
                                                         />
                                                         <Input
                                                             value={item.name}
                                                             onChange={e => updateItem(mealLabel, optionIndex, itemIndex, { name: e.target.value })}
                                                             placeholder="Alimento"
-                                                            className="flex-1"
+                                                            className="flex-1 min-w-[120px]"
                                                         />
                                                         <Input
                                                             value={item.note || ''}
                                                             onChange={e => updateItem(mealLabel, optionIndex, itemIndex, { note: e.target.value })}
                                                             placeholder="Nota"
-                                                            className="w-24"
+                                                            className="w-24 shrink-0"
                                                         />
                                                         <Button
                                                             variant="ghost"

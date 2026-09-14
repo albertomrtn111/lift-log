@@ -355,9 +355,16 @@ export async function buildNextIAAthleteContext({
         admin.from('athlete_baseline').select('birth_date, sex, height_cm, reference_weight_kg, reference_weight_date, vo2max, endurance_enabled').eq('client_id', clientId).maybeSingle(),
     ])
 
+    const failedSources = [
+        ['perfil atleta', athleteProfileResult], ['perfil coach', coachProfileResult], ['eventos', eventsResult],
+        ['check-ins', checkinsResult], ['programa', activeProgramResult], ['cardio', cardioResult],
+        ['métricas', metricsResult], ['adherencia nutrición', dietResult], ['registros fuerza', workoutResult],
+        ['calendario fuerza', strengthScheduleResult], ['umbrales', thresholdsResult], ['datos base', baselineResult],
+    ].filter(([, result]) => typeof result === 'object' && result && 'error' in result && result.error).map(([name]) => name)
     const latestCheckin = checkinsResult.data?.[0] || null
     // La review llega anidada en la query de checkins (antes: roundtrip extra)
-    const reviewResult = { data: (latestCheckin as any)?.reviews?.[0] ?? null }
+    const linkedReviews = (latestCheckin as any)?.reviews
+    const reviewResult = { data: Array.isArray(linkedReviews) ? linkedReviews[0] ?? null : linkedReviews ?? null }
 
     const activeProgram = activeProgramResult.data?.[0] || null
     let trainingDays: any[] = []
@@ -394,6 +401,7 @@ export async function buildNextIAAthleteContext({
     }
 
     return formatContextSections([
+        { title: 'Fecha y calidad de los datos', content: `Referencia: ${referenceDate}. Ventana reciente: ${fromDate} a ${referenceDate}. ${failedSources.length ? `No se pudieron consultar: ${failedSources.join(', ')}. No interpretes estas ausencias como falta de actividad; indícalas si afectan a la respuesta.` : 'Consultas completadas.'}` },
         {
             title: 'Atleta',
             content: `Nombre: ${client.full_name || client.email || 'Atleta'}\nEstado: ${client.status || 'sin estado'}`,

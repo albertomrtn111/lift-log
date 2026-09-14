@@ -171,11 +171,11 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
             {/* ============ Bloque: datos base del atleta ============ */}
             <Card className="overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-                    <div className="flex items-center gap-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                             <User className="h-4 w-4 text-primary" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <h3 className="font-semibold">Datos del atleta</h3>
                             <p className="text-xs text-muted-foreground">
                                 Referencias base: edad, antropometría y condición.
@@ -300,9 +300,9 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
 
                 {/* Modularidad: activar/desactivar el bloque de resistencia */}
                 <div className="flex items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                        <HeartPulse className="h-4 w-4 text-rose-500" />
-                        <div>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <HeartPulse className="h-4 w-4 shrink-0 text-rose-500" />
+                        <div className="min-w-0">
                             <p className="text-sm font-medium">Bloque de resistencia</p>
                             <p className="text-[11px] text-muted-foreground">
                                 Umbrales de FC, ritmo y zonas. Desactívalo para atletas de solo fuerza,
@@ -314,6 +314,7 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                         checked={enduranceEnabled}
                         onCheckedChange={handleToggleEndurance}
                         disabled={loading || isSaving}
+                        className="shrink-0"
                     />
                 </div>
             </Card>

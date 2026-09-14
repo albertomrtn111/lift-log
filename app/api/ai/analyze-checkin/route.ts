@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
-import { createClient } from '@/lib/supabase/server'
+import { requireAICoach } from '@/lib/ai/access'
 
 const RequestSchema = z.object({
     checkinId: z.string().uuid(),
@@ -9,12 +9,10 @@ const RequestSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-    const supabase = await createClient()
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    let supabase, coachId: string
+    try {
+        ;({ supabase, coachId } = await requireAICoach())
+    } catch {
         return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 })
     }
 
@@ -30,6 +28,7 @@ export async function POST(request: NextRequest) {
         .select('id')
         .eq('id', parsed.data.reviewId)
         .eq('checkin_id', parsed.data.checkinId)
+        .eq('coach_id', coachId)
         .single()
 
     if (reviewError || !review) {

@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
 import { CardioSessionForm } from './CardioSessionForm'
 import { PlanningAIWeeklyDialog } from './plan/PlanningAIWeeklyDialog'
+import { PlanningAIBlockDialog } from './plan/PlanningAIBlockDialog'
 import {
     Dialog,
     DialogContent,
@@ -578,9 +579,9 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
             <div className="flex flex-col h-full space-y-4 p-4">
                 {/* Controls */}
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <div>
-                            <h2 className="text-2xl font-bold capitalize">
+                            <h2 className="text-xl sm:text-2xl font-bold capitalize">
                                 {format(currentDate, 'MMMM yyyy', { locale: es })}
                             </h2>
                             <p className="text-sm text-muted-foreground">
@@ -626,6 +627,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             disabled={viewMode !== 'week'}
                             onApplied={fetchSchedule}
                         />
+                        <PlanningAIBlockDialog key={`${coachId}:${clientId}`} clientId={clientId} coachId={coachId} onApplied={fetchSchedule} />
                     </div>
                 </div>
 
@@ -1230,7 +1232,7 @@ function PlanningMetrics({ metrics, isMonthly, hasData }: {
     if (noStrength && noCardio && noHybrid) return null
 
     return (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {/* Fuerza */}
             <div className={cn(
                 "rounded-xl border px-4 py-3 flex flex-col gap-2.5",

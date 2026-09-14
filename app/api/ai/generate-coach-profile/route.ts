@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireAICoach } from '@/lib/ai/access'
 import {
     getCoachAIProfile,
     markOnboardingComplete,
@@ -10,15 +9,10 @@ import {
 import { generateCoachAIProfile } from '@/lib/ai/generate-coach-profile'
 
 export async function POST(request: NextRequest) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 })
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
+    let coachId: string
+    try {
+        ;({ coachId } = await requireAICoach())
+    } catch {
         return NextResponse.json({ success: false, error: 'Sin acceso de coach' }, { status: 403 })
     }
 

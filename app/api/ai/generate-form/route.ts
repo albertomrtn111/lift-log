@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
-import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireAICoach } from '@/lib/ai/access'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 
 const RequestSchema = z.object({
@@ -369,9 +368,9 @@ function parseAndValidate(rawText: string, expectedType: 'onboarding' | 'checkin
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const auth = await requireAICoach().catch(() => null)
+        if (!auth) return NextResponse.json({ error: 'Inicia sesión con una cuenta de entrenador.' }, { status: 401 })
+        const { supabase, coachId } = auth
         const coachContext = await getCoachAIProfileContext(coachId)
 
         const body = await req.json()
@@ -387,7 +386,7 @@ export async function POST(req: NextRequest) {
         const { type, prompt } = input.data
         const rawText = await callGemini(coachContext + buildFormPrompt(type, prompt), {
             maxOutputTokens: 8192,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
             responseMimeType: 'application/json',
         })
         const form = parseAndValidate(rawText, type)

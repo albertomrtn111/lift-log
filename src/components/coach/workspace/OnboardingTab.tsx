@@ -160,24 +160,24 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
         <div className="space-y-4">
             {/* Header */}
             <Card className="p-5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
                             <ClipboardList className="h-5 w-5 text-blue-400" />
                         </div>
-                        <div>
-                            <h3 className="font-semibold">
+                        <div className="min-w-0">
+                            <h3 className="font-semibold break-words">
                                 {checkin.form_templates?.title || 'Onboarding'}
                             </h3>
                             {submittedDate && (
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                                    <Calendar className="h-3 w-3" />
-                                    Completado el {submittedDate}
+                                <div className="flex items-start gap-1.5 text-xs text-muted-foreground mt-0.5">
+                                    <Calendar className="h-3 w-3 shrink-0 mt-0.5" />
+                                    <span className="break-words">Completado el {submittedDate}</span>
                                 </div>
                             )}
                         </div>
                     </div>
-                    <Badge variant="outline" className="text-green-400 border-green-400/30 bg-green-400/5">
+                    <Badge variant="outline" className="shrink-0 whitespace-nowrap text-green-400 border-green-400/30 bg-green-400/5">
                         Completado
                     </Badge>
                 </div>

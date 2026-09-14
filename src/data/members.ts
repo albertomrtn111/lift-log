@@ -134,6 +134,9 @@ export interface CreateClientInput {
     phone?: string
     start_date: string
     checkin_frequency_days: number
+    payment_amount?: number
+    payment_day?: number
+    payment_notes?: string
 }
 
 export interface CreateClientResult {
@@ -188,13 +191,39 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
     }
 
     // Parse the JSONB result
-    const clientData = data as Client | null
+    let clientData = data as Client | null
     if (!clientData) {
         return {
             success: false,
             error: 'No se pudo crear el cliente',
             details: 'RPC returned null'
         }
+    }
+
+    // The legacy activation RPC only accepts identity/schedule fields. Persist
+    // billing fields explicitly so they are not silently discarded at signup.
+    const billingUpdates: UpdateClientInput = {}
+    if (input.payment_amount !== undefined) billingUpdates.payment_amount = input.payment_amount
+    if (input.payment_day !== undefined) billingUpdates.payment_day = input.payment_day
+    if (input.payment_notes !== undefined) billingUpdates.payment_notes = input.payment_notes
+
+    if (Object.keys(billingUpdates).length > 0) {
+        const { data: updatedClient, error: billingError } = await supabase
+            .from('clients')
+            .update({ ...billingUpdates, updated_at: new Date().toISOString() })
+            .eq('id', clientData.id)
+            .eq('coach_id', input.coach_id)
+            .select()
+            .single()
+
+        if (billingError || !updatedClient) {
+            return {
+                success: false,
+                error: 'El cliente se creó, pero no se pudo guardar su información de pago.',
+                details: billingError?.message,
+            }
+        }
+        clientData = updatedClient as Client
     }
 
     return { success: true, client: clientData }

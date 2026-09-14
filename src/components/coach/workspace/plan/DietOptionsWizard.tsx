@@ -731,12 +731,12 @@ function ItemEditor({
     canRemove: boolean
 }) {
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
             <Select
                 value={item.item_type}
                 onValueChange={(v) => onUpdate({ ...item, item_type: v as ItemType })}
             >
-                <SelectTrigger className="w-24">
+                <SelectTrigger className="w-24 shrink-0">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -751,21 +751,21 @@ function ItemEditor({
                 value={item.quantity_value ?? ''}
                 onChange={(e) => onUpdate({ ...item, quantity_value: e.target.value ? Number(e.target.value) : null })}
                 placeholder="Cant"
-                className="w-20"
+                className="w-20 shrink-0"
             />
 
             <Input
                 value={item.quantity_unit || ''}
                 onChange={(e) => onUpdate({ ...item, quantity_unit: e.target.value })}
                 placeholder="Ud"
-                className="w-16"
+                className="w-16 shrink-0"
             />
 
             <Input
                 value={item.name}
                 onChange={(e) => onUpdate({ ...item, name: e.target.value })}
                 placeholder="Nombre del alimento"
-                className="flex-1"
+                className="flex-1 min-w-[140px]"
             />
 
             {canRemove && (

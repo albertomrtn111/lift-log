@@ -136,7 +136,11 @@ function getTrend(
     firstTopSet: TrainingProgressAnalysisSet | null,
     latestTopSet: TrainingProgressAnalysisSet | null,
 ) {
-    if (!firstTopSet || !latestTopSet) return 'mixed' as const
+    if (!firstTopSet || !latestTopSet || firstTopSet === latestTopSet) return 'mixed' as const
+    if (firstTopSet.weightKg == null || latestTopSet.weightKg == null || firstTopSet.reps == null || latestTopSet.reps == null) return 'mixed' as const
+    // More load with fewer reps (or a different effort) is not evidence of improvement.
+    if (firstTopSet.rir != null && latestTopSet.rir != null && Math.abs(firstTopSet.rir - latestTopSet.rir) > 1) return 'mixed' as const
+    if ((latestTopSet.weightKg - firstTopSet.weightKg) * (latestTopSet.reps - firstTopSet.reps) < 0) return 'mixed' as const
 
     const firstWeight = firstTopSet.weightKg ?? 0
     const latestWeight = latestTopSet.weightKg ?? 0
@@ -152,13 +156,14 @@ function getTrend(
 }
 
 function summarizeExercise(dayName: string, exercise: TrainingProgressAnalysisExercise): ExerciseSummary {
+    const recordedSets = (week: number) => (exercise.setsByWeek[week] || []).filter(set => set.completed && (set.weightKg != null || set.reps != null))
     const trackedWeeks = Object.keys(exercise.setsByWeek)
         .map(Number)
-        .filter((week) => (exercise.setsByWeek[week] || []).length > 0)
+        .filter((week) => recordedSets(week).length > 0)
         .sort((a, b) => a - b)
 
     const weeks = trackedWeeks.map((week) => {
-        const sets = exercise.setsByWeek[week] || []
+        const sets = recordedSets(week)
         const topSet = getTopSet(sets)
         const totalVolume = sets.reduce((sum, set) => {
             if (set.weightKg == null || set.reps == null) return sum
@@ -182,8 +187,8 @@ function summarizeExercise(dayName: string, exercise: TrainingProgressAnalysisEx
 
     const firstWeek = trackedWeeks[0]
     const latestWeek = trackedWeeks[trackedWeeks.length - 1]
-    const firstTopSet = firstWeek ? getTopSet(exercise.setsByWeek[firstWeek] || []) : null
-    const latestTopSet = latestWeek ? getTopSet(exercise.setsByWeek[latestWeek] || []) : null
+    const firstTopSet = firstWeek ? getTopSet(recordedSets(firstWeek)) : null
+    const latestTopSet = latestWeek ? getTopSet(recordedSets(latestWeek)) : null
     const trend = getTrend(firstTopSet, latestTopSet)
 
     const bestWeightKg = weeks.reduce<number | null>((best, week) => {
@@ -305,6 +310,7 @@ Reglas:
 - Sé concreto, profesional y útil para un entrenador.
 - No inventes datos que no estén presentes.
 - Si faltan datos, dilo claramente.
+- Compara series completadas a repeticiones y RIR similares; una subida de peso con menos repeticiones no demuestra mejora por sí sola. Una sola semana no demuestra estancamiento. Distingue una descarga programada de un retroceso.
 - Máximo 4 items en progressed_exercises y stalled_exercises.
 - Máximo 5 items en warnings_or_inconsistencies y key_findings.
 - Máximo 3 recomendaciones.
@@ -320,7 +326,8 @@ export async function analyzeTrainingProgress(
 
         const raw = await callGemini(prompt, {
             maxOutputTokens: 8192,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
             temperature: 0.4,
         })
 
