@@ -3,50 +3,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { generateMonthlyRecords } from '@/data/billing'
 
-export async function generateMonthlyRecordsAction(coachId: string, year: number, month: number) {
-    const supabase = await createClient()
-
-    const lastDayOfMonth = new Date(year, month, 0).toISOString().split('T')[0]
-
-    const { data: clients, error: clientsErr } = await supabase
-        .from('clients')
-        .select('id, payment_amount')
-        .eq('coach_id', coachId)
-        .eq('status', 'active')
-        .lte('start_date', lastDayOfMonth)
-        .not('payment_amount', 'is', null)
-
-    if (clientsErr || !clients || clients.length === 0) {
-        return { success: true, generatedCount: 0 }
+export async function generateMonthlyRecordsAction(requestedCoachId: string, year: number, month: number) {
+    try {
+        const { coachId } = await requireActiveCoachId(requestedCoachId)
+        return generateMonthlyRecords(coachId, year, month)
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'No autorizado.' }
     }
-
-    const recordsToInsert = clients
-        .filter(c => Number(c.payment_amount) > 0)
-        .map(c => ({
-            coach_id: coachId,
-            client_id: c.id,
-            year,
-            month,
-            amount: c.payment_amount,
-            status: 'pending'
-        }))
-
-    if (recordsToInsert.length === 0) {
-        return { success: true, generatedCount: 0 }
-    }
-
-    const { error: insertErr } = await supabase
-        .from('payment_records')
-        .upsert(recordsToInsert, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
-
-    if (insertErr) {
-        console.error('Error generating monthly records:', insertErr)
-        return { success: false, error: insertErr.message }
-    }
-
-    revalidatePath('/coach/billing')
-    return { success: true, generatedCount: recordsToInsert.length }
 }
 
 export async function updatePaymentStatusAction(

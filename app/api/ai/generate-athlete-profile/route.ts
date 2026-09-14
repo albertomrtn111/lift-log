@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { z } from 'zod'
+import { requireAIClient } from '@/lib/ai/access'
 import {
     getAthleteAIProfile,
     markAthleteProfileOnboardingComplete,
@@ -9,24 +9,24 @@ import {
 } from '@/data/athlete-ai-profile'
 import { generateAthleteAIProfile } from '@/lib/ai/generate-athlete-profile'
 
+const RequestSchema = z.object({
+    clientId: z.string().uuid(),
+})
+
 export async function POST(request: NextRequest) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-        return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 })
-    }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) {
-        return NextResponse.json({ success: false, error: 'Sin acceso de coach' }, { status: 403 })
-    }
-
     const body = await request.json().catch(() => null)
-    const clientId = typeof body?.clientId === 'string' ? body.clientId : null
+    const parsed = RequestSchema.safeParse(body)
 
-    if (!clientId) {
-        return NextResponse.json({ success: false, error: 'Falta el cliente.' }, { status: 400 })
+    if (!parsed.success) {
+        return NextResponse.json({ success: false, error: 'Cliente inválido.' }, { status: 400 })
+    }
+
+    const clientId = parsed.data.clientId
+    let coachId: string
+    try {
+        ;({ coachId } = await requireAIClient(clientId))
+    } catch {
+        return NextResponse.json({ success: false, error: 'Sin acceso a este atleta.' }, { status: 403 })
     }
 
     const profile = await getAthleteAIProfile(coachId, clientId)

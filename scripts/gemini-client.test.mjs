@@ -10,7 +10,7 @@ const originalEnv = {
 }
 
 process.env.GEMINI_API_KEY = 'test-key'
-process.env.GEMINI_MODEL = 'gemini-3.5-flash'
+process.env.GEMINI_MODEL = 'gemini-3.7-flash'
 process.env.GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite'
 process.env.GEMINI_RETRY_BASE_MS = '0'
 
@@ -41,8 +41,8 @@ test('callGemini retries a transient primary failure and falls back to Flash-Lit
 
   assert.equal(result, 'OK')
   assert.equal(urls.length, 3)
-  assert.match(urls[0], /models\/gemini-3\.5-flash:generateContent/)
-  assert.match(urls[1], /models\/gemini-3\.5-flash:generateContent/)
+  assert.match(urls[0], /models\/gemini-3\.7-flash:generateContent/)
+  assert.match(urls[1], /models\/gemini-3\.7-flash:generateContent/)
   assert.match(urls[2], /models\/gemini-3\.1-flash-lite:generateContent/)
 })
 
@@ -83,6 +83,38 @@ test('streamGemini falls back and returns parsed SSE text', async () => {
   assert.equal(urls.length, 3)
   assert.match(urls[2], /models\/gemini-3\.1-flash-lite:streamGenerateContent/)
   assert.match(urls[2], /alt=sse/)
+})
+
+test('Gemini 3.7 uses supported reasoning levels and keeps credentials out of the URL', async () => {
+  globalThis.fetch = async (url, init) => {
+    assert.ok(!String(url).includes('test-key'))
+    assert.equal(init.headers['x-goog-api-key'], 'test-key')
+    const body = JSON.parse(init.body)
+    assert.deepEqual(body.generationConfig.thinkingConfig, { thinkingLevel: 'high' })
+    assert.equal(body.generationConfig.responseMimeType, 'application/json')
+    assert.ok(body.systemInstruction.parts[0].text.includes('entrenador'))
+    assert.ok(init.signal)
+    return successResponse('{}')
+  }
+  await callGemini('JSON', { thinkingLevel: 'high', responseMimeType: 'application/json' })
+})
+
+test('text joins all non-thought parts, and a truncated candidate is not accepted', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'reasoning', thought: true }, { text: 'Hola ' }, { text: 'coach' }] } }] }))
+  assert.equal(await callGemini('Hola'), 'Hola coach')
+  globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"incomplete":' }] } }] }))
+  await assert.rejects(() => callGemini('Hola'), /incompleta/)
+})
+
+test('streaming flushes a final event without newline and filters thought parts', async () => {
+  const encoded = new TextEncoder().encode('data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"secret"},{"text":"Hola "},{"text":"éxito"}]}}]}')
+  globalThis.fetch = async () => new Response(new ReadableStream({ start(controller) { for (let i = 0; i < encoded.length; i += 3) controller.enqueue(encoded.slice(i, i + 3)); controller.close() } }))
+  assert.equal(await readTextStream(await streamGemini('Hola')), 'Hola éxito')
+})
+
+test('provider errors in an SSE stream fail rather than silently persisting a partial reply', async () => {
+  globalThis.fetch = async () => new Response('data: {"error":{"code":503}}\n\n')
+  await assert.rejects(async () => readTextStream(await streamGemini('Hola')), /interrumpió/)
 })
 
 function errorResponse(status, message) {

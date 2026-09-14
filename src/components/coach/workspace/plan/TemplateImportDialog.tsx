@@ -90,10 +90,10 @@ export function TemplateImportDialog({ open, onOpenChange, onSelect }: TemplateI
                                     onOpenChange(false)
                                 }}
                             >
-                                <div className="space-y-1">
+                                <div className="space-y-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <Dumbbell className="h-4 w-4 text-primary" />
-                                        <h4 className="font-semibold">{template.name}</h4>
+                                        <Dumbbell className="h-4 w-4 text-primary shrink-0" />
+                                        <h4 className="font-semibold break-words">{template.name}</h4>
                                     </div>
                                     {template.description && (
                                         <p className="text-xs text-muted-foreground line-clamp-1">{template.description}</p>

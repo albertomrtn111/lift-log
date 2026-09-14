@@ -59,7 +59,7 @@ export function TrainingProgressAIAnalysisCard({
                             <MessageSquareQuote className="h-4 w-4 text-primary" />
                             Instrucción del coach
                         </div>
-                        <p className="text-sm text-muted-foreground">{coachInstruction}</p>
+                        <p className="text-sm text-muted-foreground break-words">{coachInstruction}</p>
                     </div>
                 )}
 
@@ -122,7 +122,7 @@ function Section({ title, content }: { title: string; content: string }) {
     return (
         <div className="rounded-xl border bg-background/80 p-4">
             <div className="text-sm font-semibold mb-2">{title}</div>
-            <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">{content || 'Sin contenido.'}</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-line break-words leading-relaxed">{content || 'Sin contenido.'}</p>
         </div>
     )
 }
@@ -153,8 +153,8 @@ function ExerciseList({
             <div className="space-y-3">
                 {items.length > 0 ? items.map((item) => (
                     <div key={`${item.exercise}-${item.insight}`} className="rounded-lg bg-background/75 p-3">
-                        <p className="text-sm font-medium">{item.exercise}</p>
-                        <p className="text-sm text-muted-foreground mt-1">{item.insight}</p>
+                        <p className="text-sm font-medium break-words">{item.exercise}</p>
+                        <p className="text-sm text-muted-foreground mt-1 break-words">{item.insight}</p>
                     </div>
                 )) : (
                     <p className="text-sm text-muted-foreground">{emptyLabel}</p>
@@ -184,7 +184,7 @@ function StringList({
             {items.length > 0 ? (
                 <div className="space-y-2">
                     {items.map((item) => (
-                        <div key={item} className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                        <div key={item} className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground break-words">
                             {item}
                         </div>
                     ))}

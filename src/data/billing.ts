@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { PaymentRecord, BillingDashboardData, YearTotal, BillingClientOption } from '@/types/billing'
+import { getLastDayOfBillingMonth } from '@/lib/billing-period'
 
 // Re-export types so existing imports from '@/data/billing' keep working
 export type { PaymentRecord, BillingSummary, YearTotal, BillingDashboardData, BillingClientOption } from '@/types/billing'
@@ -173,7 +174,7 @@ export async function listBillingClients(coachId: string): Promise<BillingClient
 export async function generateMonthlyRecords(coachId: string, year: number, month: number) {
     const supabase = await createClient()
 
-    const lastDayOfMonth = new Date(year, month, 0).toISOString().split('T')[0]
+    const lastDayOfMonth = getLastDayOfBillingMonth(year, month)
 
     const { data: clients, error: clientsErr } = await supabase
         .from('clients')
@@ -183,7 +184,12 @@ export async function generateMonthlyRecords(coachId: string, year: number, mont
         .lte('start_date', lastDayOfMonth)
         .not('payment_amount', 'is', null)
 
-    if (clientsErr || !clients || clients.length === 0) {
+    if (clientsErr) {
+        console.error('Error loading clients for monthly billing:', clientsErr)
+        return { success: false, error: clientsErr.message }
+    }
+
+    if (!clients || clients.length === 0) {
         return { success: true, generatedCount: 0 }
     }
 

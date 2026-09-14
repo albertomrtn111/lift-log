@@ -160,10 +160,10 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
 
     return (
         <>
-            <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
+            <Card className="p-4 sm:p-6">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold text-lg">Dieta por opciones</h3>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                         <AINutritionDialog
                             coachId={coachId}
                             clientId={clientId}

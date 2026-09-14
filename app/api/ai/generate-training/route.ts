@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import { requireAICoach, requireAIClient } from '@/lib/ai/access'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
@@ -166,7 +167,8 @@ Reglas estrictas:
 - "changes": array vacío [] para generación nueva
 - "muscle_group": DEBE ser exactamente uno de: hombro, pecho, espalda, abdomen, cuádriceps, femorales, gemelos, tríceps, bíceps, glúteo, aductores, otros
 - Organiza ejercicios de mayor a menor demanda neuromuscular dentro de cada día
-- Incluye al menos 4 ejercicios por día
+- Ajusta el número de ejercicios a la disponibilidad y objetivo, sin imponer un mínimo artificial.
+- Detalla en notes cómo progresar cargas o repeticiones entre semanas y cuándo reducirlas según recuperación; no inventes cargas absolutas sin registros.
 - Usa los eventos programados para ubicar el punto de la planificación. Si hay una carrera, test o evento prioritario cercano, ajusta volumen, intensidad y selección de ejercicios para llegar bien a ese evento.
 - Usa español para todos los textos`
 }
@@ -328,9 +330,9 @@ function parseAndValidate(rawText: string): AITrainingProposal {
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const auth = await requireAICoach().catch(() => null)
+        if (!auth) return NextResponse.json({ error: 'Inicia sesión con una cuenta de entrenador.' }, { status: 401 })
+        const { supabase, coachId } = auth
         const coachContext = await getCoachAIProfileContext(coachId)
 
         const body = await req.json()
@@ -344,6 +346,9 @@ export async function POST(req: NextRequest) {
         }
 
         const { clientId, mode, prompt, existingProgram } = input.data
+        if (!await requireAIClient(clientId, coachId).catch(() => null)) {
+            return NextResponse.json({ error: 'No tienes acceso a este atleta.' }, { status: 403 })
+        }
         const [athleteContext, upcomingEvents] = await Promise.all([
             getAthleteProfileContextForCoach(coachId, clientId),
             getUpcomingTrainingEvents(supabase, clientId, coachId),
@@ -357,7 +362,8 @@ export async function POST(req: NextRequest) {
 
         const rawText = await callGemini(fullPrompt, {
             maxOutputTokens: 16384,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
         })
 
         const proposal = parseAndValidate(rawText)

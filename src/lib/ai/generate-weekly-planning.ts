@@ -522,7 +522,7 @@ export async function generateWeeklyPlanningProposal(
 ): Promise<{ success: boolean; proposal?: WeeklyPlanningAIProposal; error?: string }> {
     try {
         const availableStrength: AvailableStrengthSessionRef[] = input.items
-            .filter((item): item is Extract<UnifiedCalendarItem, { type: 'strength' }> => item.type === 'strength')
+            .filter((item): item is Extract<UnifiedCalendarItem, { type: 'strength' }> => item.type === 'strength' && !item.is_completed)
             .map((item) => ({
                 ref: getStrengthRef(item),
                 title: getStrengthTitle(item),
@@ -535,7 +535,8 @@ export async function generateWeeklyPlanningProposal(
 
         const raw = await callGemini(prompt, {
             maxOutputTokens: 8192,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
             temperature: 0.4,
         })
 
@@ -552,6 +553,12 @@ export async function generateWeeklyPlanningProposal(
         if (!validated.success) {
             console.error('[generate-weekly-planning] Validation error:', validated.error.flatten())
             return { success: false, error: 'La propuesta generada no tiene el formato esperado. Inténtalo de nuevo.' }
+        }
+
+        const dates = getWeekDates(input.weekStart, input.weekEnd)
+        if (validated.data.days.length !== dates.length || new Set(validated.data.days.map(day => day.date)).size !== dates.length ||
+            validated.data.days.some(day => !dates.includes(day.date) || day.cardioSessions.length + day.hybridSessions.length > 2)) {
+            return { success: false, error: 'La IA devolvió una semana incompleta, fechas incorrectas o demasiadas sesiones. Inténtalo de nuevo.' }
         }
 
         return {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
+import { requireAICoach, requireAIClient } from '@/lib/ai/access'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
@@ -362,9 +363,9 @@ function parseAndValidate(rawText: string, type: 'macros' | 'options_diet'): AIN
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        const coachId = user ? await getCoachIdForUser(user.id) : null
+        const auth = await requireAICoach().catch(() => null)
+        if (!auth) return NextResponse.json({ error: 'Inicia sesión con una cuenta de entrenador.' }, { status: 401 })
+        const { supabase, coachId } = auth
         const coachContext = await getCoachAIProfileContext(coachId)
 
         const body = await req.json()
@@ -378,6 +379,9 @@ export async function POST(req: NextRequest) {
         }
 
         const { clientId, type, mode, objective, prompt, context } = input.data
+        if (!await requireAIClient(clientId, coachId).catch(() => null)) {
+            return NextResponse.json({ error: 'No tienes acceso a este atleta.' }, { status: 403 })
+        }
 
         const weightSummary = buildWeightSummary(context.weightHistory)
         const macrosSummary = buildCurrentMacrosSummary(context.activeMacroPlan ?? null)
@@ -391,7 +395,8 @@ export async function POST(req: NextRequest) {
 
         const rawText = await callGemini(fullPrompt, {
             maxOutputTokens: 16384,
-            thinkingBudget: 0,   // disable thinking tokens — reserved for JSON formatting tasks
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
         })
         const proposal = parseAndValidate(rawText, type)
 

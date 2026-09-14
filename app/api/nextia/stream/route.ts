@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         const geminiStream = await streamGemini(buildNextIAPrompt(content, athleteContext), {
             temperature: 0.4,
             maxOutputTokens: 2048,
-            thinkingBudget: 0,
+            thinkingLevel: 'low',
         })
 
         // Acumular el texto completo mientras se emite, y persistir al terminar

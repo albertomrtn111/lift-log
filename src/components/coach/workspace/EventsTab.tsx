@@ -209,7 +209,7 @@ function EventCard({
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="truncate text-sm font-semibold sm:text-base">{event.title}</h3>
+                                <h3 className="min-w-0 truncate text-sm font-semibold sm:text-base">{event.title}</h3>
                                 <PriorityBadge priority={event.priority} />
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -225,7 +225,7 @@ function EventCard({
                                 )}
                             </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
                             <StatusBadge status={event.status} />
                             <span className={cn(
                                 'min-w-[4.75rem] text-right text-xs font-semibold',
@@ -235,7 +235,7 @@ function EventCard({
                             </span>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8">
                                         <MoreHorizontal className="h-4 w-4" />
                                     </Button>
                                 </DropdownMenuTrigger>
@@ -383,7 +383,7 @@ export function EventsTab({ coachId, clientId, events, onRefresh }: EventsTabPro
             <div className="grid gap-3 sm:grid-cols-3">
                 <Card className="p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Próximo evento</p>
-                    <p className="mt-2 text-lg font-semibold">{nextEvent ? nextEvent.title : 'Sin fecha'}</p>
+                    <p className="mt-2 text-lg font-semibold break-words">{nextEvent ? nextEvent.title : 'Sin fecha'}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                         {nextEvent ? formatDaysUntil(getDaysUntil(nextEvent.event_date)) : 'Crea una carrera o test objetivo'}
                     </p>

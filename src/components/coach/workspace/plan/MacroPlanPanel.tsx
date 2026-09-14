@@ -271,10 +271,10 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
 
     return (
         <>
-            <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
+            <Card className="p-4 sm:p-6">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold text-lg">Macros activos</h3>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                         <AINutritionDialog
                             coachId={coachId}
                             clientId={clientId}
@@ -592,7 +592,7 @@ function ActivePlanView({ plan }: { plan: MacroPlan }) {
 
     return (
         <>
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <Badge variant="secondary" className="bg-success/10 text-success border-0">
                     Activo desde: {format(new Date(plan.effective_from), 'dd MMM yyyy', { locale: es })}
                 </Badge>

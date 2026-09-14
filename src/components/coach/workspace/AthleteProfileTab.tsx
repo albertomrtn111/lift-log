@@ -396,8 +396,8 @@ function ReviewRows({ form }: { form: AthleteProfileAnswers }) {
                             i % 2 === 0 ? 'bg-background' : 'bg-muted/40',
                         )}
                     >
-                        <span className="text-muted-foreground w-40 shrink-0 font-medium">{row.label}</span>
-                        <span className="text-foreground line-clamp-3">{row.value}</span>
+                        <span className="text-muted-foreground w-28 shrink-0 font-medium sm:w-40">{row.label}</span>
+                        <span className="min-w-0 break-words text-foreground line-clamp-3">{row.value}</span>
                     </div>
                 ))}
             </div>

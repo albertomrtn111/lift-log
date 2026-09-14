@@ -264,11 +264,11 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
     return (
         <Card className="overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-                <div className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-500/10">
+                <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/10">
                         <HeartPulse className="h-4 w-4 text-rose-500" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-semibold">Umbrales y zonas</h3>
                         <p className="text-xs text-muted-foreground">
                             La base para interpretar intensidad: FC, ritmo y potencia.

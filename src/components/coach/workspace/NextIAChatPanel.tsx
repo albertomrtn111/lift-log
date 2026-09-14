@@ -208,7 +208,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                                 >
                                     <div
                                         className={cn(
-                                            'min-w-0 max-w-[92%] break-words rounded-2xl px-3 py-2 text-sm leading-6 shadow-sm',
+                                            'min-w-0 max-w-[85%] break-words rounded-2xl px-3 py-2 text-sm leading-6 shadow-sm sm:max-w-[92%]',
                                             isUser
                                                 ? 'rounded-br-md bg-primary text-primary-foreground'
                                                 : 'rounded-bl-md border bg-background text-foreground'
@@ -220,7 +220,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                                             <NextIAMarkdown content={message.content} />
                                         )}
                                     </div>
-                                    <span className="mt-1 px-1 text-[10px] text-muted-foreground">
+                                    <span className="mt-1 px-1 text-[11px] text-muted-foreground sm:text-[10px]">
                                         {isUser ? 'Coach' : 'NextIA'} · {formatTime(message.created_at)}
                                     </span>
                                 </div>
@@ -228,11 +228,11 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                         })}
                         {streamingText !== null && streamingText.length > 0 ? (
                             <div className="flex min-w-0 max-w-full flex-col items-start">
-                                <div className="min-w-0 max-w-[92%] break-words rounded-2xl rounded-bl-md border bg-background px-3 py-2 text-sm leading-6 text-foreground shadow-sm">
+                                <div className="min-w-0 max-w-[85%] break-words rounded-2xl rounded-bl-md border bg-background px-3 py-2 text-sm leading-6 text-foreground shadow-sm sm:max-w-[92%]">
                                     <NextIAMarkdown content={streamingText} />
                                     <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-primary align-middle" />
                                 </div>
-                                <span className="mt-1 px-1 text-[10px] text-muted-foreground">NextIA · escribiendo…</span>
+                                <span className="mt-1 px-1 text-[11px] text-muted-foreground sm:text-[10px]">NextIA · escribiendo…</span>
                             </div>
                         ) : isPending ? (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -270,7 +270,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground sm:text-[10px]">
                     <MessageSquareText className="h-3 w-3" />
                     Privado del coach
                 </div>

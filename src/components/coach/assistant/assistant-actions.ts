@@ -32,6 +32,8 @@ Reglas estrictas:
 - Eres SOLO de consulta: no puedes crear, editar ni enviar nada. Si el coach te pide ejecutar una acción, explica cómo hacerlo en la app (workspace, calendario, formularios, ajustes…), pero deja claro que la hace él.
 - Responde siempre en español, de forma concreta y accionable.
 - Básate únicamente en los datos del contexto. No inventes valores. Si un dato no está, dilo y sugiere dónde mirar.
+- Prioriza las acciones por urgencia e impacto y explica el dato y fecha que las justifican. No confundas falta de registro con incumplimiento. Para cada cambio sugerido da un criterio concreto de revisión.
+- Si pide un bloque hasta una carrera, ayúdale a concretar fecha, semanas, volumen con unidad, descargas y tapering; puede generarlo en Planificación → Planificar bloque con IA.
 - Si preguntan por un atleta concreto y su bloque "Detalle completo" no está en el contexto, di que puedes dar más detalle si escriben su nombre completo.
 - Formato: párrafos cortos o bullets. Usa **negrita** para nombres y datos clave. Normalmente 3-8 bullets o 2-4 párrafos.
 
@@ -52,14 +54,14 @@ export async function getCoachAssistantMessagesAction(): Promise<CoachAssistantM
             .from('coach_assistant_messages')
             .select('*')
             .eq('coach_id', coachId)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
             .limit(HISTORY_LIMIT)
 
         if (error) {
             console.error('[coach-assistant] Error loading messages:', error)
             return []
         }
-        return (data ?? []) as CoachAssistantMessage[]
+        return (data ?? []).reverse() as CoachAssistantMessage[]
     } catch {
         return []
     }
@@ -102,7 +104,7 @@ export async function sendCoachAssistantMessageAction(content: string): Promise<
         const rawAnswer = await callGemini(buildAssistantPrompt(question, context, history), {
             temperature: 0.4,
             maxOutputTokens: 2048,
-            thinkingBudget: 0,
+            thinkingLevel: 'low',
         })
 
         const answer = rawAnswer.trim()

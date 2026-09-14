@@ -8,6 +8,7 @@ import { getAppUrl } from '@/lib/app-url'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
+import { getBillingPeriodFromDate } from '@/lib/billing-period'
 
 export async function deactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'inactive')
@@ -57,6 +58,29 @@ export async function updateClientAction(clientId: string, data: UpdateClientInp
     const result = await updateClientDetails(clientId, clientUpdates)
 
     if (result.success) {
+        if (result.client && Number(result.client.payment_amount ?? 0) > 0) {
+            try {
+                const period = getBillingPeriodFromDate(result.client.start_date)
+                const { error: billingError } = await supabase
+                    .from('payment_records')
+                    .upsert({
+                        coach_id: coachId,
+                        client_id: clientId,
+                        year: period.year,
+                        month: period.month,
+                        amount: result.client.payment_amount,
+                        status: 'pending',
+                    }, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
+
+                if (billingError) {
+                    return { success: false, error: 'Los datos se guardaron, pero no se pudo crear el primer periodo en Pagos.' }
+                }
+                revalidatePath('/coach/billing')
+            } catch {
+                return { success: false, error: 'Los datos se guardaron, pero la fecha de alta no permite crear el primer periodo en Pagos.' }
+            }
+        }
+
         // Solo sincronizar la asignación si la clave está explícitamente en el payload.
         // (undefined = "no tocar", null = "desasignar", string = "asignar a este template")
         if ('checkin_template_id' in data) {
@@ -137,6 +161,16 @@ export async function createClientAction(data: {
         }
     }
 
+    if (data.payment_amount !== undefined && (!Number.isFinite(data.payment_amount) || data.payment_amount < 0)) {
+        return { success: false, error: 'La cuota mensual no es válida.' }
+    }
+    if (data.payment_day !== undefined && (!Number.isInteger(data.payment_day) || data.payment_day < 1 || data.payment_day > 31)) {
+        return { success: false, error: 'El día de cobro debe estar entre 1 y 31.' }
+    }
+    if (data.payment_notes && data.payment_notes.length > 500) {
+        return { success: false, error: 'Las notas de pago son demasiado largas.' }
+    }
+
     // 1. Create client record in public.clients via RPC
     const result = await createNewClient({ ...data, coach_id: coachId })
 
@@ -150,6 +184,33 @@ export async function createClientAction(data: {
 
     const client = result.client
     console.log(`[createClientAction] Client created: ${client.id} (${client.email})`)
+
+    let billingWarning: string | undefined
+    if (Number(client.payment_amount ?? 0) > 0) {
+        try {
+            const period = getBillingPeriodFromDate(client.start_date || data.start_date)
+            const { error: billingError } = await supabase
+                .from('payment_records')
+                .upsert({
+                    coach_id: coachId,
+                    client_id: client.id,
+                    year: period.year,
+                    month: period.month,
+                    amount: client.payment_amount,
+                    status: 'pending',
+                }, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
+
+            if (billingError) {
+                console.error('[createClientAction] Error creating initial payment record:', billingError.message)
+                billingWarning = 'La cuota se guardó, pero no se pudo crear el primer periodo en Pagos.'
+            } else {
+                revalidatePath('/coach/billing')
+            }
+        } catch (error) {
+            console.error('[createClientAction] Invalid billing start period:', error)
+            billingWarning = 'La cuota se guardó, pero la fecha de alta no permitió crear el primer periodo en Pagos.'
+        }
+    }
 
     const checkinAssignment = await syncClientTemplateAssignment({
         supabase,
@@ -208,6 +269,7 @@ export async function createClientAction(data: {
                     return {
                         success: true,
                         client,
+                        billingWarning,
                         authWarning: 'Ya existe un usuario con ese email en Auth. El cliente se creó pero sin contraseña nueva. El usuario puede iniciar sesión con su contraseña existente o usar "Recuperar contraseña".',
                     }
                 }
@@ -215,6 +277,7 @@ export async function createClientAction(data: {
                 return {
                     success: true,
                     client,
+                    billingWarning,
                     authWarning: `Cliente creado, pero error al crear usuario Auth: ${authError.message}`,
                 }
             }
@@ -239,6 +302,7 @@ export async function createClientAction(data: {
                 return {
                     success: true,
                     client,
+                    billingWarning,
                     authWarning: `Usuario Auth creado pero no se pudo vincular: ${updateError.message}`,
                 }
             }
@@ -260,6 +324,7 @@ export async function createClientAction(data: {
             return {
                 success: true,
                 client,
+                billingWarning,
                 authWarning: `Cliente creado, pero error inesperado al crear usuario Auth: ${err.message}`,
             }
         }
@@ -278,5 +343,5 @@ export async function createClientAction(data: {
     revalidatePath('/coach/members')
     revalidatePath('/coach/clients')
     revalidatePath('/coach/forms')
-    return { success: true, client }
+    return { success: true, client, billingWarning }
 }

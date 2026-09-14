@@ -176,7 +176,8 @@ export async function importOnboardingToAthleteProfile(
     try {
         raw = await callGemini(prompt, {
             maxOutputTokens: 8192,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
             temperature: 0.6,
         })
     } catch (err) {

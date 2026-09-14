@@ -278,17 +278,17 @@ function UpcomingEventsCard({
 
     return (
         <Card className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <div className="rounded-md bg-primary/10 p-1.5 text-primary">
+            <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <div className="shrink-0 rounded-md bg-primary/10 p-1.5 text-primary">
                         <Flag className="h-4 w-4" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="text-sm font-semibold">Próximos eventos / carreras</h3>
                         <p className="text-xs text-muted-foreground">Fechas objetivo que condicionan el bloque.</p>
                     </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={onViewAll}>
+                <Button variant="ghost" size="sm" onClick={onViewAll} className="shrink-0">
                     Ver todos
                     <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
@@ -384,7 +384,7 @@ function QuickStatCard({
                 {badge}
             </div>
             <p className="mt-1.5 text-lg font-semibold leading-none tracking-tight">{value}</p>
-            {subtitle && <p className="mt-1 text-[12px] font-medium leading-snug text-foreground/80">{subtitle}</p>}
+            {subtitle && <p className="mt-1 break-words text-[12px] font-medium leading-snug text-foreground/80">{subtitle}</p>}
             {detail && <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{detail}</p>}
             {typeof progressPct === 'number' && (
                 <div className="mt-2">
@@ -890,7 +890,7 @@ function ReviewCard({
                 </div>
             </div>
 
-            <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+            <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
                 <section className="space-y-4 rounded-xl border bg-muted/20 p-4">
                     <div className="flex items-start justify-between gap-3">
                         <div>
@@ -914,7 +914,7 @@ function ReviewCard({
                                             {getMetricLabel(key)}
                                         </p>
                                         <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-                                            <p className="text-sm font-semibold">
+                                            <p className="min-w-0 break-words text-sm font-semibold">
                                                 {String(payload[key])}{getMetricUnit(key)}
                                             </p>
                                             {delta !== null && delta !== 0 && (
@@ -1142,8 +1142,8 @@ function PlanMetric({
     return (
         <div className="rounded-xl border bg-muted/20 p-3">
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-            <p className="mt-2 text-sm font-semibold">{value}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+            <p className="mt-2 break-words text-sm font-semibold">{value}</p>
+            <p className="mt-1 break-words text-sm text-muted-foreground">{detail}</p>
         </div>
     )
 }

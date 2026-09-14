@@ -85,7 +85,7 @@ export async function buildCoachAssistantContext(
             .eq('is_active', true),
         admin
             .from('checkins')
-            .select('client_id, submitted_at, status')
+            .select('client_id, submitted_at, status, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h')
             .eq('coach_id', coachId)
             .eq('type', 'checkin')
             .not('submitted_at', 'is', null)
@@ -108,6 +108,11 @@ export async function buildCoachAssistantContext(
             .order('event_date')
             .limit(10),
     ])
+
+    // A failed query must not be presented as an empty roster or missing submissions.
+    if ([clientsRes, schedulesRes, recentCheckinsRes, tasksRes, eventsRes].some(result => result.error)) {
+        throw new Error('No se pudo cargar toda la información del coach. Inténtalo de nuevo para evitar un resumen incompleto.')
+    }
 
     const clients = (clientsRes.data ?? []) as RosterClient[]
     const clientNameById = new Map(clients.map(c => [c.id, c.full_name]))
@@ -142,7 +147,14 @@ export async function buildCoachAssistantContext(
                 ? `Revisión legacy, próxima ${client.next_checkin_date}`
                 : 'Sin revisiones asignadas'
         const lastSubmit = lastSubmitByClient.get(client.id)
-        return `- ${client.full_name}: ${reviews}${lastSubmit ? ` · última entrega ${lastSubmit}` : ' · sin entregas en 14 días'}`
+        const latest = recentCheckinsRes.data?.find(checkin => checkin.client_id === client.id)
+        const indicators = [
+            latest?.training_adherence_pct != null ? `entrenamiento ${latest.training_adherence_pct}%` : '',
+            latest?.nutrition_adherence_pct != null ? `nutrición ${latest.nutrition_adherence_pct}%` : '',
+            latest?.sleep_avg_h != null ? `sueño ${latest.sleep_avg_h} h` : '',
+            latest?.status === 'pending' ? 'revisión pendiente' : '',
+        ].filter(Boolean).join(' · ')
+        return `- ${client.full_name}: ${reviews}${lastSubmit ? ` · última entrega ${lastSubmit}` : ' · sin entregas en 14 días'}${indicators ? ` · ${indicators}` : ''}`
     })
 
     const taskLines = (tasksRes.data ?? []).map(t => {

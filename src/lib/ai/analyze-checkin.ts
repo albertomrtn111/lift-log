@@ -495,7 +495,8 @@ export async function generateCheckinAnalysis(
         const coachContext = await getCoachAIProfileContext(context.checkin.coach_id)
         const rawText = await callGemini(coachContext + buildPrompt(context), {
             maxOutputTokens: 4096,
-            thinkingBudget: 0,
+            thinkingLevel: 'medium',
+            responseMimeType: 'application/json',
             temperature: 0.4,
         })
         const analysis = parseAnalysis(rawText)

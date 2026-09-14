@@ -42,6 +42,14 @@ export function formatAthleteProfileContext(
         answers.athleteLevel ? `Nivel: ${answers.athleteLevel}` : '',
         answers.currentSituation ? `Situación actual: ${answers.currentSituation}` : '',
         answers.primaryAnnualGoal ? `Objetivo principal: ${answers.primaryAnnualGoal}` : '',
+        answers.weeklyAvailability ? `Disponibilidad actual declarada: ${answers.weeklyAvailability}` : '',
+        answers.weeklyContext ? `Contexto semanal declarado: ${answers.weeklyContext}` : '',
+        answers.currentIssues ? `Molestias actuales declaradas (prioridad sobre el resumen): ${answers.currentIssues}` : '',
+        answers.restrictions ? `Restricciones declaradas: ${answers.restrictions}` : '',
+        answers.loadTolerance ? `Tolerancia a la carga declarada: ${answers.loadTolerance}` : '',
+        answers.trainingHistory ? `Historial declarado: ${answers.trainingHistory}` : '',
+        answers.recoveryContext ? `Recuperación declarada: ${answers.recoveryContext}` : '',
+        answers.coachNotes ? `Notas actuales del coach: ${answers.coachNotes}` : '',
     ].filter(Boolean)
 
     return lines.length > 1 ? lines.join('\n') : fallback

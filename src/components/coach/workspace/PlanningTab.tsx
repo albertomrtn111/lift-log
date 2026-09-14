@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
 import { CardioSessionForm } from './CardioSessionForm'
 import { PlanningAIWeeklyDialog } from './plan/PlanningAIWeeklyDialog'
+import { PlanningAIBlockDialog } from './plan/PlanningAIBlockDialog'
 import {
     Dialog,
     DialogContent,
@@ -629,6 +630,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             disabled={viewMode !== 'week'}
                             onApplied={fetchSchedule}
                         />
+                        <PlanningAIBlockDialog key={`${coachId}:${clientId}`} clientId={clientId} coachId={coachId} onApplied={fetchSchedule} />
                     </div>
                 </div>
 
@@ -1233,7 +1235,7 @@ function PlanningMetrics({ metrics, isMonthly, hasData }: {
     if (noStrength && noCardio && noHybrid) return null
 
     return (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {/* Fuerza */}
             <div className={cn(
                 "rounded-xl border px-4 py-3 flex flex-col gap-2.5",

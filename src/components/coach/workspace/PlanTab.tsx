@@ -567,13 +567,13 @@ function EntrenoSubtab({
     return (
         <div className="space-y-6">
             {/* Active Program */}
-            <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
+            <Card className="p-4 sm:p-6">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-semibold flex items-center gap-2">
                         <Dumbbell className="h-5 w-5 text-primary" />
                         Programa activo
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <AITrainingDialog
                             clientId={clientId}
                             existingProgram={activeProgram && existingExercises.length > 0
@@ -599,9 +599,9 @@ function EntrenoSubtab({
 
                 {activeProgram ? (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                            <div>
-                                <h4 className="font-medium">{activeProgram.name}</h4>
+                        <div className="flex items-center justify-between gap-3 p-4 bg-muted/50 rounded-lg">
+                            <div className="min-w-0">
+                                <h4 className="font-medium break-words">{activeProgram.name}</h4>
                                 <p className="text-sm text-muted-foreground">
                                     {activeProgram.total_weeks} semanas
                                 </p>
@@ -611,7 +611,7 @@ function EntrenoSubtab({
                                     </p>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                                 <Badge className="bg-success/10 text-success border-0">Activo</Badge>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>

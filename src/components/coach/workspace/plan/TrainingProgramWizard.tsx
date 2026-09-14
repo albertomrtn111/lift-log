@@ -527,14 +527,14 @@ export function TrainingProgramWizard({
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 overflow-hidden gap-0 bg-background border-primary/20">
-                <DialogHeader className="p-6 border-b shrink-0 bg-muted/20">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <DialogTitle className="text-xl flex items-center gap-2 font-bold tracking-tight">
-                                <Settings2 className="h-5 w-5 text-primary" />
-                                Configurar Programa: {program?.name}
+                <DialogHeader className="p-4 sm:p-6 border-b shrink-0 bg-muted/20">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <DialogTitle className="text-lg sm:text-xl flex items-center gap-2 font-bold tracking-tight">
+                                <Settings2 className="h-5 w-5 text-primary shrink-0" />
+                                <span className="min-w-0 break-words">Configurar Programa: {program?.name}</span>
                             </DialogTitle>
-                            <div className="flex items-center gap-4 mt-1">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
                                 <p className="text-sm text-muted-foreground">
                                     Paso {step} de 3: {
                                         step === 1 ? 'Información General' :
@@ -548,13 +548,13 @@ export function TrainingProgramWizard({
                                 </p>
                             </div>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={onClose} className="rounded-full">
+                        <Button variant="ghost" size="sm" onClick={onClose} className="rounded-full shrink-0">
                             Cerrar
                         </Button>
                     </div>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-y-auto p-6 bg-muted/10 space-y-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/10 space-y-6">
                     {step === 1 && (
                         <StepInfo
                             ref={step1Ref}
@@ -753,7 +753,7 @@ const StepInfo = React.forwardRef(({
     }
 
     return (
-        <Card className="p-8 max-w-xl mx-auto shadow-md border-primary/10">
+        <Card className="p-6 sm:p-8 max-w-xl mx-auto shadow-md border-primary/10">
             <h4 className="text-lg font-semibold mb-6">Detalles del Programa</h4>
             <div className="space-y-6">
                 <div className="space-y-2">
@@ -853,10 +853,10 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
     ]
 
     return (
-        <Card className="p-8 max-w-2xl mx-auto shadow-md border-primary/10">
-            <div className="flex items-center justify-between mb-6">
+        <Card className="p-6 sm:p-8 max-w-2xl mx-auto shadow-md border-primary/10">
+            <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
                 <h4 className="text-lg font-semibold">Días del Programa</h4>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     <Button size="sm" variant="outline" onClick={onImportRequest} className="gap-2 border-primary/20 text-primary hover:bg-primary/5">
                         <Download className="h-4 w-4" /> Importar Plantilla
                     </Button>
@@ -1097,12 +1097,12 @@ function StepProgramTable({
 
             <DndContext sensors={exerciseSensors} onDragEnd={handleExerciseDragEnd}>
                 <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl bg-background outline outline-1 outline-primary/5">
-                <div className="p-5 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10">
+                <div className="p-4 sm:p-5 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                             <Dumbbell className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <h5 className="font-bold text-lg leading-none">Ejercicios</h5>
                             <p className="text-xs text-muted-foreground mt-1">
                                 Planificando para <span className="text-primary font-bold">Semana {activeWeek}</span>
@@ -1112,7 +1112,7 @@ function StepProgramTable({
                     <Button
                         size="sm"
                         onClick={addExercise}
-                        className="gap-2 font-bold px-4 rounded-xl shadow-lg shadow-primary/10 transition-all active:scale-95"
+                        className="gap-2 font-bold px-4 rounded-xl shadow-lg shadow-primary/10 transition-all active:scale-95 w-full sm:w-auto shrink-0"
                         disabled={!activeDayId}
                     >
                         <Plus className="h-4 w-4" /> Añadir Ejercicio

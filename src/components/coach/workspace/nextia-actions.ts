@@ -58,7 +58,7 @@ export async function getNextIAMessagesAction(
         .select('*')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(80)
 
     if (error) {
@@ -70,7 +70,7 @@ export async function getNextIAMessagesAction(
         return []
     }
 
-    return (data || []) as NextIAChatMessage[]
+    return (data || []).reverse() as NextIAChatMessage[]
 }
 
 export async function sendNextIAMessageAction(input: SendNextIAMessageInput): Promise<{
@@ -127,7 +127,7 @@ export async function sendNextIAMessageAction(input: SendNextIAMessageInput): Pr
         const rawAnswer = await callGemini(buildNextIAPrompt(content, athleteContext), {
             temperature: 0.4,
             maxOutputTokens: 2048,
-            thinkingBudget: 0,
+            thinkingLevel: 'low',
         })
 
         const answer = rawAnswer.trim()

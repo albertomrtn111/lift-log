@@ -139,7 +139,7 @@ export function ReviewApprovalDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-xl">
+            <DialogContent className="w-[calc(100%-2rem)] sm:w-full max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader className="space-y-3">
                     <div className="flex items-center gap-2">
                         <CheckCheck className="h-5 w-5 text-primary" />

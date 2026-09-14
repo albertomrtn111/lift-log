@@ -534,7 +534,7 @@ function PreviewStep({
             )}
 
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                     { label: 'Tipos de día', value: stats.dayTypes },
                     { label: 'Comidas', value: stats.meals },
