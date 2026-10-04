@@ -126,7 +126,7 @@ export default function ProfilePage() {
         try {
             deleteCookie(APP_MODE_COOKIE)
             const supabase = createClient()
-            await supabase.auth.signOut()
+            await supabase.auth.signOut({ scope: 'local' })
             router.push('/login')
             router.refresh()
         } catch (err) {

@@ -144,7 +144,7 @@ export function CoachSidebar() {
         setLoggingOut(true)
         try {
             const supabase = createClient()
-            await supabase.auth.signOut()
+            await supabase.auth.signOut({ scope: 'local' })
             router.push('/login')
             router.refresh()
         } catch (error) {
