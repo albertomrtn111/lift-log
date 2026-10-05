@@ -311,11 +311,10 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                         </div>
                     </div>
                     <Switch
-                        className="self-end sm:self-auto"
+                        className="self-end shrink-0 sm:self-auto"
                         checked={enduranceEnabled}
                         onCheckedChange={handleToggleEndurance}
                         disabled={loading || isSaving}
-                        className="shrink-0"
                     />
                 </div>
             </Card>
