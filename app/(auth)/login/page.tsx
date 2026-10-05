@@ -39,7 +39,10 @@ function LoginForm() {
 
             // If there's a redirect param (e.g. /forms/[checkinId]), send the user there.
             // Otherwise fall back to root which handles smart routing based on role.
-            const redirectTo = searchParams.get('redirect') ?? '/'
+            const requestedRedirect = searchParams.get('redirect')
+            const redirectTo = requestedRedirect?.startsWith('/') && !requestedRedirect.startsWith('//')
+                ? requestedRedirect
+                : '/'
             router.push(redirectTo)
             router.refresh()
         } catch {
