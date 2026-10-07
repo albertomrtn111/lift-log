@@ -4,6 +4,7 @@ import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.
 import { pipeline } from 'npm:@supabase/middleware@1.0.0'
 import { withOAuthProtectedResource, withSupabase } from 'npm:@supabase/server@1.9.0'
 import { z } from 'npm:zod@4.3.6'
+import { registerHistoryTools } from './history.ts'
 
 type SupabaseClientLike = any
 
@@ -152,7 +153,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
   const server = new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.1.0',
+    version: '0.2.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   })
 
@@ -643,6 +644,15 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       }
     },
   )
+
+  registerHistoryTools(server, supabase, {
+    resolveCoach,
+    requireClient,
+    jsonResult,
+    toolError,
+    audit,
+    annotations: readOnlyAnnotations,
+  })
 
   return server
 }
