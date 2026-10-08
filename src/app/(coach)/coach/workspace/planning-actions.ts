@@ -7,7 +7,7 @@ import { requireActiveCoachId } from "@/lib/auth/require-coach";
 import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
 import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
 import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
-import { calculateCardioStructureTotals, summarizeCardioStructure } from "@/lib/cardio/structure";
+import { calculateCardioStructureTotals, hasRenderableCardioBlocks, summarizeCardioStructure } from "@/lib/cardio/structure";
 import { requireAIClient } from '@/lib/ai/access';
 import { dateSchema } from '@/lib/ai/planning-block';
 
@@ -811,6 +811,9 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
             description: structure?.description || description || '',
             blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
         };
+        if (finalStructure.mode === 'structured' && !hasRenderableCardioBlocks(finalStructure)) {
+            throw new Error('La estructura de cardio tiene bloques incompletos. Revisa distancias, tiempos u objetivos.');
+        }
 
         // If notes were passed in structure (from deprecated form logic) but not as separate arg, use them.
         // But priority to the argument 'notes'
@@ -838,6 +841,7 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
                 description: description || '',
                 notes: finalNotes,
                 structure: finalStructure,
+                planned_structure: finalStructure.mode === 'structured' && hasRenderableCardioBlocks(finalStructure) ? finalStructure : null,
                 is_completed: false,
                 target_distance_km: targetDistanceKm ?? null,
                 target_duration_min: targetDurationMin ?? null,
@@ -956,10 +960,14 @@ export async function updateCardioSession({
             description: structure?.description || description || '',
             blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
         };
+        if (finalStructure.mode === 'structured' && !hasRenderableCardioBlocks(finalStructure)) {
+            throw new Error('La estructura de cardio tiene bloques incompletos. Revisa distancias, tiempos u objetivos.');
+        }
         const payload = {
             name,
             description,
             structure: finalStructure,
+            planned_structure: finalStructure.mode === 'structured' && hasRenderableCardioBlocks(finalStructure) ? finalStructure : null,
             notes: finalStructure.notes || null,
             target_distance_km: targetDistanceKm ?? null,
             target_duration_min: targetDurationMin ?? null,
@@ -1118,6 +1126,7 @@ export async function duplicateCardioSession(
                 description: original.description,
                 notes: original.notes,
                 structure: original.structure,
+                planned_structure: original.structure?.mode === 'structured' && hasRenderableCardioBlocks(original.structure) ? original.structure : null,
                 is_completed: false,
                 target_distance_km: original.target_distance_km,
                 target_duration_min: original.target_duration_min,

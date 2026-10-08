@@ -39,6 +39,7 @@ export interface CardioBlock {
     type: CardioBlockType
     label?: string
     notes?: string
+    description?: string
 
     // Para 'continuous' (Rodaje, Calentamiento)
     duration?: number // minutos
@@ -46,6 +47,7 @@ export interface CardioBlock {
     intensity?: string // Deprecated in favor of targetPace/targetHR
     targetPace?: string // Ej: "4:15/km", "Suave"
     targetHR?: string   // Ej: "140-150 ppm", "Z2", "< 160"
+    targetRpe?: string
 
     // Para 'intervals' (Series: 3x1000m)
     sets?: number // Número de repeticiones
@@ -54,9 +56,11 @@ export interface CardioBlock {
     workIntensity?: string // Deprecated
     workTargetPace?: string
     workTargetHR?: string
+    workTargetRpe?: string
     restDuration?: number // minutos
     restDistance?: number // km (recuperación activa)
     restType?: 'active' | 'passive'
+    restAfterLastRep?: boolean
 
     // Deprecated fields kept for type safety during migration if needed, but intended to be removed/unused
     objective_value?: never

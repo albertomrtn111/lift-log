@@ -22,7 +22,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `get_recovery_history`: sueño y pasos diarios junto con señales subjetivas de los check-ins.
 - `list_client_events`: carreras, pruebas y objetivos, pasados o futuros.
 - `get_program_history`: lista de bloques; con `program_id`, sesiones, ejercicios y resultados de ese bloque.
-- `schedule_cardio_session`: añade una sesión de cardio.
+- `schedule_cardio_session`: añade una sesión de cardio en modo rápido o estructurado y devuelve la sesión normalizada.
 - `create_strength_program`: crea un programa de fuerza completo; por defecto queda en borrador.
 - `create_coach_task`: añade una tarea de seguimiento.
 
@@ -44,6 +44,15 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - La recuperación diaria disponible contiene sueño, pasos y notas. Energía, estrés, hambre, rendimiento y molestias proceden de check-ins.
 - Los eventos no tienen distancia estructurada; solo se extrae si aparece una cantidad explícita en su texto.
 - Las consultas históricas admiten rangos acotados y paginación donde la respuesta puede ser larga.
+
+## Contrato de cardio del MCP
+
+- `planning_mode` es obligatorio: `quick` para texto libre y `structured` solo para bloques ejecutables. La presencia de bloques no decide el modo.
+- En `quick` se envían descripción, distancia/duración objetivo y notas; no se admiten bloques ni `target_pace`, y `planned_structure` se guarda como `null`.
+- En `structured`, cada bloque incluye `type` y `description`. Los bloques sin series usan `distance_m` (metros totales); los de tipo `intervals` usan `repetitions` y `distance_per_rep_m` (metros de **cada** repetición) o `duration_per_rep_seconds`. `recovery_seconds` describe la recuperación entre repeticiones, sin añadir una después de la última.
+- Si el objetivo de distancia y la suma completa de bloques discrepan más de 2 m, la creación se rechaza. Si algún bloque está definido solo por tiempo, la respuesta indica validación parcial en vez de fingir un total.
+- La respuesta devuelve `normalized.planning_mode`, la validación de distancia, los objetivos y las dos estructuras tal como quedaron guardadas.
+- Los bloques ambiguos del contrato anterior no se interpretan como series: el editor pasa a texto libre y mantiene la descripción existente. Cambiar al modo estructurado no inserta una plantilla de 3×1000.
 
 ## Ajustes requeridos en Supabase
 

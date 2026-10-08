@@ -48,7 +48,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 import { CardioBlock, CardioBlockType, CardioStructure } from '@/types/templates'
-import { calculateCardioStructureTotals, summarizeCardioStructure } from '@/lib/cardio/structure'
+import { calculateCardioStructureTotals, hasRenderableCardioBlocks, summarizeCardioStructure } from '@/lib/cardio/structure'
 import { cn } from '@/lib/utils'
 
 const numericOptional = z.preprocess(
@@ -147,58 +147,25 @@ const SESSION_SECTIONS = [
 
 const SESSION_TYPES = SESSION_SECTIONS.flatMap(s => s.types)
 
+function normalizeTrainingType(value?: string) {
+    const normalized = (value || 'rodaje').trim().toLowerCase()
+    if (SESSION_TYPES.some(type => type.id === normalized)) return normalized
+    if (/swim|nataci[oó]n/.test(normalized)) return 'swim'
+    if (/bike|bici|ciclismo|cycling/.test(normalized)) return 'bike'
+    if (/run|carrera/.test(normalized)) return 'rodaje'
+    return normalized
+}
+
 function makeId() {
     return `cardio-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function defaultBlock(type: CardioBlockType): CardioBlock {
-    if (type === 'intervals') {
-        return {
-            id: makeId(),
-            type,
-            label: 'Bloque principal',
-            sets: 3,
-            workDistance: 1,
-            restDuration: 2,
-            restType: 'active',
-        }
-    }
-
-    if (type === 'warmup') {
-        return {
-            id: makeId(),
-            type,
-            label: 'Calentamiento',
-            duration: 10,
-            targetPace: 'suave',
-        }
-    }
-
-    if (type === 'cooldown') {
-        return {
-            id: makeId(),
-            type,
-            label: 'Vuelta a la calma',
-            duration: 10,
-            targetPace: 'suave',
-        }
-    }
-
     return {
         id: makeId(),
         type,
-        label: 'Continuo',
-        duration: 20,
-        targetPace: 'Z2',
+        label: type === 'intervals' ? 'Bloque principal' : type === 'warmup' ? 'Calentamiento' : type === 'cooldown' ? 'Vuelta a la calma' : 'Continuo',
     }
-}
-
-function defaultStructuredBlocks(): CardioBlock[] {
-    return [
-        defaultBlock('warmup'),
-        defaultBlock('intervals'),
-        defaultBlock('cooldown'),
-    ]
 }
 
 function isLegacyWarmupBlock(block: CardioBlock) {
@@ -209,7 +176,7 @@ function isLegacyWarmupBlock(block: CardioBlock) {
 
 function normalizeInitialBlocks(initialData?: CardioSessionFormProps['initialData']) {
     const blocks = initialData?.structure?.blocks
-    if (!Array.isArray(blocks)) return []
+    if (!Array.isArray(blocks) || !hasRenderableCardioBlocks({ blocks })) return []
     return blocks.map((block) => ({
         ...block,
         type: isLegacyWarmupBlock(block) ? 'warmup' : block.type,
@@ -278,10 +245,10 @@ function stripBlockNotes(block: CardioBlock): CardioBlock {
 }
 
 export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCancel, hideTypeSelector, visibleSections }: CardioSessionFormProps) {
-    const initialTrainingType = initialData?.structure?.trainingType || 'rodaje'
+    const initialTrainingType = normalizeTrainingType(initialData?.structure?.trainingType)
     const isKnownInitialType = SESSION_TYPES.some(type => type.id === initialTrainingType)
     const initialBlocks = normalizeInitialBlocks(initialData)
-    const initialMode = initialData?.structure?.mode || (initialBlocks.length > 0 ? 'structured' : 'free_text')
+    const initialMode = initialData?.structure?.mode === 'free_text' || initialBlocks.length === 0 ? 'free_text' : 'structured'
     const [blocks, setBlocks] = useState<CardioBlock[]>(initialBlocks)
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -305,16 +272,14 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
 
     const selectedMode = form.watch('mode')
     const selectedTrainingType = form.watch('trainingType')
+    const isSwim = selectedTrainingType === 'swim'
+    const isBike = selectedTrainingType === 'bike'
     const calculatedTotals = useMemo(() => calculateCardioStructureTotals({ blocks }), [blocks])
     const structuredSummary = useMemo(() => summarizeCardioStructure({ mode: 'structured', blocks }), [blocks])
 
     const displayedSections = visibleSections
         ? SESSION_SECTIONS.filter(s => visibleSections.includes(s.label))
         : SESSION_SECTIONS
-
-    function ensureStructuredBlocks() {
-        setBlocks((current) => current.length > 0 ? current : defaultStructuredBlocks())
-    }
 
     function updateBlock(id: string, patch: Partial<CardioBlock>) {
         setBlocks((current) => current.map((block) => block.id === id ? { ...block, ...patch } : block))
@@ -353,6 +318,18 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         const customName = values.customName?.trim()
         const notes = values.notes?.trim() || undefined
         const isStructured = values.mode === 'structured'
+        if (isStructured && !hasRenderableCardioBlocks({ blocks })) {
+            form.setError('mode', { message: 'Completa cada bloque con una distancia, duración u objetivo antes de guardar.' })
+            return
+        }
+        const enteredDistanceKm = typeof values.targetDistanceKm === 'number' ? values.targetDistanceKm : undefined
+        const enteredDurationMin = typeof values.targetDurationMin === 'number' ? values.targetDurationMin : undefined
+        const completeBlockDistance = blocks.every((block) => block.type === 'intervals' ? Number(block.workDistance) > 0 : Number(block.distance) > 0)
+        const completeBlockDuration = blocks.every((block) => block.type === 'intervals' ? Number(block.workDuration) > 0 : Number(block.duration) > 0)
+        if (isStructured && enteredDistanceKm && completeBlockDistance && calculatedTotals.distanceKm && Math.abs(enteredDistanceKm - calculatedTotals.distanceKm) > 0.002) {
+            form.setError('targetDistanceKm', { message: `Los bloques suman ${Math.round(calculatedTotals.distanceKm * 1000)} m; revisa la distancia objetivo.` })
+            return
+        }
         const description = isStructured ? structuredSummary : values.description?.trim()
         const structureBlocks = blocks.map(stripBlockNotes)
         const structure: CardioStructure = isStructured
@@ -374,13 +351,9 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         await onSubmit({
             name: isOther ? customName || 'Otro' : selectedType?.label || 'Cardio',
             description,
-            targetDistanceKm: isStructured
-                ? calculatedTotals.distanceKm ?? (typeof values.targetDistanceKm === 'number' ? values.targetDistanceKm : undefined)
-                : typeof values.targetDistanceKm === 'number' ? values.targetDistanceKm : undefined,
-            targetDurationMin: isStructured
-                ? calculatedTotals.durationMin ?? (typeof values.targetDurationMin === 'number' ? values.targetDurationMin : undefined)
-                : typeof values.targetDurationMin === 'number' ? values.targetDurationMin : undefined,
-            targetPace: values.targetPace || undefined,
+            targetDistanceKm: enteredDistanceKm ?? (isStructured && completeBlockDistance ? calculatedTotals.distanceKm ?? undefined : undefined),
+            targetDurationMin: enteredDurationMin ?? (isStructured && completeBlockDuration ? calculatedTotals.durationMin ?? undefined : undefined),
+            targetPace: isStructured ? values.targetPace || undefined : undefined,
             structure,
         })
     }
@@ -472,7 +445,6 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                     value={field.value}
                                     onValueChange={(value) => {
                                         field.onChange(value)
-                                        if (value === 'structured') ensureStructuredBlocks()
                                     }}
                                     className="grid gap-3 sm:grid-cols-2"
                                 >
@@ -513,15 +485,16 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         name="targetDistanceKm"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel className="text-sm font-medium">Distancia objetivo (km)</FormLabel>
+                                <FormLabel className="text-sm font-medium">Distancia objetivo ({isSwim ? 'm' : 'km'})</FormLabel>
                                 <FormControl>
                                     <Input
                                         type="number"
-                                        step="0.1"
+                                        step={isSwim ? '1' : '0.1'}
                                         min="0"
-                                        placeholder={selectedMode === 'structured' && calculatedTotals.distanceKm ? String(calculatedTotals.distanceKm) : 'Ej: 8'}
+                                        placeholder={selectedMode === 'structured' && calculatedTotals.distanceKm ? String(isSwim ? Math.round(calculatedTotals.distanceKm * 1000) : calculatedTotals.distanceKm) : isSwim ? 'Ej: 1500' : 'Ej: 8'}
                                         {...field}
-                                        value={field.value ?? ''}
+                                        value={isSwim && typeof field.value === 'number' ? Math.round(field.value * 1000) : field.value ?? ''}
+                                        onChange={(event) => field.onChange(isSwim ? (event.target.value === '' ? undefined : Number(event.target.value) / 1000) : event.target.value)}
                                     />
                                 </FormControl>
                                 <FormMessage />
@@ -548,19 +521,21 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                             </FormItem>
                         )}
                     />
-                    <FormField
-                        control={form.control}
-                        name="targetPace"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-sm font-medium">Ritmo objetivo (min/km)</FormLabel>
-                                <FormControl>
-                                    <Input type="text" placeholder="Ej: 5:30" {...field} value={field.value ?? ''} />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                    {selectedMode === 'structured' && (
+                        <FormField
+                            control={form.control}
+                            name="targetPace"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-sm font-medium">{isSwim ? 'Ritmo objetivo (/100 m)' : isBike ? 'Objetivo (potencia, velocidad o FC)' : 'Ritmo objetivo (min/km)'}</FormLabel>
+                                    <FormControl>
+                                        <Input type="text" placeholder={isSwim ? 'Ej: 2:10/100 m' : isBike ? 'Ej: 180 W' : 'Ej: 5:30'} {...field} value={field.value ?? ''} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    )}
                 </div>
 
                 {selectedMode === 'structured' ? (
@@ -575,7 +550,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                 </div>
                                 <div className="flex shrink-0 flex-wrap gap-2 text-xs text-muted-foreground">
                                     <span className="rounded-full bg-background px-2 py-1">
-                                        {calculatedTotals.distanceKm ? `${calculatedTotals.distanceKm} km` : 'Distancia libre'}
+                                        {calculatedTotals.distanceKm ? isSwim ? `${Math.round(calculatedTotals.distanceKm * 1000)} m` : `${calculatedTotals.distanceKm} km` : 'Distancia libre'}
                                     </span>
                                     <span className="rounded-full bg-background px-2 py-1">
                                         {calculatedTotals.durationMin ? `${calculatedTotals.durationMin} min` : 'Duracion libre'}
@@ -611,6 +586,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                         block={block}
                                         index={index}
                                         totalBlocks={blocks.length}
+                                        isSwim={isSwim}
                                         onUpdate={updateBlock}
                                         onRemove={removeBlock}
                                         onMove={moveBlock}
@@ -687,6 +663,7 @@ function StructuredBlockCard({
     block,
     index,
     totalBlocks,
+    isSwim,
     onUpdate,
     onRemove,
     onMove,
@@ -694,6 +671,7 @@ function StructuredBlockCard({
     block: CardioBlock
     index: number
     totalBlocks: number
+    isSwim: boolean
     onUpdate: (id: string, patch: Partial<CardioBlock>) => void
     onRemove: (id: string) => void
     onMove: (id: string, direction: -1 | 1) => void
@@ -752,7 +730,7 @@ function StructuredBlockCard({
                         size="icon"
                         onClick={() => onMove(block.id, -1)}
                         disabled={index === 0}
-                        className="h-9 w-9 text-muted-foreground"
+                        className="h-10 w-10 text-muted-foreground"
                         aria-label="Subir bloque"
                     >
                         <ArrowUp className="h-4 w-4" />
@@ -763,7 +741,7 @@ function StructuredBlockCard({
                         size="icon"
                         onClick={() => onMove(block.id, 1)}
                         disabled={index === totalBlocks - 1}
-                        className="h-9 w-9 text-muted-foreground"
+                        className="h-10 w-10 text-muted-foreground"
                         aria-label="Bajar bloque"
                     >
                         <ArrowDown className="h-4 w-4" />
@@ -773,7 +751,7 @@ function StructuredBlockCard({
                         variant="ghost"
                         size="icon"
                         onClick={() => onRemove(block.id)}
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                        className="h-10 w-10 text-muted-foreground hover:text-destructive"
                         aria-label="Eliminar bloque"
                     >
                         <Trash2 className="h-4 w-4" />
@@ -798,12 +776,12 @@ function StructuredBlockCard({
                             onChange={(value) => onUpdate(block.id, { sets: parseNumericInput(value) })}
                         />
                         <LabeledInput
-                            label="Trabajo distancia (km)"
+                            label={`Trabajo distancia (${isSwim ? 'm' : 'km'})`}
                             type="number"
-                            step="0.1"
-                            value={toInputValue(block.workDistance)}
-                            placeholder="1"
-                            onChange={(value) => onUpdate(block.id, { workDistance: parseNumericInput(value) })}
+                            step={isSwim ? '1' : '0.1'}
+                            value={toInputValue(isSwim && block.workDistance != null ? Math.round(block.workDistance * 1000) : block.workDistance)}
+                            placeholder={isSwim ? '200' : '1'}
+                            onChange={(value) => { const distance = parseNumericInput(value); onUpdate(block.id, { workDistance: isSwim && distance != null ? distance / 1000 : distance }) }}
                         />
                         <LabeledInput
                             label="Trabajo duracion (min)"
@@ -813,9 +791,9 @@ function StructuredBlockCard({
                             onChange={(value) => onUpdate(block.id, { workDuration: parseNumericInput(value) })}
                         />
                         <LabeledInput
-                            label="Ritmo/objetivo trabajo"
+                            label={isSwim ? 'Ritmo de trabajo (/100 m)' : 'Ritmo/objetivo trabajo'}
                             value={block.workTargetPace || ''}
-                            placeholder="Ej: 4:15/km"
+                            placeholder={isSwim ? 'Ej: 2:10/100 m' : 'Ej: 4:15/km'}
                             onChange={(value) => onUpdate(block.id, { workTargetPace: value })}
                         />
                         <LabeledInput
@@ -826,23 +804,23 @@ function StructuredBlockCard({
                             onChange={(value) => onUpdate(block.id, { restDuration: parseNumericInput(value) })}
                         />
                         <LabeledInput
-                            label="Recuperacion (km)"
+                            label={`Recuperacion (${isSwim ? 'm' : 'km'})`}
                             type="number"
-                            step="0.1"
-                            value={toInputValue(block.restDistance)}
+                            step={isSwim ? '1' : '0.1'}
+                            value={toInputValue(isSwim && block.restDistance != null ? Math.round(block.restDistance * 1000) : block.restDistance)}
                             placeholder="Opcional"
-                            onChange={(value) => onUpdate(block.id, { restDistance: parseNumericInput(value) })}
+                            onChange={(value) => { const distance = parseNumericInput(value); onUpdate(block.id, { restDistance: isSwim && distance != null ? distance / 1000 : distance }) }}
                         />
                     </>
                 ) : (
                     <>
                         <LabeledInput
-                            label="Distancia (km)"
+                            label={`Distancia (${isSwim ? 'm' : 'km'})`}
                             type="number"
-                            step="0.1"
-                            value={toInputValue(block.distance)}
+                            step={isSwim ? '1' : '0.1'}
+                            value={toInputValue(isSwim && block.distance != null ? Math.round(block.distance * 1000) : block.distance)}
                             placeholder="Opcional"
-                            onChange={(value) => onUpdate(block.id, { distance: parseNumericInput(value) })}
+                            onChange={(value) => { const distance = parseNumericInput(value); onUpdate(block.id, { distance: isSwim && distance != null ? distance / 1000 : distance }) }}
                         />
                         <LabeledInput
                             label="Duracion (min)"
@@ -852,7 +830,7 @@ function StructuredBlockCard({
                             onChange={(value) => onUpdate(block.id, { duration: parseNumericInput(value) })}
                         />
                         <LabeledInput
-                            label="Ritmo/objetivo"
+                            label={isSwim ? 'Ritmo/objetivo (/100 m)' : 'Ritmo/objetivo'}
                             value={block.targetPace || ''}
                             placeholder="Ej: suave, Z2, 5:30/km"
                             onChange={(value) => onUpdate(block.id, { targetPace: value })}
@@ -865,6 +843,23 @@ function StructuredBlockCard({
                         />
                     </>
                 )}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <LabeledInput
+                    label="RPE objetivo (opcional)"
+                    value={(block.type === 'intervals' ? block.workTargetRpe : block.targetRpe) || ''}
+                    placeholder="Ej: 4-5"
+                    onChange={(value) => onUpdate(block.id, block.type === 'intervals' ? { workTargetRpe: value } : { targetRpe: value })}
+                />
+                <label className="block min-w-0 space-y-1 sm:col-span-2">
+                    <span className="text-xs font-medium text-muted-foreground">Descripción del bloque</span>
+                    <Textarea
+                        value={block.description || ''}
+                        onChange={(event) => onUpdate(block.id, { description: event.target.value })}
+                        placeholder="Qué debe hacer el atleta en este bloque"
+                        className="min-h-20 resize-y"
+                    />
+                </label>
             </div>
         </div>
     )

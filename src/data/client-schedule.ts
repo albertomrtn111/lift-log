@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { roundToDecimals } from '@/lib/format/number'
+import { hasRenderableCardioBlocks, resolveCardioPlanForDisplay } from '@/lib/cardio/structure'
 
 // ------------------------------------------------------------------
 // Types
@@ -232,8 +233,8 @@ export async function getClientWeeklySchedule(
         .lte('scheduled_date', endStr)
 
     const cardioItems: CalendarItem[] = (cardioData || []).map((c: any) => {
-        const plannedStructure = resolveCardioPlannedStructure(c)
-        const hasStructuredPlan = hasStructuredCardioBlocks(plannedStructure)
+        const plannedStructure = resolveCardioPlanForDisplay(c)
+        const hasStructuredPlan = hasRenderableCardioBlocks(plannedStructure)
 
         return {
             id: c.id,
@@ -245,7 +246,7 @@ export async function getClientWeeklySchedule(
             cardioSessionId: c.id,
             activityType: c.activity_type,
             trainingType: c.structure?.trainingType || c.training_type || undefined,
-            description: hasStructuredPlan ? undefined : c.description,
+            description: hasStructuredPlan ? undefined : c.description || c.structure?.description || c.planned_structure?.description,
             targetDistanceKm: c.target_distance_km ? Number(c.target_distance_km) : undefined,
             targetDurationMin: c.target_duration_min ? Number(c.target_duration_min) : undefined,
             targetPace: c.target_pace,
@@ -330,28 +331,6 @@ export async function saveCardioSessionLog(
         return { success: false, error: error.message }
     }
     return { success: true }
-}
-
-function hasStructuredCardioBlocks(structure: any) {
-    const blocks = Array.isArray(structure) ? structure : structure?.blocks
-    return Array.isArray(blocks) && blocks.some((block: any) =>
-        ['warmup', 'continuous', 'intervals', 'cooldown'].includes(block?.type)
-    )
-}
-
-function hasContent(value: any) {
-    if (!value) return false
-    if (Array.isArray(value)) return value.length > 0
-    if (typeof value === 'object') return Object.keys(value).length > 0
-    return true
-}
-
-function resolveCardioPlannedStructure(session: any) {
-    if (hasStructuredCardioBlocks(session?.planned_structure)) return session.planned_structure
-    if (hasStructuredCardioBlocks(session?.structure)) return session.structure
-    if (hasContent(session?.planned_structure)) return session.planned_structure
-    if (hasContent(session?.structure)) return session.structure
-    return null
 }
 
 // ------------------------------------------------------------------
