@@ -7,7 +7,8 @@ import { DayTabs } from '@/components/routine/DayTabs'
 import { ExerciseTable } from '@/components/routine/ExerciseTable'
 import { MobileExerciseCards } from '@/components/routine/MobileExerciseCards'
 import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, ExerciseSet } from '@/types/training'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet } from '@/data/exercise-sets'
@@ -41,7 +42,6 @@ export default function RoutinePageClient({
     const [selectedDayId, setSelectedDayId] = useState(initialDayId || days[0]?.id || '')
     const [cells, setCells] = useState<TrainingCell[]>(initialCells)
     const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
-    const isMobile = useIsMobile()
     const markedDays = useRef<Set<string>>(new Set())
     const router = useRouter()
 
@@ -202,37 +202,60 @@ export default function RoutinePageClient({
         onDeleteSet: handleDeleteSet,
     }
 
+    const selectedDay = days.find(day => day.id === selectedDayId)
+    const sessionDate = getSessionDate()
+    const sessionDateLabel = sessionDate
+        ? capitalize(format(new Date(`${sessionDate}T12:00:00`), "EEEE d 'de' MMMM", { locale: es }))
+        : undefined
+
     return (
         <div className="app-mobile-page min-h-screen">
-            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 mb-1 pr-24">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <Dumbbell className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-bold text-foreground">{program.name}</h1>
-                            <p className="text-sm text-muted-foreground">
-                                Programa de {program.totalWeeks} semanas
-                            </p>
+            <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+                <div className="px-4 pb-3 pt-4">
+                    <div className="flex min-h-10 items-end pr-24">
+                        <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fuerza</p>
+                            <h1 className="line-clamp-2 text-xl font-bold leading-tight tracking-tight text-foreground">{program.name}</h1>
                         </div>
                     </div>
-                </div>
-                <div className="px-4 pb-3">
-                    <WeekSelector totalWeeks={program.totalWeeks} selectedWeek={selectedWeek} onSelectWeek={setSelectedWeek} />
+                    <WeekSelector
+                        className="mt-3"
+                        totalWeeks={program.totalWeeks}
+                        selectedWeek={selectedWeek}
+                        onSelectWeek={setSelectedWeek}
+                    />
                 </div>
                 <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={setSelectedDayId} />
             </header>
 
-            <div className="py-4">
+            <div className="pb-6 pt-4">
                 {dayExercises.length > 0 ? (
-                    isMobile ? <MobileExerciseCards {...sharedProps} /> : <ExerciseTable {...sharedProps} />
+                    <>
+                        {/* Se decide por CSS (no con useIsMobile) para que en móvil no
+                            se pinte primero la tabla de escritorio y luego salte */}
+                        <div className="md:hidden">
+                            <MobileExerciseCards {...sharedProps} dayName={selectedDay?.name} sessionDateLabel={sessionDateLabel} />
+                        </div>
+                        <div className="hidden md:block">
+                            <ExerciseTable {...sharedProps} />
+                        </div>
+                    </>
                 ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                        <p className="text-sm text-muted-foreground">No hay ejercicios para este día.</p>
+                    <div className="mx-4 flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                            <Dumbbell className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-semibold">Sin ejercicios</p>
+                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
+                            Tu coach aún no ha añadido ejercicios a este día.
+                        </p>
                     </div>
                 )}
             </div>
         </div>
     )
+}
+
+function capitalize(value: string) {
+    return value.charAt(0).toUpperCase() + value.slice(1)
 }
