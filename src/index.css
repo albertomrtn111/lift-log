@@ -259,7 +259,7 @@
   }
 
   .workspace-tab-trigger {
-    @apply min-w-[3.75rem] max-w-full justify-center gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 pb-3 text-muted-foreground shadow-none transition-colors sm:min-w-[8.5rem] sm:px-5 [&_svg]:shrink-0 [&_span]:min-w-0 [&_span]:truncate;
+    @apply max-w-full justify-center gap-1.5 rounded-none border-b-2 border-transparent bg-transparent px-3 pb-3 sm:gap-2 text-muted-foreground shadow-none transition-colors sm:min-w-[8.5rem] sm:px-5 [&_svg]:shrink-0 [&_span]:min-w-0 [&_span]:truncate;
     @apply hover:text-foreground;
     @apply data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none;
   }

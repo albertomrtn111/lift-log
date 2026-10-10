@@ -64,46 +64,50 @@ export function MembersPageClient({
     return (
         <div className="space-y-4">
             {/* Filters */}
-            <Card className="p-4">
-                <div className="flex flex-col sm:flex-row gap-4">
+            <Card className="p-3 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                     {/* Status filter tabs */}
                     <Tabs value={statusFilter} onValueChange={handleStatusChange} className="w-full sm:w-auto">
                         <TabsList className="grid w-full grid-cols-3 sm:w-auto">
-                            <TabsTrigger value="all" className="gap-2">
-                                <UsersRound className="h-4 w-4" />
-                                <span className="hidden sm:inline">Todos</span>
+                            <TabsTrigger value="all" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
+                                <UsersRound className="h-4 w-4 shrink-0" />
+                                <span>Todos</span>
                             </TabsTrigger>
-                            <TabsTrigger value="active" className="gap-2">
-                                <Users className="h-4 w-4" />
-                                <span className="hidden sm:inline">Activos</span>
+                            <TabsTrigger value="active" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
+                                <Users className="h-4 w-4 shrink-0" />
+                                <span>Activos</span>
                             </TabsTrigger>
-                            <TabsTrigger value="inactive" className="gap-2">
-                                <UserX className="h-4 w-4" />
-                                <span className="hidden sm:inline">Inactivos</span>
+                            <TabsTrigger value="inactive" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
+                                <UserX className="h-4 w-4 shrink-0" />
+                                <span>Inactivos</span>
                             </TabsTrigger>
                         </TabsList>
                     </Tabs>
 
-                    {/* Search */}
-                    <form onSubmit={handleSearchSubmit} className="flex-1 flex gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Buscar por nombre o email..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="pl-9"
-                            />
-                        </div>
-                        {search && (
-                            <Button type="button" variant="ghost" size="sm" onClick={handleSearchClear}>
-                                Limpiar
-                            </Button>
-                        )}
-                    </form>
+                    <div className="flex min-w-0 flex-1 gap-2">
+                        {/* Search */}
+                        <form onSubmit={handleSearchSubmit} className="flex min-w-0 flex-1 gap-2">
+                            <div className="relative min-w-0 flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="search"
+                                    enterKeyHint="search"
+                                    placeholder="Buscar por nombre o email..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-9"
+                                />
+                            </div>
+                            {search && (
+                                <Button type="button" variant="ghost" size="sm" onClick={handleSearchClear} className="h-10 shrink-0 px-2 sm:px-3">
+                                    Limpiar
+                                </Button>
+                            )}
+                        </form>
 
-                    {/* Add client button */}
-                    <AddClientButton coachId={coachId} formTemplates={formTemplates} />
+                        {/* Add client button */}
+                        <AddClientButton coachId={coachId} formTemplates={formTemplates} />
+                    </div>
                 </div>
             </Card>
 

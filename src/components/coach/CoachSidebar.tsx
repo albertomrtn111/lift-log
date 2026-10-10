@@ -15,10 +15,12 @@ import {
     ClipboardList,
     BarChart2,
     Receipt,
-    MessageCircle
+    MessageCircle,
+    Menu,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import { createClient } from '@/lib/supabase/client'
 import { useCoachContext } from '@/contexts/CoachContext'
@@ -64,10 +66,19 @@ const accountSection = {
     ]
 }
 
-const allNavItems: NavItem[] = [
-    ...navSections[0].items,
+// Barra inferior móvil: accesos de uso diario + "Más" para el resto
+const mobilePrimaryNavItems: NavItem[] = [
+    { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard', badgeKey: 'dashboardPending' },
+    { href: '/coach/messages', icon: MessageCircle, label: 'Mensajes', badgeKey: 'messagesUnread' },
+    { href: '/coach/calendar', icon: Calendar, label: 'Calendario' },
+    { href: '/coach/clients', icon: UserCog, label: 'Workspace' },
+    { href: '/coach/members', icon: Users, label: 'Atletas', badgeKey: 'membersPendingSignup' },
+]
+
+const mobileMoreNavItems: NavItem[] = [
     ...navSections[1].items,
-    { href: '/coach/settings', icon: Settings2, label: 'Ajustes' }
+    ...navSections[2].items,
+    { href: '/coach/settings', icon: Settings2, label: 'Ajustes' },
 ]
 
 
@@ -76,6 +87,8 @@ export function CoachSidebar() {
     const router = useRouter()
     const [loggingOut, setLoggingOut] = useState(false)
     const [badges, setBadges] = useState<Record<string, number>>({})
+    const [moreOpen, setMoreOpen] = useState(false)
+    const isMoreActive = mobileMoreNavItems.some(item => pathname?.startsWith(item.href))
 
     const fetchBadges = useCallback(async () => {
         try {
@@ -115,7 +128,7 @@ export function CoachSidebar() {
         setLoggingOut(true)
         try {
             const supabase = createClient()
-            await supabase.auth.signOut()
+            await supabase.auth.signOut({ scope: 'local' })
             router.push('/login')
             router.refresh()
         } catch (error) {
@@ -126,9 +139,6 @@ export function CoachSidebar() {
 
     return (
         <>
-            {/* Mobile overlay */}
-            <div className="lg:hidden fixed inset-0 z-40 bg-background/80 backdrop-blur-sm hidden" />
-
             {/* Sidebar */}
             <aside
                 className={cn(
@@ -262,10 +272,11 @@ export function CoachSidebar() {
             </aside>
 
             {/* Mobile bottom nav */}
-            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card">
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-xl">
                 <div className="flex items-center justify-around px-2 py-1 safe-area-inset-bottom">
-                    {allNavItems.map((item) => {
+                    {mobilePrimaryNavItems.map((item) => {
                         const isActive = pathname?.startsWith(item.href)
+                        const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
 
                         return (
                             <Link
@@ -273,17 +284,83 @@ export function CoachSidebar() {
                                 href={item.href}
                                 prefetch={true}
                                 className={cn(
-                                    'nav-item flex-1 max-w-[80px]',
+                                    'nav-item min-w-0 flex-1 max-w-[80px] px-1',
                                     isActive && 'nav-item-active'
                                 )}
                             >
-                                <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-                                <span className="text-[10px] font-medium">{item.label}</span>
+                                <div className="relative">
+                                    <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
+                                    {badgeCount > 0 && (
+                                        <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold leading-none">
+                                            {badgeCount > 99 ? '99+' : badgeCount}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="max-w-full truncate text-[10px] font-medium">{item.label}</span>
                             </Link>
                         )
                     })}
+
+                    <button
+                        type="button"
+                        onClick={() => setMoreOpen(true)}
+                        className={cn(
+                            'nav-item min-w-0 flex-1 max-w-[80px] px-1',
+                            isMoreActive && 'nav-item-active'
+                        )}
+                        aria-label="Más opciones"
+                    >
+                        <Menu className={cn('h-5 w-5', isMoreActive && 'text-primary')} />
+                        <span className="text-[10px] font-medium">Más</span>
+                    </button>
                 </div>
             </nav>
+
+            <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+                <SheetContent side="bottom" className="lg:hidden rounded-t-2xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-5">
+                    <SheetHeader className="text-left">
+                        <SheetTitle>Más</SheetTitle>
+                    </SheetHeader>
+                    <nav className="mt-3 grid grid-cols-3 gap-2">
+                        {mobileMoreNavItems.map((item) => {
+                            const isActive = pathname?.startsWith(item.href)
+
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    prefetch={true}
+                                    onClick={() => setMoreOpen(false)}
+                                    className={cn(
+                                        'flex flex-col items-center justify-center gap-1.5 rounded-xl border border-border/60 px-2 py-3 text-xs font-medium transition-colors',
+                                        'hover:bg-muted/50',
+                                        isActive && 'border-primary/40 bg-primary/10 text-primary'
+                                    )}
+                                >
+                                    <item.icon className="h-5 w-5" />
+                                    <span className="truncate">{item.label}</span>
+                                </Link>
+                            )
+                        })}
+                    </nav>
+
+                    {userRole === 'both' && (
+                        <div className="mt-4 border-t border-border/50 pt-3">
+                            <ModeSwitch role={userRole} currentMode="coach" variant="toggle" />
+                        </div>
+                    )}
+
+                    <Button
+                        variant="ghost"
+                        className="mt-3 w-full justify-center text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={handleLogout}
+                        disabled={loggingOut}
+                    >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+                    </Button>
+                </SheetContent>
+            </Sheet>
         </>
     )
 }

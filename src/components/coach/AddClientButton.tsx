@@ -214,9 +214,10 @@ export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps
     return (
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
             <DialogTrigger asChild>
-                <Button className="gap-2">
+                <Button className="h-10 shrink-0 gap-2 px-3 sm:px-4" aria-label="Añadir cliente">
                     <Plus className="h-4 w-4" />
                     <span className="hidden sm:inline">Añadir cliente</span>
+                    <span className="sm:hidden">Nuevo</span>
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">

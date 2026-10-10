@@ -31,12 +31,6 @@ import {
     DialogFooter,
 } from '@/components/ui/dialog'
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
     MoreHorizontal,
     UserX,
     UserCheck,
@@ -49,6 +43,7 @@ import {
     Copy,
     Check,
     RefreshCw,
+    ChevronRight,
 } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -63,6 +58,10 @@ import type { ReviewTemplate } from '@/data/review-templates'
 import type { ClientReviewScheduleWithTemplate } from '@/data/review-schedules'
 import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
+import { getClientDisplayIdentity } from '@/lib/client-utils'
+import { parseLocalDate } from '@/lib/date-utils'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 interface MembersTableProps {
     clients: ClientWithMeta[]
@@ -98,43 +97,73 @@ export function MembersTable({ clients, statusFilter, coachId, formTemplates, re
     }
 
     return (
-        <Card>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Signup</TableHead>
-                        <TableHead>Próxima revisión</TableHead>
-                        <TableHead className="hidden lg:table-cell">Frecuencia</TableHead>
-                        <TableHead className="hidden lg:table-cell">Inicio</TableHead>
-                        <TableHead className="w-[60px]"></TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {clients.map((client) => (
-                        <ClientRow
-                            key={client.id}
-                            client={client}
-                            coachId={coachId}
-                            formTemplates={formTemplates}
-                            reviewTemplates={reviewTemplates}
-                            onUpdate={() => router.refresh()}
-                        />
-                    ))}
-                </TableBody>
-            </Table>
-        </Card>
+        <>
+            {/* Móvil: lista de tarjetas (la tabla no cabe en pantallas estrechas) */}
+            <div className="space-y-2 md:hidden">
+                {clients.map((client) => (
+                    <ClientRow
+                        key={client.id}
+                        variant="card"
+                        client={client}
+                        coachId={coachId}
+                        formTemplates={formTemplates}
+                        reviewTemplates={reviewTemplates}
+                        onUpdate={() => router.refresh()}
+                    />
+                ))}
+            </div>
+
+            {/* Tablet / escritorio: tabla */}
+            <Card className="hidden md:block">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Cliente</TableHead>
+                            <TableHead>Estado</TableHead>
+                            <TableHead>Registro</TableHead>
+                            <TableHead>Próxima revisión</TableHead>
+                            <TableHead className="hidden lg:table-cell">Frecuencia</TableHead>
+                            <TableHead className="hidden lg:table-cell">Inicio</TableHead>
+                            <TableHead className="w-[60px]"></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {clients.map((client) => (
+                            <ClientRow
+                                key={client.id}
+                                variant="row"
+                                client={client}
+                                coachId={coachId}
+                                formTemplates={formTemplates}
+                                reviewTemplates={reviewTemplates}
+                                onUpdate={() => router.refresh()}
+                            />
+                        ))}
+                    </TableBody>
+                </Table>
+            </Card>
+        </>
     )
 }
 
+function formatCheckinDate(date: string | null | undefined) {
+    if (!date) return null
+    try {
+        return format(parseLocalDate(date), "EEE d MMM", { locale: es })
+    } catch {
+        return date
+    }
+}
+
 function ClientRow({
+    variant,
     client,
     coachId,
     formTemplates,
     reviewTemplates,
     onUpdate,
 }: {
+    variant: 'row' | 'card'
     client: ClientWithMeta
     coachId: string
     formTemplates: FormTemplate[]
@@ -175,13 +204,13 @@ function ClientRow({
             const result = await resendInviteAction(client.id, coachId)
             if (result.success) {
                 toast({
-                    title: 'Invite resent ✓',
-                    description: `Invitation resent to ${client.email}`,
+                    title: 'Invitación reenviada ✓',
+                    description: `Invitación reenviada a ${client.email}`,
                 })
             } else {
                 toast({
-                    title: 'Failed to resend invite',
-                    description: result.error || 'Unknown error',
+                    title: 'Error al reenviar la invitación',
+                    description: result.error || 'Error desconocido',
                     variant: 'destructive',
                 })
             }
@@ -264,156 +293,179 @@ function ClientRow({
         return <span className="text-muted-foreground">{client.daysUntilCheckin}d</span>
     }
 
+    const statusBadge = (
+        <Badge
+            variant={client.status === 'active' ? 'default' : 'secondary'}
+            className={cn(
+                client.status === 'active' && 'bg-success/10 text-success border-0',
+                client.status === 'inactive' && 'bg-muted text-muted-foreground',
+                !client.status && 'bg-warning/10 text-warning border-0'
+            )}
+        >
+            {client.status === 'active' ? 'Activo' : client.status === 'inactive' ? 'Inactivo' : !client.status ? 'Desconocido' : client.status}
+        </Badge>
+    )
+
+    const signupBadge = isPendingSignup ? (
+        <Badge className="bg-amber-500/10 text-amber-500 border-0">
+            Registro pendiente
+        </Badge>
+    ) : (
+        <Badge className="bg-success/10 text-success border-0">
+            Registrado
+        </Badge>
+    )
+
+    const nextCheckinDate = client.effectiveNextCheckinDate ?? client.next_checkin_date
+    const workspaceHref = `/coach/clients?client=${client.id}`
+
+    const actionsMenu = (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={isPending}
+                    className="h-10 w-10 shrink-0"
+                    aria-label={`Acciones para ${client.full_name}`}
+                >
+                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setEditModalOpen(true)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link href={workspaceHref}>
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Abrir workspace
+                    </Link>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                    onClick={handleSendOnboarding}
+                    disabled={isPendingSignup}
+                >
+                    <ClipboardList className="h-4 w-4 mr-2 shrink-0" />
+                    <div className="min-w-0">
+                        <p>Enviar onboarding</p>
+                        {isPendingSignup && (
+                            <p className="text-[11px] text-muted-foreground">Requiere que el cliente se registre</p>
+                        )}
+                    </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                    onClick={handleSendReview}
+                    disabled={isPendingSignup}
+                >
+                    <RefreshCw className="h-4 w-4 mr-2 shrink-0" />
+                    <div className="min-w-0">
+                        <p>Enviar revisión</p>
+                        {isPendingSignup && (
+                            <p className="text-[11px] text-muted-foreground">Requiere que el cliente se registre</p>
+                        )}
+                    </div>
+                </DropdownMenuItem>
+
+                {isPendingSignup && (
+                    <DropdownMenuItem onClick={handleResendInvite}>
+                        <Send className="h-4 w-4 mr-2" />
+                        Reenviar invitación
+                    </DropdownMenuItem>
+                )}
+
+                <DropdownMenuSeparator />
+                {client.status === 'active' ? (
+                    <DropdownMenuItem
+                        onClick={handleDeactivate}
+                        className="text-destructive focus:text-destructive"
+                    >
+                        <UserX className="h-4 w-4 mr-2" />
+                        Dar de baja
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem
+                        onClick={handleReactivate}
+                        className="text-success focus:text-success"
+                    >
+                        <UserCheck className="h-4 w-4 mr-2" />
+                        Reactivar
+                    </DropdownMenuItem>
+                )}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    )
+
+    const { initials } = getClientDisplayIdentity(client)
+
     return (
         <>
-            <TableRow className={cn(isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
-                <TableCell>
-                    <div>
-                        <p className="font-medium">{client.full_name}</p>
-                        <p className="text-sm text-muted-foreground">{client.email}</p>
+            {variant === 'card' ? (
+                <Card className={cn('p-3 transition-opacity', isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
+                    <div className="flex items-start gap-2">
+                        <Link href={workspaceHref} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg">
+                            <div className={cn(
+                                'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                                client.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                            )}>
+                                {initials}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate font-medium leading-tight">{client.full_name}</p>
+                                <p className="truncate text-xs text-muted-foreground">{client.email}</p>
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {statusBadge}
+                                    {isPendingSignup && signupBadge}
+                                </div>
+                                {client.status === 'active' && (
+                                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                        <span>Próxima revisión:</span>
+                                        <span className="capitalize text-foreground">{formatCheckinDate(nextCheckinDate) ?? '—'}</span>
+                                        {getCheckinBadge()}
+                                    </div>
+                                )}
+                            </div>
+                            <ChevronRight className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground/60" />
+                        </Link>
+                        {actionsMenu}
                     </div>
-                </TableCell>
-                <TableCell>
-                    <Badge
-                        variant={client.status === 'active' ? 'default' : 'secondary'}
-                        className={cn(
-                            client.status === 'active' && 'bg-success/10 text-success border-0',
-                            client.status === 'inactive' && 'bg-muted text-muted-foreground',
-                            !client.status && 'bg-warning/10 text-warning border-0'
+                </Card>
+            ) : (
+                <TableRow className={cn(isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
+                    <TableCell>
+                        <div>
+                            <p className="font-medium">{client.full_name}</p>
+                            <p className="text-sm text-muted-foreground">{client.email}</p>
+                        </div>
+                    </TableCell>
+                    <TableCell>{statusBadge}</TableCell>
+                    <TableCell>{signupBadge}</TableCell>
+                    <TableCell>
+                        {client.status === 'active' ? (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">{nextCheckinDate}</span>
+                                {getCheckinBadge()}
+                            </div>
+                        ) : (
+                            <span className="text-muted-foreground">—</span>
                         )}
-                    >
-                        {client.status === 'active' ? 'Activo' : client.status === 'inactive' ? 'Inactivo' : !client.status ? 'Desconocido' : client.status}
-                    </Badge>
-                </TableCell>
-                <TableCell>
-                    {isPendingSignup ? (
-                        <div className="flex items-center gap-2">
-                            <Badge className="bg-amber-500/10 text-amber-500 border-0">
-                                Pending signup
-                            </Badge>
-                        </div>
-                    ) : (
-                        <Badge className="bg-success/10 text-success border-0">
-                            Active
-                        </Badge>
-                    )}
-                </TableCell>
-                <TableCell>
-                    {client.status === 'active' ? (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm">{client.effectiveNextCheckinDate ?? client.next_checkin_date}</span>
-                            {getCheckinBadge()}
-                        </div>
-                    ) : (
-                        <span className="text-muted-foreground">—</span>
-                    )}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                    <span className="text-sm text-muted-foreground">
-                        {client.checkin_frequency_days} días
-                    </span>
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                    <span className="text-sm text-muted-foreground">{client.start_date}</span>
-                </TableCell>
-                <TableCell>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" disabled={isPending}>
-                                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditModalOpen(true)}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                                <Link href={`/coach/clients?client=${client.id}`}>
-                                    <ExternalLink className="h-4 w-4 mr-2" />
-                                    Abrir workspace
-                                </Link>
-                            </DropdownMenuItem>
-
-                            <DropdownMenuSeparator />
-
-                            {/* Send Onboarding */}
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span>
-                                            <DropdownMenuItem
-                                                onClick={handleSendOnboarding}
-                                                disabled={isPendingSignup}
-                                                className={isPendingSignup ? 'opacity-50' : ''}
-                                            >
-                                                <ClipboardList className="h-4 w-4 mr-2" />
-                                                Enviar onboarding
-                                            </DropdownMenuItem>
-                                        </span>
-                                    </TooltipTrigger>
-                                    {isPendingSignup && (
-                                        <TooltipContent side="left">
-                                            <p className="text-xs">El cliente debe registrarse para recibir formularios</p>
-                                        </TooltipContent>
-                                    )}
-                                </Tooltip>
-                            </TooltipProvider>
-
-                            {/* Send Review */}
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span>
-                                            <DropdownMenuItem
-                                                onClick={handleSendReview}
-                                                disabled={isPendingSignup}
-                                                className={isPendingSignup ? 'opacity-50' : ''}
-                                            >
-                                                <RefreshCw className="h-4 w-4 mr-2" />
-                                                Enviar revisión
-                                            </DropdownMenuItem>
-                                        </span>
-                                    </TooltipTrigger>
-                                    {isPendingSignup && (
-                                        <TooltipContent side="left">
-                                            <p className="text-xs">El cliente debe registrarse para recibir formularios</p>
-                                        </TooltipContent>
-                                    )}
-                                </Tooltip>
-                            </TooltipProvider>
-
-                            {isPendingSignup && (
-                                <>
-                                    <DropdownMenuItem onClick={handleResendInvite}>
-                                        <Send className="h-4 w-4 mr-2" />
-                                        Resend invite
-                                    </DropdownMenuItem>
-                                </>
-                            )}
-
-                            <DropdownMenuSeparator />
-                            {client.status === 'active' ? (
-                                <DropdownMenuItem
-                                    onClick={handleDeactivate}
-                                    className="text-destructive focus:text-destructive"
-                                >
-                                    <UserX className="h-4 w-4 mr-2" />
-                                    Dar de baja
-                                </DropdownMenuItem>
-                            ) : (
-                                <DropdownMenuItem
-                                    onClick={handleReactivate}
-                                    className="text-success focus:text-success"
-                                >
-                                    <UserCheck className="h-4 w-4 mr-2" />
-                                    Reactivar
-                                </DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </TableCell>
-            </TableRow>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                        <span className="text-sm text-muted-foreground">
+                            {client.checkin_frequency_days} días
+                        </span>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                        <span className="text-sm text-muted-foreground">{client.start_date}</span>
+                    </TableCell>
+                    <TableCell>{actionsMenu}</TableCell>
+                </TableRow>
+            )}
 
             <EditClientModal
                 client={client}

@@ -33,12 +33,12 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
     const inactiveCount = clients.filter(c => c.status === 'inactive').length
 
     return (
-        <div className="min-h-screen pb-20 lg:pb-4">
+        <div className="min-h-screen min-w-0 pb-28 lg:pb-4">
             {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 lg:px-8 py-6">
+                <div className="px-4 py-3 lg:px-8 lg:py-6">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center">
                             <Users className="h-5 w-5 text-primary" />
                         </div>
                         <div>
@@ -54,7 +54,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                 </div>
             </header>
 
-            <div className="px-4 lg:px-8 pt-6">
+            <div className="min-w-0 px-4 pt-4 lg:px-8 lg:pt-6">
                 <MembersPageClient
                     clients={clients}
                     coachId={coachId}
