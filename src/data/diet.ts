@@ -152,3 +152,125 @@ export function toFrontendMacroPlan(db: DBMacroPlan): MacroPlan {
         day_type_config: dayTypeConfig,
     }
 }
+
+// ============================================================================
+// Dieta por opciones con macros (vista del cliente)
+// ============================================================================
+
+export interface ClientDietItem {
+    id: string
+    name: string
+    quantity_value: number | null
+    quantity_unit: string | null
+    notes: string | null
+    food_id: string | null
+    quantity_g: number | null
+    kcal: number | null
+    protein_g: number | null
+    carbs_g: number | null
+    fat_g: number | null
+    alternative_group: number | null
+    is_alternative: boolean
+    unit_weight_g: number | null
+    unit_label: string | null
+}
+
+export interface ClientDietOption {
+    id: string
+    name: string
+    notes: string | null
+    items: ClientDietItem[]
+}
+
+export interface ClientDietMeal {
+    id: string
+    name: string
+    day_type: string
+    order_index: number
+    target: { kcal: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
+    options: ClientDietOption[]
+}
+
+function numberOrNull(value: unknown) {
+    return value === null || value === undefined ? null : Number(value)
+}
+
+/**
+ * Comidas, opciones y alimentos (con macros) de un plan de dieta por opciones.
+ * Lee las tablas normalizadas; el JSON `diet_plans.meals` queda solo como
+ * respaldo para planes sin estructura.
+ */
+export async function getDietPlanMealsWithMacros(planId: string): Promise<ClientDietMeal[]> {
+    const supabase = await createClient()
+
+    const { data: meals, error: mealsError } = await supabase
+        .from('diet_meals')
+        .select('id, name, day_type, order_index, target_kcal, target_protein_g, target_carbs_g, target_fat_g')
+        .eq('diet_plan_id', planId)
+        .order('order_index', { ascending: true })
+    if (mealsError || !meals?.length) return []
+
+    const { data: options } = await supabase
+        .from('diet_meal_options')
+        .select('id, meal_id, title, name, notes, order_index')
+        .in('meal_id', meals.map(meal => meal.id))
+        .order('order_index', { ascending: true })
+
+    const optionIds = (options ?? []).map(option => option.id)
+    const { data: items } = optionIds.length > 0
+        ? await supabase
+            .from('diet_meal_items')
+            .select('id, option_id, food_name, quantity, unit, details, order_index, food_id, quantity_g, kcal, protein_g, carbs_g, fat_g, alternative_group, is_alternative, food:foods(unit_weight_g, unit_label)')
+            .in('option_id', optionIds)
+            .order('order_index', { ascending: true })
+        : { data: [] as any[] }
+
+    const itemsByOption = new Map<string, ClientDietItem[]>()
+    for (const item of items ?? []) {
+        const food = Array.isArray((item as any).food) ? (item as any).food[0] : (item as any).food
+        const list = itemsByOption.get(item.option_id) ?? []
+        list.push({
+            id: item.id,
+            name: String(item.food_name ?? '').trim(),
+            quantity_value: numberOrNull(item.quantity),
+            quantity_unit: item.unit ?? null,
+            notes: item.details ?? null,
+            food_id: item.food_id ?? null,
+            quantity_g: numberOrNull(item.quantity_g),
+            kcal: numberOrNull(item.kcal),
+            protein_g: numberOrNull(item.protein_g),
+            carbs_g: numberOrNull(item.carbs_g),
+            fat_g: numberOrNull(item.fat_g),
+            alternative_group: item.alternative_group ?? null,
+            is_alternative: Boolean(item.is_alternative),
+            unit_weight_g: numberOrNull(food?.unit_weight_g),
+            unit_label: food?.unit_label ?? null,
+        })
+        itemsByOption.set(item.option_id, list)
+    }
+
+    return meals.map(meal => {
+        const target = {
+            kcal: numberOrNull(meal.target_kcal),
+            protein_g: numberOrNull(meal.target_protein_g),
+            carbs_g: numberOrNull(meal.target_carbs_g),
+            fat_g: numberOrNull(meal.target_fat_g),
+        }
+        const hasTarget = Object.values(target).some(value => Number(value) > 0)
+        return {
+            id: meal.id,
+            name: meal.name,
+            day_type: meal.day_type,
+            order_index: meal.order_index,
+            target: hasTarget ? target : null,
+            options: (options ?? [])
+                .filter(option => option.meal_id === meal.id)
+                .map(option => ({
+                    id: option.id,
+                    name: String(option.title ?? option.name ?? '').trim() || 'Opción',
+                    notes: option.notes ?? null,
+                    items: itemsByOption.get(option.id) ?? [],
+                })),
+        }
+    })
+}

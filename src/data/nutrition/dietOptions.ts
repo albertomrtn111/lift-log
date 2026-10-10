@@ -14,6 +14,63 @@ import type {
  * Ensure we have a valid session before any write operation.
  * Throws error if the authenticated user is missing.
  */
+// Campos de `foods` necesarios para calcular macros en el editor
+const DIET_FOOD_FIELDS = 'id, name, brand, kcal, protein_g, carbs_g, fat_g, serving_size_g, unit_weight_g, unit_label, food_group, is_generic'
+
+/**
+ * JSON legado de `diet_plans.meals` (lo lee la app del cliente). Se amplía con
+ * alimento, gramos, macros, alternativas y objetivo por comida sin romper los
+ * campos que ya usa el cliente (name, quantity, note).
+ */
+function buildLegacyMealsJson(meals: DietPlanInput['meals']) {
+    const defaultMeals = meals
+        .filter(m => m.day_type === 'default')
+        .sort((a, b) => a.order_index - b.order_index)
+
+    const mealsJson = {
+        meals_per_day: defaultMeals.length,
+        labels: defaultMeals.map(m => m.name),
+        days: {
+            default: {} as Record<string, { options: any[], notes?: string, target?: Record<string, number | null> }>
+        }
+    }
+
+    for (const meal of defaultMeals) {
+        const hasTarget = [meal.target_kcal, meal.target_protein_g, meal.target_carbs_g, meal.target_fat_g]
+            .some(value => value !== null && value !== undefined)
+        mealsJson.days.default[meal.name] = {
+            ...(hasTarget ? {
+                target: {
+                    kcal: meal.target_kcal ?? null,
+                    protein_g: meal.target_protein_g ?? null,
+                    carbs_g: meal.target_carbs_g ?? null,
+                    fat_g: meal.target_fat_g ?? null,
+                },
+            } : {}),
+            options: meal.options.map(opt => ({
+                id: crypto.randomUUID(),
+                name: opt.name,
+                notes: opt.notes,
+                items: opt.items.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity_value ? `${item.quantity_value} ${item.quantity_unit || ''}`.trim() : '',
+                    note: item.notes,
+                    food_id: item.food_id ?? null,
+                    quantity_g: item.quantity_g ?? null,
+                    kcal: item.kcal ?? null,
+                    protein_g: item.protein_g ?? null,
+                    carbs_g: item.carbs_g ?? null,
+                    fat_g: item.fat_g ?? null,
+                    alternative_group: item.alternative_group ?? null,
+                    is_alternative: item.is_alternative ?? false,
+                }))
+            }))
+        }
+    }
+
+    return mealsJson
+}
+
 async function ensureSession(supabase: ReturnType<typeof createClient>, context: string) {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
 
@@ -221,7 +278,7 @@ export async function getDietPlanStructure(
     if (optionIds.length > 0) {
         const { data: fetchedItems, error: itemsError } = await supabase
             .from('diet_meal_items')
-            .select('*')
+            .select(`*, food:foods(${DIET_FOOD_FIELDS})`)
             .in('option_id', optionIds)
             .order('order_index', { ascending: true })
 
@@ -246,6 +303,8 @@ export async function getDietPlanStructure(
         // Attach items to this option and MAP DB keys to UI keys
         const optWithItems = {
             ...opt,
+            // La tabla guarda el nombre en "title"; "name" es una columna antigua
+            name: String(opt.title ?? opt.name ?? '').trim(),
             items: (itemsByOptionId[opt.id] || []).map((item: any) => ({
                 ...item,
                 // Map "food_name" (DB) -> "name" (UI)
@@ -256,6 +315,20 @@ export async function getDietPlanStructure(
                 quantity_value: item.quantity ?? item.quantity_value ?? null,
                 // Map "unit" (DB) -> "quantity_unit" (UI)
                 quantity_unit: item.unit ?? item.quantity_unit ?? null,
+                quantity_g: item.quantity_g != null ? Number(item.quantity_g) : null,
+                kcal: item.kcal != null ? Number(item.kcal) : null,
+                protein_g: item.protein_g != null ? Number(item.protein_g) : null,
+                carbs_g: item.carbs_g != null ? Number(item.carbs_g) : null,
+                fat_g: item.fat_g != null ? Number(item.fat_g) : null,
+                food: item.food ? {
+                    ...item.food,
+                    kcal: Number(item.food.kcal),
+                    protein_g: Number(item.food.protein_g),
+                    carbs_g: Number(item.food.carbs_g),
+                    fat_g: Number(item.food.fat_g),
+                    serving_size_g: Number(item.food.serving_size_g),
+                    unit_weight_g: item.food.unit_weight_g != null ? Number(item.food.unit_weight_g) : null,
+                } : null,
             }))
         }
         acc[opt.meal_id].push(optWithItems)
@@ -309,32 +382,7 @@ export async function createDietPlanOptions(
     // 1. Build legacy meals JSON for client backward compatibility
     // The client app expects a 'meals' JSON column with a specific structure.
     // We strictly map 'default' day type meals to this JSON.
-    const defaultMeals = input.meals
-        .filter(m => m.day_type === 'default')
-        .sort((a, b) => a.order_index - b.order_index)
-
-    const mealsJson = {
-        meals_per_day: defaultMeals.length,
-        labels: defaultMeals.map(m => m.name),
-        days: {
-            default: {} as Record<string, { options: any[], notes?: string }>
-        }
-    }
-
-    for (const meal of defaultMeals) {
-        mealsJson.days.default[meal.name] = {
-            options: meal.options.map(opt => ({
-                id: crypto.randomUUID(), // Generate a temp ID for JSON
-                name: opt.name,
-                notes: opt.notes,
-                items: opt.items.map(item => ({
-                    name: item.name,
-                    quantity: item.quantity_value ? `${item.quantity_value} ${item.quantity_unit || ''}`.trim() : '',
-                    note: item.notes
-                }))
-            }))
-        }
-    }
+    const mealsJson = buildLegacyMealsJson(input.meals)
 
     // 2. Create plan with meals JSON
     // RULE: Active plans MUST have effective_to = null
@@ -453,32 +501,7 @@ export async function updateDietPlanOptions(
     }
 
     // 1. Build legacy meals JSON
-    const defaultMeals = input.meals
-        .filter(m => m.day_type === 'default')
-        .sort((a, b) => a.order_index - b.order_index)
-
-    const mealsJson = {
-        meals_per_day: defaultMeals.length,
-        labels: defaultMeals.map(m => m.name),
-        days: {
-            default: {} as Record<string, { options: any[], notes?: string }>
-        }
-    }
-
-    for (const meal of defaultMeals) {
-        mealsJson.days.default[meal.name] = {
-            options: meal.options.map(opt => ({
-                id: crypto.randomUUID(),
-                name: opt.name,
-                notes: opt.notes,
-                items: opt.items.map(item => ({
-                    name: item.name,
-                    quantity: item.quantity_value ? `${item.quantity_value} ${item.quantity_unit || ''}`.trim() : '',
-                    note: item.notes
-                }))
-            }))
-        }
-    }
+    const mealsJson = buildLegacyMealsJson(input.meals)
 
     // 2. Update plan header
 
@@ -569,6 +592,10 @@ export async function duplicateDietPlanOptions(
             day_type: meal.day_type,
             name: meal.name,
             order_index: meal.order_index,
+            target_kcal: meal.target_kcal ?? null,
+            target_protein_g: meal.target_protein_g ?? null,
+            target_carbs_g: meal.target_carbs_g ?? null,
+            target_fat_g: meal.target_fat_g ?? null,
             options: meal.options.map(opt => ({
                 name: opt.name,
                 order_index: opt.order_index,
@@ -580,6 +607,15 @@ export async function duplicateDietPlanOptions(
                     quantity_unit: item.quantity_unit,
                     notes: item.notes,
                     order_index: item.order_index,
+                    food_id: item.food_id ?? null,
+                    quantity_g: item.quantity_g ?? null,
+                    kcal: item.kcal ?? null,
+                    protein_g: item.protein_g ?? null,
+                    carbs_g: item.carbs_g ?? null,
+                    fat_g: item.fat_g ?? null,
+                    alternative_group: item.alternative_group ?? null,
+                    is_alternative: item.is_alternative ?? false,
+                    equivalence_basis: item.equivalence_basis ?? null,
                 }))
             }))
         }))
@@ -1104,6 +1140,10 @@ async function insertMealsStructure(
             day_type: meal.day_type || 'default',
             name: meal.name,
             order_index: meal.order_index,
+            target_kcal: meal.target_kcal ?? null,
+            target_protein_g: meal.target_protein_g ?? null,
+            target_carbs_g: meal.target_carbs_g ?? null,
+            target_fat_g: meal.target_fat_g ?? null,
         }
 
         console.log('[insertMealsStructure] Inserting diet_meals:', mealPayload)
@@ -1196,6 +1236,15 @@ async function insertMealsStructure(
                     unit: item.quantity_unit ?? null,
                     details: item.notes || null,
                     order_index: item.order_index,
+                    food_id: item.food_id ?? null,
+                    quantity_g: item.quantity_g ?? null,
+                    kcal: item.kcal ?? null,
+                    protein_g: item.protein_g ?? null,
+                    carbs_g: item.carbs_g ?? null,
+                    fat_g: item.fat_g ?? null,
+                    alternative_group: item.alternative_group ?? null,
+                    is_alternative: item.is_alternative ?? false,
+                    equivalence_basis: item.equivalence_basis ?? null,
                 }))
 
                 console.log('[insertMealsStructure] Inserting diet_meal_items:', itemsToInsert.length, 'items for option', optData.id)

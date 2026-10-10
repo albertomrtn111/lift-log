@@ -87,7 +87,47 @@ export interface DietPlan {
     updated_at?: string
 }
 
-export interface DietMeal {
+/** Objetivo de macros de una comida (lo fija el coach) */
+export interface MealMacroTarget {
+    target_kcal?: number | null
+    target_protein_g?: number | null
+    target_carbs_g?: number | null
+    target_fat_g?: number | null
+}
+
+export type EquivalenceBasis = 'kcal' | 'protein' | 'carbs' | 'fat'
+
+/** Alimento de la tabla `foods` con lo necesario para calcular macros */
+export interface DietFoodRef {
+    id: string
+    name: string
+    brand?: string | null
+    kcal: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    serving_size_g: number
+    unit_weight_g?: number | null
+    unit_label?: string | null
+    food_group?: string | null
+    is_generic?: boolean
+}
+
+/** Campos de macros de un ítem vinculado a un alimento */
+export interface DietItemMacroFields {
+    food_id?: string | null
+    quantity_g?: number | null
+    kcal?: number | null
+    protein_g?: number | null
+    carbs_g?: number | null
+    fat_g?: number | null
+    /** Ítems con el mismo grupo dentro de una opción son intercambiables */
+    alternative_group?: number | null
+    is_alternative?: boolean
+    equivalence_basis?: EquivalenceBasis | null
+}
+
+export interface DietMeal extends MealMacroTarget {
     id: string
     diet_plan_id: string
     day_type: DayType
@@ -108,7 +148,7 @@ export interface DietMealOption {
     created_at: string
 }
 
-export interface DietOptionItem {
+export interface DietOptionItem extends DietItemMacroFields {
     id: string
     option_id: string
     item_type: ItemType
@@ -118,13 +158,15 @@ export interface DietOptionItem {
     notes?: string
     order_index: number
     created_at: string
+    /** Alimento vinculado (incrustado al leer la estructura) */
+    food?: DietFoodRef | null
 }
 
 // ============================================================================
 // COMBINED STRUCTURES (for UI)
 // ============================================================================
 
-export interface DietOptionItemInput {
+export interface DietOptionItemInput extends DietItemMacroFields {
     item_type: ItemType
     name: string
     quantity_value?: number | null
@@ -140,7 +182,7 @@ export interface DietMealOptionInput {
     items: DietOptionItemInput[]
 }
 
-export interface DietMealInput {
+export interface DietMealInput extends MealMacroTarget {
     day_type: DayType
     name: string
     order_index: number
