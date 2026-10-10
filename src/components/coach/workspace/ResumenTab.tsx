@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Client } from '@/types/coach'
-import type { ClientEvent, ClientStatus, CheckinWithReview, MacroPlan, TrainingProgram } from '@/data/workspace'
+import type { ClientEvent, ClientStatus, CheckinWithReview, DietPlan, MacroPlan, TrainingProgram } from '@/data/workspace'
+import type { AthleteCurrentGoal } from '@/types/athlete-current-goal'
 import { forceAdvanceCheckinAction, regenerateReviewAIAction } from './actions'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -40,7 +41,8 @@ import {
     getParsedAIAnalysis,
     getReviewAIStatus,
 } from './CheckinAIAnalysisSheet'
-import { parseLocalDate } from '@/lib/date-utils'
+import { parseLocalDate, toLocalDateStr } from '@/lib/date-utils'
+import { getWorkspaceExpiryAlerts, type ExpiryAlert } from '@/lib/workspace-expiry-alerts'
 
 type MetricPoint = {
     metric_date?: string
@@ -58,7 +60,10 @@ interface ResumenTabProps {
     clientStatus: ClientStatus | null
     latestCheckin: CheckinWithReview | null
     activeMacroPlan: MacroPlan | null
+    macroPlans: MacroPlan[]
+    dietPlans: DietPlan[]
     activeProgram: TrainingProgram | null
+    currentGoal: AthleteCurrentGoal | null
     events: ClientEvent[]
     metrics: MetricPoint[]
     onRefresh: () => void
@@ -222,6 +227,48 @@ function formatEventDaysUntil(days: number) {
     }
     if (days === -1) return 'Ayer'
     return `Hace ${Math.abs(days)} días`
+}
+
+function ExpiryAlertsCard({ alerts, onSwitchTab }: { alerts: ExpiryAlert[]; onSwitchTab: (tab: string) => void }) {
+    if (alerts.length === 0) return null
+
+    return (
+        <Card role="alert" className="min-w-0 overflow-hidden border-amber-500/40 bg-amber-500/5">
+            <div className="flex items-start gap-3 border-b border-amber-500/20 px-4 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                    <CalendarClock className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                    <h3 className="font-semibold">Plazos que requieren atención</h3>
+                    <p className="text-sm text-muted-foreground">Revisa el objetivo o prepara la siguiente fase del plan.</p>
+                </div>
+            </div>
+            <div className="divide-y divide-amber-500/15">
+                {alerts.map(alert => {
+                    const label = alert.kind === 'goal' ? 'Objetivo'
+                        : alert.kind === 'training' ? 'Programa de entrenamiento'
+                            : alert.kind === 'macros' ? 'Plan nutricional' : 'Plan de comidas'
+                    const date = parseLocalDate(alert.endDate).toLocaleDateString('es-ES', {
+                        day: 'numeric', month: 'long', year: 'numeric',
+                    })
+                    return (
+                        <div key={`${alert.kind}-${alert.id}`} className="flex min-w-0 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground">{label}: <span className="break-words font-medium">{alert.title}</span></p>
+                                <p className="text-sm text-muted-foreground">
+                                    {alert.daysOverdue === 0 ? `Termina hoy, ${date}.` : `Terminó el ${date}.`}
+                                </p>
+                            </div>
+                            <Button type="button" variant="outline" className="min-h-10 w-full shrink-0 sm:w-auto"
+                                onClick={() => onSwitchTab(alert.tab)}>
+                                Revisar <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </div>
+                    )
+                })}
+            </div>
+        </Card>
+    )
 }
 
 
@@ -407,7 +454,10 @@ export function ResumenTab({
     clientStatus,
     latestCheckin,
     activeMacroPlan,
+    macroPlans,
+    dietPlans,
     activeProgram,
+    currentGoal,
     events,
     metrics,
     onRefresh,
@@ -415,6 +465,13 @@ export function ResumenTab({
     metricDefinitions,
     previousCheckin,
 }: ResumenTabProps) {
+    const expiryAlerts = getWorkspaceExpiryAlerts({
+        today: toLocalDateStr(new Date()),
+        goal: currentGoal,
+        activeProgram,
+        macroPlans,
+        dietPlans,
+    })
     const programSnapshot = getProgramSnapshot(activeProgram)
     const followUp = getFollowUpSummary(clientStatus)
     const weightSnapshot = getWindowedMetricSnapshot(metrics, metric => metric.weight_kg ?? null, new Date())
@@ -441,6 +498,7 @@ export function ResumenTab({
 
     return (
         <div className="space-y-5">
+            <ExpiryAlertsCard alerts={expiryAlerts} onSwitchTab={onSwitchTab} />
             <section className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">Estado actual</h3>
 

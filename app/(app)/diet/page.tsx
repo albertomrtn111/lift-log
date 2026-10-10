@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getActiveMacroPlan, getActiveDietPlan, toFrontendMacroPlan } from '@/data/diet'
+import { getActiveMacroPlan, getActiveDietPlan, getDietPlanMealsWithMacros, toFrontendMacroPlan, type ClientDietMeal } from '@/data/diet'
 import { getClientId } from '@/data/client-schedule'
 import { DietPageClient } from './DietPageClient'
 
@@ -17,6 +17,7 @@ export default async function DietPage() {
             <DietPageClient
                 macroPlan={null}
                 dietPlan={null}
+                dietMeals={[]}
                 supplements={[]}
             />
         )
@@ -56,10 +57,14 @@ export default async function DietPage() {
         }
     }
 
+    // Estructura con macros (tablas normalizadas); el JSON queda de respaldo
+    const dietMeals: ClientDietMeal[] = dietPlan ? await getDietPlanMealsWithMacros(dietPlan.id) : []
+
     return (
         <DietPageClient
             macroPlan={frontendMacroPlan}
             dietPlan={parsedDietPlan}
+            dietMeals={dietMeals}
             supplements={supplementsData}
         />
     )

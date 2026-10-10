@@ -56,6 +56,9 @@ export interface ClientDailyMetricEntry {
     weightKg: number | null
     steps: number | null
     sleepHours: number | null
+    hrvMs: number | null
+    sleepScore: number | null
+    fatigue: number | null
     notes: string | null
 }
 
@@ -203,7 +206,7 @@ export async function getClientDailyMetrics(range: MetricsRange): Promise<Client
 
     const { data, error } = await supabase
         .from('client_metrics')
-        .select('metric_date, weight_kg, steps, sleep_h, notes')
+        .select('metric_date, weight_kg, steps, sleep_h, hrv_ms, sleep_score, fatigue, notes')
         .eq('client_id', client.id)
         .gte('metric_date', format(startDate, 'yyyy-MM-dd'))
         .lte('metric_date', format(today, 'yyyy-MM-dd'))
@@ -219,6 +222,9 @@ export async function getClientDailyMetrics(range: MetricsRange): Promise<Client
         weightKg: toNullableNumber(entry.weight_kg),
         steps: toNullableNumber(entry.steps),
         sleepHours: toNullableNumber(entry.sleep_h),
+        hrvMs: toNullableNumber(entry.hrv_ms),
+        sleepScore: toNullableNumber(entry.sleep_score),
+        fatigue: toNullableNumber(entry.fatigue),
         notes: entry.notes || null,
     }))
 }

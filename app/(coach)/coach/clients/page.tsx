@@ -4,6 +4,7 @@ import { UserCog } from 'lucide-react'
 import {
     getAthleteAIProfile,
 } from '@/data/athlete-ai-profile'
+import { getAthleteCurrentGoal } from '@/data/athlete-current-goal'
 import {
     getClientsForSelector,
     getClientForWorkspace,
@@ -68,6 +69,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     let formTemplates: Awaited<ReturnType<typeof getFormTemplates>> = []
     let reviewTemplates: Awaited<ReturnType<typeof listReviewTemplates>> = []
     let athleteProfile: Awaited<ReturnType<typeof getAthleteAIProfile>> = null
+    let currentGoal: Awaited<ReturnType<typeof getAthleteCurrentGoal>> = null
 
     if (selectedClientId) {
         // Fetch all data in parallel
@@ -88,6 +90,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             formTemplatesData,
             reviewTemplatesData,
             athleteProfileData,
+            currentGoalData,
         ] = await Promise.all([
             getClientForWorkspace(coachId, selectedClientId),
             getClientStatus(coachId, selectedClientId),
@@ -105,6 +108,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
             getFormTemplates(),
             listReviewTemplates(coachId),
             getAthleteAIProfile(coachId, selectedClientId),
+            getAthleteCurrentGoal(coachId, selectedClientId),
         ])
 
         selectedClient = clientData
@@ -123,9 +127,10 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         formTemplates = formTemplatesData
         reviewTemplates = reviewTemplatesData
         athleteProfile = athleteProfileData
+        currentGoal = currentGoalData
     }
     return (
-        <div className="min-h-screen min-w-0 overflow-x-hidden pb-20 lg:pb-4">
+        <div className="min-h-screen min-w-0 overflow-x-hidden pb-28 lg:pb-4">
             {/* Header */}
             <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
                 <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-6">
@@ -135,7 +140,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-xl font-bold">Workspace</h1>
-                            <p className="text-sm text-muted-foreground">Centro operativo por cliente</p>
+                            <p className="hidden text-sm text-muted-foreground sm:block">Centro operativo por cliente</p>
                         </div>
                     </div>
                 </div>
@@ -161,6 +166,7 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
                     formTemplates={formTemplates}
                     reviewTemplates={reviewTemplates}
                     athleteProfile={athleteProfile}
+                    currentGoal={currentGoal}
                 />
             </div>
         </div>

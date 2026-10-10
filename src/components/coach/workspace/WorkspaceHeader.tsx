@@ -180,9 +180,9 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
         <>
             {/* Pending Signup Banner */}
             {isPendingSignup && (
-                <Card className="p-4 mb-4 border-amber-500/30 bg-amber-500/5">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
+                <Card className="p-3 sm:p-4 mb-4 border-amber-500/30 bg-amber-500/5">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="flex items-start sm:items-center gap-3">
                             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
                             <div>
                                 <p className="font-medium text-amber-500">Este cliente aún no se ha registrado</p>
@@ -212,13 +212,13 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
             <Card className="mb-4 p-3 sm:p-3.5">
                 <div className="flex items-center justify-between gap-2 sm:gap-4">
                     {/* Client Info */}
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-bold text-white shrink-0">
                             {initials}
                         </div>
                         <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-sm font-semibold truncate">{displayName}</h2>
+                            <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                                <h2 className="text-sm font-semibold truncate max-w-full">{displayName}</h2>
                                 <Badge
                                     variant={client.status === 'active' ? 'default' : 'secondary'}
                                     className={cn(
@@ -236,8 +236,8 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                                     </Badge>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                                <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                                <p className="text-xs text-muted-foreground truncate min-w-0">{client.email}</p>
                                 {formattedCheckinDate && (
                                     <span className="hidden sm:inline text-[11px] text-muted-foreground/70">·</span>
                                 )}
@@ -245,6 +245,11 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                                     <span className="hidden sm:inline text-[11px] text-muted-foreground capitalize whitespace-nowrap">Revisión {formattedCheckinDate}</span>
                                 )}
                             </div>
+                            {formattedCheckinDate && (
+                                <p className="sm:hidden mt-0.5 text-[11px] text-muted-foreground">
+                                    Revisión: <span className="capitalize">{formattedCheckinDate}</span>
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -261,7 +266,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                         </Button>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8">
+                                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" aria-label="Acciones del cliente">
                                     <MoreVertical className="h-4 w-4" />
                                 </Button>
                             </DropdownMenuTrigger>

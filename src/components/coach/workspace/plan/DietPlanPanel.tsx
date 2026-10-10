@@ -48,6 +48,7 @@ import {
 } from '@/hooks/useDietOptions'
 import type { DayType, DietPlan, DietPlanWithStructure } from '@/data/nutrition/types'
 import { DietOptionsWizard } from './DietOptionsWizard'
+import { OptionMacroView, mealTargetLabel } from './diet-editor/OptionMacroView'
 import { DietCsvImportWizard } from './DietCsvImportWizard'
 import { DietPlansHistory } from './DietPlansHistory'
 import { AINutritionDialog } from './AINutritionDialog'
@@ -372,6 +373,9 @@ function MealsList({ meals }: { meals: DietPlanWithStructure['meals'] }) {
                             <div className="flex items-center gap-2">
                                 <Utensils className="h-4 w-4 text-muted-foreground" />
                                 <span className="font-medium">{meal.name}</span>
+                                {mealTargetLabel(meal) && (
+                                    <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">· {mealTargetLabel(meal)}</span>
+                                )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <Badge variant="secondary">{meal.options.length} opciones</Badge>
@@ -382,31 +386,7 @@ function MealsList({ meals }: { meals: DietPlanWithStructure['meals'] }) {
                             <div className="border-t divide-y">
                                 {meal.options.map(option => (
                                     <div key={option.id} className="p-4">
-                                        <h5 className="font-medium text-sm mb-2">{option.name}</h5>
-                                        <ul className="space-y-1">
-                                            {option.items.map(item => (
-                                                <li key={item.id} className="text-sm text-muted-foreground flex items-start gap-2">
-                                                    <span className="text-primary">•</span>
-                                                    <span>
-                                                        {item.quantity_value && (
-                                                            <strong>
-                                                                {item.quantity_value}
-                                                                {item.quantity_unit && ` ${item.quantity_unit}`}{' '}
-                                                            </strong>
-                                                        )}
-                                                        {item.name}
-                                                        {item.notes && (
-                                                            <span className="text-muted-foreground/70"> ({item.notes})</span>
-                                                        )}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                        {option.notes && (
-                                            <p className="mt-2 text-xs text-primary bg-primary/5 px-2 py-1 rounded inline-block">
-                                                💡 {option.notes}
-                                            </p>
-                                        )}
+                                        <OptionMacroView meal={meal} option={option} />
                                     </div>
                                 ))}
                             </div>

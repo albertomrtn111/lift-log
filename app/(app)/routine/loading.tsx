@@ -3,34 +3,27 @@ import { Skeleton } from '@/components/ui/skeleton'
 export default function RoutineLoading() {
     return (
         <div className="app-mobile-page min-h-screen">
-            {/* Header skeleton */}
-            <header className="app-mobile-header bg-background border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 mb-4 pr-24">
-                        <Skeleton className="w-10 h-10 rounded-xl" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-5 w-32" />
-                            <Skeleton className="h-4 w-40" />
-                        </div>
+            <header className="app-mobile-header border-b border-border/60 bg-background">
+                <div className="px-4 pb-3 pt-4">
+                    <div className="space-y-2 pr-24">
+                        <Skeleton className="h-3 w-14" />
+                        <Skeleton className="h-7 w-48" />
                     </div>
-                    {/* Week selector skeleton */}
-                    <div className="flex gap-2 overflow-hidden pb-3">
-                        {[...Array(6)].map((_, i) => (
-                            <Skeleton key={i} className="h-10 w-10 rounded-lg flex-shrink-0" />
-                        ))}
-                    </div>
-                    {/* Day tabs skeleton */}
-                    <div className="flex gap-2 border-t pt-3">
-                        {[...Array(5)].map((_, i) => (
-                            <Skeleton key={i} className="h-8 w-16" />
-                        ))}
+                    <div className="mt-3 flex items-center gap-3">
+                        <Skeleton className="h-10 w-44 rounded-full" />
+                        <Skeleton className="h-1.5 flex-1 rounded-full" />
                     </div>
                 </div>
+                <div className="flex gap-2 overflow-hidden px-4 pb-3">
+                    {[...Array(4)].map((_, i) => (
+                        <Skeleton key={i} className="h-8 w-24 shrink-0 rounded-full" />
+                    ))}
+                </div>
             </header>
-            {/* Content skeleton */}
-            <div className="p-4 space-y-3">
+            <div className="space-y-3 p-4">
+                <Skeleton className="h-[92px] rounded-2xl" />
                 {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-24 rounded-xl" />
+                    <Skeleton key={i} className="h-[88px] rounded-2xl" />
                 ))}
             </div>
         </div>

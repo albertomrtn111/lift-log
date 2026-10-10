@@ -5,12 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import {
     AlertCircle,
-    BarChart3,
-    Camera,
-    ClipboardCheck,
+    HeartPulse,
     ClipboardList,
     Dumbbell,
     Loader2,
@@ -34,11 +32,72 @@ import { ClientCardioEvolution } from '@/components/progress/ClientCardioEvoluti
 import { ClientReviewsTab } from '@/components/progress/ClientReviewsTab'
 import { ClientGalleryTab } from '@/components/progress/ClientGalleryTab'
 import { cn } from '@/lib/utils'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 
 type ProgressTab = 'resumen' | 'revisiones' | 'galeria'
 
+const PROGRESS_TAB_OPTIONS: Array<{ value: ProgressTab; label: string }> = [
+    { value: 'resumen', label: 'Resumen' },
+    { value: 'revisiones', label: 'Revisiones' },
+    { value: 'galeria', label: 'Galería' },
+]
+
 function normalizeTab(tab: string | null): ProgressTab {
     return tab === 'revisiones' || tab === 'galeria' ? tab : 'resumen'
+}
+
+function DayChip({ label, tone }: { label: string; tone?: 'rose' }) {
+    return (
+        <span className={cn(
+            'rounded-md px-1.5 py-0.5 text-xs font-medium tabular-nums',
+            tone === 'rose' ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300' : 'bg-muted text-foreground/80'
+        )}>
+            {label}
+        </span>
+    )
+}
+
+function average(values: number[]) {
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+}
+
+/** Medias de VFC, puntuación del sueño y fatiga del rango; con tendencia de la VFC */
+function RecoveryCard({ entries }: { entries: ClientDailyMetricEntry[] }) {
+    const hrv = entries.filter(entry => entry.hrvMs !== null).map(entry => entry.hrvMs as number)
+    const sleepScore = entries.filter(entry => entry.sleepScore !== null).map(entry => entry.sleepScore as number)
+    const fatigue = entries.filter(entry => entry.fatigue !== null).map(entry => entry.fatigue as number)
+    if (hrv.length === 0 && sleepScore.length === 0 && fatigue.length === 0) return null
+
+    // entries viene del más reciente al más antiguo: últimos 7 registros frente a la media del rango
+    const hrvAvg = average(hrv)
+    const hrvRecent = average(hrv.slice(0, 7))
+    const hrvTrend = hrvAvg && hrvRecent && hrv.length >= 10 ? ((hrvRecent - hrvAvg) / hrvAvg) * 100 : null
+
+    const stats = [
+        hrv.length > 0 && { label: 'VFC media', value: `${Math.round(hrvAvg as number)}`, unit: 'ms', hint: hrvTrend !== null ? `${hrvTrend > 0 ? '+' : ''}${Math.round(hrvTrend)}% últimos 7` : `${hrv.length} días` },
+        sleepScore.length > 0 && { label: 'Sueño', value: `${Math.round(average(sleepScore) as number)}`, unit: '/100', hint: `${sleepScore.length} días` },
+        fatigue.length > 0 && { label: 'Fatiga', value: (average(fatigue) as number).toFixed(1).replace('.', ','), unit: '/5', hint: `${fatigue.length} días` },
+    ].filter(Boolean) as { label: string; value: string; unit: string; hint: string }[]
+
+    return (
+        <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+            <h3 className="flex items-center gap-2 text-[15px] font-semibold">
+                <HeartPulse className="h-4 w-4 text-rose-500" />
+                Recuperación
+            </h3>
+            <div className={cn('mt-3 grid gap-3', stats.length === 1 ? 'grid-cols-1' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-3')}>
+                {stats.map(stat => (
+                    <div key={stat.label}>
+                        <p className="text-[11px] font-medium text-muted-foreground">{stat.label}</p>
+                        <p className="text-xl font-bold tabular-nums">
+                            {stat.value}<span className="text-xs font-normal text-muted-foreground"> {stat.unit}</span>
+                        </p>
+                        <p className="text-[11px] tabular-nums text-muted-foreground">{stat.hint}</p>
+                    </div>
+                ))}
+            </div>
+        </section>
+    )
 }
 
 interface SummaryOverviewProps {
@@ -50,6 +109,7 @@ interface SummaryOverviewProps {
     cardioData: ClientCardioProgressData
     dailyMetrics: ClientDailyMetricEntry[]
     loading: boolean
+    onOpenDay: (date: string) => void
 }
 
 function SummaryOverview({
@@ -61,6 +121,7 @@ function SummaryOverview({
     cardioData,
     dailyMetrics,
     loading,
+    onOpenDay,
 }: SummaryOverviewProps) {
     const ranges: { label: string, value: MetricsRange }[] = [
         { label: '7D', value: '7d' },
@@ -228,67 +289,62 @@ function SummaryOverview({
 
             <ClientCardioEvolution data={cardioData} />
 
-            <Card className="overflow-hidden">
-                <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
+            <RecoveryCard entries={dailyMetrics} />
+
+            <section className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
                     <div>
-                        <h3 className="font-semibold flex items-center gap-2">
+                        <h3 className="flex items-center gap-2 text-[15px] font-semibold">
                             <ClipboardList className="h-4 w-4 text-primary" />
                             Registro diario
                         </h3>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Peso, pasos, sueño y notas del rango seleccionado.
-                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Toca un día para editarlo.</p>
                     </div>
-                    <Badge variant="secondary" className="shrink-0">
+                    <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums text-muted-foreground">
                         {dailyMetrics.length} días
-                    </Badge>
+                    </span>
                 </div>
 
                 {dailyMetrics.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px] text-sm">
-                            <thead>
-                                <tr className="border-b bg-muted/40 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                                    <th className="px-4 py-3 text-left font-semibold">Día</th>
-                                    <th className="px-3 py-3 text-right font-semibold">Peso</th>
-                                    <th className="px-3 py-3 text-right font-semibold">Pasos</th>
-                                    <th className="px-3 py-3 text-right font-semibold">Sueño</th>
-                                    <th className="px-4 py-3 text-left font-semibold">Notas</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {dailyMetrics.map((entry) => (
-                                    <tr key={entry.date} className="border-b last:border-0">
-                                        <td className="whitespace-nowrap px-4 py-3 font-medium">
-                                            {format(new Date(`${entry.date}T12:00:00`), 'd MMM', { locale: es })}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-3 text-right">
-                                            {entry.weightKg !== null ? `${entry.weightKg.toFixed(1)} kg` : <span className="text-muted-foreground">—</span>}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-3 text-right">
-                                            {entry.steps !== null ? entry.steps.toLocaleString('es-ES') : <span className="text-muted-foreground">—</span>}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-3 text-right">
-                                            {entry.sleepHours !== null ? `${entry.sleepHours.toFixed(1)} h` : <span className="text-muted-foreground">—</span>}
-                                        </td>
-                                        <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
-                                            {entry.notes ? (
-                                                <span className="line-clamp-1">{entry.notes}</span>
-                                            ) : (
-                                                <span>—</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    <ul className="divide-y divide-border/60 border-t border-border/60">
+                        {dailyMetrics.map((entry) => (
+                            <li key={entry.date}>
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenDay(entry.date)}
+                                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+                                >
+                                    <div className="w-11 shrink-0 text-center">
+                                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                            {format(new Date(`${entry.date}T12:00:00`), 'EEE', { locale: es })}
+                                        </p>
+                                        <p className="text-lg font-bold leading-tight tabular-nums">
+                                            {format(new Date(`${entry.date}T12:00:00`), 'd')}
+                                        </p>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {entry.weightKg !== null && <DayChip label={`${entry.weightKg.toFixed(1).replace('.', ',')} kg`} />}
+                                            {entry.steps !== null && <DayChip label={`${entry.steps.toLocaleString('es-ES')} pasos`} />}
+                                            {entry.sleepHours !== null && <DayChip label={`${entry.sleepHours.toFixed(1).replace('.', ',').replace(',0', '')} h sueño`} />}
+                                            {entry.hrvMs !== null && <DayChip label={`VFC ${Math.round(entry.hrvMs)} ms`} tone="rose" />}
+                                            {entry.sleepScore !== null && <DayChip label={`Sueño ${entry.sleepScore}/100`} tone="rose" />}
+                                            {entry.fatigue !== null && <DayChip label={`Fatiga ${entry.fatigue}/5`} tone="rose" />}
+                                        </div>
+                                        {entry.notes && (
+                                            <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{entry.notes}</p>
+                                        )}
+                                    </div>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                 ) : (
-                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        Sin registros diarios en este rango.
+                    <div className="border-t border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                        Sin registros en este rango.
                     </div>
                 )}
-            </Card>
+            </section>
         </div>
     )
 }
@@ -312,6 +368,7 @@ export default function SummaryPage() {
     })
     const [loading, setLoading] = useState(true)
     const [registrarOpen, setRegistrarOpen] = useState(false)
+    const [registrarDate, setRegistrarDate] = useState<Date | null>(null)
     const [refreshKey, setRefreshKey] = useState(0)
 
     const loadData = useCallback(async () => {
@@ -357,68 +414,32 @@ export default function SummaryPage() {
     }
 
     const checkinId = searchParams.get('checkin')
-    const HeaderIcon = activeTab === 'revisiones'
-        ? ClipboardCheck
-        : activeTab === 'galeria'
-            ? Camera
-            : BarChart3
     const headerSubtitle = activeTab === 'revisiones'
-        ? 'Pendientes e historial'
+        ? 'Revisiones con tu coach'
         : activeTab === 'galeria'
             ? 'Fotos por revisión'
-            : 'Tu evolución general'
+            : 'Tu evolución'
 
     return (
         <div className="app-mobile-page min-h-screen pb-28">
-            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 pr-24">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <HeaderIcon className="h-5 w-5 text-primary" />
-                        </div>
+            <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+                <div className="px-4 pb-3 pt-4">
+                    <div className="flex min-h-10 items-end pr-24">
                         <div>
-                            <h1 className="text-lg font-bold text-foreground">Progreso</h1>
-                            <p className="text-sm text-muted-foreground">
-                                {headerSubtitle}
-                            </p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{headerSubtitle}</p>
+                            <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">Progreso</h1>
                         </div>
                     </div>
+                    <ClientTabSwitcher
+                        className="mt-3"
+                        value={activeTab}
+                        options={PROGRESS_TAB_OPTIONS}
+                        onValueChange={handleTabChange}
+                    />
                 </div>
             </header>
 
             <Tabs value={activeTab} onValueChange={handleTabChange}>
-                <div className="border-b border-border bg-background/95 px-4">
-                    <TabsList className="grid h-12 w-full grid-cols-3 rounded-none bg-transparent p-0 text-muted-foreground">
-                        <TabsTrigger
-                            value="resumen"
-                            className={cn(
-                                'relative h-12 rounded-none border-b-2 border-transparent bg-transparent px-2 text-sm font-semibold shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none',
-                                activeTab === 'resumen' ? 'border-primary text-primary' : 'text-muted-foreground'
-                            )}
-                        >
-                            Resumen
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="revisiones"
-                            className={cn(
-                                'relative h-12 rounded-none border-b-2 border-transparent bg-transparent px-2 text-sm font-semibold shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none',
-                                activeTab === 'revisiones' ? 'border-primary text-primary' : 'text-muted-foreground'
-                            )}
-                        >
-                            Revisiones
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="galeria"
-                            className={cn(
-                                'relative h-12 min-w-0 rounded-none border-b-2 border-transparent bg-transparent px-1 text-sm font-semibold shadow-none transition-colors data-[state=active]:bg-transparent data-[state=active]:shadow-none',
-                                activeTab === 'galeria' ? 'border-primary text-primary' : 'text-muted-foreground'
-                            )}
-                        >
-                            Galería
-                        </TabsTrigger>
-                    </TabsList>
-                </div>
-
                 <TabsContent value="resumen" className="mt-4 px-4">
                     <SummaryOverview
                         range={range}
@@ -429,6 +450,10 @@ export default function SummaryPage() {
                         cardioData={cardioData}
                         dailyMetrics={dailyMetrics}
                         loading={loading}
+                        onOpenDay={(date) => {
+                            setRegistrarDate(new Date(`${date}T12:00:00`))
+                            setRegistrarOpen(true)
+                        }}
                     />
                 </TabsContent>
 
@@ -446,7 +471,10 @@ export default function SummaryPage() {
                     <Button
                         size="lg"
                         className="w-full shadow-lg shadow-primary/30 gap-2"
-                        onClick={() => setRegistrarOpen(true)}
+                        onClick={() => {
+                            setRegistrarDate(null)
+                            setRegistrarOpen(true)
+                        }}
                     >
                         <PlusCircle className="h-5 w-5" />
                         Registrar
@@ -456,6 +484,7 @@ export default function SummaryPage() {
 
             <RegistrarSheet
                 open={registrarOpen}
+                initialDate={registrarDate}
                 onOpenChange={setRegistrarOpen}
                 onSaved={() => setRefreshKey(k => k + 1)}
             />

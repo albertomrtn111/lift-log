@@ -13,6 +13,15 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Usa el formato YYYY-MM-
 const optionalCoachId = z.string().uuid().optional().describe(
   'Solo hace falta si el entrenador pertenece a más de un espacio de trabajo.',
 )
+const athleteGoalType = z.enum([
+  'recomposition',
+  'definition',
+  'muscle_gain',
+  'endurance',
+  'competition',
+  'health',
+  'other',
+])
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -26,6 +35,11 @@ const additiveWriteAnnotations = {
   destructiveHint: false,
   idempotentHint: false,
   openWorldHint: false,
+}
+
+const idempotentWriteAnnotations = {
+  ...additiveWriteAnnotations,
+  idempotentHint: true,
 }
 
 const cardioBlockSchema = z.strictObject({
@@ -263,7 +277,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
     'get_client_overview',
     {
       title: 'Ver estado de un cliente',
-      description: 'Resume evolución, adherencia, bienestar, molestias, próximos eventos y planificación de un cliente.',
+      description: 'Resume evolución, adherencia, bienestar, molestias, objetivo actual, próximos eventos y planificación de un cliente.',
       inputSchema: z.object({
         client_id: z.string().uuid(),
         coach_id: optionalCoachId,
@@ -276,7 +290,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         const client = await requireClient(supabase, coachId, client_id)
         const today = formatDate(new Date())
 
-        const [checkinsResult, cardioResult, eventsResult, programsResult] = await Promise.all([
+        const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult] = await Promise.all([
           supabase
             .from('checkins')
             .select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, status')
@@ -309,9 +323,15 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
             .in('status', ['active', 'draft'])
             .order('created_at', { ascending: false })
             .limit(5),
+          supabase
+            .from('athlete_current_goals')
+            .select('id, goal_type, title, start_date, target_date, notes, updated_at')
+            .eq('coach_id', coachId)
+            .eq('client_id', client_id)
+            .maybeSingle(),
         ])
 
-        const failed = [checkinsResult, cardioResult, eventsResult, programsResult].find((item) => item.error)
+        const failed = [checkinsResult, cardioResult, eventsResult, programsResult, goalResult].find((item) => item.error)
         if (failed?.error) throw new Error('No se ha podido construir el resumen completo del cliente.')
 
         const checkins = checkinsResult.data ?? []
@@ -348,6 +368,17 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
             stress_delta: metricDelta('stress'),
           },
           recent_checkins: checkins,
+          current_goal: goalResult.data
+            ? {
+              ...goalResult.data,
+              days_until_end: daysBetween(today, goalResult.data.target_date),
+              deadline_status: goalResult.data.target_date < today
+                ? 'overdue'
+                : goalResult.data.target_date === today
+                  ? 'ends_today'
+                  : 'upcoming',
+            }
+            : null,
           cardio_window: cardioResult.data ?? [],
           upcoming_events: eventsResult.data ?? [],
           training_programs: programsResult.data ?? [],
@@ -355,6 +386,100 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       } catch (error) {
         audit('get_client_overview', { client_id, status: 'error' })
         return toolError(error instanceof Error ? error.message : 'No se ha podido cargar el cliente.')
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_athlete_goal',
+    {
+      title: 'Consultar objetivo actual del atleta',
+      description: 'Devuelve la fase u objetivo actual del atleta, su periodo y los días que faltan para la fecha límite.',
+      inputSchema: z.object({
+        client_id: z.string().uuid(),
+        coach_id: optionalCoachId,
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    async ({ client_id, coach_id }) => {
+      try {
+        const { coachId } = await resolveCoach(supabase, coach_id)
+        await requireClient(supabase, coachId, client_id)
+        const { data, error } = await supabase
+          .from('athlete_current_goals')
+          .select('id, goal_type, title, start_date, target_date, notes, updated_at')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .maybeSingle()
+        if (error) throw new Error('No se ha podido consultar el objetivo actual.')
+
+        const today = formatDate(new Date())
+        const goal = data
+          ? {
+            ...data,
+            days_until_end: daysBetween(today, data.target_date),
+            deadline_status: data.target_date < today
+              ? 'overdue'
+              : data.target_date === today
+                ? 'ends_today'
+                : 'upcoming',
+          }
+          : null
+
+        audit('get_athlete_goal', { coach_id: coachId, client_id, status: 'ok' })
+        return jsonResult({ client_id, current_goal: goal })
+      } catch (error) {
+        audit('get_athlete_goal', { client_id, status: 'error' })
+        return toolError(error instanceof Error ? error.message : 'No se ha podido consultar el objetivo actual.')
+      }
+    },
+  )
+
+  server.registerTool(
+    'set_athlete_goal',
+    {
+      title: 'Definir objetivo actual del atleta',
+      description: 'Crea o actualiza el objetivo actual del atleta con tipo, descripción y fechas. Úsala tras una petición explícita del entrenador.',
+      inputSchema: z.object({
+        client_id: z.string().uuid(),
+        goal_type: athleteGoalType,
+        title: z.string().trim().min(1).max(160),
+        start_date: isoDate,
+        target_date: isoDate,
+        notes: z.string().trim().max(1000).optional(),
+        coach_id: optionalCoachId,
+      }),
+      annotations: idempotentWriteAnnotations,
+    },
+    async (input) => {
+      try {
+        if (input.target_date < input.start_date) {
+          return toolError('La fecha límite debe ser igual o posterior a la fecha de inicio.')
+        }
+
+        const { coachId } = await resolveCoach(supabase, input.coach_id)
+        await requireClient(supabase, coachId, input.client_id)
+        const { data, error } = await supabase
+          .from('athlete_current_goals')
+          .upsert({
+            coach_id: coachId,
+            client_id: input.client_id,
+            goal_type: input.goal_type,
+            title: input.title,
+            start_date: input.start_date,
+            target_date: input.target_date,
+            notes: input.notes?.trim() || null,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'coach_id,client_id' })
+          .select('id, goal_type, title, start_date, target_date, notes, updated_at')
+          .single()
+
+        if (error || !data) throw new Error('No se ha podido guardar el objetivo actual.')
+        audit('set_athlete_goal', { coach_id: coachId, client_id: input.client_id, record_id: data.id, status: 'ok' })
+        return jsonResult({ saved: true, current_goal: data })
+      } catch (error) {
+        audit('set_athlete_goal', { client_id: input.client_id, status: 'error' })
+        return toolError(error instanceof Error ? error.message : 'No se ha podido guardar el objetivo actual.')
       }
     },
   )

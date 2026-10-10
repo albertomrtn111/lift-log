@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { getAge } from '@/lib/age-distribution'
 import { AthleteThresholdsCard } from './AthleteThresholdsCard'
 import {
     getAthleteBaselineAction,
@@ -88,13 +89,6 @@ function parseNumOrNull(value: string): number | null {
     return value.trim() !== '' && Number.isFinite(n) ? n : null
 }
 
-function computeAge(birthDate: string | null): number | null {
-    if (!birthDate) return null
-    const birth = new Date(`${birthDate}T12:00:00`)
-    if (isNaN(birth.getTime())) return null
-    return Math.floor((Date.now() - birth.getTime()) / (365.25 * 86400000))
-}
-
 function formatShortDate(iso: string): string {
     return new Date(`${iso}T12:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -153,7 +147,7 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
     const handleSave = () => persist(buildInput(), () => setEditing(false))
     const handleToggleEndurance = (enabled: boolean) => persist(buildInput(enabled))
 
-    const age = computeAge(baseline?.birth_date ?? null)
+    const age = getAge(baseline?.birth_date)
     const weightDelta = baseline?.reference_weight_kg != null && data?.currentWeightKg != null
         ? Math.round((data.currentWeightKg - baseline.reference_weight_kg) * 10) / 10
         : null

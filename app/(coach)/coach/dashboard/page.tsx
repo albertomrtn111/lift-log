@@ -26,6 +26,7 @@ import { CheckinRow } from '@/components/coach/dashboard/CheckinRow'
 import { ActivityFeed } from '@/components/coach/dashboard/ActivityFeed'
 import { WeekAgenda } from '@/components/coach/dashboard/WeekAgenda'
 import { DashboardFreshness } from '@/components/coach/dashboard/DashboardFreshness'
+import { AgeDistributionCard } from '@/components/coach/dashboard/AgeDistributionCard'
 import { cn } from '@/lib/utils'
 
 function getGreeting(): string {
@@ -272,6 +273,8 @@ export default async function CoachDashboardPage() {
                     </div>
 
                     <div className="min-w-0 space-y-6">
+                        <AgeDistributionCard distribution={dashboard.ageDistribution} />
+
                         <Card id="agenda" className="scroll-mt-24 overflow-hidden">
                             <div className="flex items-center justify-between border-b p-4">
                                 <div className="flex items-center gap-2">

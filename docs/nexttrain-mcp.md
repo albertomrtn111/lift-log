@@ -13,6 +13,8 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `who_am_i`: comprueba los espacios de entrenador disponibles.
 - `list_clients`: lista clientes y señales de seguimiento.
 - `get_client_overview`: resume check-ins, tendencias, alertas, eventos y programas.
+- `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
+- `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
 - `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas.
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
 - `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas.
@@ -33,7 +35,8 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - Ninguna herramienta usa la clave administrativa de Supabase.
 - RLS delimita los datos al entrenador autenticado.
 - Las escrituras comprueban la membresía y la pertenencia del cliente antes de insertar.
-- Las acciones de escritura se anuncian como aditivas y no idempotentes al cliente MCP.
+- El objetivo actual se consulta y actualiza bajo el token del coach; RLS limita cada fila a su espacio.
+- Las herramientas declaran si son de solo lectura, idempotentes o modifican datos.
 - Cada nueva consulta comprueba membresía activa y pertenencia del cliente antes de leer, además de usar RLS.
 
 ## Fidelidad de los datos

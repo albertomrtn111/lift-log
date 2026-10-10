@@ -15,8 +15,10 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
-import { Check, ChevronsUpDown, Users } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, Users } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
 import Link from 'next/link'
@@ -26,6 +28,7 @@ interface ClientSelectorProps {
     clients: ClientSelectorOption[]
     selectedClientId: string | null
     onClientChange?: (clientId: string) => void
+    isSwitching?: boolean
 }
 
 function UrgencyDot({ client }: { client: ClientSelectorOption }) {
@@ -38,9 +41,10 @@ function UrgencyDot({ client }: { client: ClientSelectorOption }) {
     return null
 }
 
-export function ClientSelector({ clients, selectedClientId, onClientChange }: ClientSelectorProps) {
+export function ClientSelector({ clients, selectedClientId, onClientChange, isSwitching = false }: ClientSelectorProps) {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState('')
+    const isMobile = useIsMobile()
 
     const selectedClient = useMemo(() =>
         clients.find(c => c.id === selectedClientId),
@@ -65,6 +69,7 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
             onClientChange?.(clientId)
         }
         setOpen(false)
+        setSearch('')
     }
 
     if (clients.length === 0) {
@@ -82,110 +87,128 @@ export function ClientSelector({ clients, selectedClientId, onClientChange }: Cl
         )
     }
 
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="min-w-0 w-full justify-between sm:w-[300px]"
-                >
-                    {selectedClient ? (
-                        <div className="flex min-w-0 items-center gap-2">
-                            <UrgencyDot client={selectedClient} />
-                            <span className="truncate">{getClientDisplayIdentity(selectedClient).displayName}</span>
-                            <Badge
-                                variant="secondary"
-                                className={cn(
-                                    'hidden shrink-0 sm:inline-flex',
-                                    selectedClient.status === 'active' && 'bg-success/10 text-success',
-                                    selectedClient.status === 'inactive' && 'bg-muted'
-                                )}
-                            >
-                                {selectedClient.status === 'active' ? 'Activo' : selectedClient.status === 'inactive' ? 'Inactivo' : selectedClient.status || 'Desconocido'}
-                            </Badge>
-                        </div>
-                    ) : (
-                        <span className="text-muted-foreground">Seleccionar cliente...</span>
+    const trigger = (
+        <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={isSwitching}
+            onClick={isMobile ? () => setOpen(true) : undefined}
+            className="h-10 w-full min-w-0 justify-between sm:w-[300px]"
+        >
+            {selectedClient ? (
+                <div className="flex min-w-0 items-center gap-2">
+                    <UrgencyDot client={selectedClient} />
+                    <span className="truncate">{getClientDisplayIdentity(selectedClient).displayName}</span>
+                    <Badge
+                        variant="secondary"
+                        className={cn(
+                            'shrink-0',
+                            selectedClient.status === 'active' && 'bg-success/10 text-success',
+                            selectedClient.status === 'inactive' && 'bg-muted'
+                        )}
+                    >
+                        {selectedClient.status === 'active' ? 'Activo' : selectedClient.status === 'inactive' ? 'Inactivo' : selectedClient.status || 'Desconocido'}
+                    </Badge>
+                </div>
+            ) : (
+                <span className="truncate text-muted-foreground">Seleccionar cliente...</span>
+            )}
+            {isSwitching ? (
+                <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin opacity-70" />
+            ) : (
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            )}
+        </Button>
+    )
+
+    const renderItem = (client: ClientSelectorOption, inactive: boolean) => {
+        const { displayName, initials } = getClientDisplayIdentity(client)
+        return (
+            <CommandItem
+                key={client.id}
+                value={`${displayName} ${client.email} ${client.id}`}
+                onSelect={() => handleSelect(client.id)}
+                className={cn('cursor-pointer', isMobile && 'gap-1 py-3', inactive && 'opacity-60')}
+            >
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div className={cn(
+                        'flex shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                        isMobile ? 'h-9 w-9' : 'h-6 w-6',
+                        inactive ? 'bg-muted' : 'bg-primary/20'
+                    )}>
+                        {initials}
+                    </div>
+                    {!inactive && <UrgencyDot client={client} />}
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{displayName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                    </div>
+                </div>
+                <Check
+                    className={cn(
+                        'h-4 w-4 shrink-0',
+                        selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
                     )}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
+                />
+            </CommandItem>
+        )
+    }
+
+    const list = (
+        <Command>
+            <CommandInput
+                placeholder="Buscar cliente..."
+                value={search}
+                onValueChange={setSearch}
+            />
+            <CommandList className={cn(isMobile && 'max-h-[60vh]')}>
+                <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                {activeClients.length > 0 && (
+                    <CommandGroup heading="Activos">
+                        {activeClients.map(client => renderItem(client, false))}
+                    </CommandGroup>
+                )}
+                {inactiveClients.length > 0 && (
+                    <CommandGroup heading="Inactivos / Otros">
+                        {inactiveClients.map(client => renderItem(client, true))}
+                    </CommandGroup>
+                )}
+            </CommandList>
+        </Command>
+    )
+
+    // Móvil: hoja inferior a pantalla casi completa. Sin autofocus en la búsqueda
+    // para que el teclado no tape la lista nada más abrir.
+    if (isMobile) {
+        return (
+            <>
+                {trigger}
+                <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch('') }}>
+                    <SheetContent
+                        side="bottom"
+                        className="rounded-t-2xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-5"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                        <SheetHeader className="px-1 text-left">
+                            <SheetTitle>Cambiar de cliente</SheetTitle>
+                        </SheetHeader>
+                        <div className="mt-3 overflow-hidden rounded-xl border border-border/60">
+                            {list}
+                        </div>
+                    </SheetContent>
+                </Sheet>
+            </>
+        )
+    }
+
+    return (
+        <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch('') }}>
+            <PopoverTrigger asChild>
+                {trigger}
             </PopoverTrigger>
-            <PopoverContent className="w-[min(360px,calc(100vw-var(--safe-area-left,0px)-var(--safe-area-right,0px)-1.5rem))] p-0">
-                <Command>
-                    <CommandInput
-                        placeholder="Buscar cliente..."
-                        value={search}
-                        onValueChange={setSearch}
-                    />
-                    <CommandList>
-                        <CommandEmpty>No se encontraron clientes.</CommandEmpty>
-                        {activeClients.length > 0 && (
-                            <CommandGroup heading="Activos">
-                                {activeClients.map(client => {
-                                    const { displayName, initials } = getClientDisplayIdentity(client)
-                                    return (
-                                        <CommandItem
-                                            key={client.id}
-                                            value={`${displayName} ${client.email} ${client.id}`}
-                                            onSelect={() => handleSelect(client.id)}
-                                            className="cursor-pointer"
-                                        >
-                                            <div className="flex min-w-0 items-center gap-2 flex-1">
-                                                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
-                                                    {initials}
-                                                </div>
-                                                <UrgencyDot client={client} />
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium truncate">{displayName}</p>
-                                                    <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                                                </div>
-                                            </div>
-                                            <Check
-                                                className={cn(
-                                                    'h-4 w-4',
-                                                    selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
-                                                )}
-                                            />
-                                        </CommandItem>
-                                    )
-                                })}
-                            </CommandGroup>
-                        )}
-                        {inactiveClients.length > 0 && (
-                            <CommandGroup heading="Inactivos / Otros">
-                                {inactiveClients.map(client => {
-                                    const { displayName, initials } = getClientDisplayIdentity(client)
-                                    return (
-                                        <CommandItem
-                                            key={client.id}
-                                            value={`${displayName} ${client.email} ${client.id}`}
-                                            onSelect={() => handleSelect(client.id)}
-                                            className="cursor-pointer opacity-60"
-                                        >
-                                            <div className="flex min-w-0 items-center gap-2 flex-1">
-                                                <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
-                                                    {initials}
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium truncate">{displayName}</p>
-                                                    <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                                                </div>
-                                            </div>
-                                            <Check
-                                                className={cn(
-                                                    'h-4 w-4',
-                                                    selectedClientId === client.id ? 'opacity-100' : 'opacity-0'
-                                                )}
-                                            />
-                                        </CommandItem>
-                                    )
-                                })}
-                            </CommandGroup>
-                        )}
-                    </CommandList>
-                </Command>
+            <PopoverContent className="w-[300px] p-0" align="start">
+                {list}
             </PopoverContent>
         </Popover>
     )

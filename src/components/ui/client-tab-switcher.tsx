@@ -14,6 +14,7 @@ interface ClientTabSwitcherProps<T extends string> {
     className?: string
 }
 
+/** Selector segmentado tipo pastilla (mismo estilo que Plan y Fuerza) */
 export function ClientTabSwitcher<T extends string>({
     value,
     options,
@@ -21,29 +22,30 @@ export function ClientTabSwitcher<T extends string>({
     className,
 }: ClientTabSwitcherProps<T>) {
     return (
-        <div className={cn('border-b border-border bg-background/95 px-4', className)}>
-            <div
-                className="grid h-12 w-full text-muted-foreground"
-                style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-            >
-                {options.map((option) => {
-                    const isActive = value === option.value
+        <div
+            className={cn('grid w-full rounded-full bg-muted p-1', className)}
+            style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+            role="tablist"
+        >
+            {options.map((option) => {
+                const isActive = value === option.value
 
-                    return (
-                        <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => onValueChange(option.value)}
-                            className={cn(
-                                'relative h-12 rounded-none border-b-2 border-transparent bg-transparent px-2 text-sm font-semibold shadow-none transition-colors',
-                                isActive ? 'border-primary text-primary' : 'text-muted-foreground'
-                            )}
-                        >
-                            {option.label}
-                        </button>
-                    )
-                })}
-            </div>
+                return (
+                    <button
+                        key={option.value}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => onValueChange(option.value)}
+                        className={cn(
+                            'h-8 truncate rounded-full px-2 text-xs font-semibold transition-all',
+                            isActive ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {option.label}
+                    </button>
+                )
+            })}
         </div>
     )
 }

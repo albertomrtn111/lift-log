@@ -1,6 +1,9 @@
 import { startOfDay, startOfWeek } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import type { Client, ClientWithMeta } from '@/types/coach'
+import { buildAgeDistribution } from '@/lib/age-distribution'
+
+export type AgeDistribution = ReturnType<typeof buildAgeDistribution>
 
 export interface DashboardKPIs {
     pendingToday: number
@@ -118,6 +121,7 @@ export interface DashboardNotification {
 export interface CoachDashboardData {
     coachName: string
     kpis: DashboardKPIs
+    ageDistribution: AgeDistribution | null
     actions: DashboardActionItem[]
     notifications: DashboardNotification[]
     attentionClients: AttentionClient[]
@@ -561,6 +565,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         console.error('Error fetching dashboard clients:', clientsResult.error)
         return {
             coachName,
+            ageDistribution: null,
             kpis: {
                 pendingToday: 0,
                 checkinsThisWeek: 0,
@@ -596,6 +601,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     if (clientIds.length === 0) {
         return {
             coachName,
+            ageDistribution: buildAgeDistribution([], []),
             kpis: {
                 pendingToday: 0,
                 checkinsThisWeek: 0,
@@ -630,6 +636,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         messagesResult,
         tasksResult,
         schedulesResult,
+        baselinesResult,
     ] = await Promise.all([
         supabase
             .from('checkins')
@@ -685,6 +692,11 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .eq('is_active', true)
             .not('next_due_date', 'is', null)
             .order('next_due_date', { ascending: true }),
+        supabase
+            .from('athlete_baseline')
+            .select('client_id, birth_date')
+            .eq('coach_id', coachId)
+            .in('client_id', clientIds),
     ])
 
     // Map: client_id → earliest active next_due_date
@@ -713,6 +725,11 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     if (reviewsResult.error) console.error('Error fetching dashboard reviews:', reviewsResult.error)
     if (messagesResult.error) console.error('Error fetching dashboard messages:', messagesResult.error)
     if (tasksResult.error) console.error('Error fetching dashboard tasks:', tasksResult.error)
+    if (baselinesResult.error) console.error('Error fetching dashboard athlete ages:', baselinesResult.error)
+
+    const ageDistribution = baselinesResult.error
+        ? null
+        : buildAgeDistribution(clientIds, baselinesResult.data ?? [], today)
 
     const reviews = (reviewsResult.data ?? []) as ReviewRecord[]
     const metrics = (metricsResult.data ?? []) as MetricRecord[]
@@ -985,6 +1002,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
 
     return {
         coachName,
+        ageDistribution,
         kpis: {
             pendingToday: actions.filter((action) => action.priority === 'high').length,
             checkinsThisWeek,

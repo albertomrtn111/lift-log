@@ -1,13 +1,13 @@
-import { Card } from '@/components/ui/card'
-import { CalendarItem } from '@/data/client-schedule'
-import {
-    Dumbbell,
-    Footprints,
-    Bike,
-    Waves,
-    Shuffle,
-} from 'lucide-react'
+import type { CalendarItem } from '@/data/client-schedule'
 import { cn } from '@/lib/utils'
+import { ProgressRing } from '@/components/ui/progress-ring'
+import {
+    formatKm,
+    formatMinutes,
+    getSessionVisual,
+    SPORT_SUMMARY,
+    type PlanSport,
+} from './plan-visuals'
 
 interface WeeklySummaryCardProps {
     items: CalendarItem[]
@@ -15,185 +15,108 @@ interface WeeklySummaryCardProps {
     emptyText?: string
 }
 
-// ---------------------------------------------------------------------------
-// Categorías de deporte con su metadato visual
-// ---------------------------------------------------------------------------
-type SportCategory = 'running' | 'bike' | 'swim' | 'hybrid' | 'strength'
-
-interface SportMeta {
-    label: string
-    icon: React.ReactNode
-    color: string        // text-*
-    barColor: string     // bg-*
-    hasDistance: boolean
-}
-
-const SPORT_META: Record<SportCategory, SportMeta> = {
-    running: {
-        label: 'Running',
-        icon: <Footprints className="h-4 w-4" />,
-        color: 'text-green-500',
-        barColor: 'bg-green-500',
-        hasDistance: true,
-    },
-    bike: {
-        label: 'Bicicleta',
-        icon: <Bike className="h-4 w-4" />,
-        color: 'text-cyan-500',
-        barColor: 'bg-cyan-500',
-        hasDistance: true,
-    },
-    swim: {
-        label: 'Natación',
-        icon: <Waves className="h-4 w-4" />,
-        color: 'text-teal-500',
-        barColor: 'bg-teal-500',
-        hasDistance: true,
-    },
-    hybrid: {
-        label: 'Híbrido',
-        icon: <Shuffle className="h-4 w-4" />,
-        color: 'text-purple-500',
-        barColor: 'bg-purple-500',
-        hasDistance: false,
-    },
-    strength: {
-        label: 'Fuerza',
-        icon: <Dumbbell className="h-4 w-4" />,
-        color: 'text-warning',
-        barColor: 'bg-warning',
-        hasDistance: false,
-    },
-}
-
-// ---------------------------------------------------------------------------
-// Mapea trainingType / activityType → categoría de deporte
-// ---------------------------------------------------------------------------
-function resolveCategory(item: CalendarItem): SportCategory {
-    if (item.kind === 'strength') return 'strength'
-
-    const t = (item.trainingType ?? item.activityType ?? '').toLowerCase()
-    if (t === 'bike' || t === 'bicicleta') return 'bike'
-    if (t === 'swim' || t === 'natacion' || t === 'natación') return 'swim'
-    if (t === 'hybrid' || t === 'hibrido' || t === 'híbrido') return 'hybrid'
-    // Todo lo demás (rodaje, series, tempo, fartlek, progressive, default) → running
-    return 'running'
-}
-
-// ---------------------------------------------------------------------------
-// Stats por categoría
-// ---------------------------------------------------------------------------
 interface SportStats {
-    category: SportCategory
+    sport: PlanSport
     total: number
     completed: number
     plannedKm: number
     completedKm: number
 }
 
+const ORDER: PlanSport[] = ['running', 'bike', 'swim', 'hybrid', 'strength']
+
 export function WeeklySummary({
     items,
     title = 'Resumen semanal',
     emptyText = 'No hay sesiones planificadas esta semana.',
 }: WeeklySummaryCardProps) {
-    const activeSessions = items.filter(i => i.kind !== 'rest')
+    const sessions = items.filter(i => i.kind !== 'rest')
 
-    if (activeSessions.length === 0) {
+    if (sessions.length === 0) {
         return (
-            <Card className="p-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">{title}</h3>
-                <p className="text-sm text-muted-foreground">{emptyText}</p>
-            </Card>
+            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+                <p className="mt-1.5 text-sm text-muted-foreground">{emptyText}</p>
+            </section>
         )
     }
 
-    // Agrupar por categoría manteniendo el orden de aparición
-    const statsMap = new Map<SportCategory, SportStats>()
-    const ORDER: SportCategory[] = ['running', 'bike', 'swim', 'hybrid', 'strength']
+    const statsMap = new Map<PlanSport, SportStats>()
+    let completed = 0
+    let plannedKm = 0
+    let completedKm = 0
+    let completedMin = 0
 
-    for (const item of activeSessions) {
-        const cat = resolveCategory(item)
-        if (!statsMap.has(cat)) {
-            statsMap.set(cat, { category: cat, total: 0, completed: 0, plannedKm: 0, completedKm: 0 })
-        }
-        const s = statsMap.get(cat)!
-        s.total++
+    for (const item of sessions) {
+        const sport = getSessionVisual(item).sport ?? 'running'
+        const stats = statsMap.get(sport) ?? { sport, total: 0, completed: 0, plannedKm: 0, completedKm: 0 }
+        stats.total++
+        stats.plannedKm += item.targetDistanceKm ?? 0
+        plannedKm += item.targetDistanceKm ?? 0
+
         if (item.isCompleted) {
-            s.completed++
-            s.completedKm += item.actualDistanceKm ?? item.targetDistanceKm ?? 0
+            const km = item.actualDistanceKm ?? item.targetDistanceKm ?? 0
+            stats.completed++
+            stats.completedKm += km
+            completed++
+            completedKm += km
+            completedMin += item.actualDurationMin ?? item.targetDurationMin ?? 0
         }
-        s.plannedKm += item.targetDistanceKm ?? 0
+        statsMap.set(sport, stats)
     }
 
-    // Ordenar categorías según ORDER
-    const stats = ORDER.map(cat => statsMap.get(cat)).filter(Boolean) as SportStats[]
-
-    // Si solo hay 1 bloque, ocupa toda la fila; si hay más, en grid 2 columnas
-    const gridCols = stats.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-
-    // Bloques de distancia: categorías con distancia planificada > 0
-    const distanceStats = stats.filter(s => SPORT_META[s.category].hasDistance && s.plannedKm > 0)
+    const stats = ORDER.map(sport => statsMap.get(sport)).filter(Boolean) as SportStats[]
+    const ratio = completed / sessions.length
+    const pct = Math.round(ratio * 100)
 
     return (
-        <Card className="p-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">{title}</h3>
-
-            {/* Grid de sesiones por deporte */}
-            <div className={cn('grid gap-4', gridCols)}>
-                {stats.map(s => {
-                    const meta = SPORT_META[s.category]
-                    const pct = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0
-                    return (
-                        <div key={s.category} className="space-y-1">
-                            <div className={cn('flex items-center gap-1.5', meta.color)}>
-                                {meta.icon}
-                                <span className="text-sm text-muted-foreground">{meta.label}</span>
-                            </div>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-bold">{s.completed}</span>
-                                <span className="text-muted-foreground text-sm">/ {s.total} sesiones</span>
-                            </div>
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div
-                                    className={cn('h-full rounded-full transition-all', meta.barColor)}
-                                    style={{ width: `${Math.min(pct, 100)}%` }}
-                                />
-                            </div>
-                        </div>
-                    )
-                })}
+        <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+            <div className="flex items-center gap-4">
+                <ProgressRing value={ratio}>{pct}%</ProgressRing>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+                    <p className="mt-0.5 text-lg font-semibold leading-tight">
+                        {completed} <span className="font-normal text-muted-foreground">de {sessions.length} sesiones</span>
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                        {plannedKm > 0 && <span>{formatKm(completedKm)} / {formatKm(plannedKm)}</span>}
+                        {completedMin > 0 && <span>{formatMinutes(completedMin)} entrenados</span>}
+                    </div>
+                </div>
             </div>
 
-            {/* Bloque de distancias (solo para deportes con km) */}
-            {distanceStats.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-border space-y-3">
-                    {distanceStats.map(s => {
-                        const meta = SPORT_META[s.category]
-                        const pct = s.plannedKm > 0
-                            ? Math.round((s.completedKm / s.plannedKm) * 100)
-                            : 0
+            {stats.length > 1 || stats[0]?.plannedKm ? (
+                <div className="mt-4 space-y-3 border-t border-border/60 pt-3.5">
+                    {stats.map(s => {
+                        const meta = SPORT_SUMMARY[s.sport]
+                        const Icon = meta.icon
+                        const useKm = s.plannedKm > 0
+                        const value = useKm ? s.completedKm / s.plannedKm : s.completed / s.total
                         return (
-                            <div key={`dist-${s.category}`}>
-                                <div className="flex items-center justify-between mb-1">
-                                    <div className={cn('flex items-center gap-1.5 text-xs', meta.color)}>
-                                        {meta.icon}
-                                        <span className="text-muted-foreground">Distancia {meta.label}</span>
-                                    </div>
-                                    <span className="text-xs font-medium tabular-nums">
-                                        {s.completedKm.toFixed(1)} / {s.plannedKm.toFixed(1)} km
-                                    </span>
+                            <div key={s.sport} className="flex items-center gap-3">
+                                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', meta.tile)}>
+                                    <Icon className="h-4 w-4" />
                                 </div>
-                                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                        className={cn('h-full rounded-full transition-all', meta.barColor)}
-                                        style={{ width: `${Math.min(pct, 100)}%` }}
-                                    />
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+                                        <span className="font-medium text-foreground">{meta.label}</span>
+                                        <span className="tabular-nums text-muted-foreground">
+                                            {s.completed}/{s.total}
+                                            {useKm && ` · ${formatKm(s.completedKm)} de ${formatKm(s.plannedKm)}`}
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className={cn('h-full rounded-full transition-[width] duration-700 ease-out', meta.accent)}
+                                            style={{ width: `${Math.min(Math.round(value * 100), 100)}%` }}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )
                     })}
                 </div>
-            )}
-        </Card>
+            ) : null}
+        </section>
     )
 }

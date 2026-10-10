@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Client } from '@/types/coach'
 import { AthleteAIProfile } from '@/types/athlete-profile'
+import type { AthleteCurrentGoal } from '@/types/athlete-current-goal'
 import {
     ClientStatus,
     CheckinWithReview,
@@ -19,6 +20,7 @@ import type { ReviewTemplate } from '@/data/review-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
     Select,
     SelectContent,
@@ -38,11 +40,14 @@ import {
     ChevronRight,
     UserRound,
     Bot,
+    Loader2,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
 import { ClientSelector } from './workspace/ClientSelector'
 import { AthleteProfileTab } from './workspace/AthleteProfileTab'
 import { AthleteConfigSection } from './workspace/AthleteConfigSection'
+import { AthleteDailyMetricsCard } from './workspace/AthleteDailyMetricsCard'
+import { AthleteCurrentGoalCard } from './workspace/AthleteCurrentGoalCard'
 import { ResumenTab } from './workspace/ResumenTab'
 import { CheckinsTab } from './workspace/CheckinsTab'
 import { ProgresoTab } from './workspace/ProgresoTab'
@@ -82,6 +87,7 @@ interface NewClientWorkspaceProps {
     formTemplates: FormTemplate[]
     reviewTemplates?: ReviewTemplate[]
     athleteProfile: AthleteAIProfile | null
+    currentGoal: AthleteCurrentGoal | null
 }
 
 export function NewClientWorkspace({
@@ -103,11 +109,14 @@ export function NewClientWorkspace({
     formTemplates,
     reviewTemplates,
     athleteProfile,
+    currentGoal,
 }: NewClientWorkspaceProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
 
     const [activeTab, setActiveTab] = useState(normalizeWorkspaceTab(searchParams.get('tab')))
+    // Cambiar de cliente recarga todo el workspace en servidor: mostramos estado de carga
+    const [isSwitchingClient, startClientTransition] = useTransition()
 
     // Persist selected client in localStorage so navigating away and back preserves selection
     const STORAGE_KEY = 'coach_last_client_id'
@@ -162,12 +171,16 @@ export function NewClientWorkspace({
         router.replace(`/coach/clients?${params.toString()}`)
     }, [router, searchParams, selectedClientId])
 
-    const handleClientChange = useCallback((clientId: string) => {
+    const navigateToClient = useCallback((clientId: string) => {
         const params = new URLSearchParams(searchParams.toString())
         params.set('client', clientId)
         params.set('tab', activeTab)
-        router.push(`/coach/clients?${params.toString()}`)
+        startClientTransition(() => {
+            router.push(`/coach/clients?${params.toString()}`, { scroll: false })
+        })
     }, [activeTab, router, searchParams])
+
+    const handleClientChange = navigateToClient
 
     const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
 
@@ -181,22 +194,12 @@ export function NewClientWorkspace({
     const canGoNext = currentIndex < activeClients.length - 1
 
     const handlePrevClient = useCallback(() => {
-        if (canGoPrev) {
-            const params = new URLSearchParams(searchParams.toString())
-            params.set('client', activeClients[currentIndex - 1].id)
-            params.set('tab', activeTab)
-            router.push(`/coach/clients?${params.toString()}`)
-        }
-    }, [canGoPrev, activeClients, currentIndex, activeTab, router, searchParams])
+        if (canGoPrev) navigateToClient(activeClients[currentIndex - 1].id)
+    }, [canGoPrev, activeClients, currentIndex, navigateToClient])
 
     const handleNextClient = useCallback(() => {
-        if (canGoNext) {
-            const params = new URLSearchParams(searchParams.toString())
-            params.set('client', activeClients[currentIndex + 1].id)
-            params.set('tab', activeTab)
-            router.push(`/coach/clients?${params.toString()}`)
-        }
-    }, [canGoNext, activeClients, currentIndex, activeTab, router, searchParams])
+        if (canGoNext) navigateToClient(activeClients[currentIndex + 1].id)
+    }, [canGoNext, activeClients, currentIndex, navigateToClient])
 
     // Keyboard shortcuts: Alt+← / Alt+→
     useEffect(() => {
@@ -235,8 +238,9 @@ export function NewClientWorkspace({
                     variant="ghost"
                     size="icon"
                     onClick={handlePrevClient}
-                    disabled={!canGoPrev}
+                    disabled={!canGoPrev || isSwitchingClient}
                     title="Cliente anterior (Alt+←)"
+                    aria-label="Cliente anterior"
                     className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
                 >
                     <ChevronLeft className="h-4 w-4" />
@@ -247,6 +251,7 @@ export function NewClientWorkspace({
                         clients={clients}
                         selectedClientId={selectedClientId}
                         onClientChange={handleClientChange}
+                        isSwitching={isSwitchingClient}
                     />
                 </div>
 
@@ -254,15 +259,16 @@ export function NewClientWorkspace({
                     variant="ghost"
                     size="icon"
                     onClick={handleNextClient}
-                    disabled={!canGoNext}
+                    disabled={!canGoNext || isSwitchingClient}
                     title="Siguiente cliente (Alt+→)"
+                    aria-label="Siguiente cliente"
                     className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
                 >
                     <ChevronRight className="h-4 w-4" />
                 </Button>
 
                 {currentIndex >= 0 && (
-                    <span className="text-xs text-muted-foreground hidden sm:inline shrink-0">
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                         {currentIndex + 1}/{activeClients.length}
                     </span>
                 )}
@@ -275,7 +281,18 @@ export function NewClientWorkspace({
 
             {/* Main Content */}
             {selectedClient ? (
-                <>
+                <div
+                    className={cn('relative min-w-0 space-y-4 transition-opacity', isSwitchingClient && 'pointer-events-none opacity-50')}
+                    aria-busy={isSwitchingClient}
+                >
+                    {isSwitchingClient && (
+                        <div className="absolute inset-x-0 top-16 z-10 flex justify-center">
+                            <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Cargando cliente...
+                            </div>
+                        </div>
+                    )}
                     <WorkspaceHeader
                         client={selectedClient}
                         clientStatus={clientStatus}
@@ -333,8 +350,18 @@ export function NewClientWorkspace({
 
                         <div className="min-w-0 max-w-full overflow-x-hidden lg:min-h-[500px]">
                             <TabsContent value="athlete-profile" className="mt-0 min-w-0 space-y-6">
+                                <AthleteCurrentGoalCard
+                                    key={`goal-${selectedClient.id}`}
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    goal={currentGoal}
+                                />
                                 <AthleteConfigSection
                                     key={`config-${selectedClient.id}`}
+                                    clientId={selectedClient.id}
+                                />
+                                <AthleteDailyMetricsCard
+                                    key={`daily-${selectedClient.id}`}
                                     clientId={selectedClient.id}
                                 />
                                 <AthleteProfileTab
@@ -361,7 +388,10 @@ export function NewClientWorkspace({
                                     clientStatus={clientStatus}
                                     latestCheckin={latestCheckin}
                                     activeMacroPlan={activeMacroPlan}
+                                    macroPlans={macroPlans}
+                                    dietPlans={dietPlans}
                                     activeProgram={activeProgram}
+                                    currentGoal={currentGoal}
                                     events={events}
                                     metrics={metrics}
                                     onRefresh={handleRefresh}
@@ -432,7 +462,7 @@ export function NewClientWorkspace({
 
                         </div>
                     </Tabs>
-                </>
+                </div>
             ) : (
                 <Card className="p-6 text-center sm:p-8">
                     <LayoutDashboard className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-30" />

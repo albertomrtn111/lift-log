@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Activity, ArrowLeft, Check, Clock, HeartPulse, Loader2, Route } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -12,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Slider } from '@/components/ui/slider'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { notifyStravaActivityCompleted, STRAVA_PENDING_UPDATED_EVENT } from '@/lib/strava/events'
 
 interface PlannedSessionOption {
     id: string
@@ -31,6 +33,7 @@ interface PendingStravaActivity {
     activity_type: string | null
     sport_type: string | null
     start_date_local: string | null
+    local_date: string
     distance_meters: number | null
     moving_time_seconds: number | null
     average_pace_seconds_per_km: number | null
@@ -61,14 +64,72 @@ function formatPace(seconds: number | null) {
     return `${minutes}:${rest}/km`
 }
 
-function formatDate(value: string | null) {
-    if (!value) return ''
-    return new Intl.DateTimeFormat('es-ES', {
-        day: '2-digit',
+// start_date_local es la hora de pared del atleta. Se construye la fecha a mano
+// para que el navegador no la reinterprete en otra zona horaria (con un sufijo Z
+// o en un móvil con otra zona, una carrera a las 23:00 saldría al día siguiente).
+function parseWallClock(value: string | null) {
+    if (!value) return null
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
+    if (!match) return null
+    const [, y, m, d, hh, mm] = match
+    return new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm))
+}
+
+function formatActivityDay(value: string | null) {
+    const date = parseWallClock(value)
+    if (!date) return ''
+    const label = new Intl.DateTimeFormat('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
         month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value))
+    }).format(date)
+    return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function formatActivityTime(value: string | null) {
+    const date = parseWallClock(value)
+    if (!date) return ''
+    return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(date)
+}
+
+function daysBetween(from: string, to: string) {
+    const a = new Date(`${from}T12:00:00`).getTime()
+    const b = new Date(`${to}T12:00:00`).getTime()
+    return Math.round((b - a) / 86_400_000)
+}
+
+function relativeDayLabel(activityDate: string, sessionDate: string) {
+    const diff = daysBetween(activityDate, sessionDate)
+    if (diff === 0) return 'Mismo día'
+    if (diff === -1) return 'Día anterior'
+    if (diff === 1) return 'Día siguiente'
+    return diff < 0 ? `${Math.abs(diff)} días antes` : `${diff} días después`
+}
+
+// "Ahora no" pospone la cola entera unas horas en este dispositivo, para que no
+// vuelva a saltar en cada navegación o al reabrir la app.
+const SNOOZE_STORAGE_KEY = 'strava:pending-snoozed'
+const SNOOZE_MS = 6 * 60 * 60 * 1000
+
+function readSnoozed(): Record<string, number> {
+    try {
+        const raw = window.localStorage.getItem(SNOOZE_STORAGE_KEY)
+        const parsed = raw ? JSON.parse(raw) : {}
+        const now = Date.now()
+        return Object.fromEntries(
+            Object.entries(parsed as Record<string, number>).filter(([, until]) => typeof until === 'number' && until > now)
+        )
+    } catch {
+        return {}
+    }
+}
+
+function writeSnoozed(value: Record<string, number>) {
+    try {
+        window.localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(value))
+    } catch {
+        // Sin almacenamiento la posposición dura solo mientras la app esté abierta
+    }
 }
 
 function formatDateOnly(value: string | null) {
@@ -89,8 +150,9 @@ function formatPlannedSession(session: PlannedSessionOption) {
 }
 
 export function StravaPendingFeedback() {
+    const router = useRouter()
     const [activities, setActivities] = useState<PendingStravaActivity[]>([])
-    const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set())
+    const [snoozed, setSnoozed] = useState<Record<string, number>>({})
     const [rpe, setRpe] = useState(5)
     const [notes, setNotes] = useState('')
     const [selectedSessionId, setSelectedSessionId] = useState('')
@@ -122,7 +184,8 @@ export function StravaPendingFeedback() {
             })
     }, [])
 
-    async function loadPending() {
+    const loadPending = useCallback(async () => {
+        setSnoozed(readSnoozed())
         try {
             const res = await fetch('/api/strava/activities/pending', { cache: 'no-store' })
             if (!res.ok) return
@@ -131,31 +194,56 @@ export function StravaPendingFeedback() {
         } catch {
             setActivities([])
         }
-    }
+    }, [])
 
     useEffect(() => {
         loadPending()
-        window.addEventListener('strava:pending-updated', loadPending)
-        return () => window.removeEventListener('strava:pending-updated', loadPending)
-    }, [])
+        window.addEventListener(STRAVA_PENDING_UPDATED_EVENT, loadPending)
+        return () => window.removeEventListener(STRAVA_PENDING_UPDATED_EVENT, loadPending)
+    }, [loadPending])
 
-    const activity = useMemo(
-        () => activities.find((item) => !dismissedIds.has(item.id)) || null,
-        [activities, dismissedIds]
+    const queue = useMemo(
+        () => activities.filter((item) => !snoozed[item.id]),
+        [activities, snoozed]
     )
+    const activity = queue[0] ?? null
+    // Posición dentro de la cola de esta visita (las ya resueltas desaparecen)
+    const [initialQueueSize, setInitialQueueSize] = useState(0)
+    useEffect(() => {
+        setInitialQueueSize((current) => (queue.length > current || queue.length === 0 ? queue.length : current))
+    }, [queue.length])
+    const queuePosition = initialQueueSize - queue.length + 1
 
     useEffect(() => {
         if (activity) {
             setRpe(5)
             setNotes('')
-            setSelectedSessionId(activity.matched_planned_session_id || '')
+            const options = activity.planned_sessions || []
+            const matched = activity.matched_planned_session_id
+            setSelectedSessionId(matched && options.some((session) => session.id === matched) ? matched : '')
             setStep('import')
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activity?.id])
+
+    function removeResolved(activityId: string, usedSessionId: string | null) {
+        setActivities((current) => current
+            .filter((item) => item.id !== activityId)
+            // Una sesión ya completada no puede ofrecerse a la siguiente actividad
+            .map((item) => usedSessionId
+                ? {
+                    ...item,
+                    planned_sessions: item.planned_sessions.filter((session) => session.id !== usedSessionId),
+                    matched_planned_session_id: item.matched_planned_session_id === usedSessionId ? null : item.matched_planned_session_id,
+                }
+                : item
+            ))
+    }
 
     async function saveFeedback() {
         if (!activity) return
         setSaving(true)
+        const usedSessionId = selectedSessionId && selectedSessionId !== 'extra' ? selectedSessionId : null
         try {
             const res = await fetch(`/api/strava/activities/${activity.id}/feedback`, {
                 method: 'POST',
@@ -167,9 +255,35 @@ export function StravaPendingFeedback() {
                     clearPlannedSessionMatch: selectedSessionId === 'extra',
                 }),
             })
-            if (!res.ok) throw new Error('feedback')
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                if (res.status === 409 && data?.error) {
+                    // La sesión elegida ya no está libre: se quita de las opciones
+                    toast.error(data.error)
+                    if (usedSessionId) {
+                        setActivities((current) => current.map((item) => ({
+                            ...item,
+                            planned_sessions: item.planned_sessions.filter((session) => session.id !== usedSessionId),
+                        })))
+                        setSelectedSessionId('')
+                        setStep('import')
+                    }
+                    return
+                }
+                throw new Error('feedback')
+            }
+
             toast.success('Actividad registrada')
-            setActivities((current) => current.filter((item) => item.id !== activity.id))
+            removeResolved(activity.id, usedSessionId)
+            if (data?.cardioSessionId) {
+                notifyStravaActivityCompleted({
+                    cardioSessionId: data.cardioSessionId,
+                    scheduledDate: data.scheduledDate ?? activity.local_date,
+                })
+            }
+            // Invalida la caché del router para que el resto de pantallas
+            // (resumen, progreso...) muestren la sesión como realizada
+            router.refresh()
         } catch {
             toast.error('No se pudo guardar el feedback')
         } finally {
@@ -186,7 +300,7 @@ export function StravaPendingFeedback() {
             })
             if (!res.ok) throw new Error('ignore')
             toast.success('Actividad descartada')
-            setActivities((current) => current.filter((item) => item.id !== activity.id))
+            removeResolved(activity.id, null)
         } catch {
             toast.error('No se pudo descartar la actividad')
         } finally {
@@ -194,9 +308,12 @@ export function StravaPendingFeedback() {
         }
     }
 
-    function dismissCurrent() {
-        if (!activity) return
-        setDismissedIds((current) => new Set(current).add(activity.id))
+    function snoozeQueue() {
+        const until = Date.now() + SNOOZE_MS
+        const next = { ...readSnoozed() }
+        for (const item of queue) next[item.id] = until
+        writeSnoozed(next)
+        setSnoozed(next)
     }
 
     if (!activity) return null
@@ -223,16 +340,26 @@ export function StravaPendingFeedback() {
     const showPeakZone = peakZone && (!hrZone || peakZone.zone > hrZone.zone)
 
     return (
-        <Dialog open={!!activity} onOpenChange={(open) => !open && dismissCurrent()}>
+        <Dialog open={!!activity} onOpenChange={(open) => !open && snoozeQueue()}>
             <DialogContent className="flex max-h-[calc(100dvh-var(--safe-area-top,0px)-0.75rem)] w-[calc(100vw-1rem)] max-w-md flex-col gap-0 overflow-hidden p-0 [&>button]:top-[calc(var(--safe-area-top,0px)+1rem)] sm:max-h-[90vh] sm:w-[calc(100vw-1.5rem)] sm:[&>button]:top-4">
                 <DialogHeader className="shrink-0 border-b px-4 pb-4 pt-[calc(var(--safe-area-top,0px)+1rem)] pr-12 text-left sm:px-5 sm:py-5">
-                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
-                        <Activity className="h-5 w-5 text-orange-600" />
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
+                            <Activity className="h-5 w-5 text-orange-600" />
+                        </div>
+                        {Math.max(initialQueueSize, queue.length) > 1 && (
+                            <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums text-muted-foreground">
+                                {Math.max(1, queuePosition)} de {Math.max(initialQueueSize, queue.length)}
+                            </span>
+                        )}
                     </div>
                     <DialogTitle className="leading-tight">
-                        {step === 'import' ? 'Nueva actividad importada' : '¿Cómo fue la sesión?'}
+                        {step === 'import' ? formatActivityDay(activity.start_date_local) || 'Nueva actividad importada' : '¿Cómo fue la sesión?'}
                     </DialogTitle>
-                    <DialogDescription className="break-words">{activity.name || 'Actividad importada'}</DialogDescription>
+                    <DialogDescription className="break-words">
+                        {activity.name || 'Actividad importada'}
+                        {step === 'import' && formatActivityTime(activity.start_date_local) && ` · ${formatActivityTime(activity.start_date_local)}`}
+                    </DialogDescription>
                 </DialogHeader>
 
                 {step === 'import' ? (
@@ -240,7 +367,10 @@ export function StravaPendingFeedback() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="text-xs text-muted-foreground">Fecha</p>
-                            <p className="mt-1 break-words font-semibold leading-snug">{formatDate(activity.start_date_local)}</p>
+                            <p className="mt-1 break-words font-semibold leading-snug">
+                                {formatActivityDay(activity.start_date_local)}
+                                <span className="block text-xs font-normal text-muted-foreground">{formatActivityTime(activity.start_date_local)}</span>
+                            </p>
                         </div>
                         <div className="min-w-0 rounded-lg border border-border p-3">
                             <p className="text-xs text-muted-foreground">Tipo</p>
@@ -298,12 +428,14 @@ export function StravaPendingFeedback() {
                             <div>
                                 <p className="text-sm font-medium">¿Qué actividad has realizado?</p>
                                 <p className="text-xs text-muted-foreground">
-                                    Elige una sesión planificada de esta semana o márcala como extra.
+                                    Elige la sesión planificada a la que corresponde o márcala como extra.
                                 </p>
                             </div>
                             <RadioGroup value={selectedSessionId} onValueChange={setSelectedSessionId} className="space-y-2">
                                 {plannedSessions.map((session) => {
                                     const details = formatPlannedSession(session)
+                                    const relativeDay = relativeDayLabel(activity.local_date, session.scheduled_date)
+                                    const isSameDay = session.scheduled_date === activity.local_date
                                     return (
                                         <Label
                                             key={session.id}
@@ -312,10 +444,18 @@ export function StravaPendingFeedback() {
                                         >
                                             <RadioGroupItem id={`strava-session-${session.id}`} value={session.id} className="mt-1" />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block text-sm font-semibold">
-                                                    {session.name || session.training_type || session.activity_type || 'Cardio'}
+                                                <span className="flex items-start justify-between gap-2">
+                                                    <span className="text-sm font-semibold">
+                                                        {session.name || session.training_type || session.activity_type || 'Cardio'}
+                                                    </span>
+                                                    <span className={cn(
+                                                        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                                                        isSameDay ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                                                    )}>
+                                                        {relativeDay}
+                                                    </span>
                                                 </span>
-                                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                                <span className="mt-0.5 block text-xs capitalize text-muted-foreground">
                                                     {formatDateOnly(session.scheduled_date)}
                                                     {details ? ` · ${details}` : ''}
                                                 </span>
@@ -377,8 +517,8 @@ export function StravaPendingFeedback() {
 
                 {step === 'import' ? (
                 <DialogFooter className="shrink-0 flex-col gap-2 border-t px-4 py-3 sm:flex-row sm:px-5 sm:py-4">
-                    <Button variant="outline" onClick={dismissCurrent} disabled={ignoring} className="w-full sm:w-auto">
-                        Ahora no
+                    <Button variant="outline" onClick={snoozeQueue} disabled={ignoring} className="w-full sm:w-auto">
+                        {queue.length > 1 ? 'Más tarde' : 'Ahora no'}
                     </Button>
                     <Button variant="ghost" onClick={ignoreCurrent} disabled={ignoring} className="w-full text-destructive hover:text-destructive sm:w-auto">
                         {ignoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

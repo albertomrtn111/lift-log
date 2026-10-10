@@ -34,25 +34,26 @@ export default async function RoutinePage(
     if (!data) {
         return (
             <div className="app-mobile-page min-h-screen">
-                <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
-                    <div className="px-4 py-4">
-                        <div className="flex items-center gap-3 pr-24">
-                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                                <Dumbbell className="h-5 w-5 text-primary" />
-                            </div>
+                <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+                    <div className="px-4 pb-4 pt-4">
+                        <div className="flex min-h-10 items-end pr-24">
                             <div>
-                                <h1 className="text-lg font-bold text-foreground">Rutina</h1>
-                                <p className="text-sm text-muted-foreground">Sin programa asignado</p>
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fuerza</p>
+                                <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">Rutina</h1>
                             </div>
                         </div>
                     </div>
                 </header>
-                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-                    <Dumbbell className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                    <h3 className="font-semibold text-lg mb-1">Sin programa de entrenamiento</h3>
-                    <p className="text-sm text-muted-foreground max-w-xs">
-                        Tu entrenador aún no te ha asignado un programa de entrenamiento.
-                    </p>
+                <div className="px-4 pt-6">
+                    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                            <Dumbbell className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm font-semibold">Sin programa de fuerza</p>
+                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
+                            Tu coach aún no te ha asignado un programa. Aparecerá aquí en cuanto lo haga.
+                        </p>
+                    </div>
                 </div>
             </div>
         )

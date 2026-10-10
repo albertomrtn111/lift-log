@@ -7,6 +7,8 @@ import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { getAthleteProfileContextForCoach } from '@/lib/ai/athlete-profile-context'
 import type { AIMacrosProposal, AIDietProposal, AINutritionProposal } from '@/types/ai-nutrition'
+import { buildDietFromAI, buildFoodCatalogPrompt, type AIDietRawMeal, type DailyTargets } from '@/lib/nutrition/ai-diet-builder'
+import type { DietFoodRef } from '@/data/nutrition/types'
 
 // ============================================================================
 // Request Schema
@@ -60,30 +62,38 @@ const AIMacrosProposalSchema = z.object({
     change_summary: z.array(z.string().min(1)).max(6).default([]),
 })
 
+// La IA referencia alimentos de la base de datos por código ("F12") y propone
+// gramos orientativos; el cuadre final lo hace ai-diet-builder.
 const DietItemSchema = z.object({
-    item_type: z.enum(['food', 'free_text']),
+    food: z.string().nullable(),
     name: z.string().min(1),
-    quantity_value: z.number().nullable().optional(),
-    quantity_unit: z.string().nullable().optional(),
+    grams: z.number().nullable().optional(),
+    free_quantity: z.string().nullable().optional(),
+    alt_group: z.number().int().nullable().optional(),
     notes: z.string().default(''),
-    order_index: z.number().int(),
 })
 
 const DietOptionSchema = z.object({
     name: z.string().min(1),
-    order_index: z.number().int(),
     notes: z.string().default(''),
     items: z.array(DietItemSchema).min(1),
 })
 
+const MealTargetSchema = z.object({
+    kcal: z.number().nullable().optional(),
+    protein_g: z.number().nullable().optional(),
+    carbs_g: z.number().nullable().optional(),
+    fat_g: z.number().nullable().optional(),
+}).nullable().optional()
+
 const DietMealSchema = z.object({
     day_type: z.enum(['default', 'training', 'rest']),
     name: z.string().min(1),
-    order_index: z.number().int(),
+    target: MealTargetSchema,
     options: z.array(DietOptionSchema).min(1),
 })
 
-const AIDietProposalSchema = z.object({
+const AIDietRawProposalSchema = z.object({
     type: z.literal('options_diet'),
     mode: z.enum(['generate', 'modify']),
     name: z.string().min(1),
@@ -92,6 +102,8 @@ const AIDietProposalSchema = z.object({
     change_summary: z.array(z.string().min(1)).max(8).default([]),
     structure_strategy: z.enum(['maintain', 'adjust', 'rebuild']),
 })
+
+type AIDietRawProposal = z.infer<typeof AIDietRawProposalSchema>
 
 // ============================================================================
 // Context → text helpers
@@ -220,6 +232,7 @@ function buildDietPrompt(
     currentMacros: string,
     currentDietText: string | null | undefined,
     athleteContext: string,
+    foodCatalog: string,
 ): string {
     const dietContext = currentDietText
         ? `### Dieta por opciones actual\n${currentDietText}`
@@ -262,7 +275,18 @@ ${userPrompt}
 
 ${modeInstruction}
 
-Genera una dieta por opciones completa, estructurada en comidas del día.
+Genera una dieta por opciones completa, estructurada en comidas del día, construida con alimentos de la BASE DE ALIMENTOS de abajo.
+
+## Base de alimentos (código | nombre | grupo | macros)
+Los macros son por 100 g del alimento tal como está descrito (p. ej. "Arroz blanco seco" es en crudo/seco; "Arroz cocido" ya cocido).
+${foodCatalog}
+
+## Cómo construir la dieta
+1. Reparte el plan de macros diario entre las comidas: pon en cada comida un "target" (kcal, protein_g, carbs_g, fat_g). La suma de las comidas debe ser el plan diario. Si no hay plan de macros, propón tú unos objetivos coherentes con el objetivo del entrenador.
+2. Cada opción de una comida debe aportar aproximadamente el "target" de esa comida. Elige combinaciones realistas (fuente de proteína + hidrato + grasa/verdura) y gramos orientativos: el sistema afinará los gramos exactos después, así que prioriza buenas combinaciones de alimentos.
+3. Todo alimento que aporte macros DEBE usar un código de la base ("food": "F12"). No inventes códigos. Usa "food": null solo para cosas sin macros relevantes (verdura libre, café, infusiones, especias) y pon la cantidad en "free_quantity" (p. ej. "libre", "1 taza").
+4. "grams": gramos del alimento tal como está en la base (para alimentos por unidad, gramos totales: 2 huevos = 120).
+5. Alternativas: si en una opción un alimento puede cambiarse por otro (arroz o pasta o patata), ponlos seguidos con el mismo "alt_group" (1, 2…). El primero es el de referencia; el sistema calcula los gramos equivalentes del resto. No sumes alternativas como si se comieran juntas.
 
 Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
 {
@@ -270,28 +294,22 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
   "mode": "${mode}",
   "name": "Nombre descriptivo de la dieta",
   "structure_strategy": "adjust",
-  "change_summary": ["Mantengo desayuno y cena", "Bajo cantidades en almuerzo y merienda", "Refuerzo alimentos saciantes"],
+  "change_summary": ["Mantengo desayuno y cena", "Bajo hidratos en la comida", "Refuerzo proteína en la merienda"],
   "meals": [
     {
       "day_type": "default",
-      "name": "Desayuno",
-      "order_index": 1,
+      "name": "Comida",
+      "target": { "kcal": 700, "protein_g": 45, "carbs_g": 85, "fat_g": 18 },
       "options": [
         {
-          "name": "Opción A",
-          "order_index": 1,
+          "name": "Opción 1",
           "notes": "",
           "items": [
-            { "item_type": "food", "name": "Huevos revueltos", "quantity_value": 3, "quantity_unit": "uds", "notes": "", "order_index": 1 },
-            { "item_type": "food", "name": "Tostadas integrales", "quantity_value": 2, "quantity_unit": "rbn", "notes": "", "order_index": 2 }
-          ]
-        },
-        {
-          "name": "Opción B",
-          "order_index": 2,
-          "notes": "",
-          "items": [
-            { "item_type": "food", "name": "Yogur griego", "quantity_value": 200, "quantity_unit": "g", "notes": "", "order_index": 1 }
+            { "food": "F31", "name": "Arroz blanco seco", "grams": 90, "alt_group": 1, "notes": "" },
+            { "food": "F35", "name": "Pasta seca", "grams": 90, "alt_group": 1, "notes": "" },
+            { "food": "F7", "name": "Pollo pechuga", "grams": 150, "notes": "" },
+            { "food": "F64", "name": "Aceite de oliva", "grams": 10, "notes": "" },
+            { "food": null, "name": "Verdura", "free_quantity": "libre", "notes": "" }
           ]
         }
       ]
@@ -303,13 +321,9 @@ Responde ÚNICAMENTE con JSON válido (sin texto extra, sin markdown):
 Reglas estrictas:
 - "mode" debe ser "${mode}"
 - "structure_strategy" solo puede ser "maintain", "adjust" o "rebuild"
-- "day_type": solo puede ser "default", "training" o "rest". Usa "default" para el día estándar
-- Genera al menos 4-5 comidas principales (desayuno, media mañana, almuerzo, merienda, cena)
-- Cada comida debe tener al menos 2 opciones (Opción A y Opción B) para dar variedad
-- "item_type": usa "food" para alimentos concretos, "free_text" para reglas o explicaciones libres
-- "quantity_value": número (puede ser null si no aplica)
-- "quantity_unit": "g", "ml", "uds", "rbn" (rebanadas), "cdas" (cucharadas), etc.
-- "change_summary": array breve de 2-6 puntos. En modo modify debe dejar claro qué mantienes y qué cambias
+- "day_type": solo "default", "training" o "rest". Usa "default" para el día estándar (y "training"/"rest" solo si el plan de macros distingue tipos de día)
+- Genera las comidas habituales (desayuno, media mañana, comida, merienda, cena) salvo que el entrenador indique otra estructura
+- Cada comida debe tener al menos 2 opciones para dar variedad
 - Usa español para todos los textos
 - La dieta debe ser coherente con el objetivo nutricional indicado`
 }
@@ -326,7 +340,7 @@ function extractJson(rawText: string): string {
     return rawText.trim()
 }
 
-function parseAndValidate(rawText: string, type: 'macros' | 'options_diet'): AINutritionProposal {
+function parseAndValidate(rawText: string, type: 'macros' | 'options_diet'): AIMacrosProposal | AIDietRawProposal {
     console.log('[AI nutrition parse] raw length:', rawText.length)
     console.log('[AI nutrition parse] preview:', rawText.slice(0, 200))
 
@@ -348,12 +362,54 @@ function parseAndValidate(rawText: string, type: 'macros' | 'options_diet'): AIN
         }
         return result.data
     } else {
-        const result = AIDietProposalSchema.safeParse(parsed)
+        const result = AIDietRawProposalSchema.safeParse(parsed)
         if (!result.success) {
             console.error('[AI nutrition parse] Diet validation error:', result.error.flatten())
             throw new Error('La propuesta de dieta no tiene la estructura esperada. Inténtalo de nuevo.')
         }
         return result.data
+    }
+}
+
+// ============================================================================
+// Alimentos y objetivos diarios
+// ============================================================================
+
+function toFoodRef(row: any): DietFoodRef {
+    return {
+        id: row.id,
+        name: row.name,
+        brand: row.brand,
+        kcal: Number(row.kcal),
+        protein_g: Number(row.protein_g),
+        carbs_g: Number(row.carbs_g),
+        fat_g: Number(row.fat_g),
+        serving_size_g: Number(row.serving_size_g) || 100,
+        unit_weight_g: row.unit_weight_g != null ? Number(row.unit_weight_g) : null,
+        unit_label: row.unit_label,
+        food_group: row.food_group,
+        is_generic: Boolean(row.is_generic),
+    }
+}
+
+/** Un alimento por nombre: menos ruido en el prompt y menos dudas para la IA */
+function dedupeFoods(foods: DietFoodRef[]) {
+    const seen = new Set<string>()
+    return foods.filter(food => {
+        const key = food.name.trim().toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+    })
+}
+
+function dailyTargetsFrom(plan: z.infer<typeof MacroPlanContextSchema> | null): DailyTargets {
+    if (!plan) return {}
+    const base = { kcal: plan.kcal, protein_g: plan.protein_g, carbs_g: plan.carbs_g, fat_g: plan.fat_g }
+    return {
+        default: base,
+        training: plan.day_type_config?.training ?? base,
+        rest: plan.day_type_config?.rest ?? base,
     }
 }
 
@@ -387,9 +443,20 @@ export async function POST(req: NextRequest) {
         const macrosSummary = buildCurrentMacrosSummary(context.activeMacroPlan ?? null)
         const athleteContext = await getAthleteProfileContextForCoach(coachId, clientId)
 
+        let catalog: ReturnType<typeof buildFoodCatalogPrompt> | null = null
+        if (type === 'options_diet') {
+            const { data: foodRows, error: foodsError } = await supabase
+                .from('foods')
+                .select('id, name, brand, kcal, protein_g, carbs_g, fat_g, serving_size_g, unit_weight_g, unit_label, food_group, is_generic')
+                .eq('is_public', true)
+                .limit(2000)
+            if (foodsError) throw new Error('No se pudo cargar la base de alimentos.')
+            catalog = buildFoodCatalogPrompt(dedupeFoods((foodRows ?? []).map(toFoodRef)))
+        }
+
         const taskPrompt = type === 'macros'
             ? buildMacrosPrompt(mode, objective, prompt, weightSummary, macrosSummary, athleteContext)
-            : buildDietPrompt(mode, objective, prompt, weightSummary, macrosSummary, context.activeDietPlanText, athleteContext)
+            : buildDietPrompt(mode, objective, prompt, weightSummary, macrosSummary, context.activeDietPlanText, athleteContext, catalog!.text)
 
         const fullPrompt = coachContext + taskPrompt
 
@@ -398,7 +465,28 @@ export async function POST(req: NextRequest) {
             thinkingLevel: 'medium',
             responseMimeType: 'application/json',
         })
-        const proposal = parseAndValidate(rawText, type)
+        const parsed = parseAndValidate(rawText, type)
+
+        let proposal: AINutritionProposal
+        if (parsed.type === 'options_diet') {
+            const built = buildDietFromAI(parsed.meals as AIDietRawMeal[], catalog!.codeToFood, dailyTargetsFrom(context.activeMacroPlan ?? null))
+            if (built.unknownFoods.length > 0) {
+                console.warn('[AI generate-nutrition] Códigos de alimento desconocidos:', built.unknownFoods)
+            }
+            const dietProposal: AIDietProposal = {
+                type: 'options_diet',
+                mode: parsed.mode,
+                name: parsed.name,
+                meals: built.meals,
+                explanation: parsed.explanation,
+                change_summary: parsed.change_summary,
+                structure_strategy: parsed.structure_strategy,
+                fit: built.fit,
+            }
+            proposal = dietProposal
+        } else {
+            proposal = parsed
+        }
 
         // TODO: persist { objective, prompt, proposal, accepted: null, coachId, clientId } to ai_generations table
         return NextResponse.json({ success: true, proposal })
