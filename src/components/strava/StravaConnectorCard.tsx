@@ -1,11 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertCircle, CheckCircle2, ExternalLink, Loader2, RefreshCw, Route, Unplug, Watch } from 'lucide-react'
+import { ChevronDown, ExternalLink, Loader2, RefreshCw, Route, Unplug, Watch } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 interface StravaStatus {
     provider: 'strava'
@@ -21,12 +19,16 @@ interface StravaStatus {
 function formatDateTime(value: string | null) {
     if (!value) return 'Sin datos'
     return new Intl.DateTimeFormat('es-ES', {
-        day: '2-digit',
+        day: 'numeric',
         month: 'short',
-        year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
     }).format(new Date(value))
+}
+
+function formatDate(value: string | null) {
+    if (!value) return 'Sin datos'
+    return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
 }
 
 export function StravaConnectorCard() {
@@ -63,23 +65,15 @@ export function StravaConnectorCard() {
 
     const meta = useMemo(() => {
         if (!status || status.status === 'disconnected') {
-            return {
-                label: 'No conectado',
-                badgeClass: 'border-muted-foreground/20 bg-muted text-muted-foreground',
-                icon: Activity,
-            }
+            return { label: 'Sin conectar', chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/50' }
         }
-        if (status.status === 'connected') {
-            return {
-                label: 'Conectado',
-                badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-                icon: CheckCircle2,
-            }
+        if (status.status === 'connected' && !status.requiresReauthorization) {
+            return { label: 'Conectado', chip: 'bg-success/10 text-success', dot: 'bg-success' }
         }
         return {
-            label: status.status === 'revoked' ? 'Reconectar' : 'Error',
-            badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive',
-            icon: AlertCircle,
+            label: status.status === 'revoked' || status.requiresReauthorization ? 'Reconectar' : 'Error',
+            chip: 'bg-destructive/10 text-destructive',
+            dot: 'bg-destructive',
         }
     }, [status])
 
@@ -117,110 +111,106 @@ export function StravaConnectorCard() {
         }
     }
 
-    const MetaIcon = meta.icon
     const isConnected = status?.status === 'connected'
     const needsReconnect = status?.status === 'error'
         || status?.status === 'revoked'
         || status?.requiresReauthorization
 
     return (
-        <Card className="p-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                        <Route className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-semibold">Conector de actividad</h3>
-                            <Badge variant="outline" className={meta.badgeClass}>
-                                <MetaIcon className="mr-1 h-3 w-3" />
-                                {loading ? 'Cargando' : meta.label}
-                            </Badge>
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                            {isConnected
-                                ? 'Tus actividades pueden importarse automáticamente.'
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+            <div className="flex items-center gap-3 p-3.5">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#FC4C02] text-white shadow-sm">
+                    <Route className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-semibold leading-tight">Strava</p>
+                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                        {loading
+                            ? 'Comprobando conexión…'
+                            : isConnected && !needsReconnect
+                                ? `Última sincronización: ${formatDateTime(status?.lastSyncAt ?? null)}`
                                 : needsReconnect
-                                    ? 'Vuelve a autorizar Strava para recuperar la sincronización de actividades.'
-                                    : 'Conecta tu app de actividad para importar automáticamente tus entrenamientos.'}
-                        </p>
-                    </div>
+                                    ? 'Vuelve a autorizar para seguir importando entrenos.'
+                                    : 'Importa tus entrenamientos automáticamente.'}
+                    </p>
                 </div>
-                {loading && <Loader2 className="mt-1 h-4 w-4 animate-spin text-muted-foreground" />}
+                {loading ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                    <span className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold', meta.chip)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', meta.dot)} />
+                        {meta.label}
+                    </span>
+                )}
             </div>
 
-            {isConnected && (
-                <div className="mt-4 grid grid-cols-1 gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
-                    <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Conectado</span>
-                        <span className="text-right font-medium">{formatDateTime(status.connectedAt)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                        <span className="text-muted-foreground">Última sync</span>
-                        <span className="text-right font-medium">{formatDateTime(status.lastSyncAt)}</span>
-                    </div>
-                </div>
+            {status?.errorMessage && !isConnected && (
+                <p className="mx-3.5 mb-3 rounded-xl bg-destructive/[0.06] px-3 py-2 text-xs text-destructive">{status.errorMessage}</p>
             )}
 
-            {status?.errorMessage && status.status !== 'connected' && (
-                <p className="mt-3 text-sm text-destructive">{status.errorMessage}</p>
-            )}
-
-            {/* Muchos atletas usan un reloj y no saben que llega vía Strava */}
-            <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-3">
-                <div className="flex items-start gap-2">
-                    <Watch className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 text-xs">
-                        <p className="font-medium text-foreground">
-                            ¿Usas Garmin, Polar, Coros, Suunto o Apple Watch?
-                        </p>
-                        <p className="mt-1 leading-relaxed text-muted-foreground">
-                            Enlaza tu reloj con Strava una sola vez y tus entrenos llegarán aquí solos,
-                            con ritmo, distancia y pulsaciones.
-                        </p>
-                        <p className="mt-1.5 leading-relaxed text-muted-foreground">
-                            <span className="font-medium text-foreground">Con Garmin:</span> abre Garmin Connect →
-                            Más → Configuración → Apps y servicios conectados → Strava.
-                        </p>
-                        <a
-                            href="https://www.strava.com/settings/apps"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1.5 inline-flex items-center gap-1 font-medium text-primary hover:underline"
-                        >
-                            Ver mis apps conectadas en Strava
-                            <ExternalLink className="h-3 w-3" />
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                {!isConnected ? (
-                    <Button asChild className="w-full">
-                        <a href="/api/strava/connect">
-                            {needsReconnect ? 'Reconectar Strava' : 'Conectar Strava'}
-                        </a>
-                    </Button>
+            <div className={cn('flex gap-2 px-3.5 pb-3.5', loading && !status && 'hidden')}>
+                {!isConnected || needsReconnect ? (
+                    <a
+                        href="/api/strava/connect"
+                        className="flex h-10 flex-1 items-center justify-center rounded-xl bg-[#FC4C02] text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                    >
+                        {needsReconnect ? 'Reconectar Strava' : 'Conectar con Strava'}
+                    </a>
                 ) : (
                     <>
-                        <Button onClick={syncNow} disabled={syncing} className="w-full gap-2">
+                        <button
+                            type="button"
+                            onClick={syncNow}
+                            disabled={syncing}
+                            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+                        >
                             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                            Sincronizar ahora
-                        </Button>
-                        <Button
-                            variant="outline"
+                            Sincronizar
+                        </button>
+                        <button
+                            type="button"
                             onClick={disconnect}
                             disabled={disconnecting}
-                            className="w-full gap-2"
+                            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-border px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
                         >
                             {disconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
                             Desconectar
-                        </Button>
+                        </button>
                     </>
                 )}
             </div>
-        </Card>
+
+            {isConnected && status?.connectedAt && (
+                <p className="-mt-1 px-3.5 pb-3 text-[11px] text-muted-foreground">Conectado desde el {formatDate(status.connectedAt)}</p>
+            )}
+
+            {/* Muchos atletas usan un reloj y no saben que llega vía Strava */}
+            <details className="group border-t border-border/60">
+                <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3.5 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                    <Watch className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1">¿Usas Garmin, Polar, Coros o Apple Watch?</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-1.5 px-3.5 pb-3.5 pl-10 text-xs leading-relaxed text-muted-foreground">
+                    <p>
+                        Enlaza tu reloj con Strava una sola vez y tus entrenos llegarán aquí solos,
+                        con ritmo, distancia y pulsaciones.
+                    </p>
+                    <p>
+                        <span className="font-medium text-foreground">Con Garmin:</span> abre Garmin Connect →
+                        Más → Configuración → Apps y servicios conectados → Strava.
+                    </p>
+                    <a
+                        href="https://www.strava.com/settings/apps"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                    >
+                        Ver mis apps conectadas en Strava
+                        <ExternalLink className="h-3 w-3" />
+                    </a>
+                </div>
+            </details>
+        </div>
     )
 }

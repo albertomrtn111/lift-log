@@ -1,6 +1,5 @@
 import { BottomNav } from '@/components/layout/BottomNav'
-import { ProfileButton } from '@/components/layout/ProfileButton'
-import { NotificationsButton } from '@/components/notifications/NotificationsButton'
+import { AppTopActions } from '@/components/layout/AppTopActions'
 import { ClientAppProvider } from '@/contexts/ClientAppContext'
 import { DevStalenessGuard } from '@/components/debug/DevStalenessGuard'
 import { PwaNavigationFix } from '@/components/layout/PwaNavigationFix'
@@ -17,8 +16,7 @@ export default function AppLayout({
             <div className="app-mobile-shell bg-background">
                 <PushNotificationBanner />
                 <StravaPendingFeedback />
-                <NotificationsButton />
-                <ProfileButton />
+                <AppTopActions />
                 <main className="app-mobile-main">
                     {children}
                 </main>
