@@ -23,8 +23,16 @@ function isDate(value: string | null) {
     return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
-function isTime(value: unknown): value is string {
-    return typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
+/**
+ * Hora de la toma ("22:00") o, si el coach no fijó hora, "libre-N" (N-ésima toma
+ * del día). La adherencia del coach cuenta estas últimas por día.
+ */
+function isDoseSlot(value: unknown): value is string {
+    return typeof value === 'string' && (/^\d{2}:\d{2}$/.test(value) || /^libre-\d{1,2}$/.test(value))
+}
+
+function todayInMadrid() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
 }
 
 export async function GET(request: NextRequest) {
@@ -80,8 +88,12 @@ export async function POST(request: NextRequest) {
         const scheduledTime = body?.scheduledTime
         const status = body?.status
 
-        if (!supplementId || !isDate(scheduledDate) || !isTime(scheduledTime) || !['taken', 'skipped'].includes(status)) {
+        if (!supplementId || !isDate(scheduledDate) || !isDoseSlot(scheduledTime) || !['taken', 'skipped'].includes(status)) {
             return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+        }
+        // Margen de un día por zonas horarias; no se registran tomas futuras
+        if (scheduledDate > addDays(todayInMadrid(), 1)) {
+            return NextResponse.json({ error: 'No puedes registrar tomas de días futuros' }, { status: 400 })
         }
 
         const supabase = createAdminClient()
@@ -115,5 +127,43 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('[supplements/logs:POST]', error)
         return NextResponse.json({ error: 'No se pudo guardar la toma' }, { status: 500 })
+    }
+}
+
+function addDays(date: string, days: number) {
+    const d = new Date(`${date}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + days)
+    return d.toISOString().slice(0, 10)
+}
+
+/** Deshacer una toma registrada (vuelve a quedar pendiente) */
+export async function DELETE(request: NextRequest) {
+    try {
+        const context = await getClientContext()
+        if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+        const body = await request.json().catch(() => ({}))
+        const supplementId = String(body?.supplementId || '')
+        const scheduledDate = String(body?.scheduledDate || '')
+        const scheduledTime = body?.scheduledTime
+
+        if (!supplementId || !isDate(scheduledDate) || !isDoseSlot(scheduledTime)) {
+            return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+        }
+
+        const supabase = createAdminClient()
+        const { error } = await supabase
+            .from('supplement_dose_logs')
+            .delete()
+            .eq('client_id', context.clientId)
+            .eq('supplement_id', supplementId)
+            .eq('scheduled_date', scheduledDate)
+            .eq('scheduled_time', scheduledTime)
+
+        if (error) throw error
+        return NextResponse.json({ ok: true })
+    } catch (error) {
+        console.error('[supplements/logs:DELETE]', error)
+        return NextResponse.json({ error: 'No se pudo deshacer la toma' }, { status: 500 })
     }
 }

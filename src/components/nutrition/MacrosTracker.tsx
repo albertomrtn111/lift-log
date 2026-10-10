@@ -2,10 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ProgressRing } from '@/components/ui/progress-ring'
 import { Input } from '@/components/ui/input'
 import {
     DropdownMenu,
@@ -24,11 +21,6 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-    Flame,
-    Beef,
-    Wheat,
-    Droplet,
-    CalendarIcon,
     Plus,
     Dumbbell,
     Bed,
@@ -74,6 +66,8 @@ import {
 
 interface MacrosTrackerProps {
     macroPlan: MacroPlan | null
+    /** Día que se muestra (lo controla la página, compartido con Suplementos) */
+    date: Date
 }
 
 interface MealSlot {
@@ -91,8 +85,7 @@ const DEFAULT_MEALS: MealSlot[] = [
     { type: 'dinner', label: 'Cena', order: 3 },
 ]
 
-export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
-    const [date, setDate] = useState<Date>(new Date())
+export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
     const [dayType, setDayType] = useState<DayType>('training')
     const [entries, setEntries] = useState<NutritionLogEntry[]>([])
     const [loading, setLoading] = useState(false)
@@ -296,104 +289,85 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
 
     if (!macroPlan) {
         return (
-            <div className="text-center py-12 text-muted-foreground">
-                <p>Aún no tienes un plan de macros asignado.</p>
-                <p className="text-xs mt-2">Tu coach configurará tus objetivos pronto.</p>
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                    <Utensils className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-semibold">Sin objetivos de macros</p>
+                <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">Tu coach configurará tus objetivos pronto.</p>
             </div>
         )
     }
 
     if (!targets) return null
 
-    return (
-        <div className="space-y-4 animate-fade-in">
-            {/* Fecha + selector entreno/descanso */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full sm:w-[220px] justify-start text-left font-normal">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {format(date, "PPP", { locale: es })}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                            mode="single"
-                            selected={date}
-                            onSelect={(d) => d && setDate(d)}
-                            initialFocus
-                            disabled={(d) => d > new Date() || d < new Date('1900-01-01')}
-                        />
-                    </PopoverContent>
-                </Popover>
+    const kcalRatio = targets.kcal > 0 ? totals.kcal / targets.kcal : 0
+    const kcalLeft = Math.round(targets.kcal - totals.kcal)
 
-                {macroPlan.day_type_config && (
-                    <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-md w-full sm:w-auto">
-                        <Button
-                            variant={dayType === 'training' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => handleDayTypeChange('training')}
-                            className="h-8"
-                        >
-                            <Dumbbell className="h-3.5 w-3.5 mr-1.5" /> Entreno
-                        </Button>
-                        <Button
-                            variant={dayType === 'rest' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => handleDayTypeChange('rest')}
-                            className="h-8"
-                        >
-                            <Bed className="h-3.5 w-3.5 mr-1.5" /> Descanso
-                        </Button>
-                    </div>
-                )}
-            </div>
+    return (
+        <div className="space-y-4">
+            {/* Tipo de día */}
+            {macroPlan.day_type_config && (
+                <div className="grid grid-cols-2 rounded-full bg-muted p-1" role="tablist" aria-label="Tipo de día">
+                    {([
+                        { value: 'training', label: 'Día de entreno', icon: Dumbbell },
+                        { value: 'rest', label: 'Día de descanso', icon: Bed },
+                    ] as const).map(option => {
+                        const Icon = option.icon
+                        const isActive = dayType === option.value
+                        return (
+                            <button
+                                key={option.value}
+                                type="button"
+                                role="tab"
+                                aria-selected={isActive}
+                                onClick={() => handleDayTypeChange(option.value)}
+                                className={cn(
+                                    'flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all',
+                                    isActive ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                                )}
+                            >
+                                <Icon className="h-3.5 w-3.5" />
+                                {option.label}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
 
             {/* Resumen del día */}
-            <Card className="p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                    <h3 className="font-semibold flex items-center gap-2">
-                        <Flame className="h-4 w-4 text-accent" /> Resumen
-                    </h3>
-                    {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <ProgressRing value={kcalRatio} size={96} stroke={8} className={cn(kcalLeft < 0 && '[&_circle:last-child]:stroke-destructive')}>
+                        <span className="flex flex-col items-center leading-none">
+                            <span className={cn('text-xl font-bold tabular-nums', kcalLeft < 0 && 'text-destructive')}>
+                                {Math.abs(kcalLeft).toLocaleString('es-ES')}
+                            </span>
+                            <span className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                {kcalLeft < 0 ? 'de más' : 'restantes'}
+                            </span>
+                        </span>
+                    </ProgressRing>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Calorías</p>
+                        <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                            {Math.round(totals.kcal).toLocaleString('es-ES')}
+                            <span className="text-sm font-normal text-muted-foreground"> / {Math.round(targets.kcal).toLocaleString('es-ES')} kcal</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {loading ? (
+                                <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Cargando…</span>
+                            ) : entries.length === 0 ? 'Aún no has registrado nada este día' : `${entries.length} ${entries.length === 1 ? 'alimento registrado' : 'alimentos registrados'}`}
+                        </p>
+                    </div>
                 </div>
 
-                <MacroBar
-                    label="Calorías"
-                    consumed={totals.kcal}
-                    target={targets.kcal}
-                    unit="kcal"
-                    icon={<Flame className="h-4 w-4 text-blue-500" />}
-                    color="bg-blue-500"
-                    big
-                />
-                <div className="grid grid-cols-1 gap-3">
-                    <MacroBar
-                        label="Proteína"
-                        consumed={totals.protein}
-                        target={targets.protein}
-                        unit="g"
-                        icon={<Beef className="h-4 w-4 text-destructive" />}
-                        color="bg-destructive"
-                    />
-                    <MacroBar
-                        label="Carbohidratos"
-                        consumed={totals.carbs}
-                        target={targets.carbs}
-                        unit="g"
-                        icon={<Wheat className="h-4 w-4 text-pink-500" />}
-                        color="bg-pink-500"
-                    />
-                    <MacroBar
-                        label="Grasa"
-                        consumed={totals.fat}
-                        target={targets.fat}
-                        unit="g"
-                        icon={<Droplet className="h-4 w-4 text-warning/80" />}
-                        color="bg-warning/80"
-                    />
+                <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border/60 pt-3">
+                    <MacroColumn label="Proteína" consumed={totals.protein} target={targets.protein} colorText="text-rose-600 dark:text-rose-400" colorBar="bg-rose-500" />
+                    <MacroColumn label="Hidratos" consumed={totals.carbs} target={targets.carbs} colorText="text-amber-600 dark:text-amber-400" colorBar="bg-amber-500" />
+                    <MacroColumn label="Grasa" consumed={totals.fat} target={targets.fat} colorText="text-sky-600 dark:text-sky-400" colorBar="bg-sky-500" />
                 </div>
-            </Card>
+            </section>
 
             {/* Comidas */}
             <div className="space-y-3">
@@ -416,24 +390,29 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
                 ))}
 
                 {addingMealName ? (
-                    <Card className="p-3 flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card p-2 shadow-sm">
                         <Input
                             autoFocus
-                            placeholder="Nombre de la comida (p. ej. Pre-entreno)"
+                            placeholder="Nombre (p. ej. Pre-entreno)"
                             value={newMealName}
                             onChange={e => setNewMealName(e.target.value)}
                             onKeyDown={e => {
                                 if (e.key === 'Enter') handleAddCustomMeal()
                                 if (e.key === 'Escape') { setAddingMealName(false); setNewMealName('') }
                             }}
+                            className="h-9"
                         />
-                        <Button size="icon" variant="ghost" onClick={handleAddCustomMeal}><Check className="h-4 w-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => { setAddingMealName(false); setNewMealName('') }}><X className="h-4 w-4" /></Button>
-                    </Card>
+                        <Button size="icon" variant="ghost" onClick={handleAddCustomMeal} aria-label="Crear comida"><Check className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => { setAddingMealName(false); setNewMealName('') }} aria-label="Cancelar"><X className="h-4 w-4" /></Button>
+                    </div>
                 ) : (
-                    <Button variant="outline" className="w-full" onClick={() => setAddingMealName(true)}>
-                        <Plus className="h-4 w-4 mr-2" /> Añadir comida
-                    </Button>
+                    <button
+                        type="button"
+                        onClick={() => setAddingMealName(true)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-border/80 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                        <Plus className="h-4 w-4" /> Añadir comida
+                    </button>
                 )}
             </div>
 
@@ -462,15 +441,15 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
             <AlertDialog open={!!confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(null) }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Eliminar entrada</AlertDialogTitle>
+                        <AlertDialogTitle>Quitar alimento</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Quitar &quot;{confirmDelete?.item_name}&quot; del registro de hoy.
+                            Se quitará &quot;{confirmDelete?.item_name}&quot; del registro de este día.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-                            {deleting ? 'Eliminando…' : 'Eliminar'}
+                            {deleting ? 'Quitando…' : 'Quitar'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -482,80 +461,51 @@ export function MacrosTracker({ macroPlan }: MacrosTrackerProps) {
 // ----------------------------------------------------------------------------
 // Subcomponents
 // ----------------------------------------------------------------------------
-function MacroBar({
+function MacroColumn({
     label,
     consumed,
     target,
-    unit,
-    icon,
-    color,
-    big,
+    colorText,
+    colorBar,
 }: {
     label: string
     consumed: number
     target: number
-    unit: string
-    icon: React.ReactNode
-    color: string
-    big?: boolean
+    colorText: string
+    colorBar: string
 }) {
     const safeTarget = target > 0 ? target : 0
     const pct = safeTarget > 0 ? Math.min(100, (consumed / safeTarget) * 100) : 0
-    const remaining = Math.max(0, safeTarget - consumed)
-    const over = consumed > safeTarget && safeTarget > 0
+    const left = Math.round(safeTarget - consumed)
+    const over = left < 0
     return (
-        <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                    {icon}
-                    <span className={cn('text-sm font-medium', big && 'text-base')}>{label}</span>
-                </div>
-                <div className="text-xs text-muted-foreground tabular-nums">
-                    <span className={cn('font-semibold', over ? 'text-destructive' : 'text-foreground', big && 'text-sm')}>
-                        {Math.round(consumed)}
-                    </span>
-                    <span> / {Math.round(safeTarget)} {unit}</span>
-                    <span className="ml-2 hidden sm:inline">
-                        {over ? `+${Math.round(consumed - safeTarget)}` : `restan ${Math.round(remaining)}`}
-                    </span>
-                </div>
+        <div className="min-w-0">
+            <p className={cn('text-[11px] font-semibold', colorText)}>{label}</p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                {Math.round(consumed)}<span className="text-xs font-normal text-muted-foreground">/{Math.round(safeTarget)} g</span>
+            </p>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className={cn('h-full rounded-full transition-[width] duration-500', over ? 'bg-destructive' : colorBar)} style={{ width: `${pct}%` }} />
             </div>
-            <div className={cn('h-2 overflow-hidden rounded-full bg-muted', big && 'h-3')}>
-                <div
-                    className={cn('h-full rounded-full transition-all', over ? 'bg-destructive' : color)}
-                    style={{ width: `${pct}%` }}
-                />
-            </div>
+            <p className={cn('mt-1 text-[11px] tabular-nums', over ? 'text-destructive' : 'text-muted-foreground')}>
+                {over ? `+${Math.abs(left)} g` : `quedan ${left} g`}
+            </p>
         </div>
     )
 }
 
-const MEAL_META: Record<string, { icon: React.ReactNode; accent: string; bg: string }> = {
-    breakfast: {
-        icon: <Coffee className="h-4 w-4" />,
-        accent: 'text-amber-500',
-        bg: 'bg-amber-50 dark:bg-amber-950/30',
-    },
-    lunch: {
-        icon: <UtensilsCrossed className="h-4 w-4" />,
-        accent: 'text-green-500',
-        bg: 'bg-green-50 dark:bg-green-950/30',
-    },
-    snack: {
-        icon: <Apple className="h-4 w-4" />,
-        accent: 'text-pink-500',
-        bg: 'bg-pink-50 dark:bg-pink-950/30',
-    },
-    dinner: {
-        icon: <Moon className="h-4 w-4" />,
-        accent: 'text-indigo-500',
-        bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-    },
-    other: {
-        icon: <Utensils className="h-4 w-4" />,
-        accent: 'text-violet-500',
-        bg: 'bg-violet-50 dark:bg-violet-950/30',
-    },
+const MEAL_META: Record<string, { icon: React.ComponentType<{ className?: string }>; tile: string }> = {
+    breakfast: { icon: Coffee, tile: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    lunch: { icon: UtensilsCrossed, tile: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+    snack: { icon: Apple, tile: 'bg-pink-500/10 text-pink-600 dark:text-pink-400' },
+    dinner: { icon: Moon, tile: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' },
+    other: { icon: Utensils, tile: 'bg-violet-500/10 text-violet-600 dark:text-violet-400' },
+}
+
+function formatAmount(entry: NutritionLogEntry) {
+    if (entry.quantity_g != null) return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 }).format(Number(entry.quantity_g))} g`
+    if (entry.servings != null) return `${entry.servings} ${Number(entry.servings) === 1 ? 'porción' : 'porciones'}`
+    return null
 }
 
 function MealCard({
@@ -582,6 +532,7 @@ function MealCard({
     onEditEntry: (e: NutritionLogEntry) => void
 }) {
     const meta = MEAL_META[meal.type] ?? MEAL_META.other
+    const Icon = meta.icon
     const sub = entries.reduce(
         (acc, e) => {
             acc.kcal += Number(e.kcal) || 0
@@ -595,110 +546,94 @@ function MealCard({
     const hasEntries = entries.length > 0
 
     return (
-        <Card className="overflow-hidden">
+        <article className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
             {/* Cabecera de comida */}
-            <div className={cn('flex items-center justify-between px-4 py-3', meta.bg)}>
-                <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={cn('shrink-0', meta.accent)}>{meta.icon}</span>
-                    <div className="min-w-0">
-                        <h4 className="font-semibold text-sm leading-tight">{meal.label}</h4>
-                        {hasEntries ? (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                <span className="font-medium text-foreground">{Math.round(sub.kcal)} kcal</span>
-                                <span className="ml-1.5 opacity-70">
-                                    P {Math.round(sub.p)}g · C {Math.round(sub.c)}g · G {Math.round(sub.f)}g
-                                </span>
-                            </p>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-0.5">Sin alimentos</p>
+            <div className="flex items-center gap-3 px-4 py-3">
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', meta.tile)}>
+                    <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h4 className="truncate text-[15px] font-semibold leading-tight">{meal.label}</h4>
+                    {hasEntries ? (
+                        <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                            <span className="font-semibold text-foreground">{Math.round(sub.kcal)} kcal</span>
+                            {' · '}<span className="text-rose-600 dark:text-rose-400">P {Math.round(sub.p)}</span>
+                            {' · '}<span className="text-amber-600 dark:text-amber-400">C {Math.round(sub.c)}</span>
+                            {' · '}<span className="text-sky-600 dark:text-sky-400">G {Math.round(sub.f)}</span>
+                        </p>
+                    ) : (
+                        <p className="mt-0.5 text-xs text-muted-foreground">Sin alimentos</p>
+                    )}
+                </div>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-9 w-9 shrink-0 rounded-full text-muted-foreground"
+                            aria-label={`Acciones de ${meal.label}`}
+                        >
+                            <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem onClick={onCopy} disabled={!hasEntries}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Copiar comida
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onPaste} disabled={!canPaste}>
+                            <ClipboardPaste className="mr-2 h-4 w-4" />
+                            Pegar comida copiada
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onPastePreviousDay}>
+                            <ClipboardPaste className="mr-2 h-4 w-4" />
+                            Repetir la del día anterior
+                        </DropdownMenuItem>
+                        {meal.canDelete && (
+                            <DropdownMenuItem onClick={onDeleteMeal} className="text-destructive focus:text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar comida
+                            </DropdownMenuItem>
                         )}
-                    </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-9 w-9 hover:bg-background/60"
-                                aria-label={`Acciones de ${meal.label}`}
-                            >
-                                <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem onClick={onCopy} disabled={!hasEntries}>
-                                <Copy className="mr-2 h-4 w-4" />
-                                Copiar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onPaste} disabled={!canPaste}>
-                                <ClipboardPaste className="mr-2 h-4 w-4" />
-                                Pegar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onPastePreviousDay}>
-                                <ClipboardPaste className="mr-2 h-4 w-4" />
-                                Pegar día anterior
-                            </DropdownMenuItem>
-                            {meal.canDelete && (
-                                <DropdownMenuItem onClick={onDeleteMeal} className="text-destructive focus:text-destructive">
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Eliminar comida
-                                </DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={onAdd}
-                        className={cn('h-9 shrink-0 px-3 gap-1 font-medium', meta.accent, 'hover:bg-background/60')}
-                    >
-                        <Plus className="h-3.5 w-3.5" /> Añadir
-                    </Button>
-                </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <button
+                    type="button"
+                    onClick={onAdd}
+                    aria-label={`Añadir alimento a ${meal.label}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary/15"
+                >
+                    <Plus className="h-4 w-4" />
+                </button>
             </div>
 
             {/* Alimentos */}
             {hasEntries && (
-                <ul className="divide-y divide-border/60">
+                <ul className="divide-y divide-border/60 border-t border-border/60">
                     {entries.map(e => (
-                        <li
-                            key={e.id}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => onEditEntry(e)}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    onEditEntry(e)
-                                }
-                            }}
-                            className="flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        >
-                            {/* Punto de color */}
-                            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', meta.accent.replace('text-', 'bg-'))} />
-
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate leading-tight">{e.item_name}</p>
-                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span className="text-xs text-muted-foreground">
-                                        {e.quantity_g != null ? `${e.quantity_g} g` : `${e.servings} porc.`}
-                                    </span>
-                                    <MacroChip value={Math.round(Number(e.kcal))} unit="kcal" color="text-blue-500" />
-                                    <MacroChip value={Math.round(Number(e.protein_g) * 10) / 10} unit="P" color="text-destructive" />
-                                    <MacroChip value={Math.round(Number(e.carbs_g) * 10) / 10} unit="C" color="text-pink-500" />
-                                    <MacroChip value={Math.round(Number(e.fat_g) * 10) / 10} unit="G" color="text-warning" />
+                        <li key={e.id} className="flex items-center gap-2 pr-2">
+                            <button
+                                type="button"
+                                onClick={() => onEditEntry(e)}
+                                className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 text-left transition-colors hover:bg-muted/30"
+                            >
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium leading-tight">{e.item_name}</p>
+                                    <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                                        {formatAmount(e) && <>{formatAmount(e)} · </>}
+                                        <span className="text-rose-600/80 dark:text-rose-400/80">P {Math.round(Number(e.protein_g) * 10) / 10}</span>
+                                        {' · '}<span className="text-amber-600/80 dark:text-amber-400/80">C {Math.round(Number(e.carbs_g) * 10) / 10}</span>
+                                        {' · '}<span className="text-sky-600/80 dark:text-sky-400/80">G {Math.round(Number(e.fat_g) * 10) / 10}</span>
+                                    </p>
                                 </div>
-                            </div>
-
+                                <span className="shrink-0 text-sm font-semibold tabular-nums">{Math.round(Number(e.kcal))}<span className="text-xs font-normal text-muted-foreground"> kcal</span></span>
+                            </button>
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={(event) => {
-                                    event.stopPropagation()
-                                    onDelete(e)
-                                }}
-                                className="h-7 w-7 shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => onDelete(e)}
+                                className="h-8 w-8 shrink-0 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+                                aria-label={`Quitar ${e.item_name}`}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -706,14 +641,6 @@ function MealCard({
                     ))}
                 </ul>
             )}
-        </Card>
-    )
-}
-
-function MacroChip({ value, unit, color }: { value: number; unit: string; color: string }) {
-    return (
-        <span className={cn('text-xs font-medium', color)}>
-            {value}{unit !== 'kcal' ? <span className="text-muted-foreground font-normal">{unit}</span> : <span className="text-muted-foreground font-normal"> {unit}</span>}
-        </span>
+        </article>
     )
 }
