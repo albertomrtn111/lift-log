@@ -93,13 +93,15 @@ export function programProgress(program, days, sessions, asOfDate, confirmedWeek
 export function programTransitions(programs) {
   const chronological = [...programs].sort((a, b) => String(a.effective_from).localeCompare(String(b.effective_from))
     || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)))
-  return chronological.slice(1).flatMap((program, index) => program.effective_from === chronological[index].effective_from ? [] : [{
-    from_program_id: chronological[index].id,
-    from_program_name: chronological[index].name,
-    to_program_id: program.id,
-    to_program_name: program.name,
-    transition_date: program.effective_from,
-    date_source: 'next_program_start',
-    note: 'Posible cambio de bloque inferido por cronología; no prueba que el programa anterior terminara ni registra modificaciones internas.',
-  }])
+  return chronological.flatMap((program, index) => {
+    const previous = chronological.slice(0, index).reverse().find((item) => item.effective_from < program.effective_from)
+    if (!previous) return []
+    return [{
+      from_program_id: previous.id, from_program_name: previous.name,
+      to_program_id: program.id, to_program_name: program.name,
+      transition_date: program.effective_from,
+      date_source: 'next_program_start',
+      note: 'Posible cambio de bloque inferido por cronología; no prueba que el programa anterior terminara ni registra modificaciones internas.',
+    }]
+  })
 }

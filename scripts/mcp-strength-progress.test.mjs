@@ -62,4 +62,7 @@ test('program transitions indicate inferred chronology, not audited edits', () =
   assert.equal(transitions[0].to_program_id, 'program-1')
   assert.equal(transitions[0].date_source, 'next_program_start')
   assert.deepEqual(programTransitions([program, { ...program, id: 'parallel' }]), [])
+  assert.equal(programTransitions([
+    { ...program, id: 'older', effective_from: '2026-06-01' }, program, { ...program, id: 'parallel' },
+  ]).filter((item) => item.transition_date === '2026-08-31').length, 2)
 })
