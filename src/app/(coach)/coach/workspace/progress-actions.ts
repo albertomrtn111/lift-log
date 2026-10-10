@@ -17,6 +17,9 @@ export interface ProgressData {
         weight_kg: number | null
         steps: number | null
         sleep_h: number | null
+        hrv_ms: number | null
+        sleep_score: number | null
+        fatigue: number | null
     }[]
     dietAdherence: {
         log_date: string
@@ -242,7 +245,7 @@ export async function getProgressData(
         // 1. Client metrics (weight, steps, sleep)
         const { data: metricsRaw, error: metricsErr } = await supabase
             .from('client_metrics')
-            .select('metric_date, weight_kg, steps, sleep_h')
+            .select('metric_date, weight_kg, steps, sleep_h, hrv_ms, sleep_score, fatigue')
             .eq('client_id', clientId)
             .gte('metric_date', dateFrom)
             .lte('metric_date', dateTo)
@@ -282,6 +285,9 @@ export async function getProgressData(
                     weight_kg: m.weight_kg ? Number(m.weight_kg) : null,
                     steps: m.steps,
                     sleep_h: m.sleep_h ? Number(m.sleep_h) : null,
+                    hrv_ms: m.hrv_ms != null ? Number(m.hrv_ms) : null,
+                    sleep_score: m.sleep_score != null ? Number(m.sleep_score) : null,
+                    fatigue: m.fatigue != null ? Number(m.fatigue) : null,
                 })),
                 dietAdherence: (dietRaw || []).map((d: any) => ({
                     log_date: d.log_date,

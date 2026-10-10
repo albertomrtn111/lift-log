@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { getAge } from '@/lib/age-distribution'
+import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
 import { resolveHrBounds, type CustomZones, type HrZoneMethod } from '@/lib/training/zones'
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -70,13 +72,11 @@ function formatGeneratedAthleteProfile(profile: any) {
 function formatBaseline(baseline: any) {
     if (!baseline) return 'Sin datos base configurados.'
 
-    const age = baseline.birth_date
-        ? Math.floor((Date.now() - new Date(`${baseline.birth_date}T12:00:00`).getTime()) / (365.25 * 86400000))
-        : null
+    const age = getAge(baseline.birth_date)
     const sexLabel = baseline.sex === 'male' ? 'hombre' : baseline.sex === 'female' ? 'mujer' : null
 
     return [
-        age ? `Edad: ${age} anos${sexLabel ? ` (${sexLabel})` : ''}` : '',
+        age !== null ? `Edad: ${age} anos${sexLabel ? ` (${sexLabel})` : ''}` : '',
         baseline.height_cm ? `Altura: ${baseline.height_cm} cm` : '',
         baseline.reference_weight_kg ? `Peso de referencia: ${baseline.reference_weight_kg} kg${baseline.reference_weight_date ? ` (${baseline.reference_weight_date})` : ''}` : '',
         baseline.vo2max ? `VO2max: ${baseline.vo2max} ml/kg/min` : '',
@@ -280,6 +280,9 @@ function formatRecentProgress(metrics: any[], dietLogs: any[], workoutLogs: any[
             metric.weight_kg != null ? `${metric.weight_kg}kg` : '',
             metric.steps != null ? `${metric.steps} pasos` : '',
             metric.sleep_h != null ? `${metric.sleep_h}h sueño` : '',
+            metric.sleep_score != null ? `puntuación sueño ${metric.sleep_score}/100` : '',
+            metric.hrv_ms != null ? `VFC ${metric.hrv_ms} ms` : '',
+            metric.fatigue != null ? `fatiga ${metric.fatigue}/5` : '',
             metric.notes ? `notas ${metric.notes}` : '',
         ].filter(Boolean).join(', ')
         return parts ? `${metric.metric_date}: ${parts}` : ''
@@ -329,6 +332,7 @@ export async function buildNextIAAthleteContext({
 
     const [
         athleteProfileResult,
+        currentGoalResult,
         coachProfileResult,
         eventsResult,
         checkinsResult,
@@ -342,12 +346,13 @@ export async function buildNextIAAthleteContext({
         baselineResult,
     ] = await Promise.all([
         admin.from('athlete_ai_profiles').select('*').eq('coach_id', coachId).eq('client_id', clientId).maybeSingle(),
+        admin.from('athlete_current_goals').select('goal_type, title, start_date, target_date, notes').eq('coach_id', coachId).eq('client_id', clientId).maybeSingle(),
         admin.from('coach_ai_profiles').select('*').eq('coach_id', coachId).maybeSingle(),
         admin.from('client_events').select('title, event_date, event_type, priority, location, target, notes').eq('coach_id', coachId).eq('client_id', clientId).eq('status', 'planned').gte('event_date', referenceDate).lte('event_date', futureDate).order('event_date', { ascending: true }).limit(8),
         admin.from('checkins').select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, notes, raw_payload, reviews(status, ai_summary, analysis, message_to_client)').eq('coach_id', coachId).eq('client_id', clientId).eq('type', 'checkin').not('submitted_at', 'is', null).order('submitted_at', { ascending: false }).limit(1),
         admin.from('training_programs').select('*').eq('coach_id', coachId).eq('client_id', clientId).eq('status', 'active').order('created_at', { ascending: false }).limit(1),
         admin.from('cardio_sessions').select('id, scheduled_date, name, description, activity_type, training_type, target_distance_km, target_duration_min, target_pace, notes, structure, planned_structure, coach_notes, is_completed, actual_distance_km, actual_duration_min, actual_avg_pace, rpe, feedback_notes, avg_heart_rate, max_heart_rate').eq('coach_id', coachId).eq('client_id', clientId).gte('scheduled_date', fromDate).lte('scheduled_date', referenceDate).order('scheduled_date', { ascending: true }),
-        admin.from('client_metrics').select('metric_date, weight_kg, steps, sleep_h, notes').eq('client_id', clientId).gte('metric_date', fromDate).lte('metric_date', referenceDate).order('metric_date', { ascending: true }),
+        admin.from('client_metrics').select('metric_date, weight_kg, steps, sleep_h, hrv_ms, sleep_score, fatigue, notes').eq('client_id', clientId).gte('metric_date', fromDate).lte('metric_date', referenceDate).order('metric_date', { ascending: true }),
         admin.from('diet_adherence_logs').select('log_date, adherence_pct').eq('client_id', clientId).gte('log_date', fromDate).lte('log_date', referenceDate).order('log_date', { ascending: true }),
         admin.from('workout_logs').select('workout_date, completed').eq('client_id', clientId).gte('workout_date', fromDate).lte('workout_date', referenceDate).order('workout_date', { ascending: true }),
         admin.from('scheduled_strength_sessions').select('scheduled_date, is_completed, training_days(name), training_programs(name)').eq('coach_id', coachId).eq('client_id', clientId).gte('scheduled_date', fromDate).lte('scheduled_date', referenceDate).order('scheduled_date', { ascending: true }),
@@ -356,7 +361,7 @@ export async function buildNextIAAthleteContext({
     ])
 
     const failedSources = [
-        ['perfil atleta', athleteProfileResult], ['perfil coach', coachProfileResult], ['eventos', eventsResult],
+        ['perfil atleta', athleteProfileResult], ['objetivo actual', currentGoalResult], ['perfil coach', coachProfileResult], ['eventos', eventsResult],
         ['check-ins', checkinsResult], ['programa', activeProgramResult], ['cardio', cardioResult],
         ['métricas', metricsResult], ['adherencia nutrición', dietResult], ['registros fuerza', workoutResult],
         ['calendario fuerza', strengthScheduleResult], ['umbrales', thresholdsResult], ['datos base', baselineResult],
@@ -367,6 +372,7 @@ export async function buildNextIAAthleteContext({
     const reviewResult = { data: Array.isArray(linkedReviews) ? linkedReviews[0] ?? null : linkedReviews ?? null }
 
     const activeProgram = activeProgramResult.data?.[0] || null
+    const currentGoal = currentGoalResult.data
     let trainingDays: any[] = []
     let trainingExercises: any[] = []
     let trainingSets: any[] = []
@@ -407,6 +413,17 @@ export async function buildNextIAAthleteContext({
             content: `Nombre: ${client.full_name || client.email || 'Atleta'}\nEstado: ${client.status || 'sin estado'}`,
         },
         { title: 'Datos base del atleta', content: formatBaseline(baselineResult.data) },
+        {
+            title: 'Objetivo actual definido por el coach',
+            content: currentGoal
+                ? [
+                    currentGoal.title,
+                    `Tipo: ${ATHLETE_GOAL_TYPES.find(type => type.value === currentGoal.goal_type)?.label || currentGoal.goal_type}`,
+                    `Plazo: ${currentGoal.start_date} a ${currentGoal.target_date}`,
+                    currentGoal.notes ? `Notas: ${currentGoal.notes}` : '',
+                ].filter(Boolean).join(' | ')
+                : 'Sin objetivo actual definido.',
+        },
         { title: 'Umbrales fisiologicos y zonas', content: formatThresholds(thresholdsResult.data) },
         { title: 'Perfil IA del atleta optimizado', content: formatGeneratedAthleteProfile(athleteProfileResult.data) },
         { title: 'Perfil IA del coach optimizado', content: formatGeneratedCoachProfile(coachProfileResult.data) },

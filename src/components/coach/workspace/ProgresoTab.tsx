@@ -25,6 +25,9 @@ import {
     CalendarDays,
     Download,
     Pill,
+    Activity,
+    Sparkles,
+    Battery,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -63,6 +66,9 @@ type WeightDetailRow = {
     delta: number | null
     steps: number | null
     sleep: number | null
+    hrv: number | null
+    sleepScore: number | null
+    fatigue: number | null
     dietAdherence: number | null
 }
 
@@ -76,6 +82,9 @@ type GeneralKpis = {
     avgDietAdherence: number | null
     avgSteps: number | null
     avgSleep: number | null
+    avgHrv: number | null
+    avgSleepScore: number | null
+    avgFatigue: number | null
     supplementAdherence: ProgressData['supplementAdherence']
 }
 
@@ -126,13 +135,16 @@ function formatCsvInteger(value: number | null) {
 function downloadWeightCsv(rows: WeightDetailRow[], dateFrom: string, dateTo: string) {
     if (rows.length === 0) return
 
-    const header = ['Fecha', 'Peso (kg)', 'Cambio vs anterior (kg)', 'Pasos', 'Sueño (h)', 'Dieta (%)']
+    const header = ['Fecha', 'Peso (kg)', 'Cambio vs anterior (kg)', 'Pasos', 'Sueño (h)', 'VFC (ms)', 'Puntuación sueño', 'Fatiga (1-5)', 'Dieta (%)']
     const lines = rows.map(row => [
         row.date,
         formatCsvNumber(row.weight),
         formatCsvNumber(row.delta),
         formatCsvInteger(row.steps),
         formatCsvNumber(row.sleep),
+        formatCsvInteger(row.hrv),
+        formatCsvInteger(row.sleepScore),
+        formatCsvInteger(row.fatigue),
         formatCsvInteger(row.dietAdherence),
     ])
     const csv = `\uFEFF${[header, ...lines].map(line => line.join(';')).join('\n')}`
@@ -182,7 +194,21 @@ function calculateGeneralKpis(data: ProgressData | null): GeneralKpis | null {
         ? +(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length).toFixed(1)
         : null
 
-    return { avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep, supplementAdherence: data.supplementAdherence }
+    const averageOf = (values: (number | null)[]) => {
+        const present = values.filter((value): value is number => value !== null)
+        return present.length > 0 ? present.reduce((a, b) => a + b, 0) / present.length : null
+    }
+    const hrvAvg = averageOf(data.metrics.map(m => m.hrv_ms))
+    const sleepScoreAvg = averageOf(data.metrics.map(m => m.sleep_score))
+    const fatigueAvg = averageOf(data.metrics.map(m => m.fatigue))
+
+    return {
+        avgWeight, lastWeight, weightDelta, trainingAdherence, completedWorkouts, totalWorkouts, avgDietAdherence, avgSteps, avgSleep,
+        avgHrv: hrvAvg !== null ? Math.round(hrvAvg) : null,
+        avgSleepScore: sleepScoreAvg !== null ? Math.round(sleepScoreAvg) : null,
+        avgFatigue: fatigueAvg !== null ? +fatigueAvg.toFixed(1) : null,
+        supplementAdherence: data.supplementAdherence,
+    }
 }
 
 function getComparisonDelta(current: number | null | undefined, previous: number | null | undefined) {
@@ -476,6 +502,9 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 metric.weight_kg !== null ||
                 metric.steps !== null ||
                 metric.sleep_h !== null ||
+                metric.hrv_ms !== null ||
+                metric.sleep_score !== null ||
+                metric.fatigue !== null ||
                 dietByDate.has(metric.metric_date)
             )
 
@@ -494,6 +523,9 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 delta,
                 steps: metric.steps,
                 sleep: metric.sleep_h,
+                hrv: metric.hrv_ms,
+                sleepScore: metric.sleep_score,
+                fatigue: metric.fatigue,
                 dietAdherence: dietByDate.get(metric.metric_date) ?? null,
             }
         })
@@ -623,6 +655,46 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     color="orange"
                                 />
                             </div>
+                            {(kpis?.avgHrv != null || kpis?.avgSleepScore != null || kpis?.avgFatigue != null) && (
+                                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+                                    {kpis?.avgHrv != null && (
+                                        <KpiCard
+                                            icon={Activity}
+                                            label="VFC"
+                                            value={`${kpis.avgHrv} ms`}
+                                            subValue="Media al despertar"
+                                            comparisonDelta={getComparisonDelta(kpis.avgHrv, previousKpis?.avgHrv)}
+                                            comparisonUnit="ms"
+                                            comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                            comparisonPositiveIsGood
+                                            color="rose"
+                                        />
+                                    )}
+                                    {kpis?.avgSleepScore != null && (
+                                        <KpiCard
+                                            icon={Sparkles}
+                                            label="Puntuación sueño"
+                                            value={`${kpis.avgSleepScore}/100`}
+                                            subValue="Media por noche"
+                                            comparisonDelta={getComparisonDelta(kpis.avgSleepScore, previousKpis?.avgSleepScore)}
+                                            comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                            comparisonPositiveIsGood
+                                            color="indigo"
+                                        />
+                                    )}
+                                    {kpis?.avgFatigue != null && (
+                                        <KpiCard
+                                            icon={Battery}
+                                            label="Fatiga"
+                                            value={`${String(kpis.avgFatigue).replace('.', ',')}/5`}
+                                            subValue="1 fresco · 5 muy cargado"
+                                            comparisonDelta={getComparisonDelta(kpis.avgFatigue, previousKpis?.avgFatigue)}
+                                            comparisonLabel={`vs ${selectedDays}d anteriores`}
+                                            color="orange"
+                                        />
+                                    )}
+                                </div>
+                            )}
                             <WeightChart data={weightChartData} />
                             <WeightDetail
                                 rows={weightDetailRows}
@@ -650,6 +722,9 @@ function WeightDetail({
     dateFrom: string
     dateTo: string
 }) {
+    // Las columnas de recuperación solo aparecen si el atleta tiene datos
+    const hasExtras = rows.some(row => row.hrv !== null || row.sleepScore !== null || row.fatigue !== null)
+
     return (
         <Card className="p-4">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -681,14 +756,17 @@ function WeightDetail({
                 </p>
             ) : (
                 <div className="overflow-x-auto rounded-lg border">
-                    <table className="min-w-[860px] w-full table-fixed">
+                    <table className={cn('w-full table-fixed', hasExtras ? 'min-w-[1080px]' : 'min-w-[860px]')}>
                         <colgroup>
-                            <col className="w-[34%]" />
-                            <col className="w-[13%]" />
-                            <col className="w-[15%]" />
-                            <col className="w-[14%]" />
-                            <col className="w-[12%]" />
-                            <col className="w-[12%]" />
+                            <col className={hasExtras ? 'w-[24%]' : 'w-[34%]'} />
+                            <col className={hasExtras ? 'w-[10%]' : 'w-[13%]'} />
+                            <col className={hasExtras ? 'w-[12%]' : 'w-[15%]'} />
+                            <col className={hasExtras ? 'w-[10%]' : 'w-[14%]'} />
+                            <col className={hasExtras ? 'w-[8%]' : 'w-[12%]'} />
+                            {hasExtras && <col className="w-[9%]" />}
+                            {hasExtras && <col className="w-[10%]" />}
+                            {hasExtras && <col className="w-[8%]" />}
+                            <col className={hasExtras ? 'w-[9%]' : 'w-[12%]'} />
                         </colgroup>
                         <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                             <tr>
@@ -697,6 +775,9 @@ function WeightDetail({
                                 <th className="px-3 py-2 text-right">Cambio</th>
                                 <th className="px-3 py-2 text-right">Pasos</th>
                                 <th className="px-3 py-2 text-right">Sueño</th>
+                                {hasExtras && <th className="px-3 py-2 text-right">VFC</th>}
+                                {hasExtras && <th className="px-3 py-2 text-right">Punt. sueño</th>}
+                                {hasExtras && <th className="px-3 py-2 text-right">Fatiga</th>}
                                 <th className="px-3 py-2 text-right">Dieta</th>
                             </tr>
                         </thead>
@@ -729,6 +810,21 @@ function WeightDetail({
                                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
                                         {row.sleep !== null ? `${row.sleep.toFixed(1).replace('.0', '')}h` : '—'}
                                     </td>
+                                    {hasExtras && (
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                            {row.hrv !== null ? `${Math.round(row.hrv)} ms` : '—'}
+                                        </td>
+                                    )}
+                                    {hasExtras && (
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                            {row.sleepScore !== null ? row.sleepScore : '—'}
+                                        </td>
+                                    )}
+                                    {hasExtras && (
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                            {row.fatigue !== null ? `${row.fatigue}/5` : '—'}
+                                        </td>
+                                    )}
                                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
                                         {row.dietAdherence !== null ? `${Math.round(row.dietAdherence)}%` : '—'}
                                     </td>
@@ -752,6 +848,7 @@ const COLOR_MAP: Record<string, { bg: string; icon: string; ring: string }> = {
     violet: { bg: 'bg-violet-500/10', icon: 'text-violet-500', ring: 'ring-violet-500/20' },
     indigo: { bg: 'bg-indigo-500/10', icon: 'text-indigo-500', ring: 'ring-indigo-500/20' },
     orange: { bg: 'bg-orange-500/10', icon: 'text-orange-500', ring: 'ring-orange-500/20' },
+    rose: { bg: 'bg-rose-500/10', icon: 'text-rose-500', ring: 'ring-rose-500/20' },
 }
 
 function KpiCard({

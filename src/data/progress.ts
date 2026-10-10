@@ -1,6 +1,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { startOfDay, endOfDay, format } from 'date-fns'
+import { isDailyMetricExtraKey, type DailyMetricExtraKey } from '@/lib/daily-metrics'
 
 export interface ClientMetric {
     id: string
@@ -10,6 +11,9 @@ export interface ClientMetric {
     weight_kg?: number
     steps?: number
     sleep_h?: number
+    hrv_ms?: number | null
+    sleep_score?: number | null
+    fatigue?: number | null
     notes?: string
     created_at: string
 }
@@ -20,6 +24,11 @@ export type ClientMetricInput = {
     steps?: number
     sleep_h?: number
     notes?: string
+    /**
+     * Adicionales que pide el coach. Solo se escriben los que vienen en el
+     * objeto (null borra el valor); si no vienen, se conserva lo guardado.
+     */
+    extras?: Partial<Record<'hrv_ms' | 'sleep_score' | 'fatigue', number | null>>
 }
 
 // Helper to get current client and coach ID
@@ -52,7 +61,7 @@ async function getClientContext() {
 
         const { data: client, error: clientError } = await supabase
             .from('clients')
-            .select('id, coach_id')
+            .select('id, coach_id, daily_metrics_enabled')
             .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
             .eq('status', 'active')
             .maybeSingle()
@@ -117,6 +126,7 @@ export async function saveClientMetrics(input: ClientMetricInput): Promise<{ suc
             steps: input.steps ?? null,
             sleep_h: input.sleep_h ?? null,
             notes: input.notes ?? null,
+            ...(input.extras ?? {}),
         }
 
         const { error } = await supabase
@@ -242,4 +252,11 @@ export async function getClientMetricsRange(startDate: Date, endDate: Date) {
     }
 
     return data as ClientMetric[]
+}
+
+/** Medidas adicionales que el coach ha activado para el atleta actual */
+export async function getEnabledDailyMetricExtras(): Promise<DailyMetricExtraKey[]> {
+    const context = await getClientContext()
+    const keys = (context as { daily_metrics_enabled?: string[] } | null)?.daily_metrics_enabled ?? []
+    return keys.filter(isDailyMetricExtraKey)
 }
