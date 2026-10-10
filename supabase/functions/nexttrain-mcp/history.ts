@@ -1,4 +1,5 @@
 import { z } from 'npm:zod@4.3.6'
+import { findStrengthSession, programProgress, programTransitions, setEvidence } from './strength-progress.js'
 
 type Db = any
 type Server = any
@@ -122,7 +123,7 @@ async function strengthContext(db: Db, coachId: string, clientId: string, progra
   const programIds = programs.map((item) => item.id)
   const days = await inBatches(db, 'training_days', 'id, program_id, name, default_weekday, order_index', 'program_id', programIds,
     (q) => q.eq('coach_id', coachId).order('order_index', { ascending: true }))
-  const exercises = await inBatches(db, 'training_exercises', 'id, program_id, day_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes', 'program_id', programIds,
+  const exercises = await inBatches(db, 'training_exercises', 'id, program_id, day_id, catalog_exercise_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes', 'program_id', programIds,
     (q) => q.eq('coach_id', coachId).order('order_index', { ascending: true }))
   return { programs, days, exercises, hasMorePrograms }
 }
@@ -131,63 +132,103 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
   const programIds = context.programs.map((item) => item.id)
   const exerciseIds = context.exercises.map((item) => item.id)
   const [setRows, logRows, sessions] = await Promise.all([
-    inBatches(db, 'training_exercise_sets', 'id, exercise_id, week_index, set_index, weight_kg, reps, rir, completed, notes, updated_at', 'exercise_id', exerciseIds,
-      (q) => {
-        let filtered = q.eq('completed', true).order('updated_at', { ascending: false })
-        if (range) filtered = filtered.gte('updated_at', `${range.from_date}T00:00:00Z`).lt('updated_at', range.end_exclusive)
-        return filtered
-      }),
+    inBatches(db, 'training_exercise_sets', 'id, exercise_id, week_index, set_index, weight_kg, reps, rir, completed, is_override, notes, updated_at', 'exercise_id', exerciseIds,
+      (q) => q.or('completed.eq.true,is_override.eq.true').order('updated_at', { ascending: false })),
     inBatches(db, 'training_exercise_logs', 'id, program_id, day_id, exercise_id, week_index, performed_at, sets, notes, updated_at', 'program_id', programIds,
-      (q) => {
-        let filtered = q.eq('coach_id', coachId).eq('client_id', clientId).order('updated_at', { ascending: false })
-        if (range) filtered = filtered.gte('updated_at', `${range.from_date}T00:00:00Z`).lt('updated_at', range.end_exclusive)
-        return filtered
-      }),
+      (q) => q.eq('coach_id', coachId).eq('client_id', clientId).order('updated_at', { ascending: false })),
     inBatches(db, 'scheduled_strength_sessions', 'id, program_id, day_id, scheduled_date, is_completed', 'program_id', programIds,
-      (q) => {
-        let filtered = q.eq('coach_id', coachId).eq('client_id', clientId).order('scheduled_date', { ascending: false })
-        if (range) filtered = filtered.gte('scheduled_date', range.from_date).lte('scheduled_date', range.to_date)
-        return filtered
-      }),
+      (q) => q.eq('coach_id', coachId).eq('client_id', clientId).order('scheduled_date', { ascending: false })),
   ])
   const programById = new Map(context.programs.map((item) => [item.id, item]))
   const dayById = new Map(context.days.map((item) => [item.id, item]))
   const exerciseById = new Map(context.exercises.map((item) => [item.id, item]))
   const results: Row[] = []
-  for (const set of setRows) {
-    const exercise = exerciseById.get(set.exercise_id)
-    if (!exercise) continue
-    const program = programById.get(exercise.program_id)
-    const trainingDay = dayById.get(exercise.day_id)
-    results.push({
-      source: 'completed_set', id: set.id, program_id: exercise.program_id, program_name: program?.name,
-      day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id, exercise: exercise.exercise_name,
-      week_index: set.week_index, set_index: set.set_index, scheduled_date: scheduledSetDate(program, trainingDay, num(set.week_index)),
-      performed_at: null, recorded_at: set.updated_at, weight_kg: num(set.weight_kg), reps: num(set.reps),
-      rir: num(set.rir), rpe: null, completed: true, notes: set.notes,
-    })
-  }
+  let confirmedSetCount = 0
+  let unverifiedSetCount = 0
+  let logSetCount = 0
+  let logRowCount = 0
+  let confirmedLogSetCount = 0
+  let unverifiedLogSetCount = 0
   for (const log of logRows) {
     const exercise = exerciseById.get(log.exercise_id)
     if (!exercise) continue
     const program = programById.get(exercise.program_id)
     const trainingDay = dayById.get(exercise.day_id)
+    const session = findStrengthSession(program, trainingDay, num(log.week_index), sessions)
+    const plannedDate = scheduledSetDate(program, trainingDay, num(log.week_index))
+    const resultDate = log.performed_at?.slice(0, 10) ?? session?.scheduled_date ?? log.updated_at?.slice(0, 10)
+    if (range && (!resultDate || resultDate < range.from_date || resultDate > range.to_date)) continue
+    logRowCount++
     const loggedSets = Array.isArray(log.sets) ? log.sets : []
     for (const [index, rawSet] of loggedSets.entries()) {
       const set = object(rawSet)
+      if (![set.weight_kg, set.weight, set.reps, set.rir, set.rpe, set.notes].some((value) => value !== null && value !== undefined && value !== '') && set.completed !== true) continue
+      logSetCount++
+      const executionStatus = set.completed === true || log.performed_at ? 'logged' : 'recorded_unverified'
+      if (executionStatus === 'logged') confirmedLogSetCount++
+      else unverifiedLogSetCount++
       results.push({
-        source: 'exercise_log', id: `${log.id}:${index}`, program_id: exercise.program_id, program_name: program?.name,
-        day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id, exercise: exercise.exercise_name,
-        week_index: log.week_index, set_index: num(set.set) ?? index + 1,
-        scheduled_date: scheduledSetDate(program, trainingDay, num(log.week_index)),
+        source: 'exercise_log', execution_status: executionStatus, id: `${log.id}:${index}`, program_id: exercise.program_id, program_name: program?.name,
+        day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id, catalog_exercise_id: exercise.catalog_exercise_id,
+        comparison_exercise_id: exercise.catalog_exercise_id ?? exercise.id,
+        comparison_scope: exercise.catalog_exercise_id ? 'catalog_across_programs' : 'within_program', exercise: exercise.exercise_name,
+        week_index: log.week_index, set_index: index, set_number: num(set.set) ?? index + 1,
+        scheduled_date: session?.scheduled_date ?? plannedDate,
+        scheduled_date_source: session ? 'stored_session' : plannedDate ? 'template_weekday' : null,
+        session_id: session?.id ?? null, session_completed: session?.is_completed ?? null,
         performed_at: log.performed_at, recorded_at: log.updated_at,
         weight_kg: num(set.weight_kg ?? set.weight), reps: num(set.reps), rir: num(set.rir), rpe: num(set.rpe),
-        completed: set.completed ?? null, notes: set.notes ?? log.notes,
+        completed: set.completed ?? null, notes: set.notes ?? log.notes, note_source: set.notes ? 'set_log' : log.notes ? 'exercise_log' : null,
       })
     }
   }
-  results.sort((a, b) => String(b.performed_at ?? b.recorded_at).localeCompare(String(a.performed_at ?? a.recorded_at)))
-  return { results, sessions, source_counts: { completed_sets: setRows.length, exercise_logs: logRows.length } }
+  const loggedKeys = new Set(results.filter((result) => result.source === 'exercise_log')
+    .map((result) => `${result.exercise_id}:${result.week_index}:${result.set_number}`))
+  for (const set of setRows) {
+    const evidence = setEvidence(set)
+    if (!evidence) continue
+    const exercise = exerciseById.get(set.exercise_id)
+    if (!exercise) continue
+    const program = programById.get(exercise.program_id)
+    const trainingDay = dayById.get(exercise.day_id)
+    const session = findStrengthSession(program, trainingDay, num(set.week_index), sessions)
+    const plannedDate = scheduledSetDate(program, trainingDay, num(set.week_index))
+    const scheduledDate = session?.scheduled_date ?? plannedDate
+    const resultDate = scheduledDate ?? set.updated_at?.slice(0, 10)
+    if (range && (!resultDate || resultDate < range.from_date || resultDate > range.to_date)) continue
+    const setNumber = num(set.set_index) === null ? null : Number(set.set_index) + 1
+    if (loggedKeys.has(`${exercise.id}:${set.week_index}:${setNumber}`)) continue
+    if (evidence === 'confirmed') confirmedSetCount++
+    else unverifiedSetCount++
+    results.push({
+      source: evidence === 'confirmed' ? 'completed_set' : 'set_override', execution_status: evidence,
+      id: set.id, program_id: exercise.program_id, program_name: program?.name,
+      day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id,
+      catalog_exercise_id: exercise.catalog_exercise_id, comparison_exercise_id: exercise.catalog_exercise_id ?? exercise.id,
+      comparison_scope: exercise.catalog_exercise_id ? 'catalog_across_programs' : 'within_program', exercise: exercise.exercise_name,
+      week_index: set.week_index, set_index: set.set_index, set_number: setNumber,
+      scheduled_date: scheduledDate, scheduled_date_source: session ? 'stored_session' : plannedDate ? 'template_weekday' : null,
+      session_id: session?.id ?? null, session_completed: session?.is_completed ?? null,
+      performed_at: null, recorded_at: set.updated_at, weight_kg: num(set.weight_kg), reps: num(set.reps),
+      rir: num(set.rir), rpe: null, completed: set.completed === true, notes: set.notes, note_source: set.notes ? 'set_row' : null,
+    })
+  }
+  results.sort((a, b) => String(b.scheduled_date ?? b.performed_at ?? b.recorded_at).localeCompare(String(a.scheduled_date ?? a.performed_at ?? a.recorded_at))
+    || String(a.exercise_id).localeCompare(String(b.exercise_id)) || Number(a.set_index) - Number(b.set_index))
+  const rangedSessions = range ? sessions.filter((session) => session.scheduled_date >= range.from_date && session.scheduled_date <= range.to_date) : sessions
+  const confirmedSessionIds = new Set(results.filter((result) => result.execution_status !== 'recorded_unverified').map((result) => result.session_id).filter(Boolean))
+  const unverifiedSessionIds = new Set(results.filter((result) => result.execution_status === 'recorded_unverified').map((result) => result.session_id).filter(Boolean))
+  return {
+    results, sessions: rangedSessions,
+    source_counts: { completed_sets: confirmedSetCount, exercise_logs: logRowCount, exercise_log_sets: logSetCount, overridden_unverified_sets: unverifiedSetCount },
+    data_quality: {
+      confirmed_execution_sets: confirmedSetCount + confirmedLogSetCount,
+      recorded_sets_without_execution_confirmation: unverifiedSetCount + unverifiedLogSetCount,
+      completed_sessions_without_confirmed_sets: rangedSessions.filter((session) => session.is_completed && !confirmedSessionIds.has(session.id)).length,
+      completed_sessions_with_unverified_set_values: rangedSessions.filter((session) => session.is_completed && unverifiedSessionIds.has(session.id)).length,
+      note: 'Una sesión completada y un valor editado no prueban que cada serie se haya ejecutado. Sin marca completed=true ni performed_at, los valores se muestran como recorded_unverified.',
+    },
+  }
 }
 
 async function inBatches(db: Db, table: string, select: string, field: string, ids: string[], configure?: (query: any) => any) {
@@ -381,7 +422,7 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
 
   server.registerTool('get_strength_results', {
     title: 'Resultados reales de fuerza',
-    description: 'Series y cargas registradas por ejercicio, reps, RIR/RPE cuando existen, notas y sesiones completadas. La fecha de una serie sin performed_at se marca como fecha de registro.',
+    description: 'Series, cargas, reps, RIR/RPE, notas e identificador comparable. Distingue ejecución confirmada de valores editados sin confirmar; una sesión completada no confirma sus series.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80), offset: z.number().int().min(0).max(5000).default(0) }),
     annotations,
   }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId) => {
@@ -395,8 +436,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
       has_more: data.results.length > offset + limit, next_offset: data.results.length > offset + limit ? offset + limit : null,
       programs_scanned: context.programs.map((program) => ({ id: program.id, name: program.name })),
       older_programs_available: context.hasMorePrograms,
-      source_counts: data.source_counts,
-      note: 'Las series planificadas sin registro de ejecución no se presentan como resultados. performed_at solo aparece si el atleta lo guardó; recorded_at indica cuándo se modificó el registro.',
+      source_counts: data.source_counts, data_quality: data.data_quality,
+      note: 'results incluye series confirmadas y valores editados sin confirmar, identificados por execution_status. Las series prescritas sin edición no aparecen. performed_at no se infiere a partir de la fecha prevista o de updated_at.',
     }
   }))
 
@@ -467,40 +508,53 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
 
   server.registerTool('get_program_history', {
     title: 'Histórico de programas de fuerza',
-    description: 'Sin program_id lista bloques y sesiones. Con program_id devuelve días, ejercicios, sesiones y resultados reales asociados para comparar bloques.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200), result_offset: z.number().int().min(0).max(5000).default(0) }),
+    description: 'Bloques con semana natural, fecha final estimada, semanas con sesiones marcadas completas y semanas con series confirmadas. Distingue valores de fuerza confirmados o sin confirmar; no inventa omisiones ni descargas.',
+    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200), result_offset: z.number().int().min(0).max(5000).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId) => {
+  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId) => {
+    const asOfDate = as_of_date ?? day(new Date())
     const context = await strengthContext(db, coachId, client_id, program_id, program_offset, program_limit)
     const programIds = context.programs.map((item) => item.id)
-    const sessions = await inBatches(db, 'scheduled_strength_sessions', 'id, program_id, day_id, scheduled_date, is_completed', 'program_id', programIds,
-      (q) => q.eq('coach_id', coachId).eq('client_id', client_id).order('scheduled_date', { ascending: false }))
+    const [sessions, timelinePrograms] = await Promise.all([
+      inBatches(db, 'scheduled_strength_sessions', 'id, program_id, day_id, scheduled_date, is_completed', 'program_id', programIds,
+        (q) => q.eq('coach_id', coachId).eq('client_id', client_id).order('scheduled_date', { ascending: false })),
+      allRows(() => db.from('training_programs').select('id, name, status, effective_from, effective_to, weeks, total_weeks, created_at')
+        .eq('coach_id', coachId).eq('client_id', client_id).order('effective_from', { ascending: true }).order('id', { ascending: true }), 'la cronología de programas'),
+    ])
+    const transitions = programTransitions(timelinePrograms)
     if (!program_id) {
       return {
-        client_id,
+        client_id, as_of_date: asOfDate,
         programs: context.programs.map((program) => {
           const ownSessions = sessions.filter((session) => session.program_id === program.id)
+          const ownDays = context.days.filter((item) => item.program_id === program.id)
           return { ...program, day_count: context.days.filter((item) => item.program_id === program.id).length,
             exercise_count: context.exercises.filter((item) => item.program_id === program.id).length,
-            scheduled_sessions: ownSessions.length, completed_sessions: ownSessions.filter((item) => item.is_completed).length }
+            scheduled_sessions: ownSessions.length, completed_sessions: ownSessions.filter((item) => item.is_completed).length,
+            progress: programProgress(program, ownDays, ownSessions, asOfDate) }
         }),
+        program_changes: transitions,
         older_programs_available: context.hasMorePrograms,
         next_program_offset: context.hasMorePrograms ? program_offset + program_limit : null,
-        note: 'Indica program_id para ver ejercicios y resultados de un bloque concreto.',
+        note: 'La fecha final sin effective_to se estima por duración. Una semana con sesión marcada completa no prueba series ejecutadas; indica program_id para contar semanas con series confirmadas.',
       }
     }
     const program = context.programs[0]
     const detail = await completedStrengthRows(db, coachId, client_id, context)
+    const confirmedWeeks = detail.results.filter((result) => result.execution_status !== 'recorded_unverified')
+      .map((result) => num(result.week_index)).filter((value) => value !== null)
     const days = context.days.filter((item) => item.program_id === program_id).map((trainingDay) => ({
       ...trainingDay, exercises: context.exercises.filter((exercise) => exercise.day_id === trainingDay.id),
     }))
     return {
-      client_id, program, days, sessions,
+      client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks) }, days, sessions,
+      program_changes: transitions.filter((event) => event.from_program_id === program_id || event.to_program_id === program_id),
+      possible_deload_blocks: timelinePrograms.filter((item) => /descarga|deload/i.test(item.name || '')).map((item) => ({ id: item.id, name: item.name, effective_from: item.effective_from, inference_source: 'program_name' })),
       results: detail.results.slice(result_offset, result_offset + result_limit),
       has_more_results: detail.results.length > result_offset + result_limit,
       next_result_offset: detail.results.length > result_offset + result_limit ? result_offset + result_limit : null,
-      result_source_counts: detail.source_counts,
-      note: 'Las series prescritas aparecen en days; results contiene solo datos registrados por el atleta o series marcadas como completadas.',
+      result_source_counts: detail.source_counts, result_data_quality: detail.data_quality,
+      note: 'Las series prescritas aparecen en days. results separa ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
     }
   }))
 }
