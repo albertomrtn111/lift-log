@@ -538,7 +538,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     return (
         <div className="space-y-6">
             {/* Sub-tab toggle */}
-            <div className="max-w-full overflow-x-auto pb-1">
+            <div className="max-w-full touch-pan-x overflow-x-auto overscroll-x-contain pb-1 scrollbar-hide">
                 <div className="flex w-max items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
                     {[
                         { key: 'general' as SubTab, label: 'General' },
@@ -741,7 +741,7 @@ function WeightDetail({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="gap-2 self-start sm:self-auto"
+                    className="w-full gap-2 self-start sm:w-auto sm:self-auto"
                     disabled={rows.length === 0}
                     onClick={() => downloadWeightCsv(rows, dateFrom, dateTo)}
                 >
@@ -755,7 +755,35 @@ function WeightDetail({
                     No hay métricas registradas en este rango.
                 </p>
             ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <>
+                <div className="space-y-2 sm:hidden">
+                    {[...rows].reverse().map(row => (
+                        <div key={row.date} className="rounded-xl border bg-background p-3">
+                            <div className="flex items-center justify-between gap-3 border-b pb-2">
+                                <p className="text-sm font-medium capitalize">{row.dateLabel}</p>
+                                <span className={cn(
+                                    'inline-flex shrink-0 justify-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums',
+                                    row.delta === null && 'border-border bg-muted/30 text-muted-foreground',
+                                    row.delta !== null && row.delta < 0 && 'border-blue-500/20 bg-blue-500/10 text-blue-600',
+                                    row.delta !== null && row.delta > 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500',
+                                    row.delta === 0 && 'border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
+                                )}>
+                                    {row.delta === null ? '—' : `${row.delta > 0 ? '+' : ''}${row.delta.toFixed(1)} kg`}
+                                </span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                                <MobileMetric label="Peso" value={row.weight !== null ? `${row.weight.toFixed(1)} kg` : '—'} />
+                                <MobileMetric label="Pasos" value={row.steps !== null ? row.steps.toLocaleString('es-ES') : '—'} />
+                                <MobileMetric label="Sueño" value={row.sleep !== null ? `${row.sleep.toFixed(1).replace('.0', '')}h` : '—'} />
+                                {row.hrv !== null && <MobileMetric label="VFC" value={`${Math.round(row.hrv)} ms`} />}
+                                {row.sleepScore !== null && <MobileMetric label="Punt. sueño" value={`${row.sleepScore}/100`} />}
+                                {row.fatigue !== null && <MobileMetric label="Fatiga" value={`${row.fatigue}/5`} />}
+                                <MobileMetric label="Dieta" value={row.dietAdherence !== null ? `${Math.round(row.dietAdherence)}%` : '—'} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="hidden overflow-x-auto rounded-lg border sm:block">
                     <table className={cn('w-full table-fixed', hasExtras ? 'min-w-[1080px]' : 'min-w-[860px]')}>
                         <colgroup>
                             <col className={hasExtras ? 'w-[24%]' : 'w-[34%]'} />
@@ -833,8 +861,18 @@ function WeightDetail({
                         </tbody>
                     </table>
                 </div>
+                </>
             )}
         </Card>
+    )
+}
+
+function MobileMetric({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="mt-0.5 truncate font-semibold tabular-nums">{value}</p>
+        </div>
     )
 }
 

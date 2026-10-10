@@ -240,7 +240,7 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                                 </div>
                             </div>
                             <div className="flex justify-end">
-                                <Button onClick={handleSave} disabled={isSaving}>
+                                <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
                                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Guardar datos
                                 </Button>
@@ -293,10 +293,10 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                 </div>
 
                 {/* Modularidad: activar/desactivar el bloque de resistencia */}
-                <div className="flex items-center justify-between gap-3 border-t bg-muted/20 px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                        <HeartPulse className="h-4 w-4 shrink-0 text-rose-500" />
-                        <div className="min-w-0">
+                <div className="flex flex-col items-start gap-3 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-2 sm:items-center">
+                        <HeartPulse className="h-4 w-4 text-rose-500" />
+                        <div>
                             <p className="text-sm font-medium">Bloque de resistencia</p>
                             <p className="text-[11px] text-muted-foreground">
                                 Umbrales de FC, ritmo y zonas. Desactívalo para atletas de solo fuerza,
@@ -305,10 +305,10 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                         </div>
                     </div>
                     <Switch
+                        className="self-end shrink-0 sm:self-auto"
                         checked={enduranceEnabled}
                         onCheckedChange={handleToggleEndurance}
                         disabled={loading || isSaving}
-                        className="shrink-0"
                     />
                 </div>
             </Card>

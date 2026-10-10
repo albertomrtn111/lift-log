@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect, useRef, useTransition } from 'react'
+import { useState, useCallback, useMemo, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Client } from '@/types/coach'
 import { AthleteAIProfile } from '@/types/athlete-profile'
@@ -21,6 +21,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import {
     LayoutDashboard,
     FileText,
@@ -49,6 +56,17 @@ import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
 import { NextIAChatPanel } from './workspace/NextIAChatPanel'
+
+const WORKSPACE_TABS = [
+    { value: 'athlete-profile', label: 'Perfil del atleta', icon: UserRound, gated: false },
+    { value: 'onboarding', label: 'Onboarding', icon: ClipboardList, gated: false },
+    { value: 'resumen', label: 'Resumen', icon: LayoutDashboard, gated: false },
+    { value: 'nextia', label: 'Chat NextIA', icon: Bot, gated: false },
+    { value: 'progreso', label: 'Progreso', icon: TrendingUp, gated: true },
+    { value: 'plan', label: 'Plan', icon: CalendarDays, gated: true },
+    { value: 'checkins', label: 'Revisiones', icon: FileText, gated: true },
+    { value: 'events', label: 'Eventos', icon: Flag, gated: true },
+] as const
 
 interface NewClientWorkspaceProps {
     clients: ClientSelectorOption[]
@@ -99,7 +117,6 @@ export function NewClientWorkspace({
     const [activeTab, setActiveTab] = useState(normalizeWorkspaceTab(searchParams.get('tab')))
     // Cambiar de cliente recarga todo el workspace en servidor: mostramos estado de carga
     const [isSwitchingClient, startClientTransition] = useTransition()
-    const tabsListRef = useRef<HTMLDivElement>(null)
 
     // Persist selected client in localStorage so navigating away and back preserves selection
     const STORAGE_KEY = 'coach_last_client_id'
@@ -112,7 +129,10 @@ export function NewClientWorkspace({
             const stored = localStorage.getItem(STORAGE_KEY)
             // Only redirect if the stored client is still in the list
             if (stored && clients.some(c => c.id === stored)) {
-                router.replace(`/coach/clients?client=${stored}&tab=${activeTab}`)
+                const params = new URLSearchParams(searchParams.toString())
+                params.set('client', stored)
+                params.set('tab', activeTab)
+                router.replace(`/coach/clients?${params.toString()}`)
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,21 +154,31 @@ export function NewClientWorkspace({
         router.refresh()
     }, [router])
 
-    const handleSwitchTab = useCallback((tab: string) => {
-        setActiveTab(tab)
+    const handleSwitchTab = useCallback((target: string) => {
+        const [requestedTab, planSection] = target.split(':')
+        const tab = normalizeWorkspaceTab(requestedTab)
+        const params = new URLSearchParams(searchParams.toString())
 
-        if (selectedClientId) {
-            router.replace(`/coach/clients?client=${selectedClientId}&tab=${tab}`)
-        } else {
-            router.replace(`/coach/clients?tab=${tab}`)
-        }
-    }, [router, selectedClientId])
+        setActiveTab(tab)
+        params.set('tab', tab)
+
+        if (selectedClientId) params.set('client', selectedClientId)
+        else params.delete('client')
+
+        if (tab === 'plan' && planSection) params.set('plan', planSection)
+        else if (tab !== 'plan') params.delete('plan')
+
+        router.replace(`/coach/clients?${params.toString()}`)
+    }, [router, searchParams, selectedClientId])
 
     const navigateToClient = useCallback((clientId: string) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('client', clientId)
+        params.set('tab', activeTab)
         startClientTransition(() => {
-            router.push(`/coach/clients?client=${clientId}&tab=${activeTab}`, { scroll: false })
+            router.push(`/coach/clients?${params.toString()}`, { scroll: false })
         })
-    }, [activeTab, router])
+    }, [activeTab, router, searchParams])
 
     const handleClientChange = navigateToClient
 
@@ -171,12 +201,6 @@ export function NewClientWorkspace({
         if (canGoNext) navigateToClient(activeClients[currentIndex + 1].id)
     }, [canGoNext, activeClients, currentIndex, navigateToClient])
 
-    // En móvil las pestañas hacen scroll horizontal: mantener visible la activa
-    useEffect(() => {
-        const active = tabsListRef.current?.querySelector<HTMLElement>('[data-state="active"]')
-        active?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
-    }, [activeTab])
-
     // Keyboard shortcuts: Alt+← / Alt+→
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -189,7 +213,7 @@ export function NewClientWorkspace({
 
     // Blocked tab content for pending signup clients
     const BlockedTabContent = () => (
-        <Card className="p-12 text-center">
+        <Card className="p-6 text-center sm:p-12">
             <Lock className="h-12 w-12 text-amber-500/50 mx-auto mb-4" />
             <h3 className="font-semibold text-lg mb-2">Función bloqueada</h3>
             <p className="text-muted-foreground max-w-md mx-auto">
@@ -209,7 +233,7 @@ export function NewClientWorkspace({
     return (
         <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
             {/* Client Selector + Prev/Next Navigation */}
-            <div className="flex min-w-0 max-w-full items-center gap-2">
+            <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -217,12 +241,12 @@ export function NewClientWorkspace({
                     disabled={!canGoPrev || isSwitchingClient}
                     title="Cliente anterior (Alt+←)"
                     aria-label="Cliente anterior"
-                    className="h-10 w-10 shrink-0"
+                    className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
                 >
                     <ChevronLeft className="h-4 w-4" />
                 </Button>
 
-                <div className="min-w-0 flex-1 sm:flex-none">
+                <div className="min-w-0 flex-1 sm:flex-initial">
                     <ClientSelector
                         clients={clients}
                         selectedClientId={selectedClientId}
@@ -238,7 +262,7 @@ export function NewClientWorkspace({
                     disabled={!canGoNext || isSwitchingClient}
                     title="Siguiente cliente (Alt+→)"
                     aria-label="Siguiente cliente"
-                    className="h-10 w-10 shrink-0"
+                    className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
                 >
                     <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -280,76 +304,51 @@ export function NewClientWorkspace({
 
                     {/* NEW TAB STRUCTURE */}
                     <Tabs value={activeTab} onValueChange={handleSwitchTab} className="min-w-0 max-w-full overflow-hidden">
-                    <TabsList ref={tabsListRef} className="workspace-tabs-list max-w-full gap-1 sm:gap-3">
-                        <TabsTrigger
-                            value="athlete-profile"
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[10.5rem]"
-                        >
-                            <UserRound className="h-4 w-4" />
-                            <span className="sm:hidden">Perfil</span>
-                            <span className="hidden sm:inline">Perfil del atleta</span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="onboarding"
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem]"
-                        >
-                            <ClipboardList className="h-4 w-4" />
-                            <span>Onboarding</span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="resumen"
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem]"
-                        >
-                            <LayoutDashboard className="h-4 w-4" />
-                            <span>Resumen</span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="nextia"
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem]"
-                        >
-                            <Bot className="h-4 w-4" />
-                            <span className="sm:hidden">NextIA</span>
-                            <span className="hidden sm:inline">Chat NextIA</span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="progreso"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <TrendingUp className="h-4 w-4" />
-                            <span>Progreso</span>
-                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="plan"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <CalendarDays className="h-4 w-4" />
-                            <span>Plan</span>
-                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="checkins"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[9rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <FileText className="h-4 w-4" />
-                            <span>Revisiones</span>
-                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                        </TabsTrigger>
-                        <TabsTrigger
-                            value="events"
-                            disabled={isPendingSignup}
-                            className="workspace-tab-trigger shrink-0 sm:min-w-[8.75rem] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <Flag className="h-4 w-4" />
-                            <span>Eventos</span>
-                            {isPendingSignup && <Lock className="h-3 w-3 ml-1" />}
-                        </TabsTrigger>
-                    </TabsList>
+                        <div className="mb-4 lg:hidden">
+                            <Select value={activeTab} onValueChange={handleSwitchTab}>
+                                <SelectTrigger className="h-12 w-full rounded-xl" aria-label="Sección de Workspace">
+                                    <SelectValue placeholder="Selecciona una sección" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {WORKSPACE_TABS.map(tab => {
+                                        const Icon = tab.icon
+                                        const disabled = tab.gated && isPendingSignup
+                                        return (
+                                            <SelectItem key={tab.value} value={tab.value} disabled={disabled}>
+                                                <span className="flex items-center gap-2">
+                                                    <Icon className="h-4 w-4" />
+                                                    <span>{tab.label}</span>
+                                                    {disabled && <Lock className="ml-1 h-3 w-3" />}
+                                                </span>
+                                            </SelectItem>
+                                        )
+                                    })}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                        <div className="min-h-[500px] min-w-0 max-w-full overflow-x-hidden">
+                        <div className="hidden lg:block">
+                            <TabsList className="workspace-tabs-list max-w-full gap-3">
+                                {WORKSPACE_TABS.map(tab => {
+                                    const Icon = tab.icon
+                                    const disabled = tab.gated && isPendingSignup
+                                    return (
+                                        <TabsTrigger
+                                            key={tab.value}
+                                            value={tab.value}
+                                            disabled={disabled}
+                                            className="workspace-tab-trigger min-w-[8.75rem] shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{tab.label}</span>
+                                            {disabled && <Lock className="ml-1 h-3 w-3" />}
+                                        </TabsTrigger>
+                                    )
+                                })}
+                            </TabsList>
+                        </div>
+
+                        <div className="min-w-0 max-w-full overflow-x-hidden lg:min-h-[500px]">
                             <TabsContent value="athlete-profile" className="mt-0 min-w-0 space-y-6">
                                 <AthleteCurrentGoalCard
                                     key={`goal-${selectedClient.id}`}
@@ -465,7 +464,7 @@ export function NewClientWorkspace({
                     </Tabs>
                 </div>
             ) : (
-                <Card className="p-8 text-center">
+                <Card className="p-6 text-center sm:p-8">
                     <LayoutDashboard className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-30" />
                     <h3 className="font-semibold text-lg">Selecciona un cliente</h3>
                     <p className="text-muted-foreground mt-2">

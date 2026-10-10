@@ -194,7 +194,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                         <Button
                             size="sm"
                             variant="outline"
-                            className="gap-2 border-amber-500/30 text-amber-500 hover:bg-amber-500/10 shrink-0"
+                            className="w-full shrink-0 gap-2 border-amber-500/30 text-amber-500 hover:bg-amber-500/10 sm:w-auto"
                             onClick={handleResendInvite}
                             disabled={isPending}
                         >
@@ -209,7 +209,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                 </Card>
             )}
 
-            <Card className="p-3.5 mb-4">
+            <Card className="mb-4 p-3 sm:p-3.5">
                 <div className="flex items-center justify-between gap-2 sm:gap-4">
                     {/* Client Info */}
                     <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -254,7 +254,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                     </div>
 
                     {/* Actions: Editar + Dropdown */}
-                    <div className="flex shrink-0 items-center gap-1 sm:gap-2 self-start xl:self-center">
+                    <div className="flex shrink-0 items-center gap-1 self-start sm:gap-2 xl:self-center">
                         <Button
                             variant="outline"
                             size="sm"

@@ -27,7 +27,7 @@ export function ProgramSelector({ programs, selectedId, onSelect }: ProgramSelec
     if (programs.length === 0) return null
 
     return (
-        <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <span className="text-sm font-medium text-muted-foreground shrink-0">Programa:</span>
             <Select value={selectedId} onValueChange={onSelect}>
                 <SelectTrigger className="w-full min-w-0 sm:w-[280px]">

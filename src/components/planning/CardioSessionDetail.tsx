@@ -27,6 +27,8 @@ import {
   Heart
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { hasRenderableCardioBlocks } from '@/lib/cardio/structure'
+import { resolveCardioDisplayKind } from '@/lib/cardio/display-kind'
 
 interface CardioSessionDetailProps {
   item: CalendarItem | null
@@ -58,23 +60,24 @@ export function CardioSessionDetail({
   const [avgHR, setAvgHR] = useState(item?.avgHeartRate?.toString() ?? '')
   const [maxHR, setMaxHR] = useState(item?.maxHeartRate?.toString() ?? '')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const sportKind = resolveCardioDisplayKind(item?.activityType, item?.trainingType)
 
   // Effect to auto-calculate pace when distance or duration changes
   // Logic: Duration (min) / Distance (km) = Pace (min/km)
   // Format: m:ss
   useEffect(() => {
-    if (distance && duration && !pace) {
+    if (distance && duration && !pace && sportKind !== 'bike') {
       const d = parseFloat(distance)
       const t = parseFloat(duration)
       if (d > 0 && t > 0) {
-        const paceDec = t / d
+        const paceDec = t / (sportKind === 'swim' ? d * 10 : d)
         const pMin = Math.floor(paceDec)
         const pSec = Math.round((paceDec - pMin) * 60)
         const pSecStr = pSec < 10 ? `0${pSec}` : `${pSec}`
         setPace(`${pMin}:${pSecStr}`)
       }
     }
-  }, [distance, duration])
+  }, [distance, duration, pace, sportKind])
 
   // Reset form when item changes
   useEffect(() => {
@@ -93,7 +96,7 @@ export function CardioSessionDetail({
 
   const isRest = item.kind === 'rest'
   const isStrength = item.kind === 'strength'
-  const hasStructuredPlan = hasStructuredCardioPlan(item.plannedStructure)
+  const hasStructuredPlan = hasRenderableCardioBlocks(item.plannedStructure)
 
   const handleSave = async () => {
     setSaveStatus('saving')
@@ -149,7 +152,7 @@ export function CardioSessionDetail({
                 {item.targetDistanceKm && (
                   <Badge variant="secondary" className="gap-1 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
                     <RouteIcon className="h-3 w-3" />
-                    {item.targetDistanceKm} km
+                    {sportKind === 'swim' ? `${Math.round(item.targetDistanceKm * 1000)} m` : `${item.targetDistanceKm} km`}
                   </Badge>
                 )}
                 {item.targetDurationMin && (
@@ -160,7 +163,7 @@ export function CardioSessionDetail({
                 )}
                 {item.targetPace && (
                   <Badge variant="secondary" className="gap-1 text-xs font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 border-0">
-                    {item.targetPace} /km
+                    {item.targetPace} {sportKind === 'swim' ? '/100 m' : sportKind === 'bike' ? '' : '/km'}
                   </Badge>
                 )}
               </div>
@@ -246,7 +249,7 @@ export function CardioSessionDetail({
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs">Ritmo medio (min/km)</Label>
+                <Label className="text-xs">{sportKind === 'swim' ? 'Ritmo medio (/100 m)' : sportKind === 'bike' ? 'Velocidad/potencia media (opcional)' : 'Ritmo medio (min/km)'}</Label>
                 <Input
                   placeholder="5:30"
                   value={pace}
@@ -356,20 +359,6 @@ export function CardioSessionDetail({
   )
 }
 
-function hasStructuredCardioBlocks(structure: any) {
-  const blocks = Array.isArray(structure) ? structure : structure?.blocks
-  return Array.isArray(blocks) && blocks.some((block: any) =>
-    ['warmup', 'continuous', 'intervals', 'cooldown'].includes(block?.type)
-  )
-}
-
-function hasStructuredCardioPlan(structure: any) {
-  if (hasStructuredCardioBlocks(structure)) return true
-  return structure?.mode === 'structured'
-    && typeof structure?.description === 'string'
-    && structure.description.trim().length > 0
-}
-
 function formatDistance(km?: number, { preferMeters = false } = {}) {
   const value = Number(km)
   if (!Number.isFinite(value) || value <= 0) return null
@@ -412,7 +401,9 @@ function describeStructuredBlock(block: any) {
     return joinClean([
       work,
       target ? `@ ${target}` : null,
+      block.workTargetRpe ? `RPE ${block.workTargetRpe}` : null,
       rest ? `rec ${rest}` : null,
+      block.description,
     ])
   }
 
@@ -421,6 +412,8 @@ function describeStructuredBlock(block: any) {
     formatDuration(block?.duration),
     block?.targetPace || block?.intensity,
     block?.targetHR,
+    block?.targetRpe ? `RPE ${block.targetRpe}` : null,
+    block?.description,
   ])
 }
 
@@ -489,7 +482,7 @@ function renderStructuredSummary(description: string) {
 function renderStructure(structure: any): any {
   const blocks = Array.isArray(structure) ? structure : structure?.blocks
   if (Array.isArray(blocks) && blocks.length > 0) {
-    if (hasStructuredCardioBlocks(blocks)) {
+    if (hasRenderableCardioBlocks(blocks)) {
       return renderStructuredBlocks(blocks)
     }
 

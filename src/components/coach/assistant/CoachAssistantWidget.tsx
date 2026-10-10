@@ -121,7 +121,7 @@ export function CoachAssistantWidget() {
                 onClick={() => setOpen(true)}
                 aria-label="Abrir asistente IA"
                 className={cn(
-                    'fixed bottom-20 right-4 z-40 lg:bottom-6 lg:right-6',
+                    'fixed bottom-[calc(var(--app-bottom-nav-height)+var(--safe-area-bottom)+0.75rem)] right-[calc(var(--safe-area-right)+1rem)] z-40 lg:bottom-6 lg:right-6',
                     'flex h-13 w-13 items-center justify-center rounded-full p-3.5',
                     'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg',
                     'transition-transform hover:scale-105 active:scale-95'
@@ -131,8 +131,8 @@ export function CoachAssistantWidget() {
             </button>
 
             <Sheet open={open} onOpenChange={setOpen}>
-                <SheetContent side="right" className="flex h-dvh w-full flex-col gap-0 p-0 sm:max-w-md">
-                    <SheetHeader className="shrink-0 border-b px-4 py-4 pr-14 text-left">
+                <SheetContent side="right" className="flex h-dvh w-full flex-col gap-0 pb-0 pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] pt-0 sm:max-w-md">
+                    <SheetHeader className="shrink-0 border-b px-4 pb-4 pr-14 pt-[calc(var(--safe-area-top)+1rem)] text-left">
                         <div className="flex items-center justify-between gap-2">
                             <SheetTitle className="flex items-center gap-2 text-base">
                                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
@@ -226,7 +226,7 @@ export function CoachAssistantWidget() {
                         )}
                     </div>
 
-                    <footer className="shrink-0 border-t bg-card px-3 py-3">
+                    <footer className="shrink-0 border-t bg-card px-3 pb-[calc(var(--safe-area-bottom)+0.75rem)] pt-3">
                         <div className="flex items-end gap-2">
                             <textarea
                                 ref={textareaRef}

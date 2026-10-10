@@ -7,6 +7,10 @@ function roundToOne(value) {
   return Math.round(value * 10) / 10
 }
 
+function roundToMeters(value) {
+  return Math.round(value * 1000) / 1000
+}
+
 function formatDistanceKm(km, { preferMeters = false } = {}) {
   const distance = numberOrNull(km)
   if (!distance) return null
@@ -32,6 +36,7 @@ function describeContinuousBlock(block) {
     formatDurationMin(block.duration),
     block.targetPace || block.intensity,
     block.targetHR,
+    block.targetRpe ? `RPE ${block.targetRpe}` : null,
   ])
 }
 
@@ -45,8 +50,33 @@ function describeIntervalsBlock(block) {
   return joinParts([
     work,
     target ? `@ ${target}` : null,
+    block.workTargetRpe ? `RPE ${block.workTargetRpe}` : null,
     rest ? `rec ${rest}` : null,
   ])
+}
+
+function isNativeBlock(block) {
+  if (!block || typeof block !== 'object') return false
+  if (block.type === 'intervals') {
+    return Number.isInteger(Number(block.sets)) && numberOrNull(block.sets) !== null
+      && (numberOrNull(block.workDistance) !== null || numberOrNull(block.workDuration) !== null)
+  }
+  if (!['warmup', 'continuous', 'cooldown', 'station'].includes(block.type)) return false
+  return numberOrNull(block.distance) !== null
+    || numberOrNull(block.duration) !== null
+    || Boolean(block.targetPace || block.targetHR || block.targetRpe || block.notes)
+}
+
+export function hasRenderableCardioBlocks(structure) {
+  const blocks = Array.isArray(structure) ? structure : structure?.blocks
+  return Array.isArray(blocks) && blocks.length > 0 && blocks.every(isNativeBlock)
+}
+
+export function resolveCardioPlanForDisplay(session) {
+  if (session?.structure?.mode === 'free_text') return null
+  if (hasRenderableCardioBlocks(session?.planned_structure)) return session.planned_structure
+  if (hasRenderableCardioBlocks(session?.structure)) return session.structure
+  return null
 }
 
 export function describeCardioBlock(block) {
@@ -61,7 +91,7 @@ export function summarizeCardioStructure(structure) {
   if (typeof structure.description === 'string' && structure.description.trim() && structure.mode !== 'structured') {
     return structure.description.trim()
   }
-  if (!Array.isArray(structure.blocks)) return ''
+  if (!hasRenderableCardioBlocks(structure)) return typeof structure.description === 'string' ? structure.description.trim() : ''
   return structure.blocks
     .map(describeCardioBlock)
     .filter(Boolean)
@@ -72,15 +102,17 @@ export function getCardioStructureLines(structure) {
   if (!structure) return []
   if (typeof structure === 'string') return structure.trim() ? [structure.trim()] : []
   if (Array.isArray(structure)) {
+    if (!hasRenderableCardioBlocks(structure)) return []
     return structure
       .map((block) => {
         const details = describeCardioBlock(block)
         const label = block?.label || block?.name
-        return [label, details].filter(Boolean).join(': ')
+        const description = block?.description && block.description !== details ? block.description : null
+        return [label, [details, description].filter(Boolean).join(' — ')].filter(Boolean).join(': ')
       })
       .filter(Boolean)
   }
-  if (Array.isArray(structure.blocks) && structure.blocks.length > 0) {
+  if (hasRenderableCardioBlocks(structure)) {
     return getCardioStructureLines(structure.blocks)
   }
   if (typeof structure.description === 'string' && structure.description.trim()) {
@@ -98,9 +130,9 @@ export function calculateCardioStructureTotals(structure) {
     if (block.type === 'intervals') {
       const sets = numberOrNull(block.sets) || 1
       distanceKm += (numberOrNull(block.workDistance) || 0) * sets
-      distanceKm += (numberOrNull(block.restDistance) || 0) * sets
+      distanceKm += (numberOrNull(block.restDistance) || 0) * (block.restAfterLastRep === false ? Math.max(sets - 1, 0) : sets)
       durationMin += (numberOrNull(block.workDuration) || 0) * sets
-      durationMin += (numberOrNull(block.restDuration) || 0) * sets
+      durationMin += (numberOrNull(block.restDuration) || 0) * (block.restAfterLastRep === false ? Math.max(sets - 1, 0) : sets)
     } else {
       distanceKm += numberOrNull(block.distance) || 0
       durationMin += numberOrNull(block.duration) || 0
@@ -108,7 +140,7 @@ export function calculateCardioStructureTotals(structure) {
   }
 
   return {
-    distanceKm: distanceKm > 0 ? roundToOne(distanceKm) : null,
+    distanceKm: distanceKm > 0 ? roundToMeters(distanceKm) : null,
     durationMin: durationMin > 0 ? roundToOne(durationMin) : null,
   }
 }

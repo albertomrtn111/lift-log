@@ -374,7 +374,7 @@ export function EventsTab({ coachId, clientId, events, onRefresh }: EventsTabPro
                         Objetivos de competición, tests importantes y fechas que condicionan la planificación.
                     </p>
                 </div>
-                <Button onClick={openCreateDialog} className="gap-2">
+                <Button onClick={openCreateDialog} className="w-full gap-2 sm:w-auto">
                     <CalendarPlus className="h-4 w-4" />
                     Crear evento
                 </Button>
@@ -401,7 +401,7 @@ export function EventsTab({ coachId, clientId, events, onRefresh }: EventsTabPro
             </div>
 
             {events.length === 0 ? (
-                <Card className="p-10 text-center">
+                <Card className="p-6 text-center sm:p-10">
                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <Flag className="h-6 w-6" />
                     </div>
@@ -409,7 +409,7 @@ export function EventsTab({ coachId, clientId, events, onRefresh }: EventsTabPro
                     <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                         Añade la carrera objetivo, un test de rendimiento o una fecha límite para que la planificación tenga contexto.
                     </p>
-                    <Button onClick={openCreateDialog} className="mt-4 gap-2">
+                    <Button onClick={openCreateDialog} className="mt-4 w-full gap-2 sm:w-auto">
                         <CalendarPlus className="h-4 w-4" />
                         Crear primer evento
                     </Button>

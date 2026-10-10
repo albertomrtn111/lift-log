@@ -74,13 +74,13 @@ export function ClientSelector({ clients, selectedClientId, onClientChange, isSw
 
     if (clients.length === 0) {
         return (
-            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+            <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4 sm:flex-row sm:items-center">
                 <Users className="h-5 w-5 text-muted-foreground" />
                 <div>
                     <p className="font-medium">No hay clientes</p>
                     <p className="text-sm text-muted-foreground">Crea tu primer cliente para empezar</p>
                 </div>
-                <Button variant="outline" size="sm" asChild className="ml-auto">
+                <Button variant="outline" size="sm" asChild className="w-full sm:ml-auto sm:w-auto">
                     <Link href="/coach/members">Ir a Atletas</Link>
                 </Button>
             </div>

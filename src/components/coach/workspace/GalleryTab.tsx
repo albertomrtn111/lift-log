@@ -333,7 +333,7 @@ export function GalleryTab({
 
     if (sections.length === 0) {
         return (
-            <Card className="p-10 text-center">
+            <Card className="p-6 text-center sm:p-10">
                 <Camera className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-sm font-medium text-muted-foreground">Sin fotos todavía</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -358,7 +358,7 @@ export function GalleryTab({
                         {flatPhotos.length}
                     </Badge>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
                     {compareMode ? (
                         <>
                             <span className="text-xs text-muted-foreground">

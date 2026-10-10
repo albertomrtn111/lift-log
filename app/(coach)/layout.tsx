@@ -33,9 +33,9 @@ export default async function CoachLayout({
 
     return (
         <CoachProvider>
-            <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-background">
+            <div className="coach-mobile-shell flex min-h-screen min-w-0 overflow-x-hidden bg-background pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] lg:px-0">
                 <CoachSidebar />
-                <main className="min-w-0 flex-1 overflow-x-hidden lg:pl-64">
+                <main className="coach-mobile-main min-w-0 flex-1 overflow-x-hidden pt-[var(--safe-area-top)] max-lg:[&>*>header.sticky]:top-[var(--safe-area-top)] lg:pl-64 lg:pt-0">
                     {children}
                 </main>
                 <CoachAssistantWidget />

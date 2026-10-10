@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, Search } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
@@ -27,6 +27,8 @@ interface MessagesPageClientProps {
     initialClientId: string | null
 }
 
+type ConversationFilter = 'all' | 'unread'
+
 export function MessagesPageClient({
     coachId,
     conversations,
@@ -34,12 +36,30 @@ export function MessagesPageClient({
 }: MessagesPageClientProps) {
     const router = useRouter()
     const [query, setQuery] = useState('')
+    const [filter, setFilter] = useState<ConversationFilter>('all')
     const [selectedClientId, setSelectedClientId] = useState(initialClientId)
     const [conversationState, setConversationState] = useState(conversations)
 
     useEffect(() => {
         setConversationState(conversations)
     }, [conversations])
+
+    // Preserve the split-pane desktop behaviour while opening the inbox first on
+    // phones. This also handles resizing from mobile to desktop.
+    useEffect(() => {
+        if (selectedClientId || initialClientId || conversationState.length === 0) return
+
+        const desktopQuery = window.matchMedia('(min-width: 1024px)')
+        const selectFirstConversation = () => {
+            if (desktopQuery.matches) {
+                setSelectedClientId(current => current ?? conversationState[0]?.clientId ?? null)
+            }
+        }
+
+        selectFirstConversation()
+        desktopQuery.addEventListener('change', selectFirstConversation)
+        return () => desktopQuery.removeEventListener('change', selectFirstConversation)
+    }, [conversationState, initialClientId, selectedClientId])
 
     useEffect(() => {
         const supabase = createClient()
@@ -73,14 +93,20 @@ export function MessagesPageClient({
         }
     }, [coachId, selectedClientId])
 
+    const unreadConversationCount = useMemo(
+        () => conversationState.filter(conversation => conversation.unreadCount > 0).length,
+        [conversationState]
+    )
+
     const filteredConversations = useMemo(() => {
         const needle = query.trim().toLowerCase()
-        if (!needle) return conversationState
-        return conversationState.filter(conversation =>
-            conversation.clientName.toLowerCase().includes(needle) ||
-            conversation.clientEmail.toLowerCase().includes(needle)
-        )
-    }, [conversationState, query])
+        return conversationState.filter(conversation => {
+            if (filter === 'unread' && conversation.unreadCount === 0) return false
+            if (!needle) return true
+            return conversation.clientName.toLowerCase().includes(needle) ||
+                conversation.clientEmail.toLowerCase().includes(needle)
+        })
+    }, [conversationState, filter, query])
 
     const selectedConversation = conversationState.find(conversation => conversation.clientId === selectedClientId) ?? null
 
@@ -100,9 +126,14 @@ export function MessagesPageClient({
             notifyCoachBadgesChanged({ messagesUnreadDelta: -unreadBeforeSelect })
         }
         if (clientId !== selectedClientId) {
-            router.replace(`/coach/messages?client=${clientId}`)
+            router.replace(`/coach/messages?client=${clientId}`, { scroll: false })
         }
     }, [conversationState, router, selectedClientId])
+
+    const handleBackToInbox = useCallback(() => {
+        setSelectedClientId(null)
+        router.replace('/coach/messages', { scroll: false })
+    }, [router])
 
     const handleUnreadChange = useCallback((clientId: string, count: number) => {
         setConversationState(prev => {
@@ -130,31 +161,64 @@ export function MessagesPageClient({
     }, [])
 
     return (
-        <div className="h-[calc(100vh-11.5rem)] min-h-[620px] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="h-full min-h-0 overflow-hidden bg-card lg:h-[calc(100vh-11.5rem)] lg:min-h-[620px] lg:rounded-2xl lg:border lg:border-border lg:shadow-sm">
             <div className="grid h-full min-h-0 lg:grid-cols-[360px_1fr]">
                 <aside
+                    aria-label="Conversaciones"
                     className={cn(
-                        'flex min-h-0 flex-col border-r border-border bg-card',
+                        'flex min-h-0 flex-col bg-card lg:border-r lg:border-border',
                         selectedConversation && 'hidden lg:flex'
                     )}
                 >
-                    <div className="border-b border-border p-4">
+                    <div className="shrink-0 border-b border-border p-3 lg:p-4">
                         <div className="relative">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
-                                placeholder="Buscar conversación"
-                                className="pl-9"
+                                placeholder="Buscar atleta"
+                                aria-label="Buscar conversación"
+                                className="h-10 rounded-xl bg-muted/30 pl-9"
                             />
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 rounded-xl bg-muted/60 p-1" role="group" aria-label="Filtrar conversaciones">
+                            <button
+                                type="button"
+                                onClick={() => setFilter('all')}
+                                aria-pressed={filter === 'all'}
+                                className={cn(
+                                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                                    filter === 'all' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                                )}
+                            >
+                                Todos
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFilter('unread')}
+                                aria-pressed={filter === 'unread'}
+                                className={cn(
+                                    'flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                                    filter === 'unread' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+                                )}
+                            >
+                                No leídos
+                                {unreadConversationCount > 0 && (
+                                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
+                                        {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
+                                    </span>
+                                )}
+                            </button>
                         </div>
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto">
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                         {filteredConversations.length === 0 ? (
                             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
                                 <MessageCircle className="mb-3 h-10 w-10 opacity-30" />
-                                No hay conversaciones con ese filtro.
+                                {filter === 'unread' && !query
+                                    ? 'No tienes mensajes pendientes.'
+                                    : 'No hay conversaciones con ese filtro.'}
                             </div>
                         ) : (
                             filteredConversations.map(conversation => {
@@ -167,28 +231,41 @@ export function MessagesPageClient({
                                         key={conversation.clientId}
                                         type="button"
                                         onClick={() => handleSelectConversation(conversation.clientId)}
+                                        aria-current={isActive ? 'true' : undefined}
                                         className={cn(
-                                            'flex w-full items-start gap-3 border-b border-border/60 px-4 py-3 text-left transition-colors',
-                                            'hover:bg-muted/50',
+                                            'flex min-h-[72px] w-full items-start gap-3 border-b border-border/60 px-4 py-3 text-left transition-colors',
+                                            'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
                                             isActive && 'bg-primary/10'
                                         )}
                                     >
-                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                                        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                                             {conversation.clientName.charAt(0).toUpperCase()}
+                                            {conversation.status === 'active' && (
+                                                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
+                                            )}
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-start justify-between gap-3">
-                                                <p className="truncate text-sm font-semibold text-foreground">
+                                                <p className={cn(
+                                                    'truncate text-sm text-foreground',
+                                                    conversation.unreadCount > 0 ? 'font-bold' : 'font-semibold'
+                                                )}>
                                                     {conversation.clientName}
                                                 </p>
                                                 {conversation.lastMessage ? (
-                                                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                                                    <span className={cn(
+                                                        'shrink-0 text-[11px]',
+                                                        conversation.unreadCount > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'
+                                                    )}>
                                                         {formatConversationTime(conversation.lastMessage.created_at)}
                                                     </span>
                                                 ) : null}
                                             </div>
                                             <div className="mt-1 flex items-center gap-2">
-                                                <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                                                <p className={cn(
+                                                    'min-w-0 flex-1 truncate text-xs',
+                                                    conversation.unreadCount > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+                                                )}>
                                                     {preview}
                                                 </p>
                                                 {conversation.unreadCount > 0 ? (
@@ -215,10 +292,11 @@ export function MessagesPageClient({
                         <div className="flex h-full min-h-0 flex-col">
                             <button
                                 type="button"
-                                onClick={() => setSelectedClientId(null)}
-                                className="border-b border-border px-4 py-2 text-left text-sm font-medium text-primary lg:hidden"
+                                onClick={handleBackToInbox}
+                                className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3 text-left text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:hidden"
                             >
-                                Volver a mensajes
+                                <ArrowLeft className="h-5 w-5" />
+                                Conversaciones
                             </button>
                             <ConversationPanel
                                 coachId={coachId}
@@ -262,10 +340,10 @@ function getPreview(message: Message | null) {
     if (!message) return 'Sin mensajes todavía'
     if (message.message_type === 'review_feedback') return 'Revisión enviada'
     const prefix = message.sender_role === 'coach' ? 'Tú: ' : ''
-    if (message.attachment_type === 'audio') return `${prefix}🎤 Nota de voz`
-    if (message.attachment_type === 'image') return `${prefix}📷 Imagen`
+    if (message.attachment_type === 'audio') return `${prefix}Nota de voz`
+    if (message.attachment_type === 'image') return `${prefix}Imagen`
     if (message.attachment_type === 'document') {
-        return `${prefix}📎 ${message.attachment_name ?? 'Documento'}`
+        return `${prefix}${message.attachment_name ?? 'Documento adjunto'}`
     }
     return `${prefix}${message.content}`
 }
