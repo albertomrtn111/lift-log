@@ -1,33 +1,19 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClientPageHeader } from '@/components/profile/settings-list'
 
 export default function ProfileLoading() {
     return (
-        <div className="app-mobile-page min-h-screen">
-            {/* Header skeleton */}
-            <header className="app-mobile-header bg-background border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 pr-24">
-                        <Skeleton className="w-10 h-10 rounded-xl" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-5 w-20" />
-                            <Skeleton className="h-4 w-28" />
-                        </div>
-                    </div>
+        <div className="app-mobile-page min-h-screen pb-6">
+            <ClientPageHeader eyebrow="Cuenta" title="Perfil" />
+            <div className="space-y-6 px-4 pt-5">
+                <div className="flex flex-col items-center gap-2">
+                    <Skeleton className="h-24 w-24 rounded-full" />
+                    <Skeleton className="mt-1 h-5 w-36" />
+                    <Skeleton className="h-4 w-44" />
+                    <Skeleton className="mt-1 h-9 w-32 rounded-full" />
                 </div>
-            </header>
-            {/* Profile card skeleton */}
-            <div className="p-4">
-                <div className="flex flex-col items-center gap-4 py-6">
-                    <Skeleton className="w-20 h-20 rounded-full" />
-                    <Skeleton className="h-6 w-32" />
-                    <Skeleton className="h-4 w-40" />
-                </div>
-            </div>
-            {/* Menu items skeleton */}
-            <div className="px-4 space-y-2">
-                {[...Array(4)].map((_, i) => (
-                    <Skeleton key={i} className="h-14 rounded-lg" />
-                ))}
+                <Skeleton className="h-36 rounded-2xl" />
+                <Skeleton className="h-44 rounded-2xl" />
             </div>
         </div>
     )

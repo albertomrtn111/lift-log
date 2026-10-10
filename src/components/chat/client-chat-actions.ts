@@ -11,13 +11,23 @@ interface ClientChatContext {
     coachId: string
 }
 
+export interface ClientChatCoach {
+    name: string
+    avatarUrl: string | null
+}
+
 interface ClientChatResult {
     success: boolean
     context?: ClientChatContext
+    coach?: ClientChatCoach
     messages?: Message[]
+    /** Quedan mensajes más antiguos por cargar */
+    hasMore?: boolean
     message?: Message
     error?: string
 }
+
+const PAGE_SIZE = 40
 
 async function getCurrentClientChatContext(): Promise<ClientChatContext | null> {
     const supabase = await createClient()
@@ -47,7 +57,35 @@ async function getCurrentClientChatContext(): Promise<ClientChatContext | null> 
     }
 }
 
-export async function getClientChatMessagesAction(): Promise<ClientChatResult> {
+async function getCoachIdentity(coachId: string): Promise<ClientChatCoach> {
+    const admin = createAdminClient()
+    const { data: coach } = await admin
+        .from('coaches')
+        .select('name, created_by')
+        .eq('id', coachId)
+        .maybeSingle()
+
+    if (coach?.created_by) {
+        const { data: profile } = await admin
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', coach.created_by)
+            .maybeSingle()
+        if (profile?.full_name) {
+            return { name: profile.full_name, avatarUrl: profile.avatar_url ?? null }
+        }
+    }
+
+    return { name: coach?.name || 'Tu coach', avatarUrl: null }
+}
+
+/**
+ * Sin `before`: carga la última página, marca como leídos los mensajes del
+ * coach y devuelve su identidad. Con `before`: página anterior a esa fecha.
+ * Los mensajes del coach vuelven con el read_at previo a marcarlos, para que la
+ * pantalla sepa dónde empiezan los no leídos.
+ */
+export async function getClientChatMessagesAction(before?: string): Promise<ClientChatResult> {
     const context = await getCurrentClientChatContext()
     if (!context) {
         return {
@@ -57,13 +95,19 @@ export async function getClientChatMessagesAction(): Promise<ClientChatResult> {
     }
 
     const admin = createAdminClient()
-    const { data, error } = await admin
+    let query = admin
         .from('messages')
         .select('*')
         .eq('coach_id', context.coachId)
         .eq('client_id', context.clientId)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(PAGE_SIZE + 1)
+    if (before) query = query.lt('created_at', before)
+
+    const [{ data, error }, coach] = await Promise.all([
+        query,
+        before ? Promise.resolve(undefined) : getCoachIdentity(context.coachId),
+    ])
 
     if (error) {
         console.error('[client-chat] Error loading messages:', error)
@@ -74,18 +118,25 @@ export async function getClientChatMessagesAction(): Promise<ClientChatResult> {
         }
     }
 
-    await admin
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('coach_id', context.coachId)
-        .eq('client_id', context.clientId)
-        .eq('sender_role', 'coach')
-        .is('read_at', null)
+    const rows = (data ?? []) as Message[]
+    const hasMore = rows.length > PAGE_SIZE
+
+    if (!before) {
+        await admin
+            .from('messages')
+            .update({ read_at: new Date().toISOString() })
+            .eq('coach_id', context.coachId)
+            .eq('client_id', context.clientId)
+            .eq('sender_role', 'coach')
+            .is('read_at', null)
+    }
 
     return {
         success: true,
         context,
-        messages: ((data ?? []) as Message[]).reverse(),
+        coach,
+        hasMore,
+        messages: rows.slice(0, PAGE_SIZE).reverse(),
     }
 }
 

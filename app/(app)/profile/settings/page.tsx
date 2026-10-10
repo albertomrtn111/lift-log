@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { updateProfileNameAction } from '../actions'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,19 +17,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import {
-    ArrowLeft,
-    Settings,
-    Mail,
-    User,
-    Lock,
-    Loader2,
-    Eye,
-    EyeOff,
-    CheckCircle2,
-    AlertCircle,
-} from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
+import { AlertCircle, ChevronLeft, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
 
 interface ProfileData {
     email: string
@@ -40,7 +29,6 @@ interface ProfileData {
 export default function ProfileSettingsPage() {
     const router = useRouter()
     const queryClient = useQueryClient()
-    const { toast } = useToast()
     const supabase = createClient()
 
     // Profile data
@@ -60,6 +48,11 @@ export default function ProfileSettingsPage() {
     const [passwordError, setPasswordError] = useState<string | null>(null)
     const [showCurrent, setShowCurrent] = useState(false)
     const [showNew, setShowNew] = useState(false)
+
+    // Desde Perfil → Contraseña se llega con ?password=1
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('password') === '1') setPasswordOpen(true)
+    }, [])
 
     // Load profile
     useEffect(() => {
@@ -88,7 +81,7 @@ export default function ProfileSettingsPage() {
     // Save name
     const handleSaveName = async () => {
         if (!name.trim()) {
-            toast({ title: 'Error', description: 'El nombre no puede estar vacío', variant: 'destructive' })
+            toast.error('El nombre no puede estar vacío')
             return
         }
 
@@ -100,9 +93,9 @@ export default function ProfileSettingsPage() {
             setProfile((prev) => prev ? { ...prev, full_name: name.trim() } : prev)
             // El nombre del header/perfil viene de react-query: refrescarlo ya.
             void queryClient.invalidateQueries({ queryKey: ['client-context'] })
-            toast({ title: 'Nombre actualizado ✓', description: 'Tu nombre ha sido guardado correctamente.' })
+            toast.success('Nombre actualizado')
         } else {
-            toast({ title: 'Error', description: result.error || 'No se pudo actualizar el nombre', variant: 'destructive' })
+            toast.error(result.error || 'No se pudo actualizar el nombre')
         }
     }
 
@@ -147,7 +140,7 @@ export default function ProfileSettingsPage() {
         }
 
         // Success
-        toast({ title: 'Contraseña actualizada ✓', description: 'Tu contraseña ha sido cambiada correctamente.' })
+        toast.success('Contraseña actualizada')
         resetPasswordModal()
     }
 
@@ -163,21 +156,20 @@ export default function ProfileSettingsPage() {
 
     const nameChanged = name.trim() !== (profile?.full_name || '').trim()
 
-    // Loading
+    const backButton = (
+        <Link
+            href="/profile"
+            aria-label="Volver al perfil"
+            className="-ml-1 mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-card shadow-sm transition-colors hover:bg-muted"
+        >
+            <ChevronLeft className="h-5 w-5" />
+        </Link>
+    )
+
     if (loading) {
         return (
-            <div className="app-mobile-page min-h-screen pb-4">
-                <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
-                    <div className="px-4 py-4 pr-24 flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                            <ArrowLeft className="h-5 w-5" />
-                        </Button>
-                        <div>
-                            <h1 className="text-lg font-bold">Configuración</h1>
-                            <p className="text-sm text-muted-foreground">Ajustes de tu perfil</p>
-                        </div>
-                    </div>
-                </header>
+            <div className="app-mobile-page min-h-screen pb-6">
+                <ClientPageHeader eyebrow="Perfil" title="Ajustes de cuenta" leading={backButton} />
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
@@ -186,92 +178,53 @@ export default function ProfileSettingsPage() {
     }
 
     return (
-        <div className="app-mobile-page min-h-screen pb-4">
-            {/* Header */}
-            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 py-4 pr-24 flex items-center gap-3">
-                    <Button variant="ghost" size="icon" asChild>
-                        <Link href="/profile">
-                            <ArrowLeft className="h-5 w-5" />
-                        </Link>
-                    </Button>
-                    <div className="flex items-center gap-2">
-                        <Settings className="h-5 w-5 text-primary" />
-                        <div>
-                            <h1 className="text-lg font-bold">Configuración</h1>
-                            <p className="text-sm text-muted-foreground">Ajustes de tu perfil</p>
+        <div className="app-mobile-page min-h-screen pb-6">
+            <ClientPageHeader eyebrow="Perfil" title="Ajustes de cuenta" leading={backButton} />
+
+            <div className="mx-auto max-w-lg space-y-6 px-4 pt-5 animate-fade-in">
+                <SettingsGroup title="Datos personales" footer="El email es tu usuario de acceso y no se puede cambiar desde aquí.">
+                    <form
+                        className="space-y-1.5 px-3.5 py-3"
+                        onSubmit={(event) => { event.preventDefault(); if (nameChanged) handleSaveName() }}
+                    >
+                        <Label htmlFor="fullName" className="text-xs font-medium text-muted-foreground">Nombre</Label>
+                        <div className="flex gap-2">
+                            <Input
+                                id="fullName"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Tu nombre completo"
+                                disabled={savingName}
+                                autoComplete="name"
+                                className="h-10 rounded-xl"
+                            />
+                            {nameChanged && (
+                                <Button type="submit" disabled={savingName || !name.trim()} className="h-10 shrink-0 rounded-xl px-4 animate-fade-in">
+                                    {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
+                                </Button>
+                            )}
                         </div>
+                    </form>
+                    <div className="space-y-1.5 px-3.5 py-3">
+                        <p className="text-xs font-medium text-muted-foreground">Email</p>
+                        <p className="truncate text-[15px] text-foreground">{profile?.email || '—'}</p>
                     </div>
-                </div>
-            </header>
+                </SettingsGroup>
 
-            <div className="px-4 pt-4 space-y-4 max-w-lg mx-auto">
-                {/* Email (read only) */}
-                <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Mail className="h-4 w-4" />
-                        Email
-                    </div>
-                    <Input
-                        value={profile?.email || ''}
-                        disabled
-                        className="bg-muted/50"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        El email no se puede cambiar desde aquí.
-                    </p>
-                </Card>
-
-                {/* Name */}
-                <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <User className="h-4 w-4" />
-                        Nombre
-                    </div>
-                    <Input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Tu nombre completo"
-                        disabled={savingName}
-                    />
-                    <Button
-                        onClick={handleSaveName}
-                        disabled={savingName || !nameChanged || !name.trim()}
-                        className="w-full"
-                    >
-                        {savingName ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Guardando...
-                            </>
-                        ) : (
-                            'Guardar nombre'
-                        )}
-                    </Button>
-                </Card>
-
-                {/* Password */}
-                <Card className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        <Lock className="h-4 w-4" />
-                        Contraseña
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                        Cambia tu contraseña para mantener tu cuenta segura.
-                    </p>
-                    <Button
-                        variant="outline"
+                <SettingsGroup title="Seguridad">
+                    <SettingsRow
+                        icon={KeyRound}
+                        iconTone="bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                        title="Cambiar contraseña"
+                        description="Necesitarás tu contraseña actual"
                         onClick={() => setPasswordOpen(true)}
-                        className="w-full"
-                    >
-                        Cambiar contraseña
-                    </Button>
-                </Card>
+                    />
+                </SettingsGroup>
             </div>
 
             {/* Password Modal */}
             <Dialog open={passwordOpen} onOpenChange={(v) => { if (!v) resetPasswordModal() }}>
-                <DialogContent className="sm:max-w-[400px]">
+                <DialogContent className="rounded-2xl sm:max-w-[400px]">
                     <DialogHeader>
                         <DialogTitle>Cambiar contraseña</DialogTitle>
                         <DialogDescription>

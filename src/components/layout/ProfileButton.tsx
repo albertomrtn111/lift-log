@@ -2,20 +2,22 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { User } from 'lucide-react'
+import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { cn } from '@/lib/utils'
 
+/** Avatar del atleta que abre el perfil. Vive dentro de AppTopActions. */
 export function ProfileButton() {
     const pathname = usePathname()
     const { client } = useClientAppContext()
-    const isActive = pathname === '/profile'
+    const isActive = pathname?.startsWith('/profile')
 
     const initials = client?.profile?.full_name
         ? client.profile.full_name
             .split(' ')
+            .filter(Boolean)
             .slice(0, 2)
-            .map((n: string) => n[0])
+            .map((part: string) => part[0])
             .join('')
             .toUpperCase()
         : null
@@ -25,42 +27,23 @@ export function ProfileButton() {
     return (
         <Link
             href="/profile"
-            className={cn(
-                'fixed top-[calc(var(--safe-area-top,0px)+18px)] right-4 z-50',
-                'flex items-center justify-center w-9 h-9 rounded-full',
-                'bg-background shadow-sm ring-2 transition-all',
-                isActive
-                    ? 'ring-primary shadow-md shadow-primary/20'
-                    : 'ring-border hover:ring-primary/50'
-            )}
             aria-label="Perfil"
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(
+                'flex h-8 w-8 items-center justify-center overflow-hidden rounded-full transition-all',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isActive ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : 'ring-1 ring-border/70 hover:ring-primary/50'
+            )}
         >
             {avatarUrl ? (
-                <img
-                    src={avatarUrl}
-                    alt={initials ?? 'Perfil'}
-                    className="w-full h-full rounded-full object-cover"
-                />
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : initials ? (
-                <span
-                    className={cn(
-                        'w-full h-full rounded-full flex items-center justify-center text-xs font-bold',
-                        isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground'
-                    )}
-                >
+                <span className="flex h-full w-full items-center justify-center bg-primary/10 text-[11px] font-bold text-primary">
                     {initials}
                 </span>
             ) : (
-                <span
-                    className={cn(
-                        'w-full h-full rounded-full flex items-center justify-center',
-                        isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground'
-                    )}
-                >
+                <span className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
                     <User className="h-4 w-4" />
                 </span>
             )}
