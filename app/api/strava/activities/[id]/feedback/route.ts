@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthenticatedClientContext, saveStravaActivityFeedback } from '@/lib/strava/client'
+import { getAuthenticatedClientContext, saveStravaActivityFeedback, StravaFeedbackError } from '@/lib/strava/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +27,9 @@ export async function POST(
         })
         return NextResponse.json({ ok: true, ...result })
     } catch (error) {
+        if (error instanceof StravaFeedbackError) {
+            return NextResponse.json({ error: error.message }, { status: 409 })
+        }
         console.error('[strava/activities/:id/feedback]', error)
         return NextResponse.json({ error: 'No se pudo guardar el feedback' }, { status: 500 })
     }
