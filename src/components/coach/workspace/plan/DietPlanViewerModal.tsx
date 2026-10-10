@@ -16,6 +16,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useDietPlanStructure } from '@/hooks/useDietOptions'
 import type { DayType, DietPlanWithStructure } from '@/data/nutrition/types'
+import { OptionMacroView, mealTargetLabel } from './diet-editor/OptionMacroView'
 
 interface DietPlanViewerModalProps {
     planId: string | null
@@ -151,6 +152,9 @@ function MealsList({ meals }: { meals: DietPlanWithStructure['meals'] }) {
                     <h4 className="font-medium mb-3 flex items-center gap-2">
                         <Utensils className="h-4 w-4 text-muted-foreground" />
                         {meal.name}
+                        {mealTargetLabel(meal) && (
+                            <span className="text-xs font-normal tabular-nums text-muted-foreground">· {mealTargetLabel(meal)}</span>
+                        )}
                         <Badge variant="secondary" className="ml-auto">
                             {meal.options.length} {meal.options.length === 1 ? 'opción' : 'opciones'}
                         </Badge>
@@ -159,31 +163,7 @@ function MealsList({ meals }: { meals: DietPlanWithStructure['meals'] }) {
                     <div className="space-y-3">
                         {meal.options.sort((a, b) => a.order_index - b.order_index).map(option => (
                             <div key={option.id} className="pl-4 border-l-2 border-primary/20">
-                                <p className="font-medium text-sm text-primary mb-1">{option.name}</p>
-                                <ul className="space-y-1">
-                                    {option.items.sort((a, b) => a.order_index - b.order_index).map(item => (
-                                        <li key={item.id} className="text-sm text-muted-foreground flex items-start gap-2">
-                                            <span className="text-primary">•</span>
-                                            <span>
-                                                {item.quantity_value && (
-                                                    <strong>
-                                                        {item.quantity_value}
-                                                        {item.quantity_unit && ` ${item.quantity_unit}`}{' '}
-                                                    </strong>
-                                                )}
-                                                {item.name}
-                                                {item.notes && (
-                                                    <span className="text-muted-foreground/70"> ({item.notes})</span>
-                                                )}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                                {option.notes && (
-                                    <p className="mt-2 text-xs text-primary bg-primary/5 px-2 py-1 rounded inline-block">
-                                        💡 {option.notes}
-                                    </p>
-                                )}
+                                <OptionMacroView meal={meal} option={option} />
                             </div>
                         ))}
                     </div>

@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { MacroTotals } from './diet-editor/MacroTotals'
 import { createClient } from '@/lib/supabase/client'
 import { useActiveMacroPlan, useUpsertMacroPlan } from '@/hooks/useMacroPlan'
 import { useActiveDietPlan, useCreateDietPlan, useDietPlanStructure } from '@/hooks/useDietOptions'
@@ -131,10 +132,16 @@ function dietStructureToText(plan: DietPlanWithStructure): string {
         for (const option of meal.options) {
             lines.push(`  ${option.name}${option.notes ? ` — ${option.notes}` : ''}:`)
             for (const item of option.items) {
-                const qty = item.quantity_value != null
-                    ? ` (${item.quantity_value}${item.quantity_unit ?? ''})`
+                const qty = item.quantity_g != null
+                    ? ` (${Math.round(item.quantity_g)} g)`
+                    : item.quantity_value != null
+                        ? ` (${item.quantity_value} ${item.quantity_unit ?? ''})`.replace(/ \)$/, ')')
+                        : ''
+                const macros = item.kcal != null
+                    ? ` [${Math.round(item.kcal)} kcal P${Math.round(item.protein_g ?? 0)} C${Math.round(item.carbs_g ?? 0)} G${Math.round(item.fat_g ?? 0)}]`
                     : ''
-                lines.push(`    • ${item.name}${qty}${item.notes ? ` — ${item.notes}` : ''}`)
+                const alt = item.is_alternative ? 'ó ' : ''
+                lines.push(`    • ${alt}${item.name}${qty}${macros}${item.notes ? ` — ${item.notes}` : ''}`)
             }
         }
     }
@@ -342,6 +349,32 @@ function MacrosPreview({
     )
 }
 
+function hasMealTarget(meal: AIDietProposal['meals'][number]) {
+    return [meal.target_kcal, meal.target_protein_g, meal.target_carbs_g, meal.target_fat_g].some(value => Number(value) > 0)
+}
+
+function targetOf(meal: AIDietProposal['meals'][number]) {
+    return {
+        kcal: meal.target_kcal ?? null,
+        protein_g: meal.target_protein_g ?? null,
+        carbs_g: meal.target_carbs_g ?? null,
+        fat_g: meal.target_fat_g ?? null,
+    }
+}
+
+/** Suma de macros de una opción; las alternativas no cuentan */
+function sumOptionMacros(items: AIDietProposal['meals'][number]['options'][number]['items']) {
+    return items.reduce((total, item) => {
+        if (item.is_alternative) return total
+        return {
+            kcal: total.kcal + (Number(item.kcal) || 0),
+            protein_g: total.protein_g + (Number(item.protein_g) || 0),
+            carbs_g: total.carbs_g + (Number(item.carbs_g) || 0),
+            fat_g: total.fat_g + (Number(item.fat_g) || 0),
+        }
+    }, { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
+}
+
 function DietPreview({ proposal }: { proposal: AIDietProposal }) {
     const [expandedMeal, setExpandedMeal] = useState<number | null>(0)
     const strategyLabel = proposal.structure_strategy === 'maintain'
@@ -355,6 +388,11 @@ function DietPreview({ proposal }: { proposal: AIDietProposal }) {
             <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-semibold">{proposal.name}</h3>
                 <Badge variant="outline">{strategyLabel}</Badge>
+                {proposal.fit && proposal.fit.some(entry => entry.status !== 'none') && (
+                    <Badge variant="secondary" className="bg-success/10 text-success">
+                        {proposal.fit.filter(entry => entry.status === 'ok').length}/{proposal.fit.length} opciones cuadradas a macros
+                    </Badge>
+                )}
             </div>
 
             {proposal.change_summary.length > 0 && (
@@ -398,24 +436,35 @@ function DietPreview({ proposal }: { proposal: AIDietProposal }) {
 
                         {expandedMeal === mealIdx && (
                             <CardContent className="space-y-3 px-3 pb-3 pt-0">
+                                {hasMealTarget(meal) && (
+                                    <p className="text-[11px] text-muted-foreground tabular-nums">
+                                        Objetivo: {Math.round(meal.target_kcal ?? 0)} kcal · P {Math.round(meal.target_protein_g ?? 0)} · C {Math.round(meal.target_carbs_g ?? 0)} · G {Math.round(meal.target_fat_g ?? 0)}
+                                    </p>
+                                )}
                                 {meal.options.map((option, optionIdx) => (
-                                    <div key={`${option.name}-${optionIdx}`}>
-                                        <p className="mb-1 text-xs font-medium text-muted-foreground">
-                                            {option.name}
-                                            {option.notes && <span className="ml-1 font-normal">— {option.notes}</span>}
-                                        </p>
+                                    <div key={`${option.name}-${optionIdx}`} className="rounded-lg border border-border/60 p-2.5">
+                                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-xs font-semibold">
+                                                {option.name}
+                                                {option.notes && <span className="ml-1 font-normal text-muted-foreground">— {option.notes}</span>}
+                                            </p>
+                                            <MacroTotals totals={sumOptionMacros(option.items)} target={hasMealTarget(meal) ? targetOf(meal) : null} />
+                                        </div>
                                         <ul className="space-y-0.5">
                                             {option.items.map((item, itemIdx) => (
-                                                <li key={`${item.name}-${itemIdx}`} className="flex items-baseline gap-1 text-xs">
-                                                    <span className="text-muted-foreground">•</span>
+                                                <li key={`${item.name}-${itemIdx}`} className={cn('flex items-baseline gap-1 text-xs', item.is_alternative && 'pl-3')}>
+                                                    <span className="text-muted-foreground">{item.is_alternative ? 'ó' : '•'}</span>
                                                     <span>{item.name}</span>
                                                     {item.quantity_value != null && (
                                                         <span className="text-muted-foreground">
-                                                            ({item.quantity_value}{item.quantity_unit ?? ''})
+                                                            ({item.quantity_value} {item.quantity_unit ?? ''})
                                                         </span>
                                                     )}
-                                                    {item.notes && (
-                                                        <span className="text-muted-foreground">— {item.notes}</span>
+                                                    {item.quantity_value == null && item.quantity_unit && (
+                                                        <span className="text-muted-foreground">({item.quantity_unit})</span>
+                                                    )}
+                                                    {item.kcal != null && (
+                                                        <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{Math.round(item.kcal)} kcal</span>
                                                     )}
                                                 </li>
                                             ))}
@@ -594,24 +643,8 @@ export function AINutritionDialog({
                     type: 'options',
                     status: 'active',
                     effective_from: format(new Date(), 'yyyy-MM-dd'),
-                    meals: proposal.meals.map((meal) => ({
-                        day_type: meal.day_type,
-                        name: meal.name,
-                        order_index: meal.order_index,
-                        options: meal.options.map((option) => ({
-                            name: option.name,
-                            order_index: option.order_index,
-                            notes: option.notes || '',
-                            items: option.items.map((item) => ({
-                                item_type: item.item_type,
-                                name: item.name,
-                                quantity_value: item.quantity_value ?? null,
-                                quantity_unit: item.quantity_unit ?? null,
-                                notes: item.notes || '',
-                                order_index: item.order_index,
-                            })),
-                        })),
-                    })),
+                    // La propuesta ya viene cuadrada y en formato de guardado
+                    meals: proposal.meals,
                 })
             }
 

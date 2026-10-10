@@ -1,3 +1,5 @@
+import type { DietMealInput } from '@/data/nutrition/types'
+
 export type AINutritionMode = 'generate' | 'modify'
 
 export interface AIMacrosProposal {
@@ -13,34 +15,20 @@ export interface AIMacrosProposal {
     change_summary: string[]
 }
 
-export interface AIDietItemProposal {
-    item_type: 'food' | 'free_text'
-    name: string
-    quantity_value?: number | null
-    quantity_unit?: string | null
-    notes: string
-    order_index: number
-}
-
-export interface AIDietOptionProposal {
-    name: string
-    order_index: number
-    notes: string
-    items: AIDietItemProposal[]
-}
-
-export interface AIDietMealProposal {
-    day_type: 'default' | 'training' | 'rest'
-    name: string
-    order_index: number
-    options: AIDietOptionProposal[]
+/** Cómo cuadra cada opción con el objetivo de su comida tras el ajuste */
+export interface AIDietOptionFit {
+    meal: string
+    option: string
+    status: 'ok' | 'warn' | 'off' | 'none'
 }
 
 export interface AIDietProposal {
     type: 'options_diet'
     mode: AINutritionMode
     name: string
-    meals: AIDietMealProposal[]
+    /** Ya en formato de guardado: alimentos vinculados, gramos, macros y objetivos */
+    meals: DietMealInput[]
+    fit?: AIDietOptionFit[]
     explanation: string
     change_summary: string[]
     structure_strategy: 'maintain' | 'adjust' | 'rebuild'
