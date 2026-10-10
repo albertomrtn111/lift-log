@@ -28,7 +28,8 @@ export async function middleware(req: NextRequest) {
         throw new Error('[middleware] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
 
-    // Official @supabase/ssr pattern: NEVER mutate req.cookies in setAll
+    // Keep refreshed cookies in both the current request (for Server Components)
+    // and the response (for the browser's next request).
     const supabase = createServerClient(
         supabaseUrl,
         supabaseAnonKey,
@@ -38,7 +39,10 @@ export async function middleware(req: NextRequest) {
                     return req.cookies.getAll()
                 },
                 setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
-                    // Only write to res.cookies — never req.cookies
+                    cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value))
+                    const updatedHeaders = new Headers(req.headers)
+                    updatedHeaders.set('x-pathname', pathname)
+                    res = NextResponse.next({ request: { headers: updatedHeaders } })
                     cookiesToSet.forEach(({ name, value, options }) =>
                         res.cookies.set(name, value, options)
                     )
@@ -47,14 +51,24 @@ export async function middleware(req: NextRequest) {
         }
     )
 
+    const redirectWithSession = (pathname: string) => {
+        const url = req.nextUrl.clone()
+        url.pathname = pathname
+        const redirectResponse = NextResponse.redirect(url)
+        res.cookies.getAll().forEach(cookie => redirectResponse.cookies.set(cookie))
+        for (const header of ['cache-control', 'expires', 'pragma']) {
+            const value = res.headers.get(header)
+            if (value) redirectResponse.headers.set(header, value)
+        }
+        return redirectResponse
+    }
+
     // 1. Validate user via getUser() (server-side verification against Supabase Auth)
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
         if (isDev) console.log(`[Middleware] No authenticated user at ${pathname}, redirecting to /login`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/login'
-        return NextResponse.redirect(url)
+        return redirectWithSession('/login')
     }
 
     // 2. Deterministic Role Detection via RPC
@@ -119,9 +133,7 @@ export async function middleware(req: NextRequest) {
     if (resolvedMode === 'none') {
         if (!isNoAccessPage && !isProfilePage && !isLoginPage) {
             if (isDev) console.log(`[Middleware] No active roles for ${user.id}, redirecting to /no-access`)
-            const url = req.nextUrl.clone()
-            url.pathname = '/no-access'
-            return NextResponse.redirect(url)
+            return redirectWithSession('/no-access')
         }
         return res
     }
@@ -129,17 +141,7 @@ export async function middleware(req: NextRequest) {
     // CASE: ANTI-LOOP for /no-access (If we reached here, the user HAS roles, so they shouldn't be in /no-access)
     if (isNoAccessPage) {
         if (isDev) console.log(`[Middleware] User has roles (${resolvedMode}) but is on /no-access, redirecting to home`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/'
-        return NextResponse.redirect(url)
-    }
-
-    // CASE: HOME (/) REDIRECTION FOR BOTH ROLES
-    if (pathname === '/' && resolvedMode === 'both') {
-        if (isDev) console.log(`[Middleware] Dual role user on /, redirecting to default (routine)`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/routine'
-        return NextResponse.redirect(url)
+        return redirectWithSession('/')
     }
 
     // Role-specific route markers
@@ -150,17 +152,13 @@ export async function middleware(req: NextRequest) {
     // CASE: COACH ACCESS PROTECTION
     if (isCoachRoute && !isCoach) {
         if (isDev) console.log(`[Middleware] Denied coach access (resolved: ${resolvedMode}), redirecting to routine`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/routine'
-        return NextResponse.redirect(url)
+        return redirectWithSession('/routine')
     }
 
     // CASE: CLIENT ACCESS PROTECTION
     if (isClientRoute && !isClient) {
         if (isDev) console.log(`[Middleware] Denied client access (resolved: ${resolvedMode}), redirecting to coach dashboard`)
-        const url = req.nextUrl.clone()
-        url.pathname = '/coach/dashboard'
-        return NextResponse.redirect(url)
+        return redirectWithSession('/coach/dashboard')
     }
 
     // FINAL DECISION LOG

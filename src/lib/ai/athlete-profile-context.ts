@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { getAthleteAIProfile } from '@/data/athlete-ai-profile'
+import { getAthleteCurrentGoal } from '@/data/athlete-current-goal'
+import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
 import type { AthleteAIProfile, AthleteAIProfileOutput, AthleteProfileAnswers } from '@/types/athlete-profile'
 
 type AthleteProfileContextInput = Pick<
@@ -57,6 +59,17 @@ export function formatAthleteProfileContext(
 
 export async function getAthleteProfileContextForCoach(coachId: string | null, clientId: string) {
     if (!coachId) return formatAthleteProfileContext(null)
-    const profile = await getAthleteAIProfile(coachId, clientId)
-    return formatAthleteProfileContext(profile)
+    const [profile, currentGoal] = await Promise.all([
+        getAthleteAIProfile(coachId, clientId),
+        getAthleteCurrentGoal(coachId, clientId),
+    ])
+    const goalContext = currentGoal
+        ? [
+            `Objetivo actual definido por el coach: ${currentGoal.title}`,
+            `Tipo: ${ATHLETE_GOAL_TYPES.find(type => type.value === currentGoal.goal_type)?.label || currentGoal.goal_type}`,
+            `Plazo: ${currentGoal.start_date} a ${currentGoal.target_date}`,
+            currentGoal.notes ? `Notas: ${currentGoal.notes}` : '',
+        ].filter(Boolean).join(' | ')
+        : ''
+    return [goalContext, formatAthleteProfileContext(profile)].filter(Boolean).join('\n')
 }

@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (user) {
-        await supabase.auth.signOut()
+        await supabase.auth.signOut({ scope: 'local' })
     }
 
     const url = new URL(req.url)

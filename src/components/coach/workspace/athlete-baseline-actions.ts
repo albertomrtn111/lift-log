@@ -1,6 +1,7 @@
 'use server'
 
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { getAge } from '@/lib/age-distribution'
 
 export type AthleteSex = 'male' | 'female' | 'other'
 
@@ -88,9 +89,8 @@ export async function saveAthleteBaselineAction(
         await assertClientBelongsToCoach(supabase, coachId, clientId)
 
         if (input.birth_date) {
-            const birth = new Date(`${input.birth_date}T12:00:00`)
-            const age = (Date.now() - birth.getTime()) / (365.25 * 86400000)
-            if (isNaN(birth.getTime()) || age < 10 || age > 100) {
+            const age = getAge(input.birth_date)
+            if (age === null || age < 10 || age > 100) {
                 return { success: false, error: 'Fecha de nacimiento fuera de rango razonable (10-100 años).' }
             }
         }
