@@ -207,14 +207,14 @@ function SummaryCard({
 }) {
     return (
         <Card className={cn(
-            'p-4',
+            'p-3 sm:p-4',
             tone === 'warning' && 'border-amber-500/20 bg-amber-500/[0.04]',
             tone === 'danger' && 'border-red-500/20 bg-red-500/[0.04]',
             tone === 'success' && 'border-green-500/20 bg-green-500/[0.04]',
         )}>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="mt-2 text-2xl font-semibold">{value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+            <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">{label}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums sm:mt-2">{value}</p>
+            <p className="mt-1 hidden text-xs text-muted-foreground sm:block">{helper}</p>
         </Card>
     )
 }
@@ -904,14 +904,17 @@ export function CalendarView({
                                     isToday ? 'bg-primary/5' : 'bg-muted/20',
                                     urgentCount > 0 && 'bg-red-500/[0.04]'
                                 )}>
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="min-w-0">
-                                            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    <div className="flex items-center justify-between gap-2 lg:items-start">
+                                        <div className="flex min-w-0 items-baseline gap-2 lg:block">
+                                            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground lg:text-[10px]">
                                                 {format(date, 'EEEE', { locale: es })}
                                             </p>
-                                            <p className="mt-0.5 text-lg font-semibold">{format(date, 'd')}</p>
+                                            <p className={cn('text-lg font-semibold lg:mt-0.5', isToday && 'text-primary')}>{format(date, 'd')}</p>
+                                            {dayEvents.length === 0 && dayTasks.length === 0 && (
+                                                <span className="text-xs text-muted-foreground lg:hidden">· Libre</span>
+                                            )}
                                         </div>
-                                        <div className="flex shrink-0 flex-col items-end gap-1">
+                                        <div className="flex shrink-0 items-end gap-1 lg:flex-col">
                                             {urgentCount > 0 && (
                                                 <Badge variant="outline" className="h-5 px-1.5 text-[9px] bg-red-500/10 text-red-700 border-red-500/20">
                                                     {urgentCount} acción
@@ -924,7 +927,7 @@ export function CalendarView({
                                             )}
                                         </div>
                                     </div>
-                                    <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
+                                    <p className="mt-1.5 hidden truncate text-[11px] text-muted-foreground lg:block">
                                         {dayEvents.length > 0
                                             ? `${dayEvents.length} item${dayEvents.length !== 1 ? 's' : ''} en el día`
                                             : dayTasks.length > 0
@@ -933,7 +936,7 @@ export function CalendarView({
                                     </p>
                                 </div>
 
-                                <ScrollArea className="h-[320px]">
+                                <ScrollArea className={cn('lg:h-[320px]', dayEvents.length === 0 && dayTasks.length === 0 && 'max-lg:hidden')}>
                                     <div className="space-y-1.5 p-1.5">
                                         {dayEvents.map((event) => (
                                             <button
@@ -944,18 +947,18 @@ export function CalendarView({
                                                 onDragEnd={isDraggableEvent(event) ? handleEventDragEnd : undefined}
                                                 title={isDraggableEvent(event) ? 'Arrastra para mover a otro día' : undefined}
                                                 className={cn(
-                                                    'w-full overflow-hidden rounded-md border p-1.5 text-left transition-all hover:border-primary/30 hover:bg-muted/20',
+                                                    'w-full overflow-hidden rounded-lg border p-2 text-left transition-all hover:border-primary/30 hover:bg-muted/20 lg:rounded-md lg:p-1.5',
                                                     event.status === 'missing' && 'border-red-500/20',
                                                     event.status === 'pending_review' && 'border-amber-500/20',
                                                     isDraggableEvent(event) && 'cursor-grab active:cursor-grabbing',
                                                     draggedEvent?.id === event.id && 'opacity-40'
                                                 )}
                                             >
-                                                <div className="flex min-w-0 flex-col gap-1.5">
+                                                <div className="flex min-w-0 flex-col gap-1.5 max-lg:flex-row max-lg:items-start max-lg:justify-between">
                                                     <div className="min-w-0">
                                                         <div className="flex min-w-0 items-center gap-1.5">
                                                             <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT_COLORS[event.status])} />
-                                                            <p className="min-w-0 truncate text-[12px] font-semibold leading-tight">{event.clientName}</p>
+                                                            <p className="min-w-0 truncate text-sm font-semibold leading-tight lg:text-[12px]">{event.clientName}</p>
                                                         </div>
                                                         <p className="mt-1 truncate text-[11px] leading-tight text-muted-foreground">
                                                             {getCompactEventLine(event)}
@@ -1066,7 +1069,7 @@ export function CalendarView({
                     </div>
                     <span>Tareas del coach</span>
                 </div>
-                <span className="text-xs text-muted-foreground/70">
+                <span className="hidden text-xs text-muted-foreground/70 lg:inline">
                     Arrastra una revisión programada o vencida a otro día para moverla.
                 </span>
             </div>
@@ -1110,8 +1113,8 @@ export function CalendarView({
                     </div>
 
                     <ScrollArea className="flex-1">
-                        <div className="space-y-6 p-6">
-                            <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="space-y-6 p-4 sm:p-6">
+                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
                                 <SummaryCard
                                     label="Acción"
                                     value={panelActionCount}

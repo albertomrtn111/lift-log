@@ -41,9 +41,11 @@ interface NavItem {
     badgeKey?: 'dashboardPending' | 'membersPendingSignup' | 'messagesUnread'
 }
 
-const navSections = [
+// Mismos grupos en la barra lateral, en el menú «Más» del móvil y en las
+// cabeceras de cada pantalla (CoachPageHeader eyebrow)
+const navSections: Array<{ title: string; items: NavItem[] }> = [
     {
-        title: 'OPERATIVA',
+        title: 'Operativa',
         items: [
             { href: '/coach/dashboard', icon: LayoutDashboard, label: 'Dashboard', badgeKey: 'dashboardPending' as const },
             { href: '/coach/messages', icon: MessageCircle, label: 'Mensajes', badgeKey: 'messagesUnread' as const },
@@ -52,13 +54,14 @@ const navSections = [
         ]
     },
     {
-        title: 'FACTURACIÓN',
+        title: 'Gestión',
         items: [
+            { href: '/coach/members', icon: Users, label: 'Atletas', badgeKey: 'membersPendingSignup' as const },
             { href: '/coach/billing', icon: Receipt, label: 'Facturación' },
         ]
     },
     {
-        title: 'CONFIGURACIÓN',
+        title: 'Herramientas',
         items: [
             { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
             { href: '/coach/metrics', icon: BarChart2, label: 'Métricas' },
@@ -67,27 +70,14 @@ const navSections = [
     }
 ]
 
-const accountSection = {
-    title: 'CUENTA',
-    items: [
-        { href: '/coach/members', icon: Users, label: 'Atletas', badgeKey: 'membersPendingSignup' as const },
-    ]
-}
-
 const mobilePrimaryItems: NavItem[] = navSections[0].items
 
 const mobileSecondarySections: Array<{ title: string; items: NavItem[] }> = [
+    navSections[1],
+    navSections[2],
     {
-        title: 'Gestión',
+        title: 'Cuenta',
         items: [
-            ...accountSection.items,
-            ...navSections[1].items,
-        ],
-    },
-    {
-        title: 'Herramientas',
-        items: [
-            ...navSections[2].items,
             { href: '/coach/settings', icon: Settings2, label: 'Ajustes' },
         ],
     },
@@ -154,7 +144,7 @@ export function CoachSidebar() {
     }
 
     const isSecondaryRouteActive = mobileSecondaryItems.some(item => pathname?.startsWith(item.href))
-    const secondaryBadgeCount = accountSection.items.reduce((total, item) => {
+    const secondaryBadgeCount = mobileSecondaryItems.reduce((total, item) => {
         return total + (item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0)
     }, 0)
 
@@ -229,46 +219,19 @@ export function CoachSidebar() {
 
                     {/* Account Section & Bottom Actions (Sticky) */}
                     <div className="mt-auto border-t border-sidebar-border/70 bg-sidebar/90 px-3 pb-2 pt-4 backdrop-blur-xl">
-                        <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            {accountSection.title}
-                        </h3>
-                        <nav className="mb-2 space-y-1">
-                            {accountSection.items.map((item) => {
-                                const isActive = pathname?.startsWith(item.href)
-                                const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
-
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        prefetch={true}
-                                        className={cn(
-                                            'flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50',
-                                            isActive && 'bg-primary/10 font-medium text-primary'
-                                        )}
-                                    >
-                                        <div className="relative shrink-0">
-                                            <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-                                            {badgeCount > 0 && (
-                                                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                                                    {badgeCount > 99 ? '99+' : badgeCount}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <span>{item.label}</span>
-                                    </Link>
-                                )
-                            })}
-                        </nav>
-
                         {userRole === 'both' && (
-                            <div className="mt-2 border-t border-border/50 pt-2">
+                            <div className="mb-2 border-b border-border/50 pb-2">
                                 <ModeSwitch role={userRole} currentMode="coach" variant="toggle" />
                             </div>
                         )}
 
-                        <div className="mt-2 flex flex-col gap-1 border-t border-border/50 pt-2">
-                            <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
+                        <div className="flex flex-col gap-1">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn('w-full justify-start', pathname?.startsWith('/coach/settings') && 'bg-primary/10 text-primary')}
+                                asChild
+                            >
                                 <Link href="/coach/settings" prefetch={true}>
                                     <Settings2 className="mr-2 h-4 w-4" />
                                     Ajustes

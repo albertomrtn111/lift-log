@@ -134,8 +134,8 @@ export default async function CoachDashboardPage() {
                     <div className="p-5 sm:p-6">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <p className="text-sm capitalize text-muted-foreground">{todayFormatted}</p>
-                                <h1 className="mt-0.5 text-2xl font-bold tracking-tight">
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{todayFormatted}</p>
+                                <h1 className="mt-0.5 text-2xl font-bold leading-tight tracking-tight lg:text-[1.75rem]">
                                     {getGreeting()}, {dashboard.coachName}
                                 </h1>
                                 <p className="mt-1.5 text-sm text-muted-foreground">
@@ -263,7 +263,7 @@ export default async function CoachDashboardPage() {
                                     </p>
                                 </div>
                             ) : (
-                                <div className="divide-y">
+                                <div className="divide-y divide-border/60">
                                     {dashboard.recentCheckins.map((checkin) => (
                                         <CheckinRow key={checkin.id} checkin={checkin} />
                                     ))}

@@ -1,26 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import {
-    Check,
-    CheckCheck,
-    Loader2,
-    MessageSquare,
-    Mic,
-    Paperclip,
-    Send,
-    Trash2,
-} from 'lucide-react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { ChevronDown, ChevronLeft, Loader2, MessageCircle, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { ReviewFeedbackCard } from '@/components/chat/ReviewFeedbackCard'
-import { AttachmentBubble } from '@/components/chat/AttachmentBubble'
 import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
-import { uploadChatAttachment, formatAudioDuration } from '@/lib/chat-media'
+import { uploadChatAttachment } from '@/lib/chat-media'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
-import { cn } from '@/lib/utils'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
+import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble'
+import { ChatComposer, type ChatComposerHandle } from '@/components/chat/ChatComposer'
+import { deliveryOf, formatDaySeparator, formatReadAt, groupByDay, initialsOf, sameGroup } from '@/components/chat/chat-utils'
 import type { Message, MessageAttachment } from '@/types/messages'
 import {
     getMessagesAction,
@@ -34,9 +25,24 @@ interface ConversationPanelProps {
     clientName: string
     clientEmail?: string
     isBlocked?: boolean
+    /** Volver a la bandeja (solo móvil) */
+    onBack?: () => void
     onUnreadChange?: (clientId: string, count: number) => void
     onLastMessageChange?: (message: Message) => void
 }
+
+interface PendingPayload {
+    content: string
+    attachment?: MessageAttachment
+}
+
+type ScrollIntent =
+    | { kind: 'bottom'; smooth: boolean }
+    | { kind: 'preserve'; previousHeight: number; previousTop: number }
+
+/** Tamaño de página de getMessagesAction */
+const PAGE_SIZE = 50
+const NEAR_BOTTOM_PX = 140
 
 export function ConversationPanel({
     coachId,
@@ -44,35 +50,47 @@ export function ConversationPanel({
     clientName,
     clientEmail,
     isBlocked = false,
+    onBack,
     onUnreadChange,
     onLastMessageChange,
 }: ConversationPanelProps) {
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(true)
+    const [loadingOlder, setLoadingOlder] = useState(false)
+    const [hasMore, setHasMore] = useState(false)
+    const [sending, setSending] = useState(false)
     const [uploading, setUploading] = useState<string | null>(null)
-    const [isPending, startTransition] = useTransition()
-    const messagesEndRef = useRef<HTMLDivElement>(null)
-    const textareaRef = useRef<HTMLTextAreaElement>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
+    const [showJump, setShowJump] = useState(false)
+    const [newWhileAway, setNewWhileAway] = useState(0)
+
+    const scrollRef = useRef<HTMLDivElement>(null)
+    const composerRef = useRef<ChatComposerHandle>(null)
+    const scrollIntent = useRef<ScrollIntent | null>(null)
+    const nearBottom = useRef(true)
+    const knownIds = useRef(new Set<string>())
+    const pendingPayloads = useRef(new Map<string, PendingPayload>())
 
     const recorder = useVoiceRecorder()
 
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [])
-
+    // Carga al cambiar de conversación
     useEffect(() => {
         let cancelled = false
 
         async function load() {
             setLoading(true)
+            setMessages([])
+            setFailedIds(new Set())
+            setNewWhileAway(0)
+            setInput('')
             const nextMessages = await getMessagesAction(coachId, clientId)
-            if (!cancelled) {
-                setMessages(mergeUniqueMessages(nextMessages))
-                setLoading(false)
-                onUnreadChange?.(clientId, 0)
-            }
+            if (cancelled) return
+            scrollIntent.current = { kind: 'bottom', smooth: false }
+            setHasMore(nextMessages.length >= PAGE_SIZE)
+            setMessages(mergeUniqueMessages(nextMessages))
+            setLoading(false)
+            onUnreadChange?.(clientId, 0)
             await markMessagesReadAction(coachId, clientId)
             notifyCoachBadgesChanged()
         }
@@ -82,9 +100,51 @@ export function ConversationPanel({
     }, [coachId, clientId, onUnreadChange])
 
     useEffect(() => {
-        scrollToBottom()
-    }, [messages, scrollToBottom])
+        knownIds.current = new Set(messages.map(message => message.id))
+    }, [messages])
 
+    useLayoutEffect(() => {
+        const container = scrollRef.current
+        const intent = scrollIntent.current
+        if (!container || !intent) return
+        scrollIntent.current = null
+
+        if (intent.kind === 'preserve') {
+            container.scrollTop = container.scrollHeight - intent.previousHeight + intent.previousTop
+            return
+        }
+        container.scrollTo({ top: container.scrollHeight, behavior: intent.smooth ? 'smooth' : 'auto' })
+    }, [messages])
+
+    const scrollToBottom = () => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+        setNewWhileAway(0)
+    }
+
+    const loadOlder = useCallback(async () => {
+        const container = scrollRef.current
+        const oldest = messages.find(message => !message.id.startsWith('temp-'))
+        if (!container || !oldest || loadingOlder || !hasMore) return
+
+        setLoadingOlder(true)
+        const older = await getMessagesAction(coachId, clientId, oldest.created_at)
+        scrollIntent.current = { kind: 'preserve', previousHeight: container.scrollHeight, previousTop: container.scrollTop }
+        setHasMore(older.length >= PAGE_SIZE)
+        setMessages(prev => mergeUniqueMessages([...older, ...prev]))
+        setLoadingOlder(false)
+    }, [messages, loadingOlder, hasMore, coachId, clientId])
+
+    const handleScroll = () => {
+        const container = scrollRef.current
+        if (!container) return
+        const distance = container.scrollHeight - container.scrollTop - container.clientHeight
+        nearBottom.current = distance < NEAR_BOTTOM_PX
+        setShowJump(distance > NEAR_BOTTOM_PX * 2)
+        if (nearBottom.current) setNewWhileAway(0)
+        if (container.scrollTop < 80) loadOlder()
+    }
+
+    // Tiempo real
     useEffect(() => {
         const supabase = createClient()
 
@@ -96,13 +156,18 @@ export function ConversationPanel({
                 table: 'messages',
                 filter: `coach_id=eq.${coachId}`,
             }, (payload) => {
-                const newMessage = payload.new as Message
-                if (newMessage.client_id !== clientId) return
+                const incoming = payload.new as Message
+                if (incoming.client_id !== clientId || knownIds.current.has(incoming.id)) return
 
-                setMessages(prev => mergeUniqueMessages([...prev, newMessage]))
-                onLastMessageChange?.(newMessage)
+                if (nearBottom.current || incoming.sender_role === 'coach') {
+                    scrollIntent.current = { kind: 'bottom', smooth: true }
+                } else {
+                    setNewWhileAway(count => count + 1)
+                }
+                setMessages(prev => mergeUniqueMessages([...prev, incoming]))
+                onLastMessageChange?.(incoming)
 
-                if (newMessage.sender_role === 'client') {
+                if (incoming.sender_role === 'client') {
                     markMessagesReadAction(coachId, clientId).then(() => notifyCoachBadgesChanged())
                     onUnreadChange?.(clientId, 0)
                 }
@@ -113,10 +178,10 @@ export function ConversationPanel({
                 table: 'messages',
                 filter: `coach_id=eq.${coachId}`,
             }, (payload) => {
-                // Doble check azul en vivo cuando el cliente lee
+                // Doble check en vivo cuando el atleta lee
                 const updated = payload.new as Message
                 if (updated.client_id !== clientId) return
-                setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, read_at: updated.read_at } : m))
+                setMessages(prev => prev.map(message => message.id === updated.id ? { ...message, read_at: updated.read_at } : message))
             })
             .subscribe()
 
@@ -125,76 +190,84 @@ export function ConversationPanel({
         }
     }, [coachId, clientId, onLastMessageChange, onUnreadChange])
 
-    const dispatchMessage = useCallback((content: string, attachment?: MessageAttachment) => {
-        const optimisticMessage: Message = {
-            id: `temp-${Date.now()}`,
-            coach_id: coachId,
-            client_id: clientId,
-            sender_role: 'coach',
-            sender_id: '',
-            content,
-            message_type: 'chat',
-            read_at: null,
-            created_at: new Date().toISOString(),
-            attachment_type: attachment?.type ?? null,
-            attachment_url: attachment?.url ?? null,
-            attachment_name: attachment?.name ?? null,
-            attachment_size: attachment?.size ?? null,
-            attachment_mime: attachment?.mime ?? null,
-            attachment_duration: attachment?.duration ?? null,
+    const dispatchMessage = useCallback(async (payload: PendingPayload, reuseId?: string) => {
+        const { content, attachment } = payload
+        const optimisticId = reuseId ?? `temp-${Date.now()}`
+        pendingPayloads.current.set(optimisticId, payload)
+        setFailedIds(prev => {
+            if (!prev.has(optimisticId)) return prev
+            const next = new Set(prev)
+            next.delete(optimisticId)
+            return next
+        })
+
+        if (!reuseId) {
+            const optimistic: Message = {
+                id: optimisticId,
+                coach_id: coachId,
+                client_id: clientId,
+                sender_role: 'coach',
+                sender_id: '',
+                content,
+                message_type: 'chat',
+                read_at: null,
+                created_at: new Date().toISOString(),
+                attachment_type: attachment?.type ?? null,
+                attachment_url: attachment?.url ?? null,
+                attachment_name: attachment?.name ?? null,
+                attachment_size: attachment?.size ?? null,
+                attachment_mime: attachment?.mime ?? null,
+                attachment_duration: attachment?.duration ?? null,
+            }
+            scrollIntent.current = { kind: 'bottom', smooth: true }
+            setMessages(prev => [...prev, optimistic])
+            onLastMessageChange?.(optimistic)
         }
 
-        setMessages(prev => [...prev, optimisticMessage])
-        onLastMessageChange?.(optimisticMessage)
+        setSending(true)
+        const result = await sendMessageAction(coachId, clientId, content, attachment)
+        setSending(false)
 
-        startTransition(async () => {
-            const result = await sendMessageAction(coachId, clientId, content, attachment)
-            if (result.success && result.message) {
-                setMessages(prev =>
-                    reconcileOptimisticMessage(prev, optimisticMessage.id, result.message!)
-                )
-                onLastMessageChange?.(result.message)
-            } else {
-                setMessages(prev => prev.filter(message => message.id !== optimisticMessage.id))
-                toast.error(result.error || 'No se pudo enviar el mensaje.')
-            }
-        })
+        if (result.success && result.message) {
+            pendingPayloads.current.delete(optimisticId)
+            setMessages(prev => reconcileOptimisticMessage(prev, optimisticId, result.message!))
+            onLastMessageChange?.(result.message)
+        } else {
+            setFailedIds(prev => new Set(prev).add(optimisticId))
+            toast.error(result.error || 'No se pudo enviar el mensaje.')
+        }
     }, [coachId, clientId, onLastMessageChange])
 
-    const handleSend = () => {
+    const handleSend = async () => {
         const content = input.trim()
-        if (!content || isPending || isBlocked) return
-
+        if (!content || sending || isBlocked) return
         setInput('')
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto'
-        }
-        dispatchMessage(content)
+        composerRef.current?.resetHeight()
+        await dispatchMessage({ content })
     }
 
-    const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0]
-        event.target.value = ''
-        if (!file || isBlocked) return
-
-        setUploading(file.name)
+    const uploadAndSend = async (label: string, file: Blob, fileName: string, mime: string, duration?: number, caption = '') => {
+        if (isBlocked) return
+        setUploading(label)
         try {
-            const { attachment, error } = await uploadChatAttachment({
-                coachId,
-                clientId,
-                file,
-                fileName: file.name,
-                mime: file.type || 'application/octet-stream',
-            })
+            const { attachment, error } = await uploadChatAttachment({ coachId, clientId, file, fileName, mime, duration })
             if (error || !attachment) {
                 toast.error(error || 'No se pudo subir el archivo.')
                 return
             }
-            dispatchMessage(input.trim(), attachment)
-            setInput('')
+            await dispatchMessage({ content: caption, attachment })
         } finally {
             setUploading(null)
         }
+    }
+
+    const handleFileSelected = async (file: File) => {
+        const caption = input.trim()
+        if (caption) {
+            setInput('')
+            composerRef.current?.resetHeight()
+        }
+        await uploadAndSend(file.name, file, file.name, file.type || 'application/octet-stream', undefined, caption)
     }
 
     const handleStartRecording = async () => {
@@ -206,259 +279,162 @@ export function ConversationPanel({
     const handleSendRecording = async () => {
         const recording = await recorder.stop()
         if (!recording) return
-
-        setUploading('nota de voz')
-        try {
-            const { attachment, error } = await uploadChatAttachment({
-                coachId,
-                clientId,
-                file: recording.blob,
-                fileName: recording.fileName,
-                mime: recording.mime,
-                duration: recording.duration,
-            })
-            if (error || !attachment) {
-                toast.error(error || 'No se pudo enviar la nota de voz.')
-                return
-            }
-            dispatchMessage('', attachment)
-        } finally {
-            setUploading(null)
-        }
+        await uploadAndSend('nota de voz', recording.blob, recording.fileName, recording.mime, recording.duration)
     }
 
-    const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            handleSend()
-        }
-    }
+    const days = useMemo(() => groupByDay(messages), [messages])
+    const lastOwnMessageId = useMemo(
+        () => [...messages].reverse().find(message => message.sender_role === 'coach')?.id ?? null,
+        [messages]
+    )
 
-    const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(event.target.value)
-        const element = event.target
-        element.style.height = 'auto'
-        element.style.height = Math.min(element.scrollHeight, 120) + 'px'
-    }
-
-    const showMic = !input.trim() && !recorder.isRecording
+    const initials = initialsOf(clientName, 'A')
+    const athleteAvatar = (
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary ring-1 ring-border/60">
+            {initials}
+        </span>
+    )
 
     return (
-        <section className="flex min-h-0 flex-1 flex-col bg-background">
-            <header className="flex items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {clientName.charAt(0).toUpperCase()}
-                </div>
+        <section className="flex h-full min-h-0 flex-1 flex-col bg-background">
+            <header className="flex shrink-0 items-center gap-2.5 border-b border-border/60 bg-background/90 px-2 py-2.5 backdrop-blur-xl sm:px-4 lg:px-5">
+                {onBack && (
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        aria-label="Volver a conversaciones"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted lg:hidden"
+                    >
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                )}
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary ring-1 ring-border/60">
+                    {initials}
+                </span>
                 <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-sm font-semibold text-foreground sm:text-base">{clientName}</h2>
-                    {clientEmail ? (
-                        <p className="truncate text-xs text-muted-foreground">{clientEmail}</p>
-                    ) : null}
+                    <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">{clientName}</h2>
+                    {clientEmail ? <p className="truncate text-xs text-muted-foreground">{clientEmail}</p> : null}
                 </div>
+                <Link
+                    href={`/coach/clients?client=${clientId}`}
+                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                >
+                    <UserRound className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Ver ficha</span>
+                </Link>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-3 py-4 sm:px-5">
-                {loading ? (
-                    <div className="flex h-full items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : messages.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center text-center">
-                        <MessageSquare className="mb-4 h-12 w-12 text-muted-foreground/30" />
-                        <p className="text-sm text-muted-foreground">
-                            No hay mensajes todavía.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-1.5">
-                        {messages.map((message, index) => {
-                            const isReviewFeedback = message.message_type === 'review_feedback'
-                            const isCoach = message.sender_role === 'coach'
-                            const hasAttachment = !!message.attachment_url
-                            const previousMessage = index > 0 ? messages[index - 1] : null
-                            const showDateSeparator = !previousMessage
-                                || dayKey(previousMessage.created_at) !== dayKey(message.created_at)
-                            const isPendingMessage = message.id.startsWith('temp-')
+            <div className="relative min-h-0 flex-1">
+                <div
+                    ref={scrollRef}
+                    onScroll={handleScroll}
+                    className="h-full overflow-y-auto overscroll-contain bg-muted/20 px-3 pb-3 sm:px-5"
+                    aria-live="polite"
+                >
+                    {loading ? (
+                        <div className="flex h-full items-center justify-center">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : messages.length === 0 ? (
+                        <div className="flex h-full flex-col items-center justify-center px-6 text-center animate-fade-in">
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                                <MessageCircle className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm font-semibold">Sin mensajes todavía</p>
+                            <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
+                                {isBlocked ? 'Podrás escribirle cuando termine su registro.' : `Escribe a ${clientName.split(' ')[0]} para empezar la conversación.`}
+                            </p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex h-10 items-center justify-center">
+                                {loadingOlder ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                ) : hasMore ? (
+                                    <button type="button" onClick={loadOlder} className="rounded-full px-3 py-1 text-xs font-medium text-primary hover:bg-primary/5">
+                                        Ver mensajes anteriores
+                                    </button>
+                                ) : (
+                                    <span className="text-[11px] text-muted-foreground/70">Inicio de la conversación</span>
+                                )}
+                            </div>
 
-                            return (
-                                <div key={message.id}>
-                                    {showDateSeparator && (
-                                        <div className="my-3 flex justify-center">
-                                            <span className="rounded-full bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-                                                {formatDaySeparator(message.created_at)}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div className={cn('flex', isCoach ? 'justify-end' : 'justify-start')}>
-                                        <div
-                                            className={cn(
-                                                'max-w-[82%] text-sm shadow-sm sm:max-w-[72%]',
-                                                !isReviewFeedback && 'rounded-2xl px-3 py-2',
-                                                !isReviewFeedback && (isCoach
-                                                    ? 'rounded-br-md bg-primary text-primary-foreground'
-                                                    : 'rounded-bl-md bg-card text-foreground')
-                                            )}
-                                        >
-                                            {isReviewFeedback ? (
-                                                <ReviewFeedbackCard content={message.content} createdAt={message.created_at} />
-                                            ) : (
-                                                <>
-                                                    {hasAttachment && (
-                                                        <div className={cn(message.content && 'mb-1.5')}>
-                                                            <AttachmentBubble message={message} isOwn={isCoach} />
-                                                        </div>
-                                                    )}
-                                                    {message.content && (
-                                                        <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                                                    )}
-                                                    {/* Hora + ticks dentro de la burbuja, estilo WhatsApp */}
-                                                    <span
-                                                        className={cn(
-                                                            'mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none',
-                                                            isCoach ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                                                        )}
-                                                    >
-                                                        {formatBubbleTime(message.created_at)}
-                                                        {isCoach && (
-                                                            isPendingMessage ? (
-                                                                <Check className="h-3 w-3 opacity-50" />
-                                                            ) : message.read_at ? (
-                                                                <CheckCheck className="h-3 w-3 text-sky-300" />
-                                                            ) : (
-                                                                <Check className="h-3 w-3" />
-                                                            )
-                                                        )}
-                                                    </span>
-                                                </>
-                                            )}
-                                        </div>
+                            {days.map(day => (
+                                <section key={day.key}>
+                                    <div className="sticky top-2 z-10 my-2 flex justify-center">
+                                        <span className="rounded-full border border-border/60 bg-background/85 px-3 py-1 text-[11px] font-semibold capitalize text-muted-foreground shadow-sm backdrop-blur">
+                                            {formatDaySeparator(day.date)}
+                                        </span>
                                     </div>
-                                </div>
-                            )
-                        })}
-                        <div ref={messagesEndRef} />
-                    </div>
+                                    {day.messages.map((message, index) => {
+                                        const isOwn = message.sender_role === 'coach'
+                                        return (
+                                            <Fragment key={message.id}>
+                                                <ChatMessageBubble
+                                                    message={message}
+                                                    isOwn={isOwn}
+                                                    isFirstInGroup={!sameGroup(day.messages[index - 1], message)}
+                                                    isLastInGroup={!sameGroup(message, day.messages[index + 1])}
+                                                    delivery={isOwn ? deliveryOf(message, failedIds) : undefined}
+                                                    onRetry={() => {
+                                                        const payload = pendingPayloads.current.get(message.id)
+                                                        if (payload) dispatchMessage(payload, message.id)
+                                                    }}
+                                                    avatar={athleteAvatar}
+                                                />
+                                                {isOwn && message.id === lastOwnMessageId && message.read_at && message.message_type === 'chat' && (
+                                                    <p className="mt-1 pr-1 text-right text-[11px] text-muted-foreground animate-fade-in">
+                                                        Visto {formatReadAt(message.read_at)}
+                                                    </p>
+                                                )}
+                                            </Fragment>
+                                        )
+                                    })}
+                                </section>
+                            ))}
+                        </>
+                    )}
+                </div>
+
+                {showJump && (
+                    <button
+                        type="button"
+                        onClick={scrollToBottom}
+                        className="absolute bottom-3 right-3 z-20 flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-background/95 px-3 text-sm font-medium shadow-lg backdrop-blur animate-fade-in"
+                        aria-label="Ir al último mensaje"
+                    >
+                        {newWhileAway > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                                {newWhileAway}
+                            </span>
+                        )}
+                        <ChevronDown className="h-4 w-4" />
+                    </button>
                 )}
             </div>
 
-            <footer className="border-t border-border bg-card px-3 py-3 sm:px-4">
-                {isBlocked ? (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                        Este cliente todavía no ha terminado el registro. Los mensajes se activarán cuando tenga cuenta.
-                    </div>
-                ) : recorder.isRecording ? (
-                    <div className="flex items-center gap-3">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={recorder.cancel}
-                            className="h-10 w-10 shrink-0 rounded-full text-destructive hover:text-destructive"
-                            aria-label="Cancelar grabación"
-                        >
-                            <Trash2 className="h-5 w-5" />
-                        </Button>
-                        <div className="flex flex-1 items-center gap-2">
-                            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-destructive" />
-                            <span className="text-sm font-medium tabular-nums">
-                                {formatAudioDuration(recorder.elapsedSeconds)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">Grabando nota de voz…</span>
-                        </div>
-                        <Button
-                            size="icon"
-                            onClick={handleSendRecording}
-                            className="h-10 w-10 shrink-0 rounded-full"
-                            aria-label="Enviar nota de voz"
-                        >
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="flex items-end gap-1.5">
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            className="hidden"
-                            onChange={handleFileSelected}
-                            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,video/*,audio/*"
-                        />
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={!!uploading}
-                            className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-                            aria-label="Adjuntar archivo"
-                        >
-                            {uploading ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                                <Paperclip className="h-5 w-5" />
-                            )}
-                        </Button>
-                        <textarea
-                            ref={textareaRef}
-                            value={input}
-                            onChange={handleInputChange}
-                            onKeyDown={handleKeyDown}
-                            placeholder={uploading ? `Subiendo ${uploading}…` : 'Escribe un mensaje…'}
-                            rows={1}
-                            disabled={!!uploading}
-                            className="max-h-[120px] flex-1 resize-none rounded-2xl border border-border bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
-                        />
-                        {showMic ? (
-                            <Button
-                                size="icon"
-                                onClick={handleStartRecording}
-                                disabled={!!uploading}
-                                className="h-10 w-10 shrink-0 rounded-full"
-                                aria-label="Grabar nota de voz"
-                            >
-                                <Mic className="h-4 w-4" />
-                            </Button>
-                        ) : (
-                            <Button
-                                size="icon"
-                                onClick={handleSend}
-                                disabled={!input.trim() || isPending || !!uploading}
-                                className="h-10 w-10 shrink-0 rounded-full"
-                                aria-label="Enviar mensaje"
-                            >
-                                {isPending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Send className="h-4 w-4" />
-                                )}
-                            </Button>
-                        )}
-                    </div>
-                )}
-            </footer>
+            {isBlocked ? (
+                <div className="shrink-0 border-t border-border/60 bg-background px-3 py-3">
+                    <p className="rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                        Este atleta todavía no ha terminado el registro. Los mensajes se activarán cuando tenga cuenta.
+                    </p>
+                </div>
+            ) : (
+                <ChatComposer
+                    ref={composerRef}
+                    value={input}
+                    onChange={setInput}
+                    onSend={handleSend}
+                    onFileSelected={handleFileSelected}
+                    onStartRecording={handleStartRecording}
+                    onCancelRecording={recorder.cancel}
+                    onSendRecording={handleSendRecording}
+                    isRecording={recorder.isRecording}
+                    recordingSeconds={recorder.elapsedSeconds}
+                    uploading={uploading}
+                    sending={sending}
+                />
+            )}
         </section>
     )
-}
-
-function dayKey(dateStr: string) {
-    return new Date(dateStr).toDateString()
-}
-
-function formatDaySeparator(dateStr: string) {
-    const date = new Date(dateStr)
-    const today = new Date()
-    const yesterday = new Date()
-    yesterday.setDate(today.getDate() - 1)
-
-    if (date.toDateString() === today.toDateString()) return 'Hoy'
-    if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
-
-    return date.toLocaleDateString('es-ES', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
-    })
-}
-
-function formatBubbleTime(dateStr: string) {
-    return new Date(dateStr).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { MetricDefinition, MetricCategory } from '@/types/metrics'
 import { MetricFormModal } from './MetricFormModal'
@@ -11,18 +12,8 @@ import {
     deleteMetricDefinition,
     reorderMetricDefinitions,
 } from '@/data/metric-definitions'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -157,46 +148,29 @@ export function MetricsPageClient({ initialMetrics }: { initialMetrics: MetricDe
 
     return (
         <>
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MetricCategory)}>
-                <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-                    <TabsList>
-                        {TAB_CONFIG.map((tab) => {
-                            const count = initialMetrics.filter((m) => m.category === tab.value).length
-                            return (
-                                <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-                                    {tab.label}
-                                    {count > 0 && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px]"
-                                        >
-                                            {count}
-                                        </Badge>
-                                    )}
-                                </TabsTrigger>
-                            )
-                        })}
-                    </TabsList>
-                    <Button onClick={handleCreateClick} className="gap-1.5 shrink-0">
-                        <Plus className="h-4 w-4" />
-                        Nueva Métrica
-                    </Button>
-                </div>
+            <div className="mb-4 flex items-center gap-2">
+                <ClientTabSwitcher
+                    className="min-w-0 flex-1 sm:max-w-md"
+                    value={activeTab}
+                    onValueChange={setActiveTab}
+                    options={TAB_CONFIG}
+                />
+                <Button onClick={handleCreateClick} className="h-10 shrink-0 gap-1.5 rounded-full px-4 sm:ml-auto">
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">Nueva métrica</span>
+                    <span className="sm:hidden">Nueva</span>
+                </Button>
+            </div>
 
-                {TAB_CONFIG.map((tab) => (
-                    <TabsContent key={tab.value} value={tab.value} className="mt-0">
-                        <MetricsTable
-                            metrics={initialMetrics.filter((m) => m.category === tab.value)}
-                            isPending={isPending}
-                            onEdit={handleEditClick}
-                            onToggleActive={handleToggleActive}
-                            onDelete={setDeleteTarget}
-                            onMoveUp={handleMoveUp}
-                            onMoveDown={handleMoveDown}
-                        />
-                    </TabsContent>
-                ))}
-            </Tabs>
+            <MetricsTable
+                metrics={initialMetrics.filter((m) => m.category === activeTab)}
+                isPending={isPending}
+                onEdit={handleEditClick}
+                onToggleActive={handleToggleActive}
+                onDelete={setDeleteTarget}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+            />
 
             {/* Modal */}
             <MetricFormModal
@@ -254,13 +228,13 @@ function MetricsTable({
 }) {
     if (metrics.length === 0) {
         return (
-            <Card className="p-12 text-center">
-                <BarChart2 className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-                <h3 className="font-semibold">Sin métricas</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Crea métricas para incluirlas en tus formularios.
-                </p>
-            </Card>
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-14 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                    <BarChart2 className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-sm font-semibold">Sin métricas</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Crea métricas para incluirlas en tus formularios.</p>
+            </div>
         )
     }
 
@@ -271,118 +245,78 @@ function MetricsTable({
     }
 
     return (
-        <Card>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-12" />
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Unidad</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="hidden sm:table-cell">Creado</TableHead>
-                        <TableHead className="w-12" />
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {metrics.map((m, idx) => (
-                        <TableRow
-                            key={m.id}
-                            className={isPending ? 'opacity-60 pointer-events-none' : ''}
+        <ul className={cn(
+            'divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm',
+            isPending && 'pointer-events-none opacity-60'
+        )}>
+            {metrics.map((m, idx) => (
+                <li key={m.id} className="flex items-center gap-2 py-2.5 pl-1.5 pr-2 transition-colors hover:bg-muted/40 sm:pl-2">
+                    <div className="flex shrink-0 flex-col">
+                        <button
+                            type="button"
+                            onClick={() => onMoveUp(idx)}
+                            disabled={idx === 0 || isPending}
+                            aria-label={`Subir ${m.name}`}
+                            className="flex h-6 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-25"
                         >
-                            {/* Actions Up/Down */}
-                            <TableCell className="px-2">
-                                <div className="flex flex-col items-center">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-5 w-5 hover:bg-muted"
-                                        onClick={() => onMoveUp(idx)}
-                                        disabled={idx === 0 || isPending}
-                                    >
-                                        <ArrowUp className="h-3 w-3 text-muted-foreground" />
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-5 w-5 hover:bg-muted"
-                                        onClick={() => onMoveDown(idx)}
-                                        disabled={idx === metrics.length - 1 || isPending}
-                                    >
-                                        <ArrowDown className="h-3 w-3 text-muted-foreground" />
-                                    </Button>
-                                </div>
-                            </TableCell>
+                            <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onMoveDown(idx)}
+                            disabled={idx === metrics.length - 1 || isPending}
+                            aria-label={`Bajar ${m.name}`}
+                            className="flex h-6 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-25"
+                        >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
 
-                            {/* Nombre y descripción */}
-                            <TableCell>
-                                <div className="font-medium">{m.name}</div>
-                                {m.description && (
-                                    <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                        {m.description}
-                                    </div>
-                                )}
-                            </TableCell>
+                    <button type="button" onClick={() => onEdit(m)} className="min-w-0 flex-1 text-left">
+                        <span className={cn('block truncate text-[15px] font-semibold', !m.is_active && 'text-muted-foreground')}>{m.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                            {valueTypeLabels[m.value_type] || m.value_type}
+                            {m.unit ? ` · ${m.unit}` : ''}
+                            {m.description ? ` · ${m.description}` : ''}
+                        </span>
+                    </button>
 
-                            <TableCell>
-                                <span className="text-sm">
-                                    {valueTypeLabels[m.value_type] || m.value_type}
-                                </span>
-                            </TableCell>
+                    <span className={cn(
+                        'flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                        m.is_active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
+                    )}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', m.is_active ? 'bg-success' : 'bg-muted-foreground/50')} />
+                        {m.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
 
-                            <TableCell>
-                                <span className="text-sm text-muted-foreground">
-                                    {m.unit || '—'}
-                                </span>
-                            </TableCell>
-
-                            <TableCell>
-                                {m.is_active ? (
-                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                                        Activo
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20">
-                                        Inactivo
-                                    </Badge>
-                                )}
-                            </TableCell>
-
-                            <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
-                                {new Date(m.created_at).toLocaleDateString()}
-                            </TableCell>
-
-                            <TableCell>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                            <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => onEdit(m)}>
-                                            <Pencil className="mr-2 h-4 w-4" />
-                                            Editar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onToggleActive(m)}>
-                                            <Power className="mr-2 h-4 w-4" />
-                                            {m.is_active ? 'Desactivar' : 'Activar'}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            onClick={() => onDelete(m)}
-                                            className="text-destructive focus:text-destructive"
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            Eliminar
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </Card>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Acciones de {m.name}</span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(m)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onToggleActive(m)}>
+                                <Power className="mr-2 h-4 w-4" />
+                                {m.is_active ? 'Desactivar' : 'Activar'}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={() => onDelete(m)}
+                                className="text-destructive focus:text-destructive"
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </li>
+            ))}
+        </ul>
     )
 }

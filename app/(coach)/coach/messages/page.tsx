@@ -1,4 +1,3 @@
-import { MessageCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getClientsForSelector } from '@/data/workspace'
@@ -32,29 +31,11 @@ export default async function CoachMessagesPage({ searchParams }: CoachMessagesP
 
     return (
         <div className="flex h-[calc(100dvh-4.5rem-var(--safe-area-top)-var(--safe-area-bottom))] min-h-0 flex-col overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible lg:pb-4">
-            <header className="z-40 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm lg:sticky lg:top-0">
-                <div className="px-4 py-3 lg:px-8 lg:py-6">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 lg:h-10 lg:w-10">
-                            <MessageCircle className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                            <h1 className="text-lg font-bold lg:text-xl">Mensajes</h1>
-                            <p className="truncate text-xs text-muted-foreground lg:text-sm">
-                                Conversaciones con tus atletas
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <div className="min-h-0 flex-1 lg:px-8 lg:pt-6">
-                <MessagesPageClient
-                    coachId={coachId}
-                    conversations={conversations}
-                    initialClientId={selectedClientId}
-                />
-            </div>
+            <MessagesPageClient
+                coachId={coachId}
+                conversations={conversations}
+                initialClientId={selectedClientId}
+            />
         </div>
     )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { FormTemplate, FormField, FormBuilderInitialData } from '@/types/forms'
 import { Client } from '@/types/coach'
@@ -22,19 +23,12 @@ import {
     duplicateReviewTemplateAction,
     toggleReviewTemplateActiveAction,
 } from './review-template-actions'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import { CatalogEmpty, CatalogList, StatusPill } from '@/components/coach/CatalogList'
 import { Button } from '@/components/ui/button'
 import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -303,39 +297,25 @@ export function FormsPageClient({
     return (
         <>
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabType)}>
-                <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-                    <TabsList>
-                        {TAB_CONFIG.map((tab) => {
-                            const count = tab.value === 'review-templates'
-                                ? reviewTemplates.length
-                                : templates.filter((t) => t.type === tab.value).length
-                            return (
-                                <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
-                                    {tab.label}
-                                    {count > 0 && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="ml-1 h-5 min-w-[20px] px-1.5 text-[10px]"
-                                        >
-                                            {count}
-                                        </Badge>
-                                    )}
-                                </TabsTrigger>
-                            )
-                        })}
-                    </TabsList>
-                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <ClientTabSwitcher
+                        className="sm:max-w-sm"
+                        value={activeTab}
+                        onValueChange={setActiveTab}
+                        options={TAB_CONFIG.map(tab => ({ value: tab.value, label: tab.label }))}
+                    />
+                    <div className="flex items-center gap-2">
                         <AIFormDialog
                             defaultType={isReviewTab ? 'checkin' : 'onboarding'}
                             allowedTypes={[isReviewTab ? 'checkin' : 'onboarding']}
                             onGenerated={handleGeneratedDraft}
                             trigger={
-                                <AIActionButton>
+                                <AIActionButton className="max-sm:flex-1">
                                     Generar con IA
                                 </AIActionButton>
                             }
                         />
-                        <Button onClick={handleCreate} className="gap-1.5 shrink-0">
+                        <Button onClick={handleCreate} className="shrink-0 gap-1.5 max-sm:flex-1">
                             <Plus className="h-4 w-4" />
                             {isReviewTab ? 'Crear revisión' : 'Crear onboarding'}
                         </Button>
@@ -457,107 +437,64 @@ function TemplateTable({
     onDelete: (t: FormTemplate) => void
 }) {
     if (templates.length === 0) {
-        return (
-            <Card className="p-12 text-center">
-                <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-                <h3 className="font-semibold">Aún no hay plantillas</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Crea una para empezar.
-                </p>
-            </Card>
-        )
+        return <CatalogEmpty icon={FileText} title="Aún no hay plantillas" description="Crea una para empezar." />
     }
 
     return (
-        <Card>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Campos</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="hidden sm:table-cell">Creado</TableHead>
-                        <TableHead className="w-12" />
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {templates.map((t) => (
-                        <TableRow
-                            key={t.id}
-                            className={isPending ? 'opacity-60 pointer-events-none' : ''}
-                        >
-                            <TableCell>
-                                <div>
-                                    <span className="font-medium">{t.title}</span>
-                                    {t.type === 'onboarding' && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {(t.assigned_client_ids?.length ?? 0) > 0
-                                                ? `${t.assigned_client_ids.length} atleta${t.assigned_client_ids.length === 1 ? '' : 's'} asignado${t.assigned_client_ids.length === 1 ? '' : 's'}`
-                                                : 'Sin atletas asignados'}
-                                        </p>
-                                    )}
-                                    {t.type === 'checkin' && (
-                                        <p className="text-xs text-muted-foreground">
-                                            Se asigna desde Plantillas de revisión.
-                                        </p>
-                                    )}
-                                </div>
-                            </TableCell>
-                            <TableCell>
-                                <span className="text-muted-foreground text-sm">
-                                    {t.schema?.length ?? 0} campos
+        <CatalogList dimmed={isPending}>
+            {templates.map((t) => {
+                const assigned = t.assigned_client_ids?.length ?? 0
+                const subtitle = t.type === 'onboarding'
+                    ? (assigned > 0 ? `${assigned} atleta${assigned === 1 ? '' : 's'} asignado${assigned === 1 ? '' : 's'}` : 'Sin atletas asignados')
+                    : 'Se asigna desde las revisiones'
+                return (
+                    <li key={t.id} className="flex items-center gap-2 pr-2 transition-colors hover:bg-muted/40">
+                        <button type="button" onClick={() => onEdit(t)} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                <FileText className="h-5 w-5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[15px] font-semibold">{t.title}</span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                    {t.schema?.length ?? 0} campos · {subtitle}
                                 </span>
-                            </TableCell>
-                            <TableCell>
-                                {t.is_active ? (
-                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                                        Activo
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20">
-                                        Inactivo
-                                    </Badge>
-                                )}
-                            </TableCell>
-                            <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
-                                {new Date(t.created_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                            <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => onEdit(t)}>
-                                            <Pencil className="mr-2 h-4 w-4" />
-                                            Editar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(t)}>
-                                            <Copy className="mr-2 h-4 w-4" />
-                                            Duplicar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onToggleActive(t)}>
-                                            <Power className="mr-2 h-4 w-4" />
-                                            {t.is_active ? 'Desactivar' : 'Activar'}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            onClick={() => onDelete(t)}
-                                            className="text-destructive focus:text-destructive"
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            Eliminar
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </Card>
+                            </span>
+                        </button>
+                        <StatusPill active={t.is_active} activeLabel="Activo" inactiveLabel="Inactivo" />
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Acciones de {t.title}</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => onEdit(t)}>
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => onDuplicate(t)}>
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    Duplicar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => onToggleActive(t)}>
+                                    <Power className="mr-2 h-4 w-4" />
+                                    {t.is_active ? 'Desactivar' : 'Activar'}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onClick={() => onDelete(t)}
+                                    className="text-destructive focus:text-destructive"
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Eliminar
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </li>
+                )
+            })}
+        </CatalogList>
     )
 }
 
@@ -584,13 +521,11 @@ function ReviewTemplatesTable({
 }) {
     if (reviewTemplates.length === 0) {
         return (
-            <Card className="p-12 text-center">
-                <ClipboardCheck className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-                <h3 className="font-semibold">Aún no hay revisiones</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                    Crea una revisión combinando formulario, métricas, fotos y frecuencia para asignarla a tus atletas.
-                </p>
-            </Card>
+            <CatalogEmpty
+                icon={ClipboardCheck}
+                title="Aún no hay revisiones"
+                description="Crea una revisión combinando formulario, métricas, fotos y frecuencia para asignarla a tus atletas."
+            />
         )
     }
 
@@ -599,108 +534,73 @@ function ReviewTemplatesTable({
         if (rt.include_body_metrics) groups.push('Cuerpo')
         if (rt.include_performance_metrics) groups.push('Rendimiento')
         if (rt.include_general_metrics) groups.push('General')
-        return groups.length > 0 ? groups.join(' · ') : '—'
+        return groups.length > 0 ? groups.join(', ') : null
     }
 
     return (
-        <Card>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Revisión</TableHead>
-                        <TableHead className="hidden md:table-cell">Formulario</TableHead>
-                        <TableHead className="hidden md:table-cell">Métricas</TableHead>
-                        <TableHead>Fotos</TableHead>
-                        <TableHead>Frecuencia</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="w-12" />
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {reviewTemplates.map((rt) => {
-                        const form = rt.form_template_id ? formTemplatesById[rt.form_template_id] : null
-                        return (
-                            <TableRow
-                                key={rt.id}
-                                className={isPending ? 'opacity-60 pointer-events-none' : ''}
-                            >
-                                <TableCell>
-                                    <div>
-                                        <span className="font-medium">{rt.name}</span>
-                                        {rt.description && (
-                                            <p className="text-xs text-muted-foreground line-clamp-1">{rt.description}</p>
-                                        )}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                                    {form?.title ?? <span className="italic">Sin formulario</span>}
-                                </TableCell>
-                                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                                    {groupSummary(rt)}
-                                </TableCell>
-                                <TableCell>
-                                    {rt.include_progress_photos ? (
-                                        <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/20 gap-1">
-                                            <Camera className="h-3 w-3" />
-                                            {rt.photos_required ? 'Obligatorias' : `Hasta ${rt.photos_max_items}`}
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20 gap-1">
-                                            <ImageIcon className="h-3 w-3" />
-                                            No
-                                        </Badge>
+        <CatalogList dimmed={isPending}>
+            {reviewTemplates.map((rt) => {
+                const form = rt.form_template_id ? formTemplatesById[rt.form_template_id] : null
+                const metricsLabel = groupSummary(rt)
+                return (
+                    <li key={rt.id} className="flex items-center gap-2 pr-2 transition-colors hover:bg-muted/40">
+                        <button type="button" onClick={() => onEdit(rt)} className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-4 text-left">
+                            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                                <ClipboardCheck className="h-5 w-5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-[15px] font-semibold leading-snug">{rt.name}</span>
+                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                    Cada {rt.default_frequency_days} días · {form?.title ?? 'Sin formulario'}
+                                </span>
+                                <span className="mt-1.5 flex flex-wrap gap-1">
+                                    {metricsLabel && (
+                                        <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">{metricsLabel}</Badge>
                                     )}
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                    {rt.default_frequency_days}d
-                                </TableCell>
-                                <TableCell>
-                                    {rt.is_active ? (
-                                        <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                                            Activa
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="bg-zinc-500/10 text-zinc-500 border-zinc-500/20">
-                                            Inactiva
-                                        </Badge>
-                                    )}
-                                </TableCell>
-                                <TableCell>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                <MoreHorizontal className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => onEdit(rt)}>
-                                                <Pencil className="mr-2 h-4 w-4" />
-                                                Editar
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => onDuplicate(rt)}>
-                                                <Copy className="mr-2 h-4 w-4" />
-                                                Duplicar
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => onToggleActive(rt)}>
-                                                <Power className="mr-2 h-4 w-4" />
-                                                {rt.is_active ? 'Desactivar' : 'Activar'}
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
-                                                onClick={() => onDelete(rt)}
-                                                className="text-destructive focus:text-destructive"
-                                            >
-                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                Eliminar
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </TableCell>
-                            </TableRow>
-                        )
-                    })}
-                </TableBody>
-            </Table>
-        </Card>
+                                    <Badge variant="outline" className={cn(
+                                        'gap-1 px-1.5 py-0 text-[10px]',
+                                        rt.include_progress_photos ? 'border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400' : 'text-muted-foreground'
+                                    )}>
+                                        {rt.include_progress_photos ? <Camera className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+                                        {rt.include_progress_photos ? (rt.photos_required ? 'Fotos obligatorias' : `Hasta ${rt.photos_max_items} fotos`) : 'Sin fotos'}
+                                    </Badge>
+                                </span>
+                            </span>
+                        </button>
+                        <StatusPill active={rt.is_active} />
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    <span className="sr-only">Acciones de {rt.name}</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => onEdit(rt)}>
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => onDuplicate(rt)}>
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    Duplicar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => onToggleActive(rt)}>
+                                    <Power className="mr-2 h-4 w-4" />
+                                    {rt.is_active ? 'Desactivar' : 'Activar'}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onClick={() => onDelete(rt)}
+                                    className="text-destructive focus:text-destructive"
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Eliminar
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </li>
+                )
+            })}
+        </CatalogList>
     )
 }

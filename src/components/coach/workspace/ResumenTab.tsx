@@ -502,7 +502,7 @@ export function ResumenTab({
             <section className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">Estado actual</h3>
 
-                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4 max-sm:[&>*:first-child]:col-span-2 max-sm:[&>*:last-child]:col-span-2">
                     <QuickStatCard
                         icon={TrendingUp}
                         title="Programa"

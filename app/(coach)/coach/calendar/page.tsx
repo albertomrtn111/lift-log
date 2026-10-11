@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCalendarData, getCalendarDataForMonth } from '@/data/calendar'
 import { CalendarView } from '@/components/coach/CalendarView'
-import { Calendar } from 'lucide-react'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 
 interface CalendarPageProps {
     searchParams: Promise<{ month?: string; year?: string; view?: string; start?: string }>
@@ -54,23 +54,13 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
     return (
         <div className="min-h-screen pb-20 lg:pb-4">
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 lg:px-8 py-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <Calendar className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-bold">Calendario</h1>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Herramienta operativa para seguir revisiones reales, feedback y carga semanal.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <CoachPageHeader
+                eyebrow="Operativa"
+                title="Calendario"
+                description="Revisiones, feedback y carga semanal de tus atletas."
+            />
 
-            <div className="px-4 lg:px-8 pt-6">
+            <div className="px-4 pt-4 lg:px-8 lg:pt-6">
                 <CalendarView
                     coachId={coachId}
                     initialData={calendarData}

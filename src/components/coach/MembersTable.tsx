@@ -283,7 +283,10 @@ function ClientRow({
     const getCheckinBadge = () => {
         if (client.status !== 'active') return <span className="text-muted-foreground">—</span>
 
-        if (client.daysUntilCheckin <= 0) {
+        if (client.daysUntilCheckin < 0) {
+            const overdue = Math.abs(client.daysUntilCheckin)
+            return <Badge variant="destructive">{overdue === 1 ? 'Ayer' : `Hace ${overdue}d`}</Badge>
+        } else if (client.daysUntilCheckin === 0) {
             return <Badge variant="destructive">Hoy</Badge>
         } else if (client.daysUntilCheckin <= 2) {
             return <Badge className="bg-warning text-warning-foreground">{client.daysUntilCheckin}d</Badge>

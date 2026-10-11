@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import * as SliderPrimitive from '@radix-ui/react-slider'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -538,29 +539,17 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     return (
         <div className="space-y-6">
             {/* Sub-tab toggle */}
-            <div className="max-w-full touch-pan-x overflow-x-auto overscroll-x-contain pb-1 scrollbar-hide">
-                <div className="flex w-max items-center gap-1 rounded-lg border border-border/70 bg-secondary/70 p-1">
-                    {[
-                        { key: 'general' as SubTab, label: 'General' },
-                        { key: 'training' as SubTab, label: 'Entrenamiento' },
-                        { key: 'cardio' as SubTab, label: 'Cardio' },
-                        { key: 'diet' as SubTab, label: 'Dieta' },
-                    ].map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setSubTab(tab.key)}
-                            className={cn(
-                                "min-h-10 px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                                subTab === tab.key
-                                    ? "bg-background text-foreground shadow-sm dark:bg-card"
-                                    : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
+            <ClientTabSwitcher
+                className="sm:max-w-xl"
+                value={subTab}
+                onValueChange={setSubTab}
+                options={[
+                    { value: 'general' as SubTab, label: 'General' },
+                    { value: 'training' as SubTab, label: 'Entrenamiento' },
+                    { value: 'cardio' as SubTab, label: 'Cardio' },
+                    { value: 'diet' as SubTab, label: 'Dieta' },
+                ]}
+            />
 
             {subTab === 'training' ? (
                 <TrainingProgressView clientId={clientId} coachId={coachId} />
