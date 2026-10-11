@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,8 +14,6 @@ import {
     Camera,
     ChevronRight,
     ImageOff,
-    Images,
-    Ruler,
     X,
     Sparkles,
     Loader2,
@@ -98,10 +97,10 @@ function getReviewActionLabel(checkin: CheckinWithReview) {
 
 type CheckinsSection = 'listado' | 'galeria' | 'medidas'
 
-const CHECKINS_SECTIONS: { value: CheckinsSection; label: string; icon: React.ReactNode }[] = [
-    { value: 'listado', label: 'Revisiones', icon: <FileText className="h-4 w-4" /> },
-    { value: 'galeria', label: 'Galería', icon: <Images className="h-4 w-4" /> },
-    { value: 'medidas', label: 'Medidas', icon: <Ruler className="h-4 w-4" /> },
+const CHECKINS_SECTIONS: { value: CheckinsSection; label: string }[] = [
+    { value: 'listado', label: 'Revisiones' },
+    { value: 'galeria', label: 'Galería' },
+    { value: 'medidas', label: 'Medidas' },
 ]
 
 export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
@@ -121,27 +120,15 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
     }
 
     const sectionSwitcher = (
-        <div className="grid w-full grid-cols-3 items-center gap-0.5 rounded-lg bg-muted/60 p-0.5 sm:flex sm:w-fit">
-            {CHECKINS_SECTIONS.map(item => (
-                <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => {
-                        setSection(item.value)
-                        setSelectedCheckin(null)
-                    }}
-                    className={cn(
-                        'flex min-w-0 items-center justify-center gap-1 rounded-md px-1.5 py-2 text-xs font-medium transition-all sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm',
-                        section === item.value
-                            ? 'bg-background text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                    )}
-                >
-                    {item.icon}
-                    <span className="truncate">{item.label}</span>
-                </button>
-            ))}
-        </div>
+        <ClientTabSwitcher
+            className="sm:max-w-md"
+            value={section}
+            onValueChange={(value) => {
+                setSection(value)
+                setSelectedCheckin(null)
+            }}
+            options={CHECKINS_SECTIONS}
+        />
     )
 
     if (section === 'galeria') {

@@ -4,8 +4,7 @@ import { getClients, StatusFilter } from '@/data/members'
 import { getFormTemplates } from '@/data/form-templates'
 import { listReviewTemplates } from '@/data/review-templates'
 import { MembersPageClient } from '@/components/coach/MembersPageClient'
-import { Badge } from '@/components/ui/badge'
-import { Users } from 'lucide-react'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 
 interface MembersPageProps {
     searchParams: Promise<{ status?: string; search?: string }>
@@ -34,25 +33,16 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
 
     return (
         <div className="min-h-screen min-w-0 pb-28 lg:pb-4">
-            {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="px-4 py-3 lg:px-8 lg:py-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <Users className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-bold">Atletas</h1>
-                            <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="secondary" className="bg-success/10 text-success border-0">
-                                    {activeCount} activos
-                                </Badge>
-                                <Badge variant="outline">{inactiveCount} inactivos</Badge>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <CoachPageHeader
+                eyebrow="Gestión"
+                title="Atletas"
+                description={
+                    <>
+                        <span className="font-medium text-success">{activeCount} activos</span>
+                        <span className="text-muted-foreground"> · {inactiveCount} inactivos</span>
+                    </>
+                }
+            />
 
             <div className="min-w-0 px-4 pt-4 lg:px-8 lg:pt-6">
                 <MembersPageClient

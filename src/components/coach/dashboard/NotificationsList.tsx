@@ -3,13 +3,12 @@
 import Link from 'next/link'
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Bell, CheckCircle2, FileText, Loader2, MessageSquare } from 'lucide-react'
+import { Bell, CheckCircle2, ChevronRight, FileText, Loader2, MessageSquare } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { completeCoachTaskAction } from '@/components/coach/calendar-actions'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { DashboardNotification } from '@/data/dashboard'
 
 interface NotificationsListProps {
@@ -36,7 +35,7 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
     }
 
     return (
-        <div className="divide-y">
+        <ul className="divide-y divide-border/60">
             {notifications.map((notification) => {
                 const Icon =
                     notification.type === 'chat_message'
@@ -44,84 +43,75 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
                         : notification.type === 'coach_task'
                             ? Bell
                             : FileText
+                const tone =
+                    notification.type === 'chat_message'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : notification.type === 'coach_task'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                            : 'bg-primary/10 text-primary'
                 const typeLabel =
                     notification.type === 'chat_message'
-                        ? 'mensaje'
+                        ? 'Mensaje'
                         : notification.type === 'coach_task'
-                            ? 'tarea'
-                            : 'revisión'
+                            ? 'Tarea'
+                            : 'Revisión'
                 const timeAgo = formatDistanceToNow(new Date(notification.timestamp), {
                     addSuffix: true,
                     locale: es,
                 })
+                const isTask = notification.type === 'coach_task' && notification.task_id
 
                 return (
-                    <div
-                        key={notification.id}
-                        className="flex flex-col gap-4 p-4 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                        <div className="flex min-w-0 items-start gap-3">
-                            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                                <Icon className="h-4 w-4 text-primary" />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="font-medium text-foreground">{notification.title}</p>
-                                    <Badge
-                                        variant="outline"
-                                        className="border-border text-xs text-muted-foreground"
-                                    >
-                                        {typeLabel}
-                                    </Badge>
-                                </div>
+                    <li key={notification.id} className="flex items-center gap-1 pr-2 transition-colors hover:bg-muted/40">
+                        <Link
+                            href={notification.href}
+                            aria-label={`${notification.title}: ${notification.ctaLabel}`}
+                            className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-4 text-foreground no-underline"
+                        >
+                            <span className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', tone)}>
+                                <Icon className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                    <span className="font-medium">{typeLabel}</span>
+                                    <span aria-hidden>·</span>
+                                    <span>{timeAgo}</span>
+                                </span>
+                                <span className="mt-0.5 block truncate text-[15px] font-semibold leading-snug">{notification.title}</span>
                                 {notification.preview && (
-                                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                                        {notification.preview}
-                                    </p>
+                                    <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{notification.preview}</span>
                                 )}
-                                <p className="mt-0.5 text-xs text-muted-foreground">{timeAgo}</p>
-                            </div>
-                        </div>
+                            </span>
+                        </Link>
 
-                        <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-                            {notification.type === 'coach_task' && notification.task_id && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={isPending}
-                                    onClick={() => {
-                                        startTransition(async () => {
-                                            const result = await completeCoachTaskAction(notification.task_id!, coachId)
-                                            if (!result.success) {
-                                                toast.error(result.error || 'No se pudo completar la tarea.')
-                                                return
-                                            }
+                        {isTask ? (
+                            <button
+                                type="button"
+                                disabled={isPending}
+                                aria-label="Marcar tarea como completada"
+                                onClick={() => {
+                                    startTransition(async () => {
+                                        const result = await completeCoachTaskAction(notification.task_id!, coachId)
+                                        if (!result.success) {
+                                            toast.error(result.error || 'No se pudo completar la tarea.')
+                                            return
+                                        }
 
-                                            toast.success('Tarea completada.')
-                                            router.refresh()
-                                        })
-                                    }}
-                                >
-                                    {isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}
-                                    Completar
-                                </Button>
-                            )}
-
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                asChild
-                                className="shrink-0"
+                                        toast.success('Tarea completada.')
+                                        router.refresh()
+                                    })
+                                }}
+                                className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-3 text-xs font-semibold text-foreground transition-colors hover:bg-success/10 hover:text-success disabled:opacity-60"
                             >
-                                <Link href={notification.href}>
-                                    {notification.ctaLabel}
-                                    <ArrowRight className="ml-1 h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </div>
-                    </div>
+                                {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                Hecha
+                            </button>
+                        ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+                        )}
+                    </li>
                 )
             })}
-        </div>
+        </ul>
     )
 }

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import { UserCog } from 'lucide-react'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import {
     getAthleteAIProfile,
 } from '@/data/athlete-ai-profile'
@@ -131,22 +131,13 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
     }
     return (
         <div className="min-h-screen min-w-0 overflow-x-hidden pb-28 lg:pb-4">
-            {/* Header */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-6">
-                    <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 sm:h-10 sm:w-10">
-                            <UserCog className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                            <h1 className="text-xl font-bold">Workspace</h1>
-                            <p className="hidden text-sm text-muted-foreground sm:block">Centro operativo por cliente</p>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <CoachPageHeader
+                eyebrow="Operativa"
+                title="Workspace"
+                description="Centro operativo de cada atleta: plan, revisiones y progreso."
+            />
 
-            <div className="min-w-0 px-3 pt-4 sm:px-4 sm:pt-6 lg:px-8">
+            <div className="min-w-0 px-3 pt-3 sm:px-4 sm:pt-5 lg:px-8 lg:pt-6">
                 <NewClientWorkspace
                     clients={clients}
                     selectedClient={selectedClient}

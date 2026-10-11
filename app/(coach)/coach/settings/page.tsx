@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import type { ElementType } from 'react'
 import {
     Apple,
@@ -79,26 +80,40 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
     const profileData = await getSettingsProfileData()
 
     return (
-        <div className="min-h-screen bg-background px-4 py-8 pb-24 sm:px-6 lg:px-8 lg:pb-8">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
-                <header className="space-y-3">
-                    <Badge variant="outline" className="w-fit">
-                        Configuración
-                    </Badge>
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                        <div className="space-y-2">
-                            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                                Ajustes
-                            </h1>
-                            <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                                Gestiona tu perfil, la apariencia de la app y los accesos de soporte desde un único sitio.
-                            </p>
-                        </div>
-                    </div>
-                </header>
+        <div className="min-h-screen bg-background pb-24 lg:pb-8">
+            <CoachPageHeader
+                eyebrow="Cuenta"
+                title="Ajustes"
+                description="Perfil, email de envío, notificaciones, apariencia y soporte."
+            >
+                <nav aria-label="Secciones de ajustes" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 scrollbar-hide lg:hidden">
+                    {SETTINGS_TABS.map((item) => {
+                        const Icon = item.icon
+                        const isActive = activeTab === item.id
+                        return (
+                            <Link
+                                key={item.id}
+                                href={`/coach/settings?tab=${item.id}`}
+                                prefetch={true}
+                                aria-current={isActive ? 'page' : undefined}
+                                className={cn(
+                                    'flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
+                                    isActive
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
+                                )}
+                            >
+                                <Icon className="h-4 w-4" />
+                                {item.label}
+                            </Link>
+                        )
+                    })}
+                </nav>
+            </CoachPageHeader>
 
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pt-4 sm:px-6 lg:px-8 lg:pt-6">
                 <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-                    <aside className="rounded-2xl border border-border bg-card p-2 shadow-sm">
+                    <aside className="hidden self-start rounded-2xl border border-border bg-card p-2 shadow-sm lg:block">
                         <nav className="space-y-1">
                             {SETTINGS_TABS.map((item) => {
                                 const Icon = item.icon
@@ -167,6 +182,7 @@ async function getSettingsProfileData() {
             membership: null,
             clientCount: 0,
             aiProfile: null,
+            profileName: null as string | null,
         }
     }
 
@@ -177,6 +193,7 @@ async function getSettingsProfileData() {
         { data: membership },
         { count: clientCount },
         aiProfile,
+        { data: profile },
     ] = await Promise.all([
         coachId
             ? supabase.from('coaches').select('*').eq('id', coachId).single()
@@ -186,6 +203,7 @@ async function getSettingsProfileData() {
             ? supabase.from('clients').select('*', { count: 'exact', head: true }).eq('coach_id', coachId).eq('status', 'active')
             : Promise.resolve({ count: 0 }),
         coachId ? getCoachAIProfile(coachId) : Promise.resolve(null),
+        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
     ])
 
     return {
@@ -194,6 +212,7 @@ async function getSettingsProfileData() {
         membership,
         clientCount: clientCount || 0,
         aiProfile,
+        profileName: (profile?.full_name as string | null) ?? null,
     }
 }
 
@@ -208,11 +227,13 @@ function ProfileSettingsSection({
     membership,
     clientCount,
     aiProfile,
+    profileName,
 }: Awaited<ReturnType<typeof getSettingsProfileData>>) {
     if (!user) return null
 
     const isApproved = aiProfile?.profile_status === 'approved'
-    const coachName = coach?.business_name || 'Coach'
+    // La tabla coaches guarda el nombre del negocio en `name`; el nombre propio vive en profiles
+    const coachName = profileName || coach?.name || 'Coach'
     const coachInitial = coachName.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'C'
 
     return (
@@ -251,7 +272,7 @@ function ProfileSettingsSection({
                 </div>
             </Card>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <Card className="p-4 text-center">
                     <Users className="mx-auto mb-2 h-6 w-6 text-primary" />
                     <span className="text-2xl font-bold">{clientCount}</span>

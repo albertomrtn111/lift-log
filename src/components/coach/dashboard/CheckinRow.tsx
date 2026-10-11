@@ -1,9 +1,8 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { RecentCheckin } from '@/data/dashboard'
-import { ExternalLink, FileText, Scale, Footprints, Dumbbell, Apple, Sparkles } from 'lucide-react'
+import { ChevronRight, FileText, Scale, Footprints, Dumbbell, Apple, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -13,10 +12,15 @@ interface CheckinRowProps {
 
 export function CheckinRow({ checkin }: CheckinRowProps) {
     const reviewBadge = () => {
-        if (checkin.checkin_status === 'pending') {
-            return (
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                    Enviada
+        if (checkin.checkin_status === 'pending' && !checkin.review_status && !(checkin.needs_review && checkin.review_ai_status === 'completed')) {
+            // pending = el coach aún no la ha cerrado; si el atleta ya respondió toca revisarla
+            return checkin.submitted_at ? (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400">
+                    Por revisar
+                </Badge>
+            ) : (
+                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400">
+                    Sin responder
                 </Badge>
             )
         }
@@ -70,88 +74,71 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
     }
 
     const sentDate = new Date(checkin.sent_at)
+    const weight = checkin.weight_avg_kg || checkin.weight_kg
+    const hasMetrics = Boolean(weight || checkin.steps_avg || checkin.training_adherence_pct !== null
+        || checkin.nutrition_adherence_pct !== null || checkin.review_ai_status === 'pending')
 
     return (
-        <div className="flex flex-col gap-4 border-b px-4 py-4 transition-colors hover:bg-muted/20 last:border-b-0 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <FileText className="h-4 w-4 text-primary" />
-                </div>
-                <div className="min-w-0">
-                    <p className="font-medium truncate">{checkin.client_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                        Enviada {formatDate(checkin.sent_at)} · {sentDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                        {checkin.submitted_at && (
-                            <span> · Respondida {formatDate(checkin.submitted_at)}</span>
+        <Link
+            href={`/coach/clients?client=${checkin.client_id}`}
+            className="flex items-start gap-3 px-4 py-3 text-foreground no-underline transition-colors hover:bg-muted/40"
+        >
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <FileText className="h-4 w-4 text-primary" />
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[15px] font-semibold">{checkin.client_name}</span>
+                    <span className="shrink-0">{reviewBadge()}</span>
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    Enviada {formatDate(checkin.sent_at)} · {sentDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                    {checkin.submitted_at && <> · Respondida {formatDate(checkin.submitted_at)}</>}
+                </span>
+                {hasMetrics && (
+                    <span className="mt-2 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                        {weight && (
+                            <MetricChip icon={Scale}>
+                                {weight} kg
+                                {checkin.weight_delta_kg != null && (
+                                    <span className={cn(
+                                        'font-semibold',
+                                        checkin.weight_delta_kg > 0 && 'text-warning',
+                                        checkin.weight_delta_kg < 0 && 'text-success'
+                                    )}>
+                                        {checkin.weight_delta_kg > 0 ? '+' : ''}{checkin.weight_delta_kg}
+                                    </span>
+                                )}
+                            </MetricChip>
                         )}
-                    </p>
-                </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground lg:flex-1 lg:justify-center">
-                {checkin.checkin_status === 'pending' && (
-                    <div className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-blue-600">
-                        <FileText className="h-3.5 w-3.5" />
-                        <span>Pendiente de respuesta</span>
-                    </div>
-                )}
-                {(checkin.weight_kg || checkin.weight_avg_kg) && (
-                    <div className="flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
-                        <Scale className="h-3.5 w-3.5" />
-                        <span>{checkin.weight_avg_kg || checkin.weight_kg} kg</span>
-                        {checkin.weight_delta_kg != null && (
-                            <span className={cn(
-                                'text-xs font-medium',
-                                checkin.weight_delta_kg > 0 && 'text-warning',
-                                checkin.weight_delta_kg < 0 && 'text-success'
-                            )}>
-                                {checkin.weight_delta_kg > 0 ? '+' : ''}{checkin.weight_delta_kg} kg
+                        {checkin.steps_avg && (
+                            <MetricChip icon={Footprints}>{Math.round(checkin.steps_avg).toLocaleString('es-ES')}</MetricChip>
+                        )}
+                        {checkin.training_adherence_pct !== null && (
+                            <MetricChip icon={Dumbbell} danger={checkin.training_adherence_pct < 60}>{checkin.training_adherence_pct}%</MetricChip>
+                        )}
+                        {checkin.nutrition_adherence_pct !== null && (
+                            <MetricChip icon={Apple} danger={checkin.nutrition_adherence_pct < 60}>{checkin.nutrition_adherence_pct}%</MetricChip>
+                        )}
+                        {checkin.review_ai_status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5 text-primary">
+                                <Sparkles className="h-3 w-3" />
+                                IA en curso
                             </span>
                         )}
-                    </div>
+                    </span>
                 )}
-                {checkin.steps_avg && (
-                    <div className="flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
-                        <Footprints className="h-3.5 w-3.5" />
-                        <span>{Math.round(checkin.steps_avg).toLocaleString()}</span>
-                    </div>
-                )}
-                {checkin.training_adherence_pct !== null && (
-                    <div className="flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
-                        <Dumbbell className="h-3.5 w-3.5" />
-                        <span className={cn(
-                            checkin.training_adherence_pct < 60 && 'text-destructive'
-                        )}>
-                            {checkin.training_adherence_pct}%
-                        </span>
-                    </div>
-                )}
-                {checkin.nutrition_adherence_pct !== null && (
-                    <div className="flex items-center gap-1 rounded-full bg-muted/40 px-2.5 py-1">
-                        <Apple className="h-3.5 w-3.5" />
-                        <span className={cn(
-                            checkin.nutrition_adherence_pct < 60 && 'text-destructive'
-                        )}>
-                            {checkin.nutrition_adherence_pct}%
-                        </span>
-                    </div>
-                )}
-                {checkin.review_ai_status === 'pending' && (
-                    <div className="flex items-center gap-1 rounded-full bg-primary/5 px-2.5 py-1 text-primary">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        <span>IA en curso</span>
-                    </div>
-                )}
-            </div>
+            </span>
+            <ChevronRight className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground/60" />
+        </Link>
+    )
+}
 
-            <div className="flex items-center gap-2 self-start lg:self-center">
-                {reviewBadge()}
-                <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/coach/clients?client=${checkin.client_id}`}>
-                        <ExternalLink className="h-4 w-4" />
-                    </Link>
-                </Button>
-            </div>
-        </div>
+function MetricChip({ icon: Icon, danger, children }: { icon: React.ElementType; danger?: boolean; children: React.ReactNode }) {
+    return (
+        <span className={cn('inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 tabular-nums', danger && 'text-destructive')}>
+            <Icon className="h-3 w-3" />
+            {children}
+        </span>
     )
 }

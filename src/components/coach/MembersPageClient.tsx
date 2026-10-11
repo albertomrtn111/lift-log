@@ -6,11 +6,9 @@ import { ClientWithMeta } from '@/types/coach'
 import { FormTemplate } from '@/types/forms'
 import type { ReviewTemplate } from '@/data/review-templates'
 import type { StatusFilter } from '@/data/members'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Users, UserX, UsersRound } from 'lucide-react'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import { Search } from 'lucide-react'
 import { MembersTable } from './MembersTable'
 import { AddClientButton } from './AddClientButton'
 
@@ -63,53 +61,42 @@ export function MembersPageClient({
 
     return (
         <div className="space-y-4">
-            {/* Filters */}
-            <Card className="p-3 sm:p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                    {/* Status filter tabs */}
-                    <Tabs value={statusFilter} onValueChange={handleStatusChange} className="w-full sm:w-auto">
-                        <TabsList className="grid w-full grid-cols-3 sm:w-auto">
-                            <TabsTrigger value="all" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
-                                <UsersRound className="h-4 w-4 shrink-0" />
-                                <span>Todos</span>
-                            </TabsTrigger>
-                            <TabsTrigger value="active" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
-                                <Users className="h-4 w-4 shrink-0" />
-                                <span>Activos</span>
-                            </TabsTrigger>
-                            <TabsTrigger value="inactive" className="gap-1.5 px-2 sm:gap-2 sm:px-3">
-                                <UserX className="h-4 w-4 shrink-0" />
-                                <span>Inactivos</span>
-                            </TabsTrigger>
-                        </TabsList>
-                    </Tabs>
-
-                    <div className="flex min-w-0 flex-1 gap-2">
-                        {/* Search */}
-                        <form onSubmit={handleSearchSubmit} className="flex min-w-0 flex-1 gap-2">
-                            <div className="relative min-w-0 flex-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    type="search"
-                                    enterKeyHint="search"
-                                    placeholder="Buscar por nombre o email..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="pl-9"
-                                />
-                            </div>
-                            {search && (
-                                <Button type="button" variant="ghost" size="sm" onClick={handleSearchClear} className="h-10 shrink-0 px-2 sm:px-3">
-                                    Limpiar
-                                </Button>
-                            )}
-                        </form>
-
-                        {/* Add client button */}
-                        <AddClientButton coachId={coachId} formTemplates={formTemplates} />
-                    </div>
+            {/* Filtros */}
+            <div className="space-y-2.5">
+                <div className="flex min-w-0 gap-2">
+                    <form onSubmit={handleSearchSubmit} className="relative min-w-0 flex-1">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            enterKeyHint="search"
+                            placeholder="Buscar por nombre o email"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="h-10 rounded-full border-border/70 bg-muted/40 pl-9 pr-16"
+                        />
+                        {search && (
+                            <button
+                                type="button"
+                                onClick={handleSearchClear}
+                                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                                Limpiar
+                            </button>
+                        )}
+                    </form>
+                    <AddClientButton coachId={coachId} formTemplates={formTemplates} />
                 </div>
-            </Card>
+                <ClientTabSwitcher
+                    className="sm:max-w-md"
+                    value={statusFilter}
+                    onValueChange={(value) => handleStatusChange(value)}
+                    options={[
+                        { value: 'all', label: 'Todos' },
+                        { value: 'active', label: 'Activos' },
+                        { value: 'inactive', label: 'Inactivos' },
+                    ]}
+                />
+            </div>
 
             {/* Table */}
             <MembersTable clients={clients} statusFilter={statusFilter} coachId={coachId} formTemplates={formTemplates} reviewTemplates={reviewTemplates} />

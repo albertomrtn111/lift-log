@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MessageCircle, Search } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { MessageCircle, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
+import { initialsOf } from '@/components/chat/chat-utils'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
@@ -161,163 +163,143 @@ export function MessagesPageClient({
     }, [])
 
     return (
-        <div className="h-full min-h-0 overflow-hidden bg-card lg:h-[calc(100vh-11.5rem)] lg:min-h-[620px] lg:rounded-2xl lg:border lg:border-border lg:shadow-sm">
-            <div className="grid h-full min-h-0 lg:grid-cols-[360px_1fr]">
-                <aside
-                    aria-label="Conversaciones"
-                    className={cn(
-                        'flex min-h-0 flex-col bg-card lg:border-r lg:border-border',
-                        selectedConversation && 'hidden lg:flex'
-                    )}
-                >
-                    <div className="shrink-0 border-b border-border p-3 lg:p-4">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={query}
-                                onChange={(event) => setQuery(event.target.value)}
-                                placeholder="Buscar atleta"
-                                aria-label="Buscar conversación"
-                                className="h-10 rounded-xl bg-muted/30 pl-9"
-                            />
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 rounded-xl bg-muted/60 p-1" role="group" aria-label="Filtrar conversaciones">
-                            <button
-                                type="button"
-                                onClick={() => setFilter('all')}
-                                aria-pressed={filter === 'all'}
-                                className={cn(
-                                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
-                                    filter === 'all' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                                )}
-                            >
-                                Todos
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setFilter('unread')}
-                                aria-pressed={filter === 'unread'}
-                                className={cn(
-                                    'flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
-                                    filter === 'unread' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                                )}
-                            >
-                                No leídos
-                                {unreadConversationCount > 0 && (
-                                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
-                                        {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
-                    </div>
+        <div className="flex h-full min-h-0 flex-col lg:block lg:h-auto">
+            <CoachPageHeader
+                static
+                eyebrow="Operativa"
+                title="Mensajes"
+                description="Conversaciones con tus atletas"
+                className={cn('lg:sticky lg:top-0', selectedConversation && 'max-lg:hidden')}
+            />
 
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                        {filteredConversations.length === 0 ? (
-                            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                                <MessageCircle className="mb-3 h-10 w-10 opacity-30" />
-                                {filter === 'unread' && !query
-                                    ? 'No tienes mensajes pendientes.'
-                                    : 'No hay conversaciones con ese filtro.'}
+            <div className="min-h-0 flex-1 lg:px-8 lg:pt-6">
+                <div className="h-full min-h-0 overflow-hidden bg-card lg:h-[calc(100dvh-12rem)] lg:min-h-[460px] lg:rounded-2xl lg:border lg:border-border/70 lg:shadow-sm">
+                    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)]">
+                        <aside
+                            aria-label="Conversaciones"
+                            className={cn(
+                                'flex min-h-0 min-w-0 flex-col bg-card lg:border-r lg:border-border/60',
+                                selectedConversation && 'hidden lg:flex'
+                            )}
+                        >
+                            <div className="shrink-0 space-y-2 border-b border-border/60 p-3 lg:p-4">
+                                <div className="relative">
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        value={query}
+                                        onChange={(event) => setQuery(event.target.value)}
+                                        placeholder="Buscar atleta"
+                                        aria-label="Buscar conversación"
+                                        className="h-10 rounded-full border-border/70 bg-muted/40 pl-9"
+                                    />
+                                </div>
+                                <ClientTabSwitcher
+                                    value={filter}
+                                    onValueChange={setFilter}
+                                    options={[
+                                        { value: 'all', label: 'Todos' },
+                                        { value: 'unread', label: unreadConversationCount > 0 ? `No leídos · ${unreadConversationCount}` : 'No leídos' },
+                                    ]}
+                                />
                             </div>
-                        ) : (
-                            filteredConversations.map(conversation => {
-                                const isActive = conversation.clientId === selectedClientId
-                                const preview = getPreview(conversation.lastMessage)
-                                const isBlocked = !conversation.authUserId
 
-                                return (
-                                    <button
-                                        key={conversation.clientId}
-                                        type="button"
-                                        onClick={() => handleSelectConversation(conversation.clientId)}
-                                        aria-current={isActive ? 'true' : undefined}
-                                        className={cn(
-                                            'flex min-h-[72px] w-full items-start gap-3 border-b border-border/60 px-4 py-3 text-left transition-colors',
-                                            'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-                                            isActive && 'bg-primary/10'
-                                        )}
-                                    >
-                                        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                                            {conversation.clientName.charAt(0).toUpperCase()}
-                                            {conversation.status === 'active' && (
-                                                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
-                                            )}
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                                {filteredConversations.length === 0 ? (
+                                    <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
+                                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                                            <MessageCircle className="h-6 w-6 text-muted-foreground" />
                                         </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <p className={cn(
-                                                    'truncate text-sm text-foreground',
-                                                    conversation.unreadCount > 0 ? 'font-bold' : 'font-semibold'
-                                                )}>
-                                                    {conversation.clientName}
-                                                </p>
-                                                {conversation.lastMessage ? (
-                                                    <span className={cn(
-                                                        'shrink-0 text-[11px]',
-                                                        conversation.unreadCount > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'
-                                                    )}>
-                                                        {formatConversationTime(conversation.lastMessage.created_at)}
-                                                    </span>
-                                                ) : null}
-                                            </div>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                <p className={cn(
-                                                    'min-w-0 flex-1 truncate text-xs',
-                                                    conversation.unreadCount > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
-                                                )}>
-                                                    {preview}
-                                                </p>
-                                                {conversation.unreadCount > 0 ? (
-                                                    <Badge className="h-5 min-w-[20px] rounded-full border-0 px-1.5 text-[10px]">
-                                                        {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-                                                    </Badge>
-                                                ) : null}
-                                            </div>
-                                            {isBlocked ? (
-                                                <p className="mt-1 text-[11px] text-amber-600">
-                                                    Pendiente de registro
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                    </button>
-                                )
-                            })
-                        )}
+                                        <p className="text-sm font-semibold">
+                                            {filter === 'unread' && !query ? 'Estás al día' : 'Sin resultados'}
+                                        </p>
+                                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
+                                            {filter === 'unread' && !query
+                                                ? 'No tienes mensajes pendientes de leer.'
+                                                : 'No hay conversaciones con ese filtro.'}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <ul className="divide-y divide-border/50">
+                                        {filteredConversations.map(conversation => {
+                                            const isActive = conversation.clientId === selectedClientId
+                                            const unread = conversation.unreadCount > 0
+                                            const isBlocked = !conversation.authUserId
+
+                                            return (
+                                                <li key={conversation.clientId}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSelectConversation(conversation.clientId)}
+                                                        aria-current={isActive ? 'true' : undefined}
+                                                        className={cn(
+                                                            'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
+                                                            'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                                                            isActive && 'bg-primary/[0.07] lg:shadow-[inset_3px_0_0_hsl(var(--primary))]'
+                                                        )}
+                                                    >
+                                                        <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                                                            {initialsOf(conversation.clientName, 'A')}
+                                                            {conversation.status === 'active' && (
+                                                                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
+                                                            )}
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="flex items-baseline justify-between gap-3">
+                                                                <span className={cn('truncate text-[15px] text-foreground', unread ? 'font-bold' : 'font-semibold')}>
+                                                                    {conversation.clientName}
+                                                                </span>
+                                                                {conversation.lastMessage && (
+                                                                    <span className={cn('shrink-0 text-[11px] tabular-nums', unread ? 'font-semibold text-primary' : 'text-muted-foreground')}>
+                                                                        {formatConversationTime(conversation.lastMessage.created_at)}
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                            <span className="mt-0.5 flex items-center gap-2">
+                                                                <span className={cn('min-w-0 flex-1 truncate text-[13px]', unread ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                                                                    {isBlocked ? <span className="text-amber-600 dark:text-amber-400">Pendiente de registro</span> : getPreview(conversation.lastMessage)}
+                                                                </span>
+                                                                {unread && (
+                                                                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                                                                        {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </span>
+                                                    </button>
+                                                </li>
+                                            )
+                                        })}
+                                    </ul>
+                                )}
+                            </div>
+                        </aside>
+
+                        <main className={cn('min-h-0 min-w-0', !selectedConversation && 'hidden lg:block')}>
+                            {selectedConversation ? (
+                                <ConversationPanel
+                                    coachId={coachId}
+                                    clientId={selectedConversation.clientId}
+                                    clientName={selectedConversation.clientName}
+                                    clientEmail={selectedConversation.clientEmail}
+                                    isBlocked={!selectedConversation.authUserId}
+                                    onBack={handleBackToInbox}
+                                    onUnreadChange={handleUnreadChange}
+                                    onLastMessageChange={handleLastMessageChange}
+                                />
+                            ) : (
+                                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+                                        <MessageCircle className="h-7 w-7 text-primary" />
+                                    </div>
+                                    <h2 className="text-lg font-semibold">Selecciona una conversación</h2>
+                                    <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                                        Elige un atleta del listado para ver el historial y responder desde aquí.
+                                    </p>
+                                </div>
+                            )}
+                        </main>
                     </div>
-                </aside>
-
-                <main className={cn('min-h-0', !selectedConversation && 'hidden lg:block')}>
-                    {selectedConversation ? (
-                        <div className="flex h-full min-h-0 flex-col">
-                            <button
-                                type="button"
-                                onClick={handleBackToInbox}
-                                className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3 text-left text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:hidden"
-                            >
-                                <ArrowLeft className="h-5 w-5" />
-                                Conversaciones
-                            </button>
-                            <ConversationPanel
-                                coachId={coachId}
-                                clientId={selectedConversation.clientId}
-                                clientName={selectedConversation.clientName}
-                                clientEmail={selectedConversation.clientEmail}
-                                isBlocked={!selectedConversation.authUserId}
-                                onUnreadChange={handleUnreadChange}
-                                onLastMessageChange={handleLastMessageChange}
-                            />
-                        </div>
-                    ) : (
-                        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                            <MessageCircle className="mb-4 h-14 w-14 text-primary/30" />
-                            <h2 className="text-lg font-semibold">Selecciona una conversación</h2>
-                            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                                Elige un atleta del listado para ver el historial y responder desde aquí.
-                            </p>
-                        </div>
-                    )}
-                </main>
+                </div>
             </div>
         </div>
     )

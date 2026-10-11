@@ -5,14 +5,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { TrainingTemplate } from '@/types/templates'
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -31,7 +23,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
 import { MoreHorizontal, Edit, Trash2, FileText, Loader2, Dumbbell, Heart } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { deleteTemplate } from '../../../../app/(coach)/coach/templates/actions'
@@ -73,41 +64,29 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
 
     if (templates.length === 0) {
         return (
-            <Card className="p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                    <FileText className="h-8 w-8 text-muted-foreground" />
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-14 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                    <FileText className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">No tienes plantillas</h3>
-                <p className="text-muted-foreground max-w-sm mb-6">
-                    Crea tu primera plantilla para empezar a organizar tus entrenamientos y reutilizarlos con múltiples clientes.
+                <h3 className="text-sm font-semibold">No tienes plantillas</h3>
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                    Crea tu primera plantilla para reutilizar entrenamientos con varios atletas.
                 </p>
-            </Card>
+            </div>
         )
     }
 
     return (
         <>
-            <Card>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-[300px]">Nombre</TableHead>
-                            <TableHead>Etiquetas</TableHead>
-                            <TableHead className="hidden md:table-cell">Descripción</TableHead>
-                            <TableHead className="w-[100px] text-right">Acciones</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {templates.map((template) => (
-                            <TemplateRow
-                                key={template.id}
-                                template={template}
-                                onDeleteClick={() => setTemplateToDelete(template)}
-                            />
-                        ))}
-                    </TableBody>
-                </Table>
-            </Card>
+            <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+                {templates.map((template) => (
+                    <TemplateRow
+                        key={template.id}
+                        template={template}
+                        onDeleteClick={() => setTemplateToDelete(template)}
+                    />
+                ))}
+            </ul>
 
             <AlertDialog open={!!templateToDelete} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
                 <AlertDialogContent>
@@ -144,85 +123,79 @@ function TemplateRow({
     template: TrainingTemplate
     onDeleteClick: () => void
 }) {
+    const isCardio = template.type === 'cardio'
+    const tags = template.tags ?? []
+
+    const body = (
+        <>
+            <span className={cn(
+                'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                isCardio ? 'bg-rose-500/10 text-rose-500' : 'bg-primary/10 text-primary'
+            )}>
+                {isCardio ? <Heart className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-semibold text-foreground">{template.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">{template.description || 'Sin descripción'}</span>
+                {tags.length > 0 && (
+                    <span className="mt-1.5 flex flex-wrap gap-1">
+                        {tags.slice(0, 3).map((tag, index) => (
+                            <Badge key={index} variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">{tag}</Badge>
+                        ))}
+                        {tags.length > 3 && (
+                            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">+{tags.length - 3}</Badge>
+                        )}
+                    </span>
+                )}
+            </span>
+        </>
+    )
+
     return (
-        <TableRow>
-            <TableCell className="font-medium">
-                <div className="flex items-center gap-3">
-                    <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center bg-muted",
-                        template.type === 'cardio' ? "text-red-500 bg-red-500/10" : "text-blue-500 bg-blue-500/10"
-                    )}>
-                        {template.type === 'cardio' ? <Heart className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
-                    </div>
-                    <div className="flex flex-col">
-                        <span>{template.name}</span>
-                        <span className="text-xs text-muted-foreground md:hidden truncate max-w-[200px]">
-                            {template.description}
-                        </span>
-                    </div>
-                </div>
-            </TableCell>
-            <TableCell>
-                <div className="flex flex-wrap gap-1">
-                    {template.tags && template.tags.length > 0 ? (
-                        template.tags.slice(0, 3).map((tag, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">
-                                {tag}
-                            </Badge>
-                        ))
-                    ) : (
-                        <span className="text-muted-foreground text-sm italic">Sin etiquetas</span>
-                    )}
-                    {template.tags && template.tags.length > 3 && (
-                        <Badge variant="outline" className="text-xs">
-                            +{template.tags.length - 3}
-                        </Badge>
-                    )}
-                </div>
-            </TableCell>
-            <TableCell className="hidden md:table-cell text-muted-foreground max-w-[300px]">
-                <p className="truncate" title={template.description || ''}>
-                    {template.description || '—'}
-                </p>
-            </TableCell>
-            <TableCell className="text-right">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Abrir menú</span>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        {template.type === 'cardio' ? (
-                            <CardioTemplateDialog
-                                template={template}
-                                trigger={
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
-                                        <Edit className="mr-2 h-4 w-4" />
-                                        Editar
-                                    </DropdownMenuItem>
-                                }
-                            />
-                        ) : (
-                            <DropdownMenuItem asChild>
-                                <Link href={`/coach/templates/${template.id}`} className="cursor-pointer">
+        <li className="flex items-center gap-2 pr-2 transition-colors hover:bg-muted/40">
+            {isCardio ? (
+                <div className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4">{body}</div>
+            ) : (
+                <Link href={`/coach/templates/${template.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 no-underline">
+                    {body}
+                </Link>
+            )}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Abrir menú</span>
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    {isCardio ? (
+                        <CardioTemplateDialog
+                            template={template}
+                            trigger={
+                                <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
                                     <Edit className="mr-2 h-4 w-4" />
                                     Editar
-                                </Link>
-                            </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                            className="text-destructive focus:text-destructive cursor-pointer"
-                            onClick={onDeleteClick}
-                        >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Eliminar
+                                </DropdownMenuItem>
+                            }
+                        />
+                    ) : (
+                        <DropdownMenuItem asChild>
+                            <Link href={`/coach/templates/${template.id}`} className="cursor-pointer">
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                            </Link>
                         </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </TableCell>
-        </TableRow>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        className="text-destructive focus:text-destructive cursor-pointer"
+                        onClick={onDeleteClick}
+                    >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Eliminar
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </li>
     )
 }

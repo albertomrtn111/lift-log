@@ -205,7 +205,7 @@ function DroppableDay({ dateStr, isOver, children }: { dateStr: string; isOver?:
         <div
             ref={setNodeRef}
             className={cn(
-                "flex-1 space-y-2 overflow-y-auto custom-scrollbar transition-colors rounded-lg min-h-[80px]",
+                "flex-1 space-y-2 overflow-y-auto custom-scrollbar transition-colors rounded-lg xl:min-h-[80px] [&:empty]:max-xl:hidden",
                 over && "bg-primary/10 ring-2 ring-primary/30 ring-inset"
             )}
         >
@@ -646,7 +646,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                 {/* Weekly Grid */}
                 {viewMode === 'week' && (
                     <TooltipProvider delayDuration={200}>
-                    <div className="grid grid-cols-1 xl:grid-cols-7 gap-4 h-full min-h-[600px]">
+                    <div className="grid h-full grid-cols-1 gap-2.5 xl:min-h-[600px] xl:grid-cols-7 xl:gap-4">
                         {weekDays.map((day) => {
                             const items = getItemsForDay(day)
                             const isTodayDate = isToday(day)
@@ -657,14 +657,18 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             return (
                                 <div key={day.toISOString()} className={cn(
                                     "flex flex-col gap-3 rounded-2xl border p-3 transition-colors",
+                                    items.length === 0 && "max-xl:gap-0 max-xl:py-2",
                                     dayContext?.state === 'empty' && "border-dashed bg-muted/20",
                                     dayContext?.state === 'scheduled' && "bg-card",
                                     isTodayDate && "ring-2 ring-primary bg-primary/5"
                                 )}>
                                     {/* Day Header */}
-                                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 border-b pb-3">
-                                        <div className="min-w-0 space-y-2">
-                                            <div className="flex items-center gap-2">
+                                    <div className={cn(
+                                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 border-b pb-3 xl:items-start",
+                                        items.length === 0 && "max-xl:border-0 max-xl:pb-0"
+                                    )}>
+                                        <div className="flex min-w-0 items-center gap-2 xl:block xl:space-y-2">
+                                            <div className="flex items-center gap-2 max-xl:w-9">
                                                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                                                     {format(day, 'EEE', { locale: es })}
                                                 </span>
@@ -672,17 +676,19 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                             <div className="flex min-w-0 items-center gap-2">
                                                 <span
                                                     className={cn(
-                                                        "inline-flex h-10 min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl bg-background/80 px-2 text-2xl font-bold leading-none tabular-nums",
+                                                        "inline-flex h-9 min-w-[2.5rem] shrink-0 items-center justify-center rounded-xl bg-background/80 px-2 text-xl font-bold leading-none tabular-nums xl:h-10 xl:min-w-[2.75rem] xl:text-2xl",
                                                         isTodayDate && "bg-primary text-primary-foreground"
                                                     )}
                                                 >
                                                     {format(day, 'd')}
                                                 </span>
                                                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                                                    {items.length > 0 && (
+                                                    {items.length > 0 ? (
                                                         <Badge variant="outline" className="shrink-0 bg-background/80 whitespace-nowrap">
                                                             {items.length} ses.
                                                         </Badge>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground xl:hidden">Libre</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -729,7 +735,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                             <>
                                                 {items.length === 0 && (
                                                     <div className={cn(
-                                                        "flex min-h-[100px] items-start justify-start rounded-xl border p-3",
+                                                        "hidden min-h-[100px] items-start justify-start rounded-xl border p-3 xl:flex",
                                                         "border-dashed border-border/40 bg-muted/10"
                                                     )}>
                                                     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { usePathname } from 'next/navigation'
 import { Loader2, Send, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,8 @@ const SUGGESTIONS = [
 ]
 
 export function CoachAssistantWidget() {
+    const pathname = usePathname()
+    const hideLauncher = pathname?.startsWith('/coach/messages')
     const [open, setOpen] = useState(false)
     const [loaded, setLoaded] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -115,7 +118,7 @@ export function CoachAssistantWidget() {
 
     return (
         <>
-            {/* Botón flotante, visible en todo el portal del coach */}
+            {/* Botón flotante en todo el portal del coach salvo Mensajes, donde taparía el botón de enviar */}
             <button
                 type="button"
                 onClick={() => setOpen(true)}
@@ -124,7 +127,8 @@ export function CoachAssistantWidget() {
                     'fixed bottom-[calc(var(--app-bottom-nav-height)+var(--safe-area-bottom)+0.75rem)] right-[calc(var(--safe-area-right)+1rem)] z-40 lg:bottom-6 lg:right-6',
                     'flex h-13 w-13 items-center justify-center rounded-full p-3.5',
                     'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg',
-                    'transition-transform hover:scale-105 active:scale-95'
+                    'transition-transform hover:scale-105 active:scale-95',
+                    hideLauncher && 'hidden'
                 )}
             >
                 <Sparkles className="h-6 w-6" />

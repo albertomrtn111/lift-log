@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
+import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { useRouter } from 'next/navigation'
 import type { BillingClientOption, BillingDashboardData, PaymentRecord } from '@/types/billing'
 import {
@@ -396,77 +398,64 @@ export default function BillingPageClient({
     ])).sort((a, b) => a - b)
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div className="flex items-start gap-3">
-                    <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-                        <Receipt className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Facturación</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Gestiona cobros, histórico y lectura anual del negocio desde una misma vista.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="flex items-center space-x-1 rounded-xl bg-muted/50 p-1">
-                        <Button variant={viewMode === 'monthly' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('monthly')}>
-                            Mensual
-                        </Button>
-                        <Button variant={viewMode === 'annual' ? 'secondary' : 'ghost'} size="sm" onClick={() => handleViewModeChange('annual')}>
-                            Anual
-                        </Button>
-                    </div>
-
-                    <div className="flex items-center gap-2 rounded-xl border bg-background px-2 py-2 shadow-sm">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={viewMode === 'monthly' ? handlePrevMonth : handlePrevYear} disabled={isLoading}>
+        <div className="min-h-screen pb-20 lg:pb-6">
+            <CoachPageHeader
+                eyebrow="Gestión"
+                title="Facturación"
+                description="Cobros del mes, histórico y lectura anual del negocio."
+            >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <ClientTabSwitcher
+                        className="sm:w-52"
+                        value={viewMode}
+                        onValueChange={handleViewModeChange}
+                        options={[
+                            { value: 'monthly', label: 'Mensual' },
+                            { value: 'annual', label: 'Anual' },
+                        ]}
+                    />
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={viewMode === 'monthly' ? handlePrevMonth : handlePrevYear} disabled={isLoading} aria-label="Periodo anterior">
                             <ChevronLeft className="h-4 w-4" />
                         </Button>
-
-                        <div className="flex items-center gap-2">
-                            {viewMode === 'monthly' && (
-                                <Select value={String(period.month)} onValueChange={handleMonthSelect}>
-                                    <SelectTrigger className="h-9 w-[150px]">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {FULL_MONTHS.map((monthName, index) => (
-                                            <SelectItem key={monthName} value={String(index + 1)}>
-                                                {monthName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-
-                            <Select value={String(period.year)} onValueChange={handleYearSelect}>
-                                <SelectTrigger className="h-9 w-[110px]">
+                        {viewMode === 'monthly' && (
+                            <Select value={String(period.month)} onValueChange={handleMonthSelect}>
+                                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-full sm:w-[140px] sm:flex-none">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {yearOptions.map((yearOption) => (
-                                        <SelectItem key={yearOption} value={String(yearOption)}>
-                                            {yearOption}
+                                    {FULL_MONTHS.map((monthName, index) => (
+                                        <SelectItem key={monthName} value={String(index + 1)}>
+                                            {monthName}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={viewMode === 'monthly' ? handleNextMonth : handleNextYear} disabled={isLoading}>
+                        )}
+                        <Select value={String(period.year)} onValueChange={handleYearSelect}>
+                            <SelectTrigger className={cn('h-9 rounded-full', viewMode === 'monthly' ? 'w-[92px] shrink-0' : 'min-w-0 flex-1 sm:w-[110px] sm:flex-none')}>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {yearOptions.map((yearOption) => (
+                                    <SelectItem key={yearOption} value={String(yearOption)}>
+                                        {yearOption}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={viewMode === 'monthly' ? handleNextMonth : handleNextYear} disabled={isLoading} aria-label="Periodo siguiente">
                             <ChevronRight className="h-4 w-4" />
                         </Button>
+                        <Button variant="outline" size="sm" className="h-9 shrink-0 rounded-full px-3" onClick={handleToday} disabled={isLoading}>
+                            Hoy
+                        </Button>
                     </div>
-
-                    <Button variant="outline" size="sm" onClick={handleToday} disabled={isLoading}>
-                        Hoy
-                    </Button>
                 </div>
-            </div>
+            </CoachPageHeader>
 
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="space-y-6 px-4 pt-4 lg:px-8 lg:pt-6">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-4">
                 {viewMode === 'monthly' ? (
                     <>
                         <BillingKpiCard icon={CheckCircle2} label="Cobrado" value={`${data.summary.totalCollected.toFixed(2)}€`} tone="success" />
@@ -515,10 +504,10 @@ export default function BillingPageClient({
 
             {viewMode === 'monthly' ? (
                 <Card className="rounded-2xl border border-border shadow-sm">
-                    <CardHeader className="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between">
+                    <CardHeader className="flex flex-col gap-3 border-b p-4 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                            <CardTitle>Pagos del periodo</CardTitle>
-                            <CardDescription>
+                            <CardTitle className="text-lg">Pagos del periodo</CardTitle>
+                            <CardDescription className="hidden sm:block">
                                 Gestiona cobros, histórico y estado de los registros visibles del mes.
                             </CardDescription>
                         </div>
@@ -539,7 +528,7 @@ export default function BillingPageClient({
                             </Button>
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-4 p-5">
+                    <CardContent className="space-y-4 p-3.5 sm:p-5">
                         {/* Progreso de cobro del mes */}
                         {(data.summary.totalCollected + data.summary.totalPending) > 0 && (
                             <div className="rounded-xl border bg-muted/20 p-3.5">
@@ -607,7 +596,53 @@ export default function BillingPageClient({
                                 </p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto rounded-xl border">
+                            <>
+                            {/* Móvil: lista; escritorio: tabla completa */}
+                            <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border md:hidden">
+                                {filteredRecords.map((record) => (
+                                    <li key={record.id} className="space-y-2 px-3.5 py-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-[15px] font-semibold">{record.full_name}</p>
+                                                <p className="truncate text-xs text-muted-foreground">
+                                                    {record.payment_method || 'Sin método'}
+                                                    {record.paid_at ? ` · cobrado ${new Date(record.paid_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}` : ''}
+                                                </p>
+                                            </div>
+                                            <p className="shrink-0 text-lg font-bold tabular-nums">{Number(record.amount).toFixed(2)}€</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Select
+                                                value={record.status}
+                                                onValueChange={(value: PaymentRecord['status']) => handleStatusChange(record.id, value, record.status, record.payment_method || 'Transferencia')}
+                                            >
+                                                <SelectTrigger className={cn('h-9 flex-1 rounded-full border text-xs font-semibold shadow-none', STATUS_CONFIG[record.status].color)}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="pending">Pendiente</SelectItem>
+                                                    <SelectItem value="paid">Pagado</SelectItem>
+                                                    <SelectItem value="overdue">Vencido</SelectItem>
+                                                    <SelectItem value="waived">Exento</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {(record.status === 'pending' || record.status === 'overdue') && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-9 shrink-0 gap-1.5 rounded-full border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+                                                    onClick={() => handleStatusChange(record.id, 'paid', record.status, record.payment_method || 'Transferencia')}
+                                                >
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                    Cobrado
+                                                </Button>
+                                            )}
+                                        </div>
+                                        {record.notes && <p className="line-clamp-2 text-xs text-muted-foreground">{record.notes}</p>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="hidden overflow-x-auto rounded-xl border md:block">
                                 <table className="w-full min-w-[900px] text-sm">
                                     <thead className="border-b bg-muted/40 text-left">
                                         <tr>
@@ -672,6 +707,7 @@ export default function BillingPageClient({
                                     </tbody>
                                 </table>
                             </div>
+                            </>
                         )}
                     </CardContent>
                 </Card>
@@ -886,6 +922,7 @@ export default function BillingPageClient({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            </div>
         </div>
     )
 }
@@ -908,15 +945,15 @@ function BillingKpiCard({
     }[tone]
 
     return (
-        <Card className="rounded-2xl border border-border shadow-sm">
-            <CardContent className="p-5">
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <div className={cn('rounded-xl p-2', toneMap)}>
-                        <Icon className="h-4 w-4" />
+        <Card className="rounded-2xl border border-border/70 shadow-sm">
+            <CardContent className="p-3.5 sm:p-5">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground sm:text-sm">
+                    <div className={cn('rounded-lg p-1.5 sm:rounded-xl sm:p-2', toneMap)}>
+                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    {label}
+                    <span className="truncate">{label}</span>
                 </div>
-                <div className="mt-4 text-3xl font-bold tracking-tight">{value}</div>
+                <div className="mt-2.5 text-2xl font-bold tabular-nums tracking-tight sm:mt-4 sm:text-3xl">{value}</div>
             </CardContent>
         </Card>
     )
