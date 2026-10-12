@@ -161,22 +161,22 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
 
     return (
         <>
-            <Card className="p-4 sm:p-6">
-                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-semibold text-lg">Dieta por opciones</h3>
-                    <div className="flex gap-2 flex-wrap">
+            <Card className="rounded-2xl border-border/70 p-4 sm:p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Dieta por opciones</h3>
+                    <div className="flex flex-wrap gap-2">
                         <AINutritionDialog
                             coachId={coachId}
                             clientId={clientId}
                             nutritionType="options_diet"
                             trigger={
-                                <AIActionButton size="sm">IA Dieta</AIActionButton>
+                                <AIActionButton size="sm" className="rounded-full">IA Dieta</AIActionButton>
                             }
                         />
                         {activePlan && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm">
+                                    <Button variant="outline" size="sm" className="rounded-full" aria-label="Acciones del plan activo">
                                         <MoreVertical className="h-4 w-4" />
                                     </Button>
                                 </DropdownMenuTrigger>
@@ -199,9 +199,9 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
                         {/* Nueva dieta dropdown: manual or CSV import */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button size="sm">
+                                <Button size="sm" variant="outline" className="rounded-full">
                                     <Plus className="h-4 w-4 mr-1" />
-                                    Nueva dieta
+                                    Nueva
                                     <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />
                                 </Button>
                             </DropdownMenuTrigger>
@@ -323,22 +323,21 @@ function ActivePlanView({ plan, structure }: { plan: DietPlan; structure: DietPl
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="bg-success/10 text-success border-0">
-                    {plan.name}
-                </Badge>
-                <Badge variant="outline">
-                    Desde: {format(new Date(plan.effective_from), 'dd MMM yyyy', { locale: es })}
-                </Badge>
-                {plan.effective_to && (
-                    <Badge variant="outline">
-                        Hasta: {format(new Date(plan.effective_to), 'dd MMM yyyy', { locale: es })}
+            <div className="rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="min-w-0 font-semibold leading-snug">{plan.name}</h4>
+                    <Badge
+                        variant="secondary"
+                        className={plan.status === 'active' ? 'border-0 bg-success/10 text-success' : undefined}
+                    >
+                        {/* El badge depende solo del estado */}
+                        {plan.status === 'active' ? 'Activo' : plan.status === 'draft' ? 'Borrador' : 'Archivado'}
                     </Badge>
-                )}
-                <Badge variant={plan.status === 'active' ? 'default' : 'secondary'}>
-                    {/* FIX: Badge depends only on status */}
-                    {plan.status === 'active' ? 'Activo' : plan.status === 'draft' ? 'Borrador' : 'Archivado'}
-                </Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                    Desde el {format(new Date(plan.effective_from), "d 'de' MMMM yyyy", { locale: es })}
+                    {plan.effective_to && ` · hasta el ${format(new Date(plan.effective_to), "d 'de' MMMM yyyy", { locale: es })}`}
+                </p>
             </div>
 
             {dayTypes.length > 1 ? (

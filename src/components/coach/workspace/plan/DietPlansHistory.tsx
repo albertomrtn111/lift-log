@@ -6,13 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table'
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -23,7 +22,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Eye, Copy, AlertCircle, ChevronDown, ChevronUp, History, CheckCircle2, Trash2, Loader2 } from 'lucide-react'
+import { Eye, Copy, AlertCircle, ChevronDown, ChevronUp, History, CheckCircle2, Trash2, Loader2, MoreHorizontal } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useDietPlans, useDuplicateDietPlan, useActivateDietPlan, useDeleteDietPlan } from '@/hooks/useDietOptions'
@@ -134,7 +133,7 @@ export function DietPlansHistory({ coachId, clientId, activePlanId, onlyArchived
 
     return (
         <>
-            <Card className="p-4">
+            <Card className="rounded-2xl border-border/70 p-4">
                 {/* Header with expand/collapse */}
                 <button
                     onClick={() => setIsExpanded(!isExpanded)}
@@ -157,91 +156,59 @@ export function DietPlansHistory({ coachId, clientId, activePlanId, onlyArchived
                 {/* Collapsible content */}
                 {isExpanded && (
                     <div className="mt-4">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Nombre</TableHead>
-                                    <TableHead>Estado</TableHead>
-                                    <TableHead>Período</TableHead>
-                                    <TableHead>Modificado</TableHead>
-                                    <TableHead className="text-right">Acciones</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {sortedPlans.map(plan => (
-                                    <TableRow key={plan.id}>
-                                        <TableCell className="font-medium">{plan.name}</TableCell>
-                                        <TableCell>
-                                            <Badge variant={STATUS_VARIANTS[plan.status] || 'outline'}>
-                                                {/* FIX: Badge strictly depends on status, not effective_to */}
-                                                {plan.status === 'active'
-                                                    ? 'Activo'
-                                                    : plan.status === 'draft'
-                                                        ? 'Borrador'
-                                                        : 'Archivado'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {format(new Date(plan.effective_from), 'dd/MM/yy', { locale: es })}
-                                            {' → '}
-                                            {plan.effective_to
-                                                ? format(new Date(plan.effective_to), 'dd/MM/yy', { locale: es })
-                                                : 'Sin fecha fin'}
-                                        </TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {plan.updated_at
-                                                ? format(new Date(plan.updated_at), 'dd/MM/yy HH:mm', { locale: es })
-                                                : format(new Date(plan.created_at), 'dd/MM/yy HH:mm', { locale: es })}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1">
+                        <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70">
+                            {sortedPlans.map(plan => {
+                                const statusLabel = plan.status === 'active' ? 'Activo' : plan.status === 'draft' ? 'Borrador' : 'Archivado'
+                                const period = `${format(new Date(plan.effective_from), 'd MMM yy', { locale: es })} → ${plan.effective_to ? format(new Date(plan.effective_to), 'd MMM yy', { locale: es }) : 'sin fin'}`
+                                return (
+                                    <li key={plan.id} className="flex items-center gap-2 py-2.5 pl-3.5 pr-1.5">
+                                        <button type="button" onClick={() => setViewingPlanId(plan.id)} className="min-w-0 flex-1 text-left">
+                                            <span className="line-clamp-2 text-sm font-semibold leading-snug">{plan.name}</span>
+                                            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                                                <Badge variant={STATUS_VARIANTS[plan.status] || 'outline'} className="px-1.5 py-0 text-[10px]">{statusLabel}</Badge>
+                                                <span>{period}</span>
+                                            </span>
+                                        </button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" aria-label={`Acciones de ${plan.name}`}>
+                                                    <MoreHorizontal className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => setViewingPlanId(plan.id)}>
+                                                    <Eye className="mr-2 h-4 w-4" />
+                                                    Ver plan
+                                                </DropdownMenuItem>
                                                 {plan.status !== 'active' && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => activateMutation.mutate(plan.id)}
-                                                        disabled={activateMutation.isPending}
-                                                        title="Marcar como activo"
-                                                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                                    >
-                                                        <CheckCircle2 className="h-4 w-4" />
-                                                    </Button>
+                                                    <DropdownMenuItem onClick={() => activateMutation.mutate(plan.id)} disabled={activateMutation.isPending}>
+                                                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                                                        Marcar como activo
+                                                    </DropdownMenuItem>
                                                 )}
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => setViewingPlanId(plan.id)}
-                                                    title="Ver plan"
-                                                >
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleDuplicate(plan)}
-                                                    disabled={duplicateMutation.isPending}
-                                                    title="Duplicar como nuevo"
-                                                >
-                                                    <Copy className="h-4 w-4" />
-                                                </Button>
+                                                <DropdownMenuItem onClick={() => handleDuplicate(plan)} disabled={duplicateMutation.isPending}>
+                                                    <Copy className="mr-2 h-4 w-4" />
+                                                    Duplicar como nuevo
+                                                </DropdownMenuItem>
                                                 {plan.status === 'archived' && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => setDeletingPlanId(plan.id)}
-                                                        disabled={deleteMutation.isPending}
-                                                        title="Eliminar permanentemente"
-                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    <>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem
+                                                            onClick={() => setDeletingPlanId(plan.id)}
+                                                            disabled={deleteMutation.isPending}
+                                                            className="text-destructive focus:text-destructive"
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Eliminar
+                                                        </DropdownMenuItem>
+                                                    </>
                                                 )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </li>
+                                )
+                            })}
+                        </ul>
                     </div>
                 )}
             </Card>

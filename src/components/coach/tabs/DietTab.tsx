@@ -13,21 +13,21 @@ interface DietTabProps {
 export function DietTab({ clientId, coachId }: DietTabProps) {
     return (
         <Tabs defaultValue="macros" className="w-full">
-            <div className="mb-6 flex items-end justify-between border-b border-border/70">
+            <div className="mb-4 flex items-end justify-between border-b border-border/70">
                 <TabsList className="h-auto gap-0 border-none bg-transparent p-0">
                     <TabsTrigger
                         value="macros"
                         className="workspace-tab-trigger"
                     >
                         <Target className="h-4 w-4" />
-                        Objetivos &amp; Macros
+                        Macros y objetivos
                     </TabsTrigger>
                     <TabsTrigger
                         value="options"
                         className="workspace-tab-trigger"
                     >
                         <Utensils className="h-4 w-4" />
-                        Dieta por Opciones
+                        Dieta por opciones
                     </TabsTrigger>
                 </TabsList>
             </div>

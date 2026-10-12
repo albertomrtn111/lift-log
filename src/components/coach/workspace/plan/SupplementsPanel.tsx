@@ -34,7 +34,6 @@ import {
 import {
     FlaskConical,
     Plus,
-    Pencil,
     Trash2,
     Clock,
 } from 'lucide-react'
@@ -222,67 +221,62 @@ export function SupplementsPanel({ coachId, clientId }: SupplementsPanelProps) {
 
     return (
         <>
-            <Card className="p-4 sm:p-6">
-                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
+            <Card className="rounded-2xl border-border/70 p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-lg font-semibold">
                         <FlaskConical className="h-5 w-5 text-primary" />
-                        Suplementación activa
+                        Suplementación
+                        {supplements && supplements.length > 0 && (
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">{supplements.length}</span>
+                        )}
                     </h3>
-                    <Button size="sm" onClick={handleCreate} className="w-full sm:w-auto">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Añadir suplemento
+                    <Button size="sm" variant="outline" onClick={handleCreate} className="shrink-0 rounded-full">
+                        <Plus className="mr-1 h-4 w-4" />
+                        Añadir
                     </Button>
                 </div>
 
                 {supplements && supplements.length > 0 ? (
-                    <div className="space-y-3">
-                        {supplements.map(s => (
-                            <div
-                                key={s.id}
-                                className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg"
-                            >
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-medium">{s.supplement_name}</span>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {s.dose_amount} {s.dose_unit} × {s.daily_doses}/día
-                                        </Badge>
-                                    </div>
-                                    {s.dose_schedule && s.dose_schedule.filter(Boolean).length > 0 && (
-                                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                            <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
-                                            {s.dose_schedule.filter(Boolean).map((time, i) => (
-                                                <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">
-                                                    {time}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {s.notes && (
-                                        <p className="text-xs text-muted-foreground mt-1">{s.notes}</p>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
+                    <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70">
+                        {supplements.map(s => {
+                            const times = (s.dose_schedule ?? []).filter(Boolean)
+                            return (
+                                <li key={s.id} className="flex items-center gap-2 pr-1.5 transition-colors hover:bg-muted/40">
+                                    <button type="button" onClick={() => handleEdit(s)} className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-3.5 text-left">
+                                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                                            <FlaskConical className="h-4 w-4" />
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-[15px] font-semibold">{s.supplement_name}</span>
+                                            <span className="block text-xs text-muted-foreground">
+                                                {s.dose_amount} {s.dose_unit} · {s.daily_doses} {s.daily_doses === 1 ? 'toma' : 'tomas'} al día
+                                            </span>
+                                            {times.length > 0 && (
+                                                <span className="mt-1 flex flex-wrap items-center gap-1">
+                                                    <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                                    {times.map((time, index) => (
+                                                        <Badge key={index} variant="outline" className="px-1.5 py-0 text-[10px] tabular-nums">
+                                                            {time.startsWith('libre') ? 'Libre' : time}
+                                                        </Badge>
+                                                    ))}
+                                                </span>
+                                            )}
+                                            {s.notes && <span className="mt-1 block text-xs text-muted-foreground">{s.notes}</span>}
+                                        </span>
+                                    </button>
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => handleEdit(s)}
-                                    >
-                                        <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                        className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                                         onClick={() => setDeleteId(s.id)}
+                                        aria-label={`Quitar ${s.supplement_name}`}
                                     >
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                </li>
+                            )
+                        })}
+                    </ul>
                 ) : (
                     <div className="text-center py-8">
                         <FlaskConical className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-30" />

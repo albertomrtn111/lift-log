@@ -262,20 +262,22 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
     )
 
     return (
-        <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-                <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-500/10">
+        <Card className="overflow-hidden rounded-2xl border-border/70">
+            <div className={cn('flex flex-wrap items-center justify-between gap-3 p-4', (editing || hasAnyThreshold || loading) && 'border-b')}>
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/10">
                         <HeartPulse className="h-4 w-4 text-rose-500" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="font-semibold">Umbrales y zonas</h3>
+                        <h3 className="font-semibold leading-tight">Umbrales y zonas</h3>
                         <p className="text-xs text-muted-foreground">
-                            La base para interpretar intensidad: FC, ritmo y potencia.
+                            {!loading && !hasAnyThreshold && !editing
+                                ? 'Sin configurar · LTHR, ritmo umbral o FTP para calcular zonas'
+                                : 'La base para interpretar intensidad: FC, ritmo y potencia.'}
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                     {needsRetest && !editing && (
                         <Badge variant="outline" className="gap-1 border-amber-500/25 bg-amber-500/10 text-amber-600">
                             <AlertTriangle className="h-3 w-3" />
@@ -283,9 +285,9 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                         </Badge>
                     )}
                     {!editing ? (
-                        <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={loading}>
+                        <Button variant="outline" size="sm" className="rounded-full" onClick={() => setEditing(true)} disabled={loading}>
                             <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                            {hasAnyThreshold ? 'Editar umbrales' : 'Configurar'}
+                            {hasAnyThreshold ? 'Editar' : 'Configurar'}
                         </Button>
                     ) : (
                         <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setForm(toForm(thresholds)) }} disabled={isSaving}>
@@ -296,7 +298,7 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                 </div>
             </div>
 
-            <div className="p-4">
+            <div className={cn('p-4', !loading && !editing && !hasAnyThreshold && 'hidden')}>
                 {loading ? (
                     <div className="flex items-center justify-center py-10">
                         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -406,14 +408,7 @@ export function AthleteThresholdsCard({ clientId }: AthleteThresholdsCardProps) 
                         </div>
                     </div>
                 ) : !hasAnyThreshold ? (
-                    <div className="py-8 text-center">
-                        <Activity className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-                        <p className="text-sm font-medium">Sin umbrales configurados</p>
-                        <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                            Configura el LTHR, ritmo umbral o FTP del atleta para calcular sus zonas de
-                            entrenamiento y poder interpretar la intensidad de sus sesiones.
-                        </p>
-                    </div>
+                    null
                 ) : (
                     <div className="space-y-5">
                         {/* Valores base */}

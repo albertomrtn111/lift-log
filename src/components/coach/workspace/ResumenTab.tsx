@@ -98,10 +98,16 @@ function diffInDays(a: Date, b: Date) {
     return Math.round((startOfLocalDay(a).getTime() - startOfLocalDay(b).getTime()) / msPerDay)
 }
 
+function formatDecimal(value: number) {
+    const isInteger = Math.abs(value - Math.round(value)) < 0.05
+    return isInteger
+        ? Math.round(value).toLocaleString('es-ES')
+        : value.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 function formatMetricValue(value: number | null, suffix = '') {
     if (value === null || Number.isNaN(value)) return '—'
-    const isInteger = Math.abs(value - Math.round(value)) < 0.05
-    return `${isInteger ? Math.round(value) : value.toFixed(1)}${suffix}`
+    return `${formatDecimal(value)}${suffix}`
 }
 
 function formatSteps(value: number | null) {
@@ -112,8 +118,7 @@ function formatSteps(value: number | null) {
 function formatDelta(value: number | null, suffix = '') {
     if (value === null || Number.isNaN(value) || value === 0) return 'Sin cambio'
     const prefix = value > 0 ? '+' : ''
-    const isInteger = Math.abs(value - Math.round(value)) < 0.05
-    return `${prefix}${isInteger ? Math.round(value) : value.toFixed(1)}${suffix}`
+    return `${prefix}${formatDecimal(value)}${suffix}`
 }
 
 function formatDeltaSteps(value: number | null) {
@@ -530,29 +535,27 @@ export function ResumenTab({
                                     Peso medio 7d
                                 </p>
                             </div>
-                            {weightSnapshot.delta !== null && (
-                                <div className={cn(
-                                    'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[10px] font-semibold',
-                                    weightSnapshot.delta < 0 && 'border-blue-500/20 bg-blue-500/10 text-blue-600',
-                                    weightSnapshot.delta > 0 && 'border-rose-500/20 bg-rose-500/10 text-rose-500',
-                                    weightSnapshot.delta === 0 && 'border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
-                                )}>
-                                    {weightSnapshot.delta < 0 ? <TrendingDown className="h-2.5 w-2.5" /> : weightSnapshot.delta > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
-                                    {weightSnapshot.delta > 0 ? '+' : ''}{weightSnapshot.delta.toFixed(1)} kg
-                                </div>
-                            )}
                         </div>
                         <p className="mt-1.5 text-lg font-semibold leading-none tracking-tight">
                             {formatMetricValue(weightSnapshot.average ?? weightSnapshot.latest, ' kg')}
                         </p>
-                        {(weightSnapshot.delta !== null || weightSnapshot.latest !== null) && (
-                            <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                                {weightSnapshot.delta !== null
-                                    ? `vs 7d previos`
-                                    : `Último: ${formatMetricValue(weightSnapshot.latest, ' kg')}`
-                                }
+                        {weightSnapshot.delta !== null ? (
+                            <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <span className={cn(
+                                    'inline-flex items-center gap-0.5 font-semibold',
+                                    weightSnapshot.delta < 0 && 'text-blue-600 dark:text-blue-400',
+                                    weightSnapshot.delta > 0 && 'text-rose-500',
+                                )}>
+                                    {weightSnapshot.delta < 0 ? <TrendingDown className="h-3 w-3" /> : weightSnapshot.delta > 0 ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                                    {formatDelta(weightSnapshot.delta, ' kg')}
+                                </span>
+                                vs 7d previos
                             </p>
-                        )}
+                        ) : weightSnapshot.latest !== null ? (
+                            <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                                Último: {formatMetricValue(weightSnapshot.latest, ' kg')}
+                            </p>
+                        ) : null}
                     </Card>
 
                     <QuickStatCard
@@ -627,7 +630,7 @@ export function ResumenTab({
                     tone="nutrition"
                     content={
                         activeMacroPlan ? (
-                            <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 {(() => {
                                     let cfg = activeMacroPlan.day_type_config as unknown
                                     if (typeof cfg === 'string') {
@@ -668,7 +671,7 @@ export function ResumenTab({
                                             />
                                             <PlanMetric
                                                 label="Pasos objetivo"
-                                                value={activeMacroPlan.steps ? activeMacroPlan.steps.toLocaleString() : 'Sin objetivo'}
+                                                value={activeMacroPlan.steps ? `${activeMacroPlan.steps.toLocaleString('es-ES')} pasos` : 'Sin objetivo'}
                                                 detail={activeMacroPlan.notes || 'Sin notas nutricionales recientes'}
                                             />
                                         </>
@@ -689,7 +692,7 @@ export function ResumenTab({
                     content={
                         activeProgram ? (
                             <div className="space-y-3">
-                                <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="grid grid-cols-2 gap-2">
                                     <PlanMetric
                                         label="Bloque activo"
                                         value={activeProgram.name}
@@ -711,7 +714,7 @@ export function ResumenTab({
                         ) : null
                     }
                     emptyCopy="Sin programa de entrenamiento activo."
-                    onView={() => onSwitchTab('progreso')}
+                    onView={() => onSwitchTab('plan:training')}
                 />
             </div>
             </section>
@@ -1164,20 +1167,20 @@ function ActivePlanCard({
                     >
                         <Icon className="h-4 w-4" />
                     </div>
-                    <div>
-                        <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             {title}
                         </p>
-                        <h3 className="mt-1 font-semibold tracking-tight">{summary}</h3>
+                        <h3 className="mt-0.5 truncate font-semibold tracking-tight">{summary}</h3>
                     </div>
                 </div>
-                <Button variant="ghost" size="sm" className="gap-1.5" onClick={onView}>
+                <Button variant="ghost" size="sm" className="shrink-0 gap-1.5 rounded-full" onClick={onView}>
                     Abrir
                     <ArrowRight className="h-4 w-4" />
                 </Button>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-3">
                 {content ?? (
                     <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
                         {emptyCopy}
@@ -1198,10 +1201,10 @@ function PlanMetric({
     detail: string
 }) {
     return (
-        <div className="rounded-xl border bg-muted/20 p-3">
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-            <p className="mt-2 break-words text-sm font-semibold">{value}</p>
-            <p className="mt-1 break-words text-sm text-muted-foreground">{detail}</p>
+        <div className="min-w-0 rounded-xl bg-muted/40 px-3 py-2.5">
+            <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
+            <p className="mt-0.5 break-words text-sm font-semibold leading-snug">{value}</p>
+            <p className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">{detail}</p>
         </div>
     )
 }
