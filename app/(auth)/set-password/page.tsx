@@ -1,149 +1,124 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { CheckCircle2, Link2Off, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Dumbbell, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { AuthHeading, AuthShell, AuthStatus } from '@/components/auth/AuthShell'
+import { AuthAlert, AuthField, PasswordInput, PasswordStrength } from '@/components/auth/AuthFields'
+import { authErrorMessage } from '@/lib/auth/auth-errors'
 
-export default function SetPasswordPage() {
+function SetPasswordInner() {
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const isReset = searchParams.get('mode') === 'reset'
+
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [checking, setChecking] = useState(true)
-    const [hasSession, setHasSession] = useState(false)
+    const [email, setEmail] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
-    const router = useRouter()
 
-    // Check for active session on mount
     useEffect(() => {
-        const checkSession = async () => {
-            const supabase = createClient()
-            const { data: { user } } = await supabase.auth.getUser()
-            setHasSession(!!user)
+        const supabase = createClient()
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            setEmail(user?.email ?? null)
             setChecking(false)
-        }
-        checkSession()
+        })
     }, [])
+
+    const mismatch = confirmPassword.length > 0 && password !== confirmPassword
 
     const handleSetPassword = async (e: React.FormEvent) => {
         e.preventDefault()
         setError(null)
-
-        // Validate
         if (password.length < 6) {
-            setError('La contraseña debe tener al menos 6 caracteres')
+            setError('La contraseña debe tener al menos 6 caracteres.')
             return
         }
-
         if (password !== confirmPassword) {
-            setError('Las contraseñas no coinciden')
+            setError('Las contraseñas no coinciden.')
             return
         }
 
         setLoading(true)
-
         try {
             const supabase = createClient()
-            const { error } = await supabase.auth.updateUser({
-                password,
-            })
-
+            const { error } = await supabase.auth.updateUser({ password })
             if (error) {
-                console.error('[SetPassword] Error:', error)
-                setError(error.message)
+                setError(authErrorMessage(error))
                 return
             }
-
             setSuccess(true)
-
-            // Redirect to app after short delay
             setTimeout(() => {
                 router.push('/')
                 router.refresh()
-            }, 2000)
-        } catch {
-            setError('Error inesperado. Por favor, inténtalo de nuevo.')
+            }, 1500)
+        } catch (err) {
+            setError(authErrorMessage(err))
         } finally {
             setLoading(false)
         }
     }
 
-    // Loading state while checking session
     if (checking) {
+        return <AuthStatus icon={Loader2} spin tone="muted" title="Comprobando el enlace…" />
+    }
+
+    if (!email) {
         return (
-            <Card className="w-full max-w-md p-8 text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mt-4">Verificando sesión...</p>
-            </Card>
+            <AuthStatus
+                icon={Link2Off}
+                tone="destructive"
+                title="Este enlace ya no sirve"
+                actions={
+                    <>
+                        <Button asChild size="lg" className="h-11 rounded-xl text-[15px] font-semibold">
+                            <Link href="/forgot-password">Pedir un enlace nuevo</Link>
+                        </Button>
+                        <Button asChild variant="ghost" className="h-10 rounded-xl">
+                            <Link href="/login">Ir a iniciar sesión</Link>
+                        </Button>
+                    </>
+                }
+            >
+                <p>Ha caducado, ya se usó o se abrió en otro navegador. Pide uno nuevo con tu email y ábrelo en este dispositivo.</p>
+            </AuthStatus>
         )
     }
 
-    // No session — invite link expired or invalid
-    if (!hasSession) {
-        return (
-            <Card className="w-full max-w-md p-8 text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto">
-                    <AlertCircle className="h-8 w-8 text-destructive" />
-                </div>
-                <h1 className="text-2xl font-bold">Enlace expirado</h1>
-                <p className="text-muted-foreground text-sm">
-                    Tu enlace de invitación ha expirado o no es válido.
-                    Solicita un nuevo enlace a tu entrenador o recupera tu contraseña.
-                </p>
-                <div className="flex flex-col gap-2 pt-2">
-                    <Button asChild className="w-full">
-                        <Link href="/login">Iniciar sesión</Link>
-                    </Button>
-                </div>
-            </Card>
-        )
-    }
-
-    // Success state
     if (success) {
         return (
-            <Card className="w-full max-w-md p-8 text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="h-8 w-8 text-success" />
-                </div>
-                <h1 className="text-2xl font-bold">¡Contraseña creada!</h1>
-                <p className="text-muted-foreground text-sm">
-                    Tu contraseña ha sido configurada correctamente. Redirigiendo a tu panel...
-                </p>
-                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Redirigiendo...
-                </div>
-            </Card>
+            <AuthStatus icon={CheckCircle2} tone="success" title="Contraseña guardada">
+                <p className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Entrando en tu cuenta…</p>
+            </AuthStatus>
         )
     }
 
-    // Set password form
     return (
-        <Card className="w-full max-w-md p-8">
-            <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                    <Dumbbell className="h-8 w-8 text-primary" />
-                </div>
-                <h1 className="text-2xl font-bold">Configura tu contraseña</h1>
-                <p className="text-muted-foreground text-sm mt-1 text-center">
-                    Crea una contraseña para poder iniciar sesión en NextTrain en el futuro.
-                </p>
-            </div>
+        <>
+            <AuthHeading
+                title={isReset ? 'Crea una contraseña nueva' : 'Crea tu contraseña'}
+                description={
+                    <>
+                        {isReset ? 'Para la cuenta ' : 'La usarás para entrar en NexTrain con '}
+                        <span className="font-semibold text-foreground">{email}</span>.
+                    </>
+                }
+            />
+            <form onSubmit={handleSetPassword} className="space-y-5">
+                {/* Ayuda a los gestores de contraseñas a asociarla al email correcto */}
+                <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
 
-            <form onSubmit={handleSetPassword} className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="password">Nueva contraseña</Label>
-                    <Input
+                <AuthField id="password" label="Nueva contraseña" hint={<PasswordStrength value={password} />}>
+                    <PasswordInput
                         id="password"
-                        type="password"
-                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        placeholder="Mínimo 6 caracteres"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -151,39 +126,38 @@ export default function SetPasswordPage() {
                         disabled={loading}
                         autoFocus
                     />
-                </div>
+                </AuthField>
 
-                <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-                    <Input
+                <AuthField id="confirmPassword" label="Repite la contraseña" hint={mismatch ? <span className="text-destructive">No coincide con la anterior.</span> : undefined}>
+                    <PasswordInput
                         id="confirmPassword"
-                        type="password"
-                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        placeholder="Escríbela otra vez"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
                         minLength={6}
                         disabled={loading}
+                        aria-invalid={mismatch}
                     />
-                </div>
+                </AuthField>
 
-                {error && (
-                    <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                        {error}
-                    </div>
-                )}
+                {error && <AuthAlert tone="error">{error}</AuthAlert>}
 
-                <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                        <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Guardando...
-                        </>
-                    ) : (
-                        'Guardar contraseña'
-                    )}
+                <Button type="submit" size="lg" className="h-11 w-full rounded-xl text-[15px] font-semibold" disabled={loading}>
+                    {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando…</> : 'Guardar y entrar'}
                 </Button>
             </form>
-        </Card>
+        </>
+    )
+}
+
+export default function SetPasswordPage() {
+    return (
+        <AuthShell>
+            <Suspense fallback={<AuthStatus icon={Loader2} spin tone="muted" title="Comprobando el enlace…" />}>
+                <SetPasswordInner />
+            </Suspense>
+        </AuthShell>
     )
 }

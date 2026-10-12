@@ -1,207 +1,118 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { PaymentRecord, BillingDashboardData, YearTotal, BillingClientOption } from '@/types/billing'
-import { getLastDayOfBillingMonth } from '@/lib/billing-period'
+import type { BillingLedgerData } from '@/types/billing'
+import { isBillable, feeOf, type LedgerClient, type LedgerRecord } from '@/lib/billing/ledger'
 
-// Re-export types so existing imports from '@/data/billing' keep working
-export type { PaymentRecord, BillingSummary, YearTotal, BillingDashboardData, BillingClientOption } from '@/types/billing'
+export type { BillingLedgerData } from '@/types/billing'
 
-// ----------------------------------------------------------------------------
-// Core Read Operations
-// ----------------------------------------------------------------------------
+/** Hoy (YYYY-MM-DD) en la zona horaria del coach */
+export function todayKeyIn(timeZone: string | null | undefined) {
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: timeZone || 'Europe/Madrid',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).format(new Date())
+    } catch {
+        return new Date().toISOString().slice(0, 10)
+    }
+}
 
-export async function getBillingDashboard(coachId: string, year: number, month: number): Promise<BillingDashboardData> {
+export async function getCoachBillingSettings(coachId: string) {
     const supabase = await createClient()
+    const { data } = await supabase
+        .from('coaches')
+        .select('timezone, currency')
+        .eq('id', coachId)
+        .maybeSingle()
+    return {
+        timeZone: (data?.timezone as string | null) || 'Europe/Madrid',
+        currency: (data?.currency as string | null) || 'EUR',
+    }
+}
 
-    // 0. Vencidos automáticos: si el periodo consultado ya pasó, los pagos que
-    // sigan "pendientes" pasan a "vencidos". Migración perezosa al navegar.
-    const now = new Date()
-    const isPastPeriod = year < now.getFullYear()
-        || (year === now.getFullYear() && month < now.getMonth() + 1)
-    if (isPastPeriod) {
-        await supabase
-            .from('payment_records')
+/**
+ * Todo lo necesario para pintar un año de facturación: atletas y registros.
+ * Los cálculos (quién debe, vencidos, previsión) los hace el motor puro en
+ * `lib/billing/ledger`, igual en servidor y cliente.
+ */
+export async function getBillingLedger(coachId: string, year: number): Promise<BillingLedgerData> {
+    const supabase = await createClient()
+    const { timeZone, currency } = await getCoachBillingSettings(coachId)
+    const today = todayKeyIn(timeZone)
+    const currentYear = Number(today.slice(0, 4))
+    const currentMonth = Number(today.slice(5, 7))
+
+    // Los pendientes de meses ya cerrados se guardan como vencidos para que el
+    // resto de la app (dashboard, avisos) los vea igual que esta pantalla.
+    if (year < currentYear) {
+        await supabase.from('payment_records')
             .update({ status: 'overdue', updated_at: new Date().toISOString() })
+            .eq('coach_id', coachId).eq('year', year).eq('status', 'pending')
+    } else if (year === currentYear && currentMonth > 1) {
+        await supabase.from('payment_records')
+            .update({ status: 'overdue', updated_at: new Date().toISOString() })
+            .eq('coach_id', coachId).eq('year', year).lt('month', currentMonth).eq('status', 'pending')
+    }
+
+    const [{ data: clients }, { data: records }, { data: previousYear }] = await Promise.all([
+        supabase
+            .from('clients')
+            .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
             .eq('coach_id', coachId)
-            .eq('year', year)
-            .eq('month', month)
-            .eq('status', 'pending')
-    }
-
-    // 1. Get active clients with payment_amount
-    const { data: clients } = await supabase
-        .from('clients')
-        .select('id, full_name, email, payment_amount')
-        .eq('coach_id', coachId)
-        .eq('status', 'active')
-        .not('payment_amount', 'is', null)
-
-    const activeClients = clients || []
-    const clientCount = activeClients.filter(c => Number(c.payment_amount) > 0).length
-    const currentMonthlyProjected = activeClients.reduce((sum, c) => sum + Number(c.payment_amount || 0), 0)
-    const annualProjected = currentMonthlyProjected * 12
-
-    // 2. Get records for the selected month/year
-    const { data: records } = await supabase
-        .from('payment_records')
-        .select(`
-            id, coach_id, client_id, year, month, amount, status, paid_at, payment_method, notes, created_at, updated_at,
-            clients ( full_name, email )
-        `)
-        .eq('coach_id', coachId)
-        .eq('year', year)
-        .eq('month', month)
-
-    const formattedRecords: PaymentRecord[] = (records || []).map((r: any) => ({
-        ...r,
-        full_name: r.clients?.full_name,
-        email: r.clients?.email,
-        clients: undefined
-    }))
-
-    // Calculate monthly summary
-    const totalCollected = formattedRecords.filter(r => r.status === 'paid').reduce((sum, r) => sum + Number(r.amount), 0)
-    const totalPending = formattedRecords.filter(r => r.status === 'pending' || r.status === 'overdue').reduce((sum, r) => sum + Number(r.amount), 0)
-
-    // 3. Get all records for the selected year to build yearTotals
-    const { data: yearRecords } = await supabase
-        .from('payment_records')
-        .select('month, amount, status')
-        .eq('coach_id', coachId)
-        .eq('year', year)
-
-    const yearTotalsMap = new Map<number, YearTotal>()
-    for (let m = 1; m <= 12; m++) {
-        yearTotalsMap.set(m, { month: m, collected: 0, pending: 0, total: 0 })
-    }
-
-    ;(yearRecords || []).forEach(r => {
-        const monthData = yearTotalsMap.get(r.month)
-        if (monthData) {
-            const amount = Number(r.amount)
-            monthData.total += amount
-            if (r.status === 'paid') monthData.collected += amount
-            if (r.status === 'pending' || r.status === 'overdue') monthData.pending += amount
-        }
-    })
-
-    const yearTotals = Array.from(yearTotalsMap.values())
-
-    // 4. Get previous year total collected
-    const { data: prevYearRecords } = await supabase
-        .from('payment_records')
-        .select('amount')
-        .eq('coach_id', coachId)
-        .eq('year', year - 1)
-        .eq('status', 'paid')
-
-    const previousYearTotal = (prevYearRecords || []).reduce((sum, r) => sum + Number(r.amount), 0)
+            .order('full_name', { ascending: true }),
+        supabase
+            .from('payment_records')
+            .select('id, client_id, year, month, amount, status, paid_at, payment_method, notes')
+            .eq('coach_id', coachId)
+            .eq('year', year),
+        supabase
+            .from('payment_records')
+            .select('amount')
+            .eq('coach_id', coachId)
+            .eq('year', year - 1)
+            .eq('status', 'paid'),
+    ])
 
     return {
-        summary: {
-            totalProjected: annualProjected,
-            totalCollected,
-            totalPending,
-            clientCount
-        },
-        records: formattedRecords,
-        yearTotals,
-        previousYearTotal
+        year,
+        today,
+        currency,
+        clients: (clients ?? []) as LedgerClient[],
+        records: (records ?? []).map(record => ({ ...record, amount: Number(record.amount) })) as LedgerRecord[],
+        previousYearCollected: (previousYear ?? []).reduce((sum, record) => sum + Number(record.amount), 0),
     }
 }
 
-export async function getAnnualComparison(coachId: string, year: number) {
-    const supabase = await createClient()
-
-    const { data: currRecords } = await supabase
-        .from('payment_records')
-        .select('amount')
-        .eq('coach_id', coachId)
-        .eq('year', year)
-        .eq('status', 'paid')
-
-    const currentYear = (currRecords || []).reduce((sum, r) => sum + Number(r.amount), 0)
-
-    const { data: prevRecords } = await supabase
-        .from('payment_records')
-        .select('amount')
-        .eq('coach_id', coachId)
-        .eq('year', year - 1)
-        .eq('status', 'paid')
-
-    const previousYear = (prevRecords || []).reduce((sum, r) => sum + Number(r.amount), 0)
-
-    let growth = 0
-    if (previousYear > 0) {
-        growth = ((currentYear - previousYear) / previousYear) * 100
-    } else if (currentYear > 0) {
-        growth = 100
-    }
-
-    return {
-        currentYear,
-        previousYear,
-        growth: Math.round(growth * 10) / 10
-    }
-}
-
-export async function listBillingClients(coachId: string): Promise<BillingClientOption[]> {
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-        .from('clients')
-        .select('id, full_name, email, status, payment_amount')
-        .eq('coach_id', coachId)
-        .order('status', { ascending: true })
-        .order('full_name', { ascending: true })
-
-    if (error || !data) return []
-
-    return data.map((client) => ({
-        id: client.id,
-        full_name: client.full_name || 'Cliente',
-        email: client.email || '',
-        status: client.status,
-        payment_amount: client.payment_amount != null ? Number(client.payment_amount) : null,
-    }))
-}
-
-// ----------------------------------------------------------------------------
-// Mutations — kept here for server-only callers (page.tsx etc.)
-// For client components use billing-actions.ts instead
-// ----------------------------------------------------------------------------
-
+/**
+ * Crea los cobros del mes en curso para quien deba pagarlo. Solo se usa con
+ * el mes actual: los meses pasados sin registro se muestran como «sin
+ * registrar» y el coach decide, para no inventar deudas.
+ */
 export async function generateMonthlyRecords(coachId: string, year: number, month: number) {
     const supabase = await createClient()
 
-    const lastDayOfMonth = getLastDayOfBillingMonth(year, month)
-
     const { data: clients, error: clientsErr } = await supabase
         .from('clients')
-        .select('id, payment_amount')
+        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
         .eq('coach_id', coachId)
         .eq('status', 'active')
-        .lte('start_date', lastDayOfMonth)
-        .not('payment_amount', 'is', null)
 
     if (clientsErr) {
         console.error('Error loading clients for monthly billing:', clientsErr)
         return { success: false, error: clientsErr.message }
     }
 
-    if (!clients || clients.length === 0) {
-        return { success: true, generatedCount: 0 }
-    }
-
-    const recordsToInsert = clients
-        .filter(c => Number(c.payment_amount) > 0)
-        .map(c => ({
+    const recordsToInsert = ((clients ?? []) as LedgerClient[])
+        .filter(client => isBillable(client, year, month))
+        .map(client => ({
             coach_id: coachId,
-            client_id: c.id,
+            client_id: client.id,
             year,
             month,
-            amount: c.payment_amount,
-            status: 'pending'
+            amount: feeOf(client),
+            status: 'pending',
         }))
 
     if (recordsToInsert.length === 0) {
@@ -221,138 +132,51 @@ export async function generateMonthlyRecords(coachId: string, year: number, mont
     return { success: true, generatedCount: recordsToInsert.length }
 }
 
-export async function updatePaymentStatus(recordId: string, status: 'paid' | 'pending' | 'overdue' | 'waived', paymentMethod?: string) {
+/**
+ * Tras crear, editar o reactivar un atleta: deja su cobro del mes en curso
+ * al día (lo crea si debe pagar y actualiza el importe si sigue pendiente).
+ * Nunca toca meses pasados.
+ */
+export async function syncClientCurrentMonth(coachId: string, clientId: string): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
+    const { timeZone } = await getCoachBillingSettings(coachId)
+    const today = todayKeyIn(timeZone)
+    const year = Number(today.slice(0, 4))
+    const month = Number(today.slice(5, 7))
 
-    const payload: Record<string, unknown> = { status }
+    const { data: client } = await supabase
+        .from('clients')
+        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
+        .eq('id', clientId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+    if (!client || !isBillable(client as LedgerClient, year, month)) return { success: true }
 
-    if (status === 'paid') {
-        payload.paid_at = new Date().toISOString()
-        if (paymentMethod !== undefined) {
-            payload.payment_method = paymentMethod
-        }
-    } else {
-        payload.paid_at = null
-        payload.payment_method = null
-    }
+    const amount = feeOf(client as LedgerClient)
+    const now = new Date().toISOString()
+    await supabase
+        .from('payment_records')
+        .update({ amount, updated_at: now })
+        .eq('coach_id', coachId)
+        .eq('client_id', clientId)
+        .eq('year', year)
+        .eq('month', month)
+        .eq('status', 'pending')
 
     const { error } = await supabase
         .from('payment_records')
-        .update(payload)
-        .eq('id', recordId)
-
-    if (error) {
-        console.error('Error updating payment status:', error)
-        return { success: false, error: error.message }
-    }
+        .upsert(
+            { coach_id: coachId, client_id: clientId, year, month, amount, status: 'pending' },
+            { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true },
+        )
+    if (error) return { success: false, error: error.message }
 
     revalidatePath('/coach/billing')
     return { success: true }
 }
 
-export async function createManualPaymentRecord(input: {
-    coachId: string
-    clientId: string
-    year: number
-    month: number
-    amount: number
-    status: 'pending' | 'paid' | 'overdue' | 'waived'
-    paymentMethod?: string | null
-    paidAt?: string | null
-    notes?: string | null
-}) {
-    const supabase = await createClient()
-
-    const payload = {
-        coach_id: input.coachId,
-        client_id: input.clientId,
-        year: input.year,
-        month: input.month,
-        amount: input.amount,
-        status: input.status,
-        payment_method: input.status === 'paid' ? input.paymentMethod ?? null : null,
-        paid_at: input.status === 'paid' ? (input.paidAt || new Date().toISOString()) : null,
-        notes: input.notes ?? null,
-    }
-
-    const { error } = await supabase
-        .from('payment_records')
-        .insert(payload)
-
-    if (error) {
-        if (error.code === '23505') {
-            return { success: false, error: 'Ya existe un registro para ese cliente y ese periodo.' }
-        }
-        return { success: false, error: error.message }
-    }
-
-    revalidatePath('/coach/billing')
-    return { success: true }
-}
-
-export async function markVisibleMonthRecordsPaid(input: {
-    coachId: string
-    year: number
-    month: number
-    search?: string
-    statusFilter?: 'all' | 'pending' | 'overdue'
-    paymentMethod?: string | null
-}) {
-    const supabase = await createClient()
-
-    const normalizedSearch = input.search?.trim().toLowerCase() ?? ''
-    const allowedStatuses = input.statusFilter === 'overdue'
-        ? ['overdue']
-        : input.statusFilter === 'pending'
-            ? ['pending']
-            : ['pending', 'overdue']
-
-    const { data: records, error } = await supabase
-        .from('payment_records')
-        .select(`
-            id,
-            status,
-            clients (
-                full_name,
-                email
-            )
-        `)
-        .eq('coach_id', input.coachId)
-        .eq('year', input.year)
-        .eq('month', input.month)
-        .in('status', allowedStatuses)
-
-    if (error) {
-        return { success: false, error: error.message }
-    }
-
-    const filteredIds = (records ?? [])
-        .filter((record: any) => {
-            if (!normalizedSearch) return true
-            const fullName = (record.clients?.full_name || '').toLowerCase()
-            const email = (record.clients?.email || '').toLowerCase()
-            return fullName.includes(normalizedSearch) || email.includes(normalizedSearch)
-        })
-        .map((record: any) => record.id)
-
-    if (filteredIds.length === 0) {
-        return { success: true, updatedCount: 0 }
-    }
-
-    const { error: updateError } = await supabase
-        .from('payment_records')
-        .update({
-            status: 'paid',
-            paid_at: new Date().toISOString(),
-            payment_method: input.paymentMethod ?? null,
-            updated_at: new Date().toISOString(),
-        })
-        .in('id', filteredIds)
-
-    if (updateError) {
-        return { success: false, error: updateError.message }
-    }
-
-    revalidatePath('/coach/billing')
-    return { success: true, updatedCount: filteredIds.length }
+export async function ensureCurrentMonthRecords(coachId: string) {
+    const { timeZone } = await getCoachBillingSettings(coachId)
+    const today = todayKeyIn(timeZone)
+    return generateMonthlyRecords(coachId, Number(today.slice(0, 4)), Number(today.slice(5, 7)))
 }

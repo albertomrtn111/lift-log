@@ -1,5 +1,5 @@
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { generateMonthlyRecords, getBillingDashboard, getAnnualComparison, listBillingClients } from '@/data/billing'
+import { ensureCurrentMonthRecords, getBillingLedger, getCoachBillingSettings, todayKeyIn } from '@/data/billing'
 import BillingPageClient from '@/components/coach/billing/BillingPageClient'
 
 export const dynamic = 'force-dynamic'
@@ -7,34 +7,30 @@ export const dynamic = 'force-dynamic'
 export default async function BillingPage({
     searchParams
 }: {
-    searchParams: { year?: string; month?: string }
+    searchParams: { year?: string; month?: string; view?: string }
 }) {
     const { coachId } = await requireActiveCoachId()
+    const { timeZone } = await getCoachBillingSettings(coachId)
+    const today = todayKeyIn(timeZone)
 
-    const now = new Date()
-    const targetYear = searchParams.year ? parseInt(searchParams.year) : now.getFullYear()
-    const targetMonth = searchParams.month ? parseInt(searchParams.month) : (now.getMonth() + 1)
+    const requestedYear = Number(searchParams.year)
+    const requestedMonth = Number(searchParams.month)
+    const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
+        ? requestedYear
+        : Number(today.slice(0, 4))
+    const month = Number.isInteger(requestedMonth) && requestedMonth >= 1 && requestedMonth <= 12
+        ? requestedMonth
+        : Number(today.slice(5, 7))
 
-    // Ensure records exist for the targeted month
-    await generateMonthlyRecords(coachId, targetYear, targetMonth)
-
-    // Pre-fetch data for the initial render
-    const initialData = await getBillingDashboard(coachId, targetYear, targetMonth)
-    const [annualComparison, clientOptions] = await Promise.all([
-        getAnnualComparison(coachId, targetYear),
-        listBillingClients(coachId),
-    ])
+    // Solo se generan los cobros del mes en curso; el resto lo resuelve el coach
+    await ensureCurrentMonthRecords(coachId)
+    const ledger = await getBillingLedger(coachId, year)
 
     return (
-        <div className="flex-1">
-            <BillingPageClient
-                coachId={coachId}
-                initialYear={targetYear}
-                initialMonth={targetMonth}
-                initialData={initialData}
-                annualComparison={annualComparison}
-                clientOptions={clientOptions}
-            />
-        </div>
+        <BillingPageClient
+            initialLedger={ledger}
+            initialMonth={month}
+            initialView={searchParams.view === 'anual' ? 'year' : 'month'}
+        />
     )
 }

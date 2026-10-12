@@ -8,7 +8,7 @@ import { getAppUrl } from '@/lib/app-url'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
-import { getBillingPeriodFromDate } from '@/lib/billing-period'
+import { syncClientCurrentMonth } from '@/data/billing'
 
 export async function deactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'inactive')
@@ -25,6 +25,12 @@ export async function reactivateClientAction(clientId: string) {
     const result = await setClientStatus(clientId, 'active')
 
     if (result.success) {
+        try {
+            const { coachId } = await requireActiveCoachId()
+            await syncClientCurrentMonth(coachId, clientId)
+        } catch (error) {
+            console.error('[reactivateClientAction] Could not sync billing:', error)
+        }
         revalidatePath('/coach/members')
         revalidatePath('/coach/clients')
     }
@@ -58,27 +64,10 @@ export async function updateClientAction(clientId: string, data: UpdateClientInp
     const result = await updateClientDetails(clientId, clientUpdates)
 
     if (result.success) {
-        if (result.client && Number(result.client.payment_amount ?? 0) > 0) {
-            try {
-                const period = getBillingPeriodFromDate(result.client.start_date)
-                const { error: billingError } = await supabase
-                    .from('payment_records')
-                    .upsert({
-                        coach_id: coachId,
-                        client_id: clientId,
-                        year: period.year,
-                        month: period.month,
-                        amount: result.client.payment_amount,
-                        status: 'pending',
-                    }, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
-
-                if (billingError) {
-                    return { success: false, error: 'Los datos se guardaron, pero no se pudo crear el primer periodo en Pagos.' }
-                }
-                revalidatePath('/coach/billing')
-            } catch {
-                return { success: false, error: 'Los datos se guardaron, pero la fecha de alta no permite crear el primer periodo en Pagos.' }
-            }
+        // Solo el mes en curso: los meses anteriores los decide el coach en Facturación
+        const billing = await syncClientCurrentMonth(coachId, clientId)
+        if (!billing.success) {
+            return { success: false, error: 'Los datos se guardaron, pero no se pudo actualizar el cobro de este mes.' }
         }
 
         // Solo sincronizar la asignación si la clave está explícitamente en el payload.
@@ -186,30 +175,10 @@ export async function createClientAction(data: {
     console.log(`[createClientAction] Client created: ${client.id} (${client.email})`)
 
     let billingWarning: string | undefined
-    if (Number(client.payment_amount ?? 0) > 0) {
-        try {
-            const period = getBillingPeriodFromDate(client.start_date || data.start_date)
-            const { error: billingError } = await supabase
-                .from('payment_records')
-                .upsert({
-                    coach_id: coachId,
-                    client_id: client.id,
-                    year: period.year,
-                    month: period.month,
-                    amount: client.payment_amount,
-                    status: 'pending',
-                }, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
-
-            if (billingError) {
-                console.error('[createClientAction] Error creating initial payment record:', billingError.message)
-                billingWarning = 'La cuota se guardó, pero no se pudo crear el primer periodo en Pagos.'
-            } else {
-                revalidatePath('/coach/billing')
-            }
-        } catch (error) {
-            console.error('[createClientAction] Invalid billing start period:', error)
-            billingWarning = 'La cuota se guardó, pero la fecha de alta no permitió crear el primer periodo en Pagos.'
-        }
+    const billing = await syncClientCurrentMonth(coachId, client.id)
+    if (!billing.success) {
+        console.error('[createClientAction] Error creating current payment record:', billing.error)
+        billingWarning = 'La cuota se guardó, pero no se pudo crear el cobro de este mes.'
     }
 
     const checkinAssignment = await syncClientTemplateAssignment({
