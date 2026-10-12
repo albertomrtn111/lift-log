@@ -211,7 +211,7 @@ function ContextSummary({
                     )}
                     <span className="text-muted-foreground">
                         {latestWeight
-                            ? `${latestWeight.weight_kg} kg${trend ? ` (${trend.diff > 0 ? '+' : ''}${trend.diff.toFixed(1)} kg tendencia)` : ''}`
+                            ? `${Number(latestWeight.weight_kg).toLocaleString('es-ES')} kg${trend ? ` (${trend.diff > 0 ? '+' : ''}${trend.diff.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg tendencia)` : ''}`
                             : 'Sin datos de peso'}
                     </span>
                 </div>

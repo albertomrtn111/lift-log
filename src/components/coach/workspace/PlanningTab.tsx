@@ -118,7 +118,9 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
 }
 
 function fmtNum(n: number): string {
-    return Number.isInteger(n) ? String(n) : n.toFixed(1)
+    return Number.isInteger(n)
+        ? n.toLocaleString('es-ES')
+        : n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 }
 
 function isItemInDateRange(item: UnifiedCalendarItem, start: Date, end: Date): boolean {
@@ -580,57 +582,61 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
             onDragCancel={handleDragCancel}
         >
             <div className="flex h-full flex-col space-y-4 p-0 sm:p-4">
-                {/* Controls */}
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <div className="min-w-0 flex-1">
-                            <h2 className="text-xl font-bold capitalize sm:text-2xl">
+                {/* Controles: periodo + navegación en una fila; vista e IA en otra */}
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <h2 className="truncate text-xl font-bold capitalize leading-tight tracking-tight sm:text-2xl">
                                 {format(currentDate, 'MMMM yyyy', { locale: es })}
                             </h2>
-                            <p className="text-sm text-muted-foreground">
-                                {viewMode === 'week' ? `Vista operativa de la semana · ${selectedLabel}` : `Mapa general del bloque · ${selectedLabel}`}
+                            <p className="truncate text-xs text-muted-foreground sm:text-sm">
+                                {viewMode === 'week' ? `Semana · ${selectedLabel}` : 'Vista mensual'}
                             </p>
                         </div>
-                        <div className="flex w-full items-center justify-between rounded-md border bg-background shadow-sm sm:w-auto lg:ml-4">
-                            <Button variant="ghost" size="icon" onClick={handlePrevious}>
+                        <div className="flex shrink-0 items-center rounded-full border border-border/70 bg-card shadow-sm">
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={handlePrevious} aria-label={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'}>
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={handleToday} className="px-3 font-medium">
+                            <Button variant="ghost" size="sm" onClick={handleToday} className="h-9 rounded-full px-3 font-medium">
                                 Hoy
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={handleNext}>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={handleNext} aria-label={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'}>
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
-                    <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-start">
-                        <div className="flex items-center rounded-md border bg-background shadow-sm">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setViewMode('week')}
-                                className={cn("px-3", viewMode === 'week' && "bg-muted font-semibold")}
-                            >
-                                Semana
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setViewMode('month')}
-                                className={cn("px-3", viewMode === 'month' && "bg-muted font-semibold")}
-                            >
-                                Mes
-                            </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="grid grid-cols-2 rounded-full bg-muted p-1" role="tablist" aria-label="Vista">
+                            {([
+                                { value: 'week', label: 'Semana' },
+                                { value: 'month', label: 'Mes' },
+                            ] as const).map(option => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={viewMode === option.value}
+                                    onClick={() => setViewMode(option.value)}
+                                    className={cn(
+                                        'h-8 rounded-full px-4 text-xs font-semibold transition-all',
+                                        viewMode === option.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
                         </div>
-                        <PlanningAIWeeklyDialog
-                            clientId={clientId}
-                            coachId={coachId}
-                            weekStart={toLocalDateStr(startDate)}
-                            weekEnd={toLocalDateStr(endDate)}
-                            disabled={viewMode !== 'week'}
-                            onApplied={fetchSchedule}
-                        />
-                        <PlanningAIBlockDialog key={`${coachId}:${clientId}`} clientId={clientId} coachId={coachId} onApplied={fetchSchedule} />
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <PlanningAIWeeklyDialog
+                                clientId={clientId}
+                                coachId={coachId}
+                                weekStart={toLocalDateStr(startDate)}
+                                weekEnd={toLocalDateStr(endDate)}
+                                disabled={viewMode !== 'week'}
+                                onApplied={fetchSchedule}
+                            />
+                            <PlanningAIBlockDialog key={`${coachId}:${clientId}`} clientId={clientId} coachId={coachId} onApplied={fetchSchedule} />
+                        </div>
                     </div>
                 </div>
 
@@ -653,11 +659,12 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                             const dayDateStr = toLocalDateStr(day)
                             const dayContext = getDayContext(day)
                             const noteCount = dayContext?.noteCount ?? 0
+                            const isFreeDay = !loading && items.length === 0
 
                             return (
                                 <div key={day.toISOString()} className={cn(
                                     "flex flex-col gap-3 rounded-2xl border p-3 transition-colors",
-                                    items.length === 0 && "max-xl:gap-0 max-xl:py-2",
+                                    isFreeDay && "max-xl:gap-0 max-xl:py-2",
                                     dayContext?.state === 'empty' && "border-dashed bg-muted/20",
                                     dayContext?.state === 'scheduled' && "bg-card",
                                     isTodayDate && "ring-2 ring-primary bg-primary/5"
@@ -665,7 +672,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                     {/* Day Header */}
                                     <div className={cn(
                                         "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 border-b pb-3 xl:items-start",
-                                        items.length === 0 && "max-xl:border-0 max-xl:pb-0"
+                                        isFreeDay && "max-xl:border-0 max-xl:pb-0"
                                     )}>
                                         <div className="flex min-w-0 items-center gap-2 xl:block xl:space-y-2">
                                             <div className="flex items-center gap-2 max-xl:w-9">
@@ -687,9 +694,9 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                                                         <Badge variant="outline" className="shrink-0 bg-background/80 whitespace-nowrap">
                                                             {items.length} ses.
                                                         </Badge>
-                                                    ) : (
+                                                    ) : isFreeDay ? (
                                                         <span className="text-xs text-muted-foreground xl:hidden">Libre</span>
-                                                    )}
+                                                    ) : null}
                                                 </div>
                                             </div>
                                         </div>
@@ -788,9 +795,67 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                     </TooltipProvider>
                 )}
 
+                {/* Mes en móvil: rejilla compacta con un punto por sesión; tocar un día abre su semana */}
+                {viewMode === 'month' && loading && (
+                    <div className="flex items-center justify-center py-16 md:hidden">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                )}
+                {viewMode === 'month' && !loading && (
+                    <div className="rounded-2xl border border-border/70 bg-card p-2.5 md:hidden">
+                        <div className="mb-1 grid grid-cols-7 text-center">
+                            {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(letter => (
+                                <span key={letter} className="py-1 text-[11px] font-semibold text-muted-foreground">{letter}</span>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-y-1">
+                            {monthWeeks.flat().map(day => {
+                                const isCurrentMonth = day.getMonth() === currentDate.getMonth()
+                                if (!isCurrentMonth) return <span key={day.toISOString()} className="h-12" aria-hidden />
+                                const items = getItemsForDay(day)
+                                const isTodayDate = isToday(day)
+                                return (
+                                    <button
+                                        key={day.toISOString()}
+                                        type="button"
+                                        onClick={() => {
+                                            setCurrentDate(day)
+                                            setViewMode('week')
+                                        }}
+                                        aria-label={`${format(day, "EEEE d 'de' MMMM", { locale: es })}: ${items.length === 0 ? 'libre' : items.length === 1 ? '1 sesión' : `${items.length} sesiones`}`}
+                                        className={cn(
+                                            'mx-auto flex h-12 w-full max-w-[3rem] flex-col items-center justify-center gap-1 rounded-xl transition-colors hover:bg-muted/60',
+                                            isTodayDate && 'bg-primary/10 ring-1 ring-inset ring-primary/50'
+                                        )}
+                                    >
+                                        <span className={cn('text-sm font-semibold tabular-nums', isTodayDate && 'text-primary')}>{format(day, 'd')}</span>
+                                        <span className="flex h-1.5 items-center gap-0.5">
+                                            {items.slice(0, 3).map(item => {
+                                                const cardioType = item.type === 'cardio' ? ((item as any).structure?.trainingType || 'rodaje') : null
+                                                return (
+                                                    <span
+                                                        key={item.id}
+                                                        className={cn(
+                                                            'h-1.5 w-1.5 rounded-full',
+                                                            item.type === 'strength' ? 'bg-red-500'
+                                                                : cardioType === 'series' ? 'bg-yellow-500'
+                                                                    : cardioType === 'rodaje' ? 'bg-green-500' : 'bg-blue-500'
+                                                        )}
+                                                    />
+                                                )
+                                            })}
+                                        </span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                        <p className="mt-2 text-center text-[11px] text-muted-foreground">Toca un día para ver y editar su semana</p>
+                    </div>
+                )}
+
                 {/* Monthly Grid */}
                 {viewMode === 'month' && (
-                    <div className="flex h-full flex-col space-y-1.5 overflow-x-auto overscroll-x-contain px-0.5 pb-2">
+                    <div className="hidden h-full flex-col space-y-1.5 overflow-x-auto overscroll-x-contain px-0.5 pb-2 md:flex">
                         {loading ? (
                             <div className="flex justify-center items-center py-16">
                                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1062,23 +1127,23 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
     const canDelete = !isVirtual
 
     return (
-        <Card className="border-red-500 text-white shadow-md transition-colors group relative overflow-hidden cursor-pointer bg-red-600 dark:bg-red-700 hover:bg-red-500 dark:hover:bg-red-600">
-            <div className="absolute top-0 left-0 w-1 h-full bg-red-200/50" />
+        <Card className="group relative cursor-pointer overflow-hidden border-none bg-red-100 text-red-950 shadow-sm transition-opacity hover:opacity-80 dark:bg-red-900/30 dark:text-red-50">
+            <div className="absolute left-0 top-0 h-full w-1 bg-red-500" />
             <CardContent className="p-3">
                 <div className="flex items-start justify-between mb-2">
-                    <Badge variant="secondary" className="text-[10px] bg-white/20 hover:bg-white/30 text-white px-1.5 py-0 h-5 border-none">
+                    <Badge variant="secondary" className="h-5 border-none bg-white/50 px-1.5 py-0 text-[10px] backdrop-blur-sm dark:bg-black/20">
                         Fuerza
                     </Badge>
                     <div className="flex items-center gap-1">
-                        {(item as any).is_completed && <CheckCircle2 className="h-3 w-3 text-white" />}
+                        {(item as any).is_completed && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button
                                     variant="ghost"
-                                    className="h-5 w-5 p-0 hover:bg-white/20 rounded-full"
+                                    className="h-7 w-7 rounded-full p-0 hover:bg-black/5 dark:hover:bg-white/10"
                                     onClick={(e) => e.stopPropagation()}
                                 >
-                                    <MoreHorizontal className="h-3 w-3 text-white/70" />
+                                    <MoreHorizontal className="h-4 w-4 opacity-70" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -1106,12 +1171,12 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        <GripVertical className="h-3 w-3 text-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <GripVertical className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-40" />
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Dumbbell className="h-4 w-4 text-white/90 shrink-0" />
-                    <span className="font-bold text-sm line-clamp-2 text-white leading-snug">
+                    <Dumbbell className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+                    <span className="line-clamp-2 text-sm font-bold leading-snug">
                         {(item as any).training_days?.name || 'Sesión de fuerza'}
                     </span>
                 </div>
@@ -1164,7 +1229,7 @@ function CardioCard({
                             <DropdownMenuTrigger asChild>
                                 <Button
                                     variant="ghost"
-                                    className="h-5 w-5 p-0 hover:bg-black/10 dark:hover:bg-white/10 rounded-full"
+                                    className="h-7 w-7 rounded-full p-0 hover:bg-black/10 dark:hover:bg-white/10"
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
@@ -1213,17 +1278,6 @@ function CardioCard({
 // PlanningMetrics
 // ---------------------------------------------------------------------------
 
-function MetricItem({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
-    return (
-        <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wide truncate">{label}</span>
-            <span className="text-sm font-bold tabular-nums leading-tight">
-                {value}{unit && <span className="text-xs font-medium text-muted-foreground ml-0.5">{unit}</span>}
-            </span>
-        </div>
-    )
-}
-
 function PlanningMetrics({ metrics, isMonthly, hasData }: {
     metrics: PlanningMetricsData
     isMonthly: boolean
@@ -1231,99 +1285,75 @@ function PlanningMetrics({ metrics, isMonthly, hasData }: {
 }) {
     if (!hasData) return null
 
-    const prefix = isMonthly ? 'Media / sem' : ''
-    const sessionLabel = isMonthly ? 'ses/sem' : 'sesiones'
+    const sessionUnit = (count: number) => isMonthly ? 'ses/sem' : count === 1 ? 'sesión' : 'sesiones'
 
-    const noStrength = metrics.strength.sessions === 0
-    const noCardio = metrics.cardio.sessions === 0
-    const noHybrid = metrics.hybrid.sessions === 0
+    const rows = [
+        metrics.strength.sessions > 0 && {
+            key: 'strength',
+            label: 'Fuerza',
+            icon: Dumbbell,
+            tone: 'bg-red-500/10 text-red-600 dark:text-red-400',
+            stats: [
+                { value: fmtNum(metrics.strength.sessions), unit: sessionUnit(metrics.strength.sessions) },
+                { value: fmtNum(metrics.strength.totalExercises), unit: 'ejercicios' },
+                { value: fmtNum(metrics.strength.avgExercises), unit: 'ej/sesión' },
+            ],
+        },
+        metrics.cardio.sessions > 0 && {
+            key: 'cardio',
+            label: 'Cardio',
+            icon: Activity,
+            tone: 'bg-green-500/10 text-green-600 dark:text-green-400',
+            stats: [
+                { value: fmtNum(metrics.cardio.sessions), unit: sessionUnit(metrics.cardio.sessions) },
+                metrics.cardio.totalKm > 0 && { value: fmtNum(metrics.cardio.totalKm), unit: 'km' },
+                metrics.cardio.totalMin > 0 && { value: fmtNum(metrics.cardio.totalMin), unit: 'min' },
+            ].filter(Boolean) as Array<{ value: string; unit: string }>,
+        },
+        metrics.hybrid.sessions > 0 && {
+            key: 'hybrid',
+            label: 'Híbridos',
+            icon: Timer,
+            tone: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+            stats: [
+                { value: fmtNum(metrics.hybrid.sessions), unit: sessionUnit(metrics.hybrid.sessions) },
+                metrics.hybrid.totalMin > 0 && { value: fmtNum(metrics.hybrid.totalMin), unit: 'min' },
+            ].filter(Boolean) as Array<{ value: string; unit: string }>,
+        },
+    ].filter(Boolean) as Array<{ key: string; label: string; icon: React.ElementType; tone: string; stats: Array<{ value: string; unit: string }> }>
 
-    if (noStrength && noCardio && noHybrid) return null
+    if (rows.length === 0) return null
 
     return (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* Fuerza */}
-            <div className={cn(
-                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
-                noStrength
-                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
-                    : "bg-red-50/60 dark:bg-red-950/20 border-red-200/60 dark:border-red-900/40"
-            )}>
-                <div className="flex items-center gap-2">
-                    <Dumbbell className={cn("h-3.5 w-3.5 shrink-0", noStrength ? "text-muted-foreground" : "text-red-600 dark:text-red-400")} />
-                    <span className={cn("text-xs font-semibold", noStrength ? "text-muted-foreground" : "text-red-700 dark:text-red-300")}>
-                        Fuerza{isMonthly && !noStrength && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
-                    </span>
-                </div>
-                {noStrength ? (
-                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
-                ) : (
-                    <div className="grid grid-cols-3 gap-3">
-                        <MetricItem label={sessionLabel} value={fmtNum(metrics.strength.sessions)} />
-                        <MetricItem label="ejercicios" value={fmtNum(metrics.strength.totalExercises)} />
-                        <MetricItem label="ej/sesión" value={fmtNum(metrics.strength.avgExercises)} />
-                    </div>
-                )}
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b border-border/60 px-4 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {isMonthly ? 'Carga del mes · media semanal' : 'Carga de la semana'}
+                </p>
             </div>
-
-            {/* Cardio */}
-            <div className={cn(
-                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
-                noCardio
-                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
-                    : "bg-green-50/60 dark:bg-green-950/20 border-green-200/60 dark:border-green-900/40"
-            )}>
-                <div className="flex items-center gap-2">
-                    <Activity className={cn("h-3.5 w-3.5 shrink-0", noCardio ? "text-muted-foreground" : "text-green-600 dark:text-green-400")} />
-                    <span className={cn("text-xs font-semibold", noCardio ? "text-muted-foreground" : "text-green-700 dark:text-green-300")}>
-                        Cardio{isMonthly && !noCardio && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
-                    </span>
-                </div>
-                {noCardio ? (
-                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
-                ) : (
-                    <div className="grid grid-cols-3 gap-3">
-                        <MetricItem label={sessionLabel} value={fmtNum(metrics.cardio.sessions)} />
-                        <MetricItem
-                            label="distancia"
-                            value={metrics.cardio.totalKm > 0 ? fmtNum(metrics.cardio.totalKm) : '—'}
-                            unit={metrics.cardio.totalKm > 0 ? 'km' : undefined}
-                        />
-                        <MetricItem
-                            label="tiempo"
-                            value={metrics.cardio.totalMin > 0 ? fmtNum(metrics.cardio.totalMin) : '—'}
-                            unit={metrics.cardio.totalMin > 0 ? 'min' : undefined}
-                        />
-                    </div>
-                )}
-            </div>
-
-            {/* Híbridos */}
-            <div className={cn(
-                "rounded-xl border px-4 py-3 flex flex-col gap-2.5",
-                noHybrid
-                    ? "border-dashed border-border/40 bg-muted/5 opacity-50"
-                    : "bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-900/40"
-            )}>
-                <div className="flex items-center gap-2">
-                    <Timer className={cn("h-3.5 w-3.5 shrink-0", noHybrid ? "text-muted-foreground" : "text-blue-600 dark:text-blue-400")} />
-                    <span className={cn("text-xs font-semibold", noHybrid ? "text-muted-foreground" : "text-blue-700 dark:text-blue-300")}>
-                        Híbridos{isMonthly && !noHybrid && <span className="text-[10px] font-normal ml-1 opacity-70">· media semanal</span>}
-                    </span>
-                </div>
-                {noHybrid ? (
-                    <span className="text-xs text-muted-foreground">Sin sesiones</span>
-                ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                        <MetricItem label={sessionLabel} value={fmtNum(metrics.hybrid.sessions)} />
-                        <MetricItem
-                            label="duración"
-                            value={metrics.hybrid.totalMin > 0 ? fmtNum(metrics.hybrid.totalMin) : '—'}
-                            unit={metrics.hybrid.totalMin > 0 ? 'min' : undefined}
-                        />
-                    </div>
-                )}
-            </div>
+            <ul className="divide-y divide-border/60 sm:grid sm:divide-y-0" style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }}>
+                {rows.map((row, index) => {
+                    const Icon = row.icon
+                    return (
+                        <li key={row.key} className={cn('flex items-center gap-3 px-4 py-2.5', index > 0 && 'sm:border-l sm:border-border/60')}>
+                            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', row.tone)}>
+                                <Icon className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-xs font-semibold text-muted-foreground">{row.label}</p>
+                                <p className="flex flex-wrap items-baseline gap-x-2.5 text-sm">
+                                    {row.stats.map(stat => (
+                                        <span key={stat.unit} className="whitespace-nowrap">
+                                            <span className="font-bold tabular-nums">{stat.value}</span>
+                                            <span className="ml-0.5 text-xs text-muted-foreground">{stat.unit}</span>
+                                        </span>
+                                    ))}
+                                </p>
+                            </div>
+                        </li>
+                    )
+                })}
+            </ul>
         </div>
     )
 }

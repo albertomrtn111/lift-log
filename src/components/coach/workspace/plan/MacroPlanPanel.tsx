@@ -23,9 +23,6 @@ import {
 } from '@/components/ui/tabs'
 import {
     Flame,
-    Beef,
-    Wheat,
-    Droplet,
     Footprints,
     Plus,
     Pencil,
@@ -271,25 +268,25 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
 
     return (
         <>
-            <Card className="p-4 sm:p-6">
-                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-semibold text-lg">Macros activos</h3>
-                    <div className="flex gap-2 flex-wrap">
+            <Card className="rounded-2xl border-border/70 p-4 sm:p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Macros activos</h3>
+                    <div className="flex flex-wrap gap-2">
                         <AINutritionDialog
                             coachId={coachId}
                             clientId={clientId}
                             nutritionType="macros"
                             trigger={
-                                <AIActionButton size="sm">IA Macros</AIActionButton>
+                                <AIActionButton size="sm" className="rounded-full">IA Macros</AIActionButton>
                             }
                         />
                         {activePlan && (
-                            <Button variant="outline" size="sm" onClick={handleEdit}>
+                            <Button variant="outline" size="sm" className="rounded-full" onClick={handleEdit}>
                                 <Pencil className="h-4 w-4 mr-1" />
                                 Editar
                             </Button>
                         )}
-                        <Button size="sm" onClick={handleCreate}>
+                        <Button size="sm" variant={activePlan ? 'outline' : 'default'} className="rounded-full" onClick={handleCreate}>
                             <Plus className="h-4 w-4 mr-1" />
                             {activePlan ? 'Nuevo' : 'Crear'}
                         </Button>
@@ -614,12 +611,7 @@ function ActivePlanView({ plan }: { plan: MacroPlan }) {
                             <Dumbbell className="h-4 w-4 text-orange-500" />
                             <span className="text-sm font-medium">Días de entreno</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <MacroCard icon={Flame} value={cfg.training.kcal} unit="kcal" color="text-accent" />
-                            <MacroCard icon={Beef} value={cfg.training.protein_g} unit="g proteína" color="text-destructive" />
-                            <MacroCard icon={Wheat} value={cfg.training.carbs_g} unit="g carbos" color="text-warning" />
-                            <MacroCard icon={Droplet} value={cfg.training.fat_g} unit="g grasa" color="text-warning/80" />
-                        </div>
+                        <MacroSummary kcal={cfg.training.kcal} protein={cfg.training.protein_g} carbs={cfg.training.carbs_g} fat={cfg.training.fat_g} />
                     </div>
 
                     {/* Rest */}
@@ -628,30 +620,20 @@ function ActivePlanView({ plan }: { plan: MacroPlan }) {
                             <Moon className="h-4 w-4 text-blue-500" />
                             <span className="text-sm font-medium">Días de descanso</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <MacroCard icon={Flame} value={cfg.rest.kcal} unit="kcal" color="text-accent" />
-                            <MacroCard icon={Beef} value={cfg.rest.protein_g} unit="g proteína" color="text-destructive" />
-                            <MacroCard icon={Wheat} value={cfg.rest.carbs_g} unit="g carbos" color="text-warning" />
-                            <MacroCard icon={Droplet} value={cfg.rest.fat_g} unit="g grasa" color="text-warning/80" />
-                        </div>
+                        <MacroSummary kcal={cfg.rest.kcal} protein={cfg.rest.protein_g} carbs={cfg.rest.carbs_g} fat={cfg.rest.fat_g} />
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
-                    <MacroCard icon={Flame} value={plan.kcal} unit="kcal" color="text-accent" />
-                    <MacroCard icon={Beef} value={plan.protein_g} unit="g proteína" color="text-destructive" />
-                    <MacroCard icon={Wheat} value={plan.carbs_g} unit="g carbos" color="text-warning" />
-                    <MacroCard icon={Droplet} value={plan.fat_g} unit="g grasa" color="text-warning/80" />
-                </div>
+                <MacroSummary kcal={plan.kcal} protein={plan.protein_g} carbs={plan.carbs_g} fat={plan.fat_g} />
             )}
 
             {plan.steps && (
                 <div className="mt-3">
-                    <Card className="flex items-center gap-3 p-4 bg-muted/30">
+                    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-3">
                         <Footprints className="h-5 w-5 text-primary" />
-                        <span className="font-semibold">{plan.steps.toLocaleString()}</span>
-                        <span className="text-sm text-muted-foreground">pasos/día</span>
-                    </Card>
+                        <span className="font-semibold tabular-nums">{plan.steps.toLocaleString('es-ES')}</span>
+                        <span className="text-sm text-muted-foreground">pasos al día</span>
+                    </div>
                 </div>
             )}
 
@@ -663,25 +645,46 @@ function ActivePlanView({ plan }: { plan: MacroPlan }) {
 }
 
 // ============================================================================
-// MACRO CARD
+// MACRO SUMMARY
 // ============================================================================
 
-function MacroCard({
-    icon: Icon,
-    value,
-    unit,
-    color,
-}: {
-    icon: React.ComponentType<{ className?: string }>
-    value: number
-    unit: string
-    color: string
-}) {
+/** Kcal destacadas + reparto energético de cada macro (P y C a 4 kcal/g, G a 9) */
+function MacroSummary({ kcal, protein, carbs, fat }: { kcal: number; protein: number; carbs: number; fat: number }) {
+    const parts = [
+        { key: 'protein', label: 'Proteína', grams: protein, kcal: protein * 4, bar: 'bg-rose-500', text: 'text-rose-500' },
+        { key: 'carbs', label: 'Carbos', grams: carbs, kcal: carbs * 4, bar: 'bg-amber-500', text: 'text-amber-500' },
+        { key: 'fat', label: 'Grasa', grams: fat, kcal: fat * 9, bar: 'bg-sky-500', text: 'text-sky-500' },
+    ]
+    const macroKcal = parts.reduce((sum, part) => sum + part.kcal, 0) || 1
+
     return (
-        <Card className="p-4 flex flex-col items-center text-center">
-            <Icon className={`h-6 w-6 ${color} mb-2`} />
-            <span className="text-2xl font-bold">{value}</span>
-            <span className="text-xs text-muted-foreground">{unit}</span>
-        </Card>
+        <div className="rounded-2xl border border-border/70 bg-card p-4">
+            <div className="flex items-baseline justify-between gap-3">
+                <p className="flex items-baseline gap-1.5">
+                    <Flame className="h-4 w-4 self-center text-orange-500" />
+                    <span className="text-3xl font-bold tabular-nums tracking-tight">{kcal.toLocaleString('es-ES')}</span>
+                    <span className="text-sm text-muted-foreground">kcal</span>
+                </p>
+            </div>
+            <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-muted">
+                {parts.map(part => (
+                    <span key={part.key} className={part.bar} style={{ width: `${(part.kcal / macroKcal) * 100}%` }} />
+                ))}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+                {parts.map(part => (
+                    <div key={part.key} className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${part.bar}`} />
+                            {part.label}
+                        </p>
+                        <p className="mt-0.5 text-lg font-bold tabular-nums leading-tight">
+                            {part.grams}<span className="ml-0.5 text-xs font-medium text-muted-foreground">g</span>
+                        </p>
+                        <p className={`text-[11px] font-semibold tabular-nums ${part.text}`}>{Math.round((part.kcal / macroKcal) * 100)}%</p>
+                    </div>
+                ))}
+            </div>
+        </div>
     )
 }

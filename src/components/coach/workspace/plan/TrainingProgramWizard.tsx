@@ -9,10 +9,8 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card } from '@/components/ui/card'
 import {
     ChevronRight,
     ChevronLeft,
@@ -26,6 +24,7 @@ import {
     ArrowUp,
     ArrowDown,
     GripVertical,
+    MoreHorizontal,
 } from 'lucide-react'
 import {
     DndContext,
@@ -50,6 +49,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { addExerciseAction, deleteExerciseAction, reorderExerciseAction, reorderExercisesAction } from '../actions'
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
 import { cn } from '@/lib/utils'
@@ -526,32 +532,15 @@ export function TrainingProgramWizard({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 overflow-hidden gap-0 bg-background border-primary/20">
-                <DialogHeader className="p-4 sm:p-6 border-b shrink-0 bg-muted/20">
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                            <DialogTitle className="text-lg sm:text-xl flex items-center gap-2 font-bold tracking-tight">
-                                <Settings2 className="h-5 w-5 text-primary shrink-0" />
-                                <span className="min-w-0 break-words">Configurar Programa: {program?.name}</span>
-                            </DialogTitle>
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                <p className="text-sm text-muted-foreground">
-                                    Paso {step} de 3: {
-                                        step === 1 ? 'Información General' :
-                                            step === 2 ? 'Gestión de Días' :
-                                                'Planificación Detallada'
-                                    }
-                                </p>
-                                <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
-                                <p className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                                    {program?.weeks} semanas
-                                </p>
-                            </div>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={onClose} className="rounded-full shrink-0">
-                            Cerrar
-                        </Button>
-                    </div>
+            <DialogContent className="flex h-[90dvh] max-w-5xl flex-col gap-0 overflow-hidden rounded-2xl p-0">
+                <DialogHeader className="shrink-0 space-y-0 border-b border-border/60 px-4 py-3 pr-14 text-left sm:px-6 sm:py-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Paso {step} de 3 · {step === 1 ? 'Información general' : step === 2 ? 'Días' : 'Ejercicios'}
+                    </p>
+                    <DialogTitle className="truncate text-lg font-bold leading-tight tracking-tight sm:text-xl">
+                        {program?.name || 'Programa de fuerza'}
+                    </DialogTitle>
+                    <p className="text-xs text-muted-foreground">{program?.weeks} semanas</p>
                 </DialogHeader>
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/10 space-y-6">
@@ -753,37 +742,38 @@ const StepInfo = React.forwardRef(({
     }
 
     return (
-        <Card className="p-6 sm:p-8 max-w-xl mx-auto shadow-md border-primary/10">
-            <h4 className="text-lg font-semibold mb-6">Detalles del Programa</h4>
-            <div className="space-y-6">
+        <div className="mx-auto max-w-xl space-y-5">
+            <div className="space-y-5">
                 <div className="space-y-2">
-                    <Label htmlFor="name" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Nombre del programa</Label>
+                    <Label htmlFor="name" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Nombre del programa</Label>
                     <Input
                         id="name"
                         value={localProgram.name}
                         onChange={e => setLocalProgram({ ...localProgram, name: e.target.value })}
-                        className="bg-muted/30 border-0 focus-visible:ring-primary h-12 text-lg"
+                        className="h-11 rounded-xl border-border/70 bg-muted/30 text-base font-semibold"
+                        placeholder="Ej: Bloque de fuerza · Fase 1"
                     />
                 </div>
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                        <Label htmlFor="weeks" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Semanas de duración</Label>
+                        <Label htmlFor="weeks" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Semanas</Label>
                         <Input
                             id="weeks"
                             type="number"
                             value={localProgram.weeks}
                             onChange={e => setLocalProgram({ ...localProgram, weeks: parseInt(e.target.value) || 0 })}
-                            className="bg-muted/30 border-0 focus-visible:ring-primary h-12"
+                            inputMode="numeric"
+                            className="h-11 rounded-xl border-border/70 bg-muted/30 font-semibold tabular-nums"
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="start" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Fecha de inicio</Label>
+                        <Label htmlFor="start" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fecha de inicio</Label>
                         <Input
                             id="start"
                             type="date"
                             value={localProgram.effective_from}
                             onChange={e => setLocalProgram({ ...localProgram, effective_from: e.target.value })}
-                            className="bg-muted/30 border-0 focus-visible:ring-primary h-12"
+                            className="h-11 rounded-xl border-border/70 bg-muted/30"
                         />
                     </div>
                 </div>
@@ -794,7 +784,7 @@ const StepInfo = React.forwardRef(({
                     </div>
                 )}
             </div>
-        </Card>
+        </div>
     )
 })
 StepInfo.displayName = 'StepInfo'
@@ -853,25 +843,30 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
     ]
 
     return (
-        <Card className="p-6 sm:p-8 max-w-2xl mx-auto shadow-md border-primary/10">
-            <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-                <h4 className="text-lg font-semibold">Días del Programa</h4>
-                <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="outline" onClick={onImportRequest} className="gap-2 border-primary/20 text-primary hover:bg-primary/5">
-                        <Download className="h-4 w-4" /> Importar Plantilla
+        <div className="mx-auto max-w-2xl space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">
+                    {localDays.length} {localDays.length === 1 ? 'día' : 'días'} de entrenamiento por semana
+                </p>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={onImportRequest} className="gap-1.5 rounded-full">
+                        <Download className="h-4 w-4" /> Plantilla
                     </Button>
-                    <Button size="sm" variant="outline" onClick={addDay} className="gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/5">
-                        <Plus className="h-4 w-4" /> Añadir Día
+                    <Button size="sm" onClick={addDay} className="gap-1.5 rounded-full">
+                        <Plus className="h-4 w-4" /> Día
                     </Button>
                 </div>
             </div>
-            <div className="space-y-3">
+            <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-background">
+                {localDays.length === 0 && (
+                    <p className="px-4 py-10 text-center text-sm text-muted-foreground">Añade el primer día o importa una plantilla.</p>
+                )}
                 {localDays.map((day, idx) => (
-                    <div key={day.id} className="flex gap-3 items-center bg-muted/40 p-3 rounded-xl border border-transparent hover:border-primary/20 transition-all group">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold shrink-0">
+                    <div key={day.id} className="flex items-center gap-2.5 px-3 py-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold tabular-nums text-primary">
                             {idx + 1}
-                        </div>
-                        <div className="flex-1 space-y-2 sm:space-y-0 sm:flex sm:gap-2">
+                        </span>
+                        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
                             <Input
                                 value={day.name}
                                 onChange={e => {
@@ -879,8 +874,9 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
                                     updated[idx].name = e.target.value
                                     updateDays(updated)
                                 }}
-                                className="bg-background/50 border-0 focus-visible:ring-1 focus-visible:ring-primary h-10 flex-1"
-                                placeholder="Nombre del día (ej: Torso)"
+                                className="h-10 rounded-xl border-border/70 bg-muted/30 font-medium"
+                                placeholder="Nombre (ej: Torso)"
+                                aria-label={`Nombre del día ${idx + 1}`}
                             />
                             <Select
                                 value={day.default_weekday?.toString() || "0"}
@@ -890,7 +886,7 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
                                     updateDays(updated)
                                 }}
                             >
-                                <SelectTrigger className="w-[140px] h-10 bg-background/50 border-0">
+                                <SelectTrigger className="h-10 rounded-xl border-border/70 bg-muted/30" aria-label={`Día habitual de ${day.name}`}>
                                     <SelectValue placeholder="Día habitual" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -906,21 +902,23 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 h-10 w-10 shrink-0"
+                            className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => removeDay(day.id)}
+                            aria-label={`Quitar ${day.name || 'día'}`}
                         >
-                            <Trash2 className="h-5 w-5" />
+                            <Trash2 className="h-4 w-4" />
                         </Button>
                     </div>
                 ))}
             </div>
+            <p className="px-1 text-xs text-muted-foreground">El día habitual sirve para agendar las sesiones en el calendario del atleta al guardar.</p>
             {isSaving && (
-                <div className="flex items-center gap-2 text-primary animate-pulse mt-6">
+                <div className="flex items-center gap-2 text-primary">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm font-medium">Auto-agendando sesiones...</span>
+                    <span className="text-sm font-medium">Agendando sesiones…</span>
                 </div>
             )}
-        </Card>
+        </div>
     )
 })
 StepDays.displayName = 'StepDays'
@@ -1062,140 +1060,108 @@ function StepProgramTable({
         }
     }
 
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col xl:flex-row gap-6 justify-between items-start xl:items-center bg-background/50 p-4 rounded-2xl border border-primary/5">
-                <div className="space-y-2 shrink-0">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Semana de planificación</Label>
-                    <Tabs value={activeWeek.toString()} onValueChange={(v) => setActiveWeek(parseInt(v))} className="w-auto">
-                        <TabsList className="bg-muted/50 p-1">
-                            {Array.from({ length: program?.weeks || 4 }).map((_, i) => (
-                                <TabsTrigger key={i + 1} value={(i + 1).toString()} className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4">
-                                    W{i + 1}
-                                </TabsTrigger>
-                            ))}
-                        </TabsList>
-                    </Tabs>
-                </div>
+    const activeDay = days.find(day => day.id === activeDayId)
+    const daySets = activeDayExercises.reduce((sum, exercise) => sum + (Number(exercise.sets) || 0), 0)
 
-                <div className="space-y-2 w-full xl:w-auto">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Día de entrenamiento</Label>
-                    <Tabs value={activeDayId || ''} onValueChange={setActiveDayId} className="w-full xl:w-auto">
-                        <TabsList className="w-full xl:w-auto bg-muted/50 p-1 overflow-x-auto flex-nowrap justify-start scrollbar-hide">
-                            {days.map(day => (
-                                <TabsTrigger key={day.id} value={day.id} className="data-[state=active]:bg-background data-[state=active]:shadow-sm min-w-[120px]">
+    return (
+        <div className="space-y-4">
+            {/* Días: los valores se aplican a todas las semanas (la app del atleta lee los datos base del ejercicio) */}
+            <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Día de entrenamiento</p>
+                {days.length === 0 ? (
+                    <p className="rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">Configura los días en el paso 2.</p>
+                ) : (
+                    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-hide" role="tablist" aria-label="Día de entrenamiento">
+                        {days.map(day => {
+                            const isActive = day.id === activeDayId
+                            const count = exercises.filter(exercise => exercise.day_id === day.id).length
+                            return (
+                                <button
+                                    key={day.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    onClick={() => setActiveDayId(day.id)}
+                                    className={cn(
+                                        'flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
+                                        isActive ? 'border-primary bg-primary text-primary-foreground' : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
                                     {day.name}
-                                </TabsTrigger>
-                            ))}
-                            {days.length === 0 && (
-                                <div className="px-4 py-2 text-xs italic opacity-50">Configura los días en el Paso 2</div>
-                            )}
-                        </TabsList>
-                    </Tabs>
-                </div>
+                                    <span className={cn('text-xs tabular-nums', isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/70')}>{count}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
             </div>
 
             <DndContext sensors={exerciseSensors} onDragEnd={handleExerciseDragEnd}>
-                <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl bg-background outline outline-1 outline-primary/5">
-                <div className="p-4 sm:p-5 bg-gradient-to-r from-primary/5 via-transparent to-transparent border-b flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                            <Dumbbell className="h-5 w-5 text-primary" />
-                        </div>
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-background">
+                    <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                         <div className="min-w-0">
-                            <h5 className="font-bold text-lg leading-none">Ejercicios</h5>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Planificando para <span className="text-primary font-bold">Semana {activeWeek}</span>
+                            <h5 className="truncate font-semibold leading-tight">{activeDay?.name ?? 'Ejercicios'}</h5>
+                            <p className="text-xs text-muted-foreground">
+                                {activeDayExercises.length} ejercicios{daySets > 0 ? ` · ${daySets} series` : ''} · igual en todas las semanas
                             </p>
                         </div>
+                        <Button
+                            size="sm"
+                            onClick={addExercise}
+                            className="shrink-0 gap-1.5 rounded-full"
+                            disabled={!activeDayId}
+                        >
+                            <Plus className="h-4 w-4" />
+                            Añadir
+                        </Button>
                     </div>
-                    <Button
-                        size="sm"
-                        onClick={addExercise}
-                        className="gap-2 font-bold px-4 rounded-xl shadow-lg shadow-primary/10 transition-all active:scale-95 w-full sm:w-auto shrink-0"
-                        disabled={!activeDayId}
-                    >
-                        <Plus className="h-4 w-4" /> Añadir Ejercicio
-                    </Button>
-                </div>
 
-                <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-primary/10">
-                    <table className="w-full min-w-[720px] border-collapse">
-                        <thead>
-                            <tr className="bg-muted/30 text-left text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                                <th className="p-5 border-b font-bold min-w-[250px]">Ejercicio</th>
-                                <th className="p-5 border-b font-bold w-12 shrink-0"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {activeDayExercises.map(ex => (
+                    {activeDayExercises.length > 0 ? (
+                        <div className="divide-y divide-border/60">
+                            {activeDayExercises.map((ex, index) => (
                                 <ExerciseRow
-                                    key={`${ex.id}-${activeWeek}`}
+                                    key={ex.id}
+                                    index={index}
+                                    total={activeDayExercises.length}
                                     exercise={ex}
-                                    programId={programId}
-                                    coachId={program.coach_id}
                                     dayId={activeDayId!}
-                                    weekIndex={activeWeek}
-                                    columns={cols}
-                                    allCells={cells}
                                     onUpdate={(updated) => {
                                         setExercises(exercises.map(e => e.id === updated.id ? updated : e))
                                     }}
                                     onDelete={() => {
                                         setExercises(exercises.filter(e => e.id !== ex.id))
                                     }}
-                                    onCellUpdate={(columnId: string, value: string) => {
-                                        const newCell = {
-                                            exercise_id: ex.id,
-                                            column_id: columnId,
-                                            week_index: activeWeek,
-                                            value: value
-                                        }
-                                        const updatedCells = [...cells.filter(c => !(c.exercise_id === ex.id && c.column_id === columnId && c.week_index === activeWeek)), newCell]
-                                        setCells(updatedCells)
-                                    }}
                                     onMoveUp={() => moveExerciseLocally(ex.id, 'up')}
                                     onMoveDown={() => moveExerciseLocally(ex.id, 'down')}
                                     dragDisabled={isReorderingExercises}
                                 />
                             ))}
-                            {activeDayExercises.length === 0 && activeDayId && (
-                                <tr>
-                                    <td colSpan={2} className="p-16 text-center">
-                                        <div className="flex flex-col items-center gap-2 opacity-30">
-                                            <Dumbbell className="h-10 w-10 mb-2" />
-                                            <p className="text-lg font-semibold italic">No hay ejercicios para este día. ¡Añade el primero!</p>
-                                        </div>
-                                    </td>
-                                </tr>
+                        </div>
+                    ) : (
+                        <div className="px-6 py-12 text-center">
+                            <Dumbbell className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+                            <p className="text-sm font-medium">{activeDayId ? 'Este día aún no tiene ejercicios' : 'Selecciona un día para empezar'}</p>
+                            {activeDayId && (
+                                <Button size="sm" variant="outline" className="mt-3 gap-1.5 rounded-full" onClick={addExercise}>
+                                    <Plus className="h-4 w-4" />
+                                    Añadir el primero
+                                </Button>
                             )}
-                            {!activeDayId && (
-                                <tr>
-                                    <td colSpan={2} className="p-16 text-center">
-                                        <p className="text-lg font-semibold italic opacity-30">Selecciona un día de arriba para empezar a configurar</p>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                        </div>
+                    )}
                 </div>
-                </Card>
             </DndContext>
         </div>
     )
 }
 
-function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, allCells, onUpdate, onDelete, onCellUpdate, onMoveUp, onMoveDown, dragDisabled }: {
+function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMoveUp, onMoveDown, dragDisabled }: {
     exercise: any,
-    programId: string,
-    coachId: string,
+    index: number,
+    total: number,
     dayId: string,
-    weekIndex: number,
-    columns: any[],
-    allCells: any[],
     onUpdate: (ex: any) => void,
     onDelete: () => void,
-    onCellUpdate: (colId: string, val: string) => void,
     onMoveUp: () => void,
     onMoveDown: () => void,
     dragDisabled: boolean
@@ -1217,61 +1183,7 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
         data: { exerciseId: exercise.id },
         disabled: dragDisabled,
     })
-    const [rowCells, setRowCells] = useState<Record<string, string>>({})
-    const [isSaving, setIsSaving] = useState<Record<string, boolean>>({})
-
-    useEffect(() => {
-        const cellMap: Record<string, string> = {}
-        allCells.forEach(c => {
-            if (c.exercise_id === exercise.id && c.week_index === weekIndex) {
-                cellMap[c.column_id] = c.value?.value || c.value || ''
-            }
-        })
-        setRowCells(cellMap)
-    }, [exercise.id, weekIndex, allCells])
-
-    async function handleCellUpdate(columnId: string, value: string) {
-        setIsSaving(prev => ({ ...prev, [columnId]: true }))
-        const supabase = createClient()
-
-        // Optimistic update
-        onCellUpdate(columnId, value)
-
-        try {
-            // 1. Session check
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) {
-                toast({ title: 'Error', description: 'Sesión expirada', variant: 'destructive' })
-                return
-            }
-
-            const dbValue = value.trim() === '' ? null : value
-
-            const { error } = await supabase
-                .from('training_cells')
-                .upsert({
-                    program_id: programId,
-                    coach_id: coachId,
-                    day_id: dayId,
-                    exercise_id: exercise.id,
-                    column_id: columnId,
-                    week_index: weekIndex,
-                    value: dbValue,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'exercise_id,column_id,week_index'
-                })
-
-            if (error) {
-                console.error('[DEBUG] Upsert error:', error)
-                toast({ title: 'Error al persistir', description: error.message, variant: 'destructive' })
-            }
-        } catch (err: any) {
-            console.error('[CRITICAL] Cell update failed:', err)
-        } finally {
-            setIsSaving(prev => ({ ...prev, [columnId]: false }))
-        }
-    }
+    const [isProcessing, setIsProcessing] = useState(false)
 
     async function updateExerciseFields(fields: Partial<any>) {
         const supabase = createClient()
@@ -1299,7 +1211,6 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
     function parseOptionalInteger(value: string) {
         const trimmed = value.trim()
         if (trimmed === '') return null
-
         const parsed = Number.parseInt(trimmed, 10)
         return Number.isFinite(parsed) ? parsed : null
     }
@@ -1307,165 +1218,174 @@ function ExerciseRow({ exercise, programId, coachId, dayId, weekIndex, columns, 
     function parseOptionalNumber(value: string) {
         const trimmed = value.trim()
         if (trimmed === '') return null
-
         const parsed = Number.parseFloat(trimmed.replace(',', '.'))
         return Number.isFinite(parsed) ? parsed : null
     }
 
-    const [isProcessing, setIsProcessing] = useState(false)
-    const setRowRef = (node: HTMLTableRowElement | null) => {
+    async function move(direction: 'up' | 'down') {
+        setIsProcessing(true)
+        const result = await reorderExerciseAction(exercise.id, direction, dayId)
+        if (result.success) {
+            if (direction === 'up') onMoveUp()
+            else onMoveDown()
+        } else {
+            toast({ title: 'Error', description: result.error, variant: 'destructive' })
+        }
+        setIsProcessing(false)
+    }
+
+    async function remove() {
+        setIsProcessing(true)
+        const result = await deleteExerciseAction(exercise.id)
+        if (!result.success) {
+            toast({ title: 'Error al eliminar', description: result.error, variant: 'destructive' })
+        } else {
+            onDelete()
+        }
+        setIsProcessing(false)
+    }
+
+    const setRowRef = (node: HTMLDivElement | null) => {
         setDraggableRef(node)
         setDroppableRef(node)
     }
 
+    const fieldClass = 'h-9 w-full rounded-lg border border-border/70 bg-muted/30 px-2.5 text-sm font-semibold tabular-nums transition-colors focus:border-primary/50 focus:bg-background focus:outline-none'
+
     return (
-        <tr
+        <div
             ref={setRowRef}
             style={{ transform: CSS.Translate.toString(transform) }}
             className={cn(
-                'group border-b border-muted-foreground/10 transition-all last:border-0 hover:bg-primary/5',
-                isDragging && 'z-10 opacity-40',
-                isOver && !isDragging && 'bg-primary/10 ring-2 ring-inset ring-primary/20'
+                'space-y-2.5 bg-background px-3 py-3 transition-colors sm:px-4',
+                isDragging && 'relative z-10 opacity-40',
+                isOver && !isDragging && 'bg-primary/5 ring-2 ring-inset ring-primary/20'
             )}
         >
-            <td className="p-4 px-5">
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            disabled={dragDisabled || isProcessing}
-                            className="flex h-10 w-10 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
-                            aria-label={`Reordenar ${exercise.exercise_name || 'ejercicio'}`}
-                            title="Arrastrar para reordenar"
-                            {...listeners}
-                            {...attributes}
-                        >
-                            <GripVertical className="h-5 w-5" />
-                        </button>
-                        <Input
-                            className="font-bold bg-transparent border-0 focus-visible:ring-1 focus-visible:ring-primary shadow-none h-11 px-2 text-md transition-all placeholder:italic"
-                            value={exercise.exercise_name}
-                            onChange={e => onUpdate({ ...exercise, exercise_name: e.target.value })}
-                            onBlur={e => updateExerciseFields({ exercise_name: e.target.value })}
-                            placeholder="Escribe el nombre del ejercicio..."
-                        />
-                    </div>
-                    {/* Metrics Row */}
-                    <div className="flex items-center gap-3 pl-4">
-                        <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Sets:</span>
-                            <input
-                                type="number"
-                                inputMode="numeric"
-                                className="w-8 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.sets ?? ''}
-                                onChange={e => onUpdate({ ...exercise, sets: e.target.value })}
-                                onBlur={e => updateExerciseFields({ sets: parseOptionalInteger(e.target.value) })}
-                            />
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Reps:</span>
-                            <input
-                                className="w-12 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.reps ?? ''}
-                                onChange={e => onUpdate({ ...exercise, reps: e.target.value })}
-                                onBlur={e => updateExerciseFields({ reps: e.target.value })}
-                            />
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">RIR:</span>
-                            <input
-                                inputMode="decimal"
-                                className="w-8 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.rir ?? ''}
-                                onChange={e => onUpdate({ ...exercise, rir: e.target.value })}
-                                onBlur={e => updateExerciseFields({ rir: parseOptionalNumber(e.target.value) })}
-                            />
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-primary/5">
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground opacity-60">Rest:</span>
-                            <input
-                                type="number"
-                                inputMode="numeric"
-                                className="w-10 bg-transparent text-xs font-bold focus:outline-none"
-                                value={exercise.rest_seconds ?? ''}
-                                onChange={e => onUpdate({ ...exercise, rest_seconds: e.target.value })}
-                                onBlur={e => updateExerciseFields({ rest_seconds: parseOptionalInteger(e.target.value) })}
-                            />
-                        </div>
-                        <Select
-                            value={normalizeMuscleGroup(exercise.muscle_group)}
-                            onValueChange={(value) => {
-                                const muscleGroup = normalizeMuscleGroup(value as MuscleGroup)
-                                onUpdate({ ...exercise, muscle_group: muscleGroup })
-                                void updateExerciseFields({ muscle_group: muscleGroup })
-                            }}
-                        >
-                            <SelectTrigger className="h-8 min-w-[170px] bg-muted/30 border-primary/5 text-xs font-medium">
-                                <SelectValue placeholder="Grupo muscular" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {MUSCLE_GROUPS.map((group) => (
-                                    <SelectItem key={group} value={group}>
-                                        {MUSCLE_GROUP_LABELS[group]}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </td>
-            <td className="p-2 pr-5 text-right w-12 shrink-0">
-                <div className="flex items-center gap-0.5 justify-end">
-                    <button
-                        disabled={isProcessing}
-                        onClick={async () => {
-                            setIsProcessing(true)
-                            const result = await reorderExerciseAction(exercise.id, 'up', dayId)
-                            if (result.success) onMoveUp()
-                            else toast({ title: 'Error', description: result.error, variant: 'destructive' })
-                            setIsProcessing(false)
+            <div className="flex items-center gap-1.5">
+                <button
+                    type="button"
+                    disabled={dragDisabled || isProcessing}
+                    className="flex h-9 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={`Reordenar ${exercise.exercise_name || 'ejercicio'}`}
+                    title="Arrastrar para reordenar"
+                    {...listeners}
+                    {...attributes}
+                >
+                    <GripVertical className="h-4 w-4" />
+                </button>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-muted-foreground">
+                    {index + 1}
+                </span>
+                <Input
+                    className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-2 text-[15px] font-semibold shadow-none placeholder:font-normal placeholder:italic hover:border-border/70 focus-visible:border-primary/50 focus-visible:ring-0"
+                    value={exercise.exercise_name}
+                    onChange={e => onUpdate({ ...exercise, exercise_name: e.target.value })}
+                    onBlur={e => updateExerciseFields({ exercise_name: e.target.value })}
+                    placeholder="Nombre del ejercicio"
+                    aria-label="Nombre del ejercicio"
+                />
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" disabled={isProcessing} aria-label="Más acciones">
+                            {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem disabled={index === 0} onClick={() => move('up')}>
+                            <ArrowUp className="mr-2 h-4 w-4" />
+                            Subir
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={index === total - 1} onClick={() => move('down')}>
+                            <ArrowDown className="mr-2 h-4 w-4" />
+                            Bajar
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={remove}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar ejercicio
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+
+            <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-2 sm:pl-[3.25rem] sm:grid-cols-[5rem_7rem_5rem_6rem_minmax(0,1fr)]">
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Series</span>
+                    <input
+                        type="number"
+                        inputMode="numeric"
+                        className={fieldClass}
+                        value={exercise.sets ?? ''}
+                        onChange={e => onUpdate({ ...exercise, sets: e.target.value })}
+                        onBlur={e => updateExerciseFields({ sets: parseOptionalInteger(e.target.value) })}
+                    />
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reps</span>
+                    <input
+                        className={fieldClass}
+                        value={exercise.reps ?? ''}
+                        placeholder="8-10"
+                        onChange={e => onUpdate({ ...exercise, reps: e.target.value })}
+                        onBlur={e => updateExerciseFields({ reps: e.target.value })}
+                    />
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">RIR</span>
+                    <input
+                        inputMode="decimal"
+                        className={fieldClass}
+                        value={exercise.rir ?? ''}
+                        onChange={e => onUpdate({ ...exercise, rir: e.target.value })}
+                        onBlur={e => updateExerciseFields({ rir: parseOptionalNumber(e.target.value) })}
+                    />
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Desc. (s)</span>
+                    <input
+                        type="number"
+                        inputMode="numeric"
+                        className={fieldClass}
+                        value={exercise.rest_seconds ?? ''}
+                        placeholder="90"
+                        onChange={e => onUpdate({ ...exercise, rest_seconds: e.target.value })}
+                        onBlur={e => updateExerciseFields({ rest_seconds: parseOptionalInteger(e.target.value) })}
+                    />
+                </label>
+                <label className="col-span-4 min-w-0 space-y-1 sm:col-span-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Grupo muscular</span>
+                    <Select
+                        value={normalizeMuscleGroup(exercise.muscle_group)}
+                        onValueChange={(value) => {
+                            const muscleGroup = normalizeMuscleGroup(value as MuscleGroup)
+                            onUpdate({ ...exercise, muscle_group: muscleGroup })
+                            void updateExerciseFields({ muscle_group: muscleGroup })
                         }}
-                        className="p-1 hover:bg-muted rounded transition-all text-muted-foreground hover:text-foreground disabled:opacity-40"
-                        title="Subir ejercicio"
                     >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                        disabled={isProcessing}
-                        onClick={async () => {
-                            setIsProcessing(true)
-                            const result = await reorderExerciseAction(exercise.id, 'down', dayId)
-                            if (result.success) onMoveDown()
-                            else toast({ title: 'Error', description: result.error, variant: 'destructive' })
-                            setIsProcessing(false)
-                        }}
-                        className="p-1 hover:bg-muted rounded transition-all text-muted-foreground hover:text-foreground disabled:opacity-40"
-                        title="Bajar ejercicio"
-                    >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                    </button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isProcessing}
-                        className="text-destructive h-10 w-10 transition-opacity hover:bg-destructive/10 rounded-full active:scale-90 disabled:opacity-40"
-                        onClick={async () => {
-                            setIsProcessing(true)
-                            const result = await deleteExerciseAction(exercise.id)
-                            if (!result.success) {
-                                toast({ title: 'Error al eliminar', description: result.error, variant: 'destructive' })
-                            } else {
-                                onDelete()
-                            }
-                            setIsProcessing(false)
-                        }}
-                        title="Eliminar ejercicio"
-                    >
-                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-5 w-5" />}
-                    </Button>
-                </div>
-            </td>
-        </tr>
+                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-muted/30 text-sm">
+                            <SelectValue placeholder="Grupo muscular" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {MUSCLE_GROUPS.map((group) => (
+                                <SelectItem key={group} value={group}>
+                                    {MUSCLE_GROUP_LABELS[group]}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </label>
+                <label className="col-span-4 min-w-0 space-y-1 sm:col-span-5">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notas para el atleta</span>
+                    <input
+                        className={cn(fieldClass, 'font-normal')}
+                        value={exercise.notes ?? ''}
+                        placeholder="Técnica, tempo, alternativa…"
+                        onChange={e => onUpdate({ ...exercise, notes: e.target.value })}
+                        onBlur={e => updateExerciseFields({ notes: e.target.value.trim() || null })}
+                    />
+                </label>
+            </div>
+        </div>
     )
 }

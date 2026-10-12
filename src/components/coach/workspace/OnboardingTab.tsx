@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, ClipboardList, Calendar, AlertCircle, Activity, FileText } from 'lucide-react'
+import { ClipboardList, Calendar, AlertCircle, Activity, FileText, Images, Search } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { MetricDefinition } from '@/types/metrics'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 
@@ -44,6 +45,7 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
     const [loading, setLoading] = useState(true)
     const [checkin, setCheckin] = useState<OnboardingCheckin | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [query, setQuery] = useState('')
 
     useEffect(() => {
         async function fetchOnboarding() {
@@ -91,41 +93,34 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
         fetchOnboarding()
     }, [clientId, coachId])
 
-    // Loading
     if (loading) {
         return (
-            <Card className="p-6 text-center sm:p-12">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mt-3">Cargando onboarding...</p>
-            </Card>
+            <div className="space-y-3" aria-label="Cargando onboarding">
+                <div className="h-20 animate-pulse rounded-2xl bg-muted/60" />
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                    {Array.from({ length: 6 }, (_, index) => <div key={index} className="h-16 animate-pulse rounded-xl bg-muted/60" />)}
+                </div>
+                <div className="h-48 animate-pulse rounded-2xl bg-muted/60" />
+            </div>
         )
     }
 
-    // Error
     if (error) {
         return (
-            <Card className="p-6 text-center sm:p-12">
-                <AlertCircle className="h-10 w-10 text-destructive/50 mx-auto mb-3" />
-                <p className="text-sm text-destructive">{error}</p>
-            </Card>
+            <EmptyState icon={AlertCircle} title="No se pudo cargar el onboarding" description={error} tone="danger" />
         )
     }
 
-    // No onboarding found
     if (!checkin) {
         return (
-            <Card className="p-6 text-center sm:p-12">
-                <ClipboardList className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">Sin onboarding</h3>
-                <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                    Este cliente aún no ha completado el onboarding.
-                    Envíale un formulario desde la pestaña de Resumen.
-                </p>
-            </Card>
+            <EmptyState
+                icon={ClipboardList}
+                title="Sin onboarding"
+                description="Este atleta aún no ha completado el onboarding. Puedes enviárselo desde el menú de su ficha."
+            />
         )
     }
 
-    // Parse data
     const payload = checkin.raw_payload || {}
     const schema = (checkin.form_templates?.schema as FormSchemaField[]) || []
     const submittedDate = checkin.submitted_at
@@ -133,127 +128,114 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
             day: 'numeric',
             month: 'long',
             year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
         })
         : null
 
-    // If we have a schema, use it to render fields in order with labels
-    // Otherwise, fall back to raw key-value rendering
-    const hasSchema = schema.length > 0
-
     const metricKeys = Object.keys(payload).filter(k => k.startsWith('metric_') && payload[k] !== null && payload[k] !== '')
 
-    const getMetricLabel = (key: string) => {
-        const id = key.replace('metric_', '')
-        const def = metricDefinitions.find(m => m.id === id)
-        return def ? def.name : 'Métrica'
-    }
+    const getMetricDefinition = (key: string) => metricDefinitions.find(m => m.id === key.replace('metric_', ''))
 
-    const getMetricUnit = (key: string) => {
-        const id = key.replace('metric_', '')
-        const def = metricDefinitions.find(m => m.id === id)
-        return def?.unit ? ` ${def.unit}` : ''
-    }
+    // Respuestas en el orden del formulario; sin esquema, todo lo que no sea métrica
+    const responses: Array<{ id: string; label: string; value: unknown }> = schema.length > 0
+        ? schema
+            .filter(field => payload[field.id] !== undefined && payload[field.id] !== null)
+            .map(field => ({ id: field.id, label: field.label, value: payload[field.id] }))
+        : Object.entries(payload)
+            .filter(([key]) => !key.startsWith('metric_'))
+            .map(([key, value]) => ({ id: key, label: formatKey(key), value }))
+
+    const needle = query.trim().toLowerCase()
+    const visibleResponses = needle
+        ? responses.filter(response => `${response.label} ${formatPlain(response.value)}`.toLowerCase().includes(needle))
+        : responses
 
     return (
-        <div className="space-y-4">
-            {/* Header */}
-            <Card className="p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3 sm:items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                            <ClipboardList className="h-5 w-5 text-blue-400" />
-                        </div>
-                        <div className="min-w-0">
-                            <h3 className="font-semibold break-words">
-                                {checkin.form_templates?.title || 'Onboarding'}
-                            </h3>
-                            {submittedDate && (
-                                <div className="flex items-start gap-1.5 text-xs text-muted-foreground mt-0.5">
-                                    <Calendar className="h-3 w-3 shrink-0 mt-0.5" />
-                                    <span className="break-words">Completado el {submittedDate}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <Badge variant="outline" className="shrink-0 whitespace-nowrap text-green-400 border-green-400/30 bg-green-400/5">
-                        Completado
-                    </Badge>
-                </div>
-            </Card>
-
-            {/* Metrics */}
-            {metricKeys.length > 0 && (
-                <div className="space-y-4">
-                    <h4 className="font-semibold text-lg flex items-center gap-2">
-                        <Activity className="h-5 w-5 text-muted-foreground" />
-                        Datos de progreso
-                    </h4>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
-                        {metricKeys.map((key) => (
-                            <MetricBox
-                                key={key}
-                                label={getMetricLabel(key)}
-                                value={payload[key] as number | string}
-                                unit={getMetricUnit(key)}
-                            />
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Responses */}
-            <div className="space-y-4">
-                <h4 className="font-semibold text-lg flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    Preguntas del entrenador
-                </h4>
-                {Object.keys(payload).length === 0 ? (
-                    <Card className="p-8 text-center">
-                        <p className="text-sm text-muted-foreground">
-                            El formulario fue enviado sin respuestas.
+        <div className="space-y-6">
+            <section className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm sm:p-4">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <ClipboardList className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Formulario de onboarding</p>
+                    <h3 className="truncate text-[15px] font-semibold leading-tight">{checkin.form_templates?.title || 'Onboarding'}</h3>
+                    {submittedDate && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            Completado el {submittedDate}
                         </p>
-                    </Card>
-                ) : hasSchema ? (
-                    <div className="grid gap-3">
-                        {schema.map((field) => {
-                            const value = payload[field.id]
-                            if (value === undefined || value === null) return null
+                    )}
+                </div>
+                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                    Completado
+                </span>
+            </section>
 
+            {metricKeys.length > 0 && (
+                <section>
+                    <SectionTitle icon={Activity} title="Medidas iniciales" count={metricKeys.length} />
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                        {metricKeys.map((key) => {
+                            const definition = getMetricDefinition(key)
                             return (
-                                <Card key={field.id} className="p-4 bg-muted/10 border-border">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                                        {field.label}
-                                    </p>
-                                    <ResponseValue value={value} />
-                                </Card>
+                                <MetricBox
+                                    key={key}
+                                    label={definition?.name ?? 'Métrica'}
+                                    value={payload[key] as number | string}
+                                    unit={definition?.unit ?? ''}
+                                />
                             )
                         })}
                     </div>
-                ) : (
-                    // Fallback: render raw key-value pairs
-                    <div className="grid gap-3">
-                        {Object.entries(payload).map(([key, value]) => (
-                            <Card key={key} className="p-4 bg-muted/10 border-border">
-                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                                    {formatKey(key)}
-                                </p>
-                                <ResponseValue value={value} />
-                            </Card>
-                        ))}
-                    </div>
-                )}
-            </div>
+                </section>
+            )}
 
-            {/* Photos */}
-            <div className="space-y-4">
-                <h4 className="font-semibold text-lg flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    Fotos de progreso
-                </h4>
+            <section>
+                <SectionTitle icon={FileText} title="Respuestas" count={responses.length} />
+                {responses.length === 0 ? (
+                    <EmptyState icon={FileText} title="Sin respuestas" description="El formulario se envió sin respuestas." />
+                ) : (
+                    <>
+                        {responses.length > 12 && (
+                            <div className="relative mb-2.5">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    value={query}
+                                    onChange={(event) => setQuery(event.target.value)}
+                                    placeholder="Buscar en las respuestas"
+                                    className="h-10 rounded-full border-border/70 bg-muted/40 pl-9"
+                                />
+                            </div>
+                        )}
+                        {visibleResponses.length === 0 ? (
+                            <p className="px-1 py-6 text-center text-sm text-muted-foreground">Ninguna respuesta coincide con «{query}».</p>
+                        ) : (
+                            <dl className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+                                {visibleResponses.map(response => isInlineValue(response.value) ? (
+                                    <div key={response.id} className="flex items-baseline justify-between gap-4 px-4 py-3">
+                                        <dt className="min-w-0 text-sm text-muted-foreground">{response.label}</dt>
+                                        <dd className="shrink-0 text-right text-sm font-semibold">
+                                            <ResponseValue value={response.value} compact />
+                                        </dd>
+                                    </div>
+                                ) : (
+                                    <div key={response.id} className="px-4 py-3">
+                                        <dt className="text-sm text-muted-foreground">{response.label}</dt>
+                                        <dd className="mt-1 text-sm font-medium">
+                                            <ResponseValue value={response.value} />
+                                        </dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        )}
+                    </>
+                )}
+            </section>
+
+            <section>
+                <SectionTitle icon={Images} title="Fotos iniciales" />
                 <CheckinPhotosViewer checkinId={checkin.id} coachId={coachId} />
-            </div>
+            </section>
         </div>
     )
 }
@@ -262,13 +244,48 @@ export function OnboardingTab({ clientId, coachId, metricDefinitions }: Onboardi
 // Helpers
 // ---------------------------------------------------------------------------
 
-function ResponseValue({ value }: { value: unknown }) {
+/** Respuestas que caben a la derecha de la pregunta; el resto va debajo */
+function isInlineValue(value: unknown) {
+    if (typeof value === 'number' || typeof value === 'boolean') return true
+    if (typeof value === 'string') return value.trim().length <= 14 && !value.includes('\n')
+    return false
+}
+
+function formatPlain(value: unknown): string {
+    if (Array.isArray(value)) return value.map(String).join(' ')
+    if (typeof value === 'object' && value !== null) return Object.values(value).map(String).join(' ')
+    return String(value ?? '')
+}
+
+function SectionTitle({ icon: Icon, title, count }: { icon: React.ElementType; title: string; count?: number }) {
+    return (
+        <h4 className="mb-2.5 flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Icon className="h-3.5 w-3.5" />
+            {title}
+            {count != null && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">{count}</span>}
+        </h4>
+    )
+}
+
+function EmptyState({ icon: Icon, title, description, tone }: { icon: React.ElementType; title: string; description?: string; tone?: 'danger' }) {
+    return (
+        <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
+            <div className={cn('mb-3 flex h-12 w-12 items-center justify-center rounded-2xl', tone === 'danger' ? 'bg-destructive/10' : 'bg-muted')}>
+                <Icon className={cn('h-6 w-6', tone === 'danger' ? 'text-destructive' : 'text-muted-foreground')} />
+            </div>
+            <p className="text-sm font-semibold">{title}</p>
+            {description && <p className="mt-1 max-w-sm text-xs text-muted-foreground">{description}</p>}
+        </div>
+    )
+}
+
+function ResponseValue({ value, compact }: { value: unknown; compact?: boolean }) {
     if (Array.isArray(value)) {
         if (value.length === 0) {
             return <p className="text-sm text-muted-foreground italic">Sin respuesta</p>
         }
         return (
-            <div className="flex flex-wrap gap-1.5">
+            <div className={cn('flex flex-wrap gap-1.5', compact && 'justify-end')}>
                 {value.map((item, i) => (
                     <Badge key={i} variant="secondary" className="text-xs">
                         {String(item)}
@@ -279,15 +296,11 @@ function ResponseValue({ value }: { value: unknown }) {
     }
 
     if (typeof value === 'boolean') {
-        return (
-            <Badge variant={value ? 'default' : 'secondary'} className="text-xs">
-                {value ? 'Sí' : 'No'}
-            </Badge>
-        )
+        return <span className={cn('text-sm font-semibold', value ? 'text-success' : 'text-muted-foreground')}>{value ? 'Sí' : 'No'}</span>
     }
 
     if (typeof value === 'number') {
-        return <p className="text-sm font-medium">{value}</p>
+        return <span className="text-sm font-semibold tabular-nums">{value.toLocaleString('es-ES')}</span>
     }
 
     if (typeof value === 'object' && value !== null) {
@@ -314,7 +327,7 @@ function ResponseValue({ value }: { value: unknown }) {
         return <p className="text-sm whitespace-pre-wrap leading-relaxed">{strValue}</p>
     }
 
-    return <p className="text-sm font-medium">{strValue}</p>
+    return compact ? <span className="break-words">{strValue}</span> : <p className="text-sm font-medium">{strValue}</p>
 }
 
 function MetricBox({
@@ -327,12 +340,11 @@ function MetricBox({
     unit?: string
 }) {
     return (
-        <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
-            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                {label}
-            </div>
-            <p className="font-semibold text-lg">
-                {value !== null && value !== undefined ? `${value.toLocaleString()}${unit}` : '—'}
+        <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5 shadow-sm">
+            <p className="line-clamp-2 text-[11px] leading-tight text-muted-foreground">{label}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums leading-none">
+                {value !== null && value !== undefined ? value.toLocaleString('es-ES') : '—'}
+                {unit && value !== null && value !== undefined && <span className="ml-0.5 text-xs font-medium text-muted-foreground">{unit}</span>}
             </p>
         </div>
     )

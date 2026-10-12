@@ -12,6 +12,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Dumbbell,
+    ChevronDown,
     HeartPulse,
     Loader2,
     Pencil,
@@ -405,7 +406,7 @@ function ReviewRows({ form }: { form: AthleteProfileAnswers }) {
             {form.annualGoals.length > 0 && (
                 <Card className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                     <div className="mb-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                             Objetivos anuales con fecha
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -446,6 +447,8 @@ function ProfileSectionCard({
     editable = false,
     value,
     onChange,
+    expanded,
+    onToggle,
 }: {
     title: string
     description?: string
@@ -453,32 +456,52 @@ function ProfileSectionCard({
     editable?: boolean
     value?: string
     onChange?: (value: string) => void
+    /** Solo lectura: plegado muestra un avance de tres líneas */
+    expanded?: boolean
+    onToggle?: () => void
 }) {
+    if (editable) {
+        return (
+            <Card className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">{title}</p>
+                {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+                <Textarea
+                    value={value}
+                    onChange={event => onChange?.(event.target.value)}
+                    rows={6}
+                    className="mt-2 resize-none border-border bg-background text-sm leading-relaxed"
+                />
+            </Card>
+        )
+    }
+
+    const isLong = (content?.length ?? 0) > 220
+
     return (
-        <Card className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="space-y-2">
-                <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                        {title}
-                    </p>
-                    {description && (
-                        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-                    )}
-                </div>
-                {editable ? (
-                    <Textarea
-                        value={value}
-                        onChange={event => onChange?.(event.target.value)}
-                        rows={6}
-                        className="resize-none bg-background border-border text-sm leading-relaxed"
-                    />
-                ) : (
-                    <p className="text-sm leading-7 text-foreground whitespace-pre-line">
-                        {content}
-                    </p>
+        <div className="px-4 py-3.5 sm:px-5">
+            <button
+                type="button"
+                onClick={isLong ? onToggle : undefined}
+                className={cn('flex w-full items-start justify-between gap-3 text-left', !isLong && 'cursor-default')}
+                aria-expanded={isLong ? expanded : undefined}
+            >
+                <span className="min-w-0">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-primary">{title}</span>
+                    {description && <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>}
+                </span>
+                {isLong && (
+                    <ChevronDown className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
                 )}
-            </div>
-        </Card>
+            </button>
+            <p className={cn('mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground', isLong && !expanded && 'line-clamp-3')}>
+                {content}
+            </p>
+            {isLong && (
+                <button type="button" onClick={onToggle} className="mt-1 text-xs font-semibold text-primary hover:underline">
+                    {expanded ? 'Mostrar menos' : 'Leer más'}
+                </button>
+            )}
+        </div>
     )
 }
 
@@ -498,6 +521,7 @@ export function AthleteProfileTab({
     const [isGenerating, setIsGenerating] = useState(false)
     const [isApproving, setIsApproving] = useState(false)
     const [isEditingGenerated, setIsEditingGenerated] = useState(false)
+    const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set())
     const [isSavingGeneratedEdit, setIsSavingGeneratedEdit] = useState(false)
     const [generatedDraft, setGeneratedDraft] = useState<AthleteAIProfileOutput | null>(persistedGeneratedProfile)
     const [error, setError] = useState<string | null>(athleteProfile?.generation_error || null)
@@ -722,7 +746,7 @@ export function AthleteProfileTab({
                                 <Sparkles className="h-5 w-5" />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                                     Opción recomendada
                                 </p>
                                 <h3 className="text-base font-semibold tracking-tight">Generar perfil desde el onboarding</h3>
@@ -801,7 +825,7 @@ export function AthleteProfileTab({
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="space-y-2">
                             <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                                     Perfil del atleta
                                 </span>
                                 <Badge variant="secondary">Configuración</Badge>
@@ -1164,7 +1188,7 @@ export function AthleteProfileTab({
                         </div>
                         <div className="space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                                     Perfil del atleta
                                 </span>
                                 {mode === 'approved' ? (
@@ -1225,7 +1249,7 @@ export function AthleteProfileTab({
             {athleteProfile?.answers_json?.athleteDisciplines?.length ? (
                 <Card className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                     <div className="mb-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                             Etiquetas de contexto
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -1249,7 +1273,7 @@ export function AthleteProfileTab({
             {athleteProfile?.answers_json?.annualGoals?.length ? (
                 <Card className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                     <div className="mb-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                             Objetivos anuales con fecha
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -1308,16 +1332,35 @@ export function AthleteProfileTab({
                     </div>
                 </div>
             ) : (
-                <div className="space-y-4">
-                    {sections.map(section => (
-                        <ProfileSectionCard
-                            key={section.key}
-                            title={section.title}
-                            description={section.description}
-                            content={section.content}
-                        />
-                    ))}
-                </div>
+                <section>
+                    <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contexto del atleta</h4>
+                        <button
+                            type="button"
+                            onClick={() => setExpandedSections(current => current.size === sections.length ? new Set() : new Set(sections.map(section => section.key)))}
+                            className="text-xs font-semibold text-primary hover:underline"
+                        >
+                            {expandedSections.size === sections.length ? 'Plegar todo' : 'Desplegar todo'}
+                        </button>
+                    </div>
+                    <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+                        {sections.map(section => (
+                            <ProfileSectionCard
+                                key={section.key}
+                                title={section.title}
+                                description={section.description}
+                                content={section.content}
+                                expanded={expandedSections.has(section.key)}
+                                onToggle={() => setExpandedSections(current => {
+                                    const next = new Set(current)
+                                    if (next.has(section.key)) next.delete(section.key)
+                                    else next.add(section.key)
+                                    return next
+                                })}
+                            />
+                        ))}
+                    </div>
+                </section>
             )}
         </div>
     )

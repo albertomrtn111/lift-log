@@ -163,21 +163,23 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
     return (
         <div className="space-y-6">
             {/* ============ Bloque: datos base del atleta ============ */}
-            <Card className="overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <Card className="overflow-hidden rounded-2xl border-border/70">
+                <div className={cn('flex items-center justify-between gap-3 p-4', (editing || hasAnyData || loading) && 'border-b')}>
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                             <User className="h-4 w-4 text-primary" />
                         </div>
                         <div className="min-w-0">
-                            <h3 className="font-semibold">Datos del atleta</h3>
+                            <h3 className="font-semibold leading-tight">Datos del atleta</h3>
                             <p className="text-xs text-muted-foreground">
-                                Referencias base: edad, antropometría y condición.
+                                {!loading && !hasAnyData && !editing
+                                    ? 'Sin configurar · edad, altura y peso de referencia'
+                                    : 'Referencias base: edad, antropometría y condición.'}
                             </p>
                         </div>
                     </div>
                     {!editing ? (
-                        <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={loading}>
+                        <Button variant="outline" size="sm" className="shrink-0 rounded-full" onClick={() => setEditing(true)} disabled={loading}>
                             <Pencil className="mr-1.5 h-3.5 w-3.5" />
                             {hasAnyData ? 'Editar' : 'Configurar'}
                         </Button>
@@ -189,7 +191,7 @@ export function AthleteConfigSection({ clientId }: AthleteConfigSectionProps) {
                     )}
                 </div>
 
-                <div className="p-4">
+                <div className={cn('p-4', !editing && !hasAnyData && !loading && 'hidden')}>
                     {loading ? (
                         <div className="flex items-center justify-center py-8">
                             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

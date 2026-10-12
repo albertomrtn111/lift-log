@@ -342,13 +342,13 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
             if (!val) handleReset();
         }}>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-primary/20 hover:text-primary">
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/20 hover:text-primary" aria-label="Añadir sesión a este día" title="Añadir sesión">
                     <CalendarPlus className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{dialogTitle}</DialogTitle>
+            <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl sm:max-w-[600px]">
+                <DialogHeader className="pr-8 text-left">
+                    <DialogTitle className="leading-snug">{dialogTitle}</DialogTitle>
                     <DialogDescription>{dialogDescription}</DialogDescription>
                 </DialogHeader>
 
