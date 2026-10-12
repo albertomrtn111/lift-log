@@ -1,285 +1,202 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { Loader2, MailCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import {
-    Dumbbell,
-    Loader2,
-    Rocket,
-    Sparkles,
-    Building2,
-    ArrowLeft,
-} from 'lucide-react'
-
-type TierId = 'starter' | 'pro' | 'studio'
-type Cycle = 'monthly' | 'yearly'
-
-interface TierMeta {
-    name: string
-    icon: React.ElementType
-    monthly: number
-    yearly: number
-    maxClients: string
-}
-
-const TIER_META: Record<TierId, TierMeta> = {
-    starter: {
-        name: 'Starter',
-        icon: Rocket,
-        monthly: 29,
-        yearly: 290,
-        maxClients: 'Hasta 20 atletas',
-    },
-    pro: {
-        name: 'Pro',
-        icon: Sparkles,
-        monthly: 79,
-        yearly: 790,
-        maxClients: 'Hasta 75 atletas',
-    },
-    studio: {
-        name: 'Studio',
-        icon: Building2,
-        monthly: 199,
-        yearly: 1990,
-        maxClients: 'Hasta 250 atletas',
-    },
-}
-
-function isValidTier(value: string | null): value is TierId {
-    return value === 'starter' || value === 'pro' || value === 'studio'
-}
-
-function isValidCycle(value: string | null): value is Cycle {
-    return value === 'monthly' || value === 'yearly'
-}
+import { AuthHeading, AuthShell, AuthStatus, SignupSteps } from '@/components/auth/AuthShell'
+import { AuthAlert, AuthField, AuthInput, PasswordInput, PasswordStrength } from '@/components/auth/AuthFields'
+import { findTier, isCycle, priceOf } from '@/components/auth/plans'
+import { authErrorMessage, classifyAuthError } from '@/lib/auth/auth-errors'
 
 function SignupDetailsInner() {
     const router = useRouter()
     const searchParams = useSearchParams()
-
-    const planParam = searchParams.get('plan')
+    const tier = findTier(searchParams.get('plan'))
     const cycleParam = searchParams.get('cycle')
+    const cycle = isCycle(cycleParam) ? cycleParam : null
 
-    // If invalid params, kick back to plan selection
-    if (!isValidTier(planParam) || !isValidCycle(cycleParam)) {
-        if (typeof window !== 'undefined') router.replace('/signup')
-        return null
-    }
-
-    const tier: TierId = planParam
-    const cycle: Cycle = cycleParam
-    const meta = TIER_META[tier]
-    const TierIcon = meta.icon
-    const price = cycle === 'monthly' ? meta.monthly : meta.yearly
-
+    const [fullName, setFullName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [fullName, setFullName] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<{ kind: string; message: string } | null>(null)
     const [loading, setLoading] = useState(false)
-    const [success, setSuccess] = useState(false)
+    const [sentTo, setSentTo] = useState<string | null>(null)
+
+    // Sin plan válido volvemos a elegirlo
+    useEffect(() => {
+        if (!tier || !cycle) router.replace('/signup')
+    }, [tier, cycle, router])
+
+    if (!tier || !cycle) {
+        return <div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+    }
+
+    const TierIcon = tier.icon
+    const price = priceOf(tier, cycle)
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault()
         setError(null)
+        if (password.length < 6) {
+            setError({ kind: 'weak_password', message: authErrorMessage({ code: 'weak_password' }) })
+            return
+        }
         setLoading(true)
 
         try {
             const supabase = createClient()
-            const { error } = await supabase.auth.signUp({
-                email,
+            const target = email.trim()
+            const { data, error } = await supabase.auth.signUp({
+                email: target,
                 password,
                 options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
                     data: {
-                        full_name: fullName,
-                        subscription_tier: tier,
+                        full_name: fullName.trim(),
+                        subscription_tier: tier.id,
                         billing_cycle: cycle,
                     },
                 },
             })
 
             if (error) {
-                if (
-                    error.message.toLowerCase().includes('already registered') ||
-                    error.message.toLowerCase().includes('already been registered') ||
-                    error.message.toLowerCase().includes('user already exists')
-                ) {
-                    setError('ALREADY_REGISTERED')
-                } else {
-                    setError(error.message)
-                }
+                setError({ kind: classifyAuthError(error), message: authErrorMessage(error) })
                 return
             }
-
-            setSuccess(true)
-        } catch {
-            setError('Error inesperado. Por favor, inténtalo de nuevo.')
+            // Con confirmación por email activa, Supabase no da error si el email ya existe:
+            // devuelve un usuario sin identidades.
+            if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+                setError({ kind: 'already_registered', message: authErrorMessage({ code: 'user_already_exists' }) })
+                return
+            }
+            if (data.session) {
+                router.push('/')
+                router.refresh()
+                return
+            }
+            setSentTo(target)
+        } catch (err) {
+            setError({ kind: 'unknown', message: authErrorMessage(err) })
         } finally {
             setLoading(false)
         }
     }
 
-    if (success) {
+    if (sentTo) {
         return (
-            <Card className="w-full max-w-md p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-                    <Dumbbell className="h-8 w-8 text-success" />
-                </div>
-                <h1 className="text-2xl font-bold mb-2">¡Registro completado!</h1>
-                <p className="text-muted-foreground mb-6">
-                    Revisa tu correo electrónico para confirmar tu cuenta y empezar con el plan{' '}
-                    <strong className="text-foreground">{meta.name}</strong>.
+            <AuthStatus
+                icon={MailCheck}
+                tone="success"
+                title="Confirma tu email"
+                actions={
+                    <Button asChild size="lg" className="h-11 rounded-xl text-[15px] font-semibold">
+                        <Link href="/login">Ir a iniciar sesión</Link>
+                    </Button>
+                }
+            >
+                <p>
+                    Te hemos enviado un enlace a <span className="font-semibold text-foreground">{sentTo}</span>. Ábrelo para activar tu cuenta con el plan{' '}
+                    <span className="font-semibold text-foreground">{tier.name}</span>.
                 </p>
-                <Button onClick={() => router.push('/login')} className="w-full">
-                    Ir a iniciar sesión
-                </Button>
-            </Card>
+                <p className="text-sm">¿No llega? Mira en spam o promociones; puede tardar un par de minutos.</p>
+            </AuthStatus>
         )
     }
 
     return (
-        <Card className="w-full max-w-md p-8">
-            {/* Plan selected banner */}
-            <Link
-                href="/signup"
-                className={cn(
-                    'flex items-center gap-3 p-3 mb-6 rounded-xl',
-                    'bg-accent/40 hover:bg-accent/60 border border-border/50',
-                    'transition-colors group',
-                )}
-            >
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <TierIcon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">Plan {meta.name}</span>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-medium">
-                            {cycle === 'monthly' ? 'Mensual' : 'Anual'}
-                        </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                        {price} €/{cycle === 'monthly' ? 'mes' : 'año'} · {meta.maxClients}
+        <>
+            <SignupSteps current={2} className="mb-8" />
+            <AuthHeading title="Crea tu cuenta" description="En un minuto estarás dando de alta a tu primer atleta." />
+
+            <div className="mb-6 flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/30 p-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <TierIcon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                        Plan {tier.name} <span className="font-normal text-muted-foreground">· {cycle === 'monthly' ? 'mensual' : 'anual'}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        {price} €/{cycle === 'monthly' ? 'mes' : 'año'} · hasta {tier.athletes} atletas
                     </p>
                 </div>
-                <div className="text-xs text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1 shrink-0">
-                    <ArrowLeft className="h-3 w-3" />
+                <Link href="/signup" className="shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-primary transition-colors hover:bg-primary/10">
                     Cambiar
-                </div>
-            </Link>
-
-            <div className="flex flex-col items-center mb-6">
-                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                    <Dumbbell className="h-8 w-8 text-primary" />
-                </div>
-                <h1 className="text-2xl font-bold">Crear cuenta</h1>
-                <p className="text-muted-foreground text-sm mt-1">Únete a NexTrain</p>
+                </Link>
             </div>
 
-            <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="fullName">Nombre completo</Label>
-                    <Input
+            <form onSubmit={handleSignup} className="space-y-5">
+                <AuthField id="fullName" label="Nombre y apellidos">
+                    <AuthInput
                         id="fullName"
-                        type="text"
-                        placeholder="Tu nombre"
+                        autoComplete="name"
+                        placeholder="Cómo te verán tus atletas"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         required
+                        autoFocus
                         disabled={loading}
                     />
-                </div>
+                </AuthField>
 
-                <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
+                <AuthField id="email" label="Email">
+                    <AuthInput
                         id="email"
                         type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        spellCheck={false}
                         placeholder="tu@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={loading}
                     />
-                </div>
+                </AuthField>
 
-                <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
-                    <Input
+                <AuthField id="password" label="Contraseña" hint={<PasswordStrength value={password} />}>
+                    <PasswordInput
                         id="password"
-                        type="password"
-                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        placeholder="Mínimo 6 caracteres"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={6}
                         disabled={loading}
                     />
-                </div>
+                </AuthField>
 
-                {error === 'ALREADY_REGISTERED' ? (
-                    <div className="text-sm bg-amber-500/10 border border-amber-500/30 p-4 rounded-md space-y-2">
-                        <p className="font-medium text-amber-600 dark:text-amber-400">
-                            Ya tienes una cuenta (o has sido invitado)
-                        </p>
-                        <p className="text-muted-foreground">
-                            Este email ya está registrado. Inicia sesión con tu contraseña o solicita un enlace de recuperación.
-                        </p>
-                        <div className="flex gap-2 pt-1">
-                            <Button asChild variant="outline" size="sm">
-                                <Link href="/login">Iniciar sesión</Link>
-                            </Button>
-                        </div>
-                    </div>
+                {error?.kind === 'already_registered' ? (
+                    <AuthAlert tone="warning" title="Ya tienes una cuenta con este email">
+                        Puede que tu entrenador ya te invitara. <Link href={`/login?email=${encodeURIComponent(email.trim())}`}>Inicia sesión</Link> o{' '}
+                        <Link href={`/forgot-password?email=${encodeURIComponent(email.trim())}`}>crea tu contraseña</Link>.
+                    </AuthAlert>
                 ) : error ? (
-                    <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                        {error}
-                    </div>
+                    <AuthAlert tone="error">{error.message}</AuthAlert>
                 ) : null}
 
-                <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                        <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Creando cuenta...
-                        </>
-                    ) : (
-                        `Crear cuenta y empezar con ${meta.name}`
-                    )}
+                <Button type="submit" size="lg" className="h-11 w-full rounded-xl text-[15px] font-semibold" disabled={loading}>
+                    {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando tu cuenta…</> : 'Crear cuenta'}
                 </Button>
             </form>
-
-            <p className="text-center text-sm text-muted-foreground mt-6">
-                ¿Ya tienes cuenta?{' '}
-                <Link href="/login" className="text-primary hover:underline">
-                    Inicia sesión
-                </Link>
-            </p>
-        </Card>
-    )
-}
-
-function FallbackUI() {
-    return (
-        <Card className="w-full max-w-md p-8 text-center">
-            <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
-        </Card>
+        </>
     )
 }
 
 export default function SignupDetailsPage() {
     return (
-        <Suspense fallback={<FallbackUI />}>
-            <SignupDetailsInner />
-        </Suspense>
+        <AuthShell
+            topRight={<Link href="/login" className="font-medium text-foreground hover:text-primary">Iniciar sesión</Link>}
+            panelTitle={<>Empieza hoy.<br /><span className="text-white/50">Tus atletas lo notarán mañana.</span></>}
+        >
+            <Suspense fallback={<div className="flex h-64 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+                <SignupDetailsInner />
+            </Suspense>
+        </AuthShell>
     )
 }

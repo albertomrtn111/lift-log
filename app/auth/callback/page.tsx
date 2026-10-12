@@ -3,10 +3,11 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Link2Off, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { AuthShell, AuthStatus } from '@/components/auth/AuthShell'
+import { safeRedirectPath } from '@/lib/auth/auth-errors'
 
 /**
  * Auth Callback — Client Component
@@ -23,22 +24,18 @@ import Link from 'next/link'
 
 function LoadingUI() {
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-            <Card className="w-full max-w-md p-8 text-center space-y-4">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                <h1 className="text-lg font-semibold">Procesando invitación...</h1>
-                <p className="text-sm text-muted-foreground">
-                    Estamos verificando tu enlace. Un momento por favor.
-                </p>
-            </Card>
-        </div>
+        <AuthShell>
+            <AuthStatus icon={Loader2} spin tone="muted" title="Comprobando tu enlace…">
+                <p>Un momento, estamos preparando tu acceso.</p>
+            </AuthStatus>
+        </AuthShell>
     )
 }
 
 function AuthCallbackInner() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const next = searchParams.get('next') ?? '/'
+    const next = safeRedirectPath(searchParams.get('next'))
 
     const [error, setError] = useState<string | null>(null)
 
@@ -54,7 +51,7 @@ function AuthCallbackInner() {
                     const { error } = await supabase.auth.exchangeCodeForSession(code)
                     if (error) {
                         console.error('[auth/callback] Code exchange error:', error.message)
-                        setError('Tu enlace de invitación ha expirado. Solicita uno nuevo a tu entrenador.')
+                        setError('El enlace ha caducado, ya se usó o se abrió en otro navegador.')
                         return
                     }
                     console.log('[auth/callback] PKCE session established, redirecting to', next)
@@ -75,9 +72,9 @@ function AuthCallbackInner() {
                         console.error(`[auth/callback] Hash error: ${hashError} (${errorCode}): ${errorDesc}`)
 
                         if (errorCode === 'otp_expired' || hashError === 'access_denied') {
-                            setError('Tu enlace de invitación ha expirado. Solicita uno nuevo a tu entrenador.')
+                            setError('El enlace ha caducado, ya se usó o se abrió en otro navegador.')
                         } else {
-                            setError(errorDesc || 'Error de autenticación')
+                            setError('No hemos podido validar el enlace.')
                         }
                         return
                     }
@@ -95,7 +92,7 @@ function AuthCallbackInner() {
 
                         if (error) {
                             console.error('[auth/callback] setSession error:', error.message)
-                            setError('Error al establecer la sesión. Inténtalo de nuevo.')
+                            setError('No hemos podido iniciar tu sesión con este enlace.')
                             return
                         }
 
@@ -115,33 +112,38 @@ function AuthCallbackInner() {
 
                 // No auth data found
                 console.warn('[auth/callback] No auth data found')
-                setError('No se encontraron datos de autenticación. El enlace puede haber expirado.')
+                setError('El enlace está incompleto o ha caducado.')
             } catch (err: any) {
                 console.error('[auth/callback] Unexpected error:', err)
-                setError('Error inesperado. Inténtalo de nuevo.')
+                setError('Algo ha fallado al abrir el enlace.')
             }
         }
 
         handleCallback()
     }, [searchParams, next, router])
 
-    // Error state
     if (error) {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                <Card className="w-full max-w-md p-8 text-center space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto">
-                        <AlertCircle className="h-8 w-8 text-destructive" />
-                    </div>
-                    <h1 className="text-2xl font-bold">Enlace expirado</h1>
-                    <p className="text-muted-foreground text-sm">{error}</p>
-                    <div className="flex flex-col gap-2 pt-2">
-                        <Button asChild className="w-full">
-                            <Link href="/login">Ir a iniciar sesión</Link>
-                        </Button>
-                    </div>
-                </Card>
-            </div>
+            <AuthShell>
+                <AuthStatus
+                    icon={Link2Off}
+                    tone="destructive"
+                    title="Este enlace ya no sirve"
+                    actions={
+                        <>
+                            <Button asChild size="lg" className="h-11 rounded-xl text-[15px] font-semibold">
+                                <Link href="/forgot-password">Pedir un enlace nuevo</Link>
+                            </Button>
+                            <Button asChild variant="ghost" className="h-10 rounded-xl">
+                                <Link href="/login">Ir a iniciar sesión</Link>
+                            </Button>
+                        </>
+                    }
+                >
+                    <p>{error}</p>
+                    <p className="text-sm">Pide uno nuevo con tu email y ábrelo en este mismo dispositivo. Si te invitó tu entrenador, también puedes pedirle que te reenvíe la invitación.</p>
+                </AuthStatus>
+            </AuthShell>
         )
     }
 
