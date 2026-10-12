@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CalendarRange, Check, Loader2, Pause, Sparkles } from 'lucide-react'
+import { Check, Loader2, Pause, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Button } from '@/components/ui/button'
@@ -93,7 +93,7 @@ export function PlanningAIBlockDialog({ clientId, coachId, onApplied }: { client
     }
 
     return <Dialog open={open} onOpenChange={value => { if (busy === 'apply') return; if (!value) stop.current = true; setOpen(value) }}>
-        <DialogTrigger asChild><AIActionButton type="button" size="sm"><CalendarRange className="mr-2 h-4 w-4" />Planificar bloque con IA</AIActionButton></DialogTrigger>
+        <DialogTrigger asChild><AIActionButton type="button" size="sm" className="rounded-full" title="Planificar un bloque de 2 a 26 semanas con IA">Bloque con IA</AIActionButton></DialogTrigger>
         <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-1.5rem)] max-w-4xl flex-col overflow-hidden p-0" onPointerDownOutside={event => { if (busy) event.preventDefault() }}>
             <DialogHeader className="shrink-0 border-b px-4 py-4 pr-14 sm:px-6">
                 <DialogTitle>Planifica hasta tu objetivo</DialogTitle>
@@ -102,18 +102,18 @@ export function PlanningAIBlockDialog({ clientId, coachId, onApplied }: { client
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
                 {!outline ? <>
                     <div className="space-y-2"><Label htmlFor="block-title">Objetivo del bloque</Label><Input id="block-title" value={title} maxLength={160} onChange={event => setTitle(event.target.value)} placeholder="Maratón de Valencia, primera media maratón…" /></div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-2"><Label htmlFor="block-date">Fecha objetivo / competición</Label><Input id="block-date" type="date" value={eventDate} onChange={event => setEventDate(event.target.value)} /></div>
-                        <NumberField id="block-weeks" label="Semanas de preparación" value={weeks} onChange={setWeeks} min={2} max={26} />
-                        <div className="space-y-2"><Label htmlFor="block-sport">Disciplina principal</Label><select id="block-sport" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={sport} onChange={event => { const next = event.target.value as typeof sport; setSport(next); setCurrentVolume(''); setPeakVolume(''); setEventDistance(''); if (next === 'hybrid') setUnit('min') }}><option value="running">Carrera</option><option value="bike">Ciclismo</option><option value="swim">Natación</option><option value="hybrid">Híbrido</option></select></div>
-                        <div className="space-y-2"><Label htmlFor="block-unit">Unidad del volumen semanal</Label><select id="block-unit" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={unit} onChange={event => { setUnit(event.target.value as typeof unit); setCurrentVolume(''); setPeakVolume('') }} disabled={sport === 'hybrid'}><option value="km">Kilómetros por semana</option><option value="min">Minutos por semana</option></select></div>
-                        <NumberField id="block-current" label={`Volumen inicial (${unit}/semana)`} value={currentVolume} onChange={setCurrentVolume} min={0.1} max={5000} step="0.1" hint="Carga que el atleta tolera actualmente. Se contrasta con sus registros recientes." />
-                        <NumberField id="block-peak" label={`Pico deseado (${unit}/semana)`} value={peakVolume} onChange={setPeakVolume} min={0.1} max={5000} step="0.1" hint="Máximo semanal de entrenamiento antes del tapering; no el volumen de la última semana." />
-                        <NumberField id="block-deload" label="Descarga cada cuántas semanas" value={deloadEvery} onChange={setDeloadEvery} min={0} max={8} hint="Ejemplo: 4 → semanas 4 y 8. Usa 0 para desactivar." />
-                        <NumberField id="block-taper" label="Semanas de tapering" value={taperWeeks} onChange={setTaperWeeks} min={0} max={6} hint="Incluye la semana de competición. Tiene prioridad sobre la descarga periódica." />
-                        <NumberField id="block-event-distance" label="Distancia de competición (km, opcional)" value={eventDistance} onChange={setEventDistance} min={0.001} max={500} step="0.001" hint="42,195 para maratón. Se programa en la fecha objetivo y se contabiliza aparte del entrenamiento." />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+                        <div className="space-y-2"><Label htmlFor="block-date">Fecha objetivo</Label><Input id="block-date" type="date" value={eventDate} onChange={event => setEventDate(event.target.value)} /></div>
+                        <NumberField id="block-weeks" label="Semanas" value={weeks} onChange={setWeeks} min={2} max={26} />
+                        <div className="space-y-2"><Label htmlFor="block-sport">Disciplina</Label><select id="block-sport" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={sport} onChange={event => { const next = event.target.value as typeof sport; setSport(next); setCurrentVolume(''); setPeakVolume(''); setEventDistance(''); if (next === 'hybrid') setUnit('min') }}><option value="running">Carrera</option><option value="bike">Ciclismo</option><option value="swim">Natación</option><option value="hybrid">Híbrido</option></select></div>
+                        <div className="space-y-2"><Label htmlFor="block-unit">Volumen en</Label><select id="block-unit" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={unit} onChange={event => { setUnit(event.target.value as typeof unit); setCurrentVolume(''); setPeakVolume('') }} disabled={sport === 'hybrid'}><option value="km">km/semana</option><option value="min">min/semana</option></select></div>
+                        <div className="col-span-2"><NumberField id="block-current" label={`Volumen inicial (${unit}/semana)`} value={currentVolume} onChange={setCurrentVolume} min={0.1} max={5000} step="0.1" hint="Carga que el atleta tolera actualmente. Se contrasta con sus registros recientes." /></div>
+                        <div className="col-span-2"><NumberField id="block-peak" label={`Pico deseado (${unit}/semana)`} value={peakVolume} onChange={setPeakVolume} min={0.1} max={5000} step="0.1" hint="Máximo semanal de entrenamiento antes del tapering; no el volumen de la última semana." /></div>
+                        <div className="col-span-2"><NumberField id="block-deload" label="Descarga cada cuántas semanas" value={deloadEvery} onChange={setDeloadEvery} min={0} max={8} hint="Ejemplo: 4 → semanas 4 y 8. Usa 0 para desactivar." /></div>
+                        <div className="col-span-2"><NumberField id="block-taper" label="Semanas de tapering" value={taperWeeks} onChange={setTaperWeeks} min={0} max={6} hint="Incluye la semana de competición. Tiene prioridad sobre la descarga periódica." /></div>
+                        <div className="col-span-2"><NumberField id="block-event-distance" label="Distancia de competición (km, opcional)" value={eventDistance} onChange={setEventDistance} min={0.001} max={500} step="0.001" hint="42,195 para maratón. Se programa en la fecha objetivo y se contabiliza aparte del entrenamiento." /></div>
                     </div>
-                    <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">Días disponibles para esta disciplina</legend><div className="flex flex-wrap gap-2">{WEEKDAYS.map((day, index) => <Button key={day} type="button" variant={trainingDays.includes(index + 1) ? 'default' : 'outline'} className="min-h-11" aria-pressed={trainingDays.includes(index + 1)} onClick={() => setTrainingDays(days => days.includes(index + 1) ? days.filter(value => value !== index + 1) : [...days, index + 1].sort())}>{day}</Button>)}</div></fieldset>
+                    <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">Días disponibles para esta disciplina</legend><div className="flex flex-wrap gap-2">{WEEKDAYS.map((day, index) => <Button key={day} type="button" variant={trainingDays.includes(index + 1) ? 'default' : 'outline'} className="h-9 rounded-full px-3.5" aria-pressed={trainingDays.includes(index + 1)} onClick={() => setTrainingDays(days => days.includes(index + 1) ? days.filter(value => value !== index + 1) : [...days, index + 1].sort())}>{day}</Button>)}</div></fieldset>
                     <div className="space-y-2"><Label htmlFor="block-instructions">Criterios y preferencias del entrenador</Label><Textarea id="block-instructions" rows={5} maxLength={6000} value={instructions} onChange={event => setInstructions(event.target.value)} placeholder="Tirada larga el domingo, mantener fuerza martes y jueves, máximo 60 min entre semana, objetivo de marca, molestias a tener en cuenta…" /></div>
                     <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">{start ? `Del ${dateLabel(start)} al ${dateLabel(eventDate)}. ` : ''}Los microciclos duran siete días y terminan en la fecha objetivo. La distribución inicial propone una descarga del 25% y un tapering progresivo; revísalos según el atleta.</div>
                 </> : <>

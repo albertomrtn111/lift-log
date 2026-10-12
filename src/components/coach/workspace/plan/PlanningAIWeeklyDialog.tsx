@@ -204,13 +204,15 @@ export function PlanningAIWeeklyDialog({
                     type="button"
                     size="sm"
                     disabled={disabled}
+                    className="rounded-full"
+                    title="Propuesta de la semana visible con IA"
                 >
-                    Planificación con IA
+                    Semana con IA
                 </AIActionButton>
             </DialogTrigger>
             <DialogContent className="flex w-[min(960px,calc(100vw-1.5rem))] max-h-[88vh] flex-col overflow-hidden p-0 sm:max-w-[860px]">
                 <div className="flex min-h-0 flex-1 flex-col">
-                    <DialogHeader className="border-b px-5 py-5 pr-16 sm:px-6 sm:pr-16">
+                    <DialogHeader className="border-b px-5 py-4 pr-12 sm:px-6 sm:pr-14">
                         <div className="flex flex-col gap-3">
                             <div className="space-y-2">
                                 <DialogTitle className="flex items-center gap-2 text-xl">
@@ -218,7 +220,7 @@ export function PlanningAIWeeklyDialog({
                                     Planificación con IA
                                 </DialogTitle>
                                 <DialogDescription className="text-sm leading-relaxed">
-                                    Genera una propuesta semanal sobre la semana visible, reubicando la fuerza existente si hace falta y añadiendo cardio o híbridos nuevos solo después de tu revisión.
+                                    Propuesta para la semana visible. No cambia nada hasta que la confirmes.
                                 </DialogDescription>
                             </div>
                             <Badge

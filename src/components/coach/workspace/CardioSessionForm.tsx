@@ -44,7 +44,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 import { CardioBlock, CardioBlockType, CardioStructure } from '@/types/templates'
@@ -362,56 +361,42 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
         <Form {...form}>
             <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
                 {!hideTypeSelector && (
-                    <Card className="border-none bg-muted/30 shadow-sm">
-                        <CardContent className="p-4">
-                            <FormField
-                                control={form.control}
-                                name="trainingType"
-                                render={({ field }) => (
-                                    <FormItem className="space-y-3">
-                                        <FormLabel className="text-base font-semibold">Tipo de sesion</FormLabel>
-                                        <FormControl>
-                                            <RadioGroup
-                                                onValueChange={field.onChange}
-                                                defaultValue={field.value}
-                                                className="space-y-4"
-                                            >
-                                                {displayedSections.map((section) => (
-                                                    <div key={section.label}>
-                                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                                            {section.label}
-                                                        </p>
-                                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                                                            {section.types.map((type) => {
-                                                                const Icon = type.icon
-                                                                return (
-                                                                    <div key={type.id} className="min-w-0">
-                                                                        <RadioGroupItem value={type.id} id={type.id} className="peer sr-only" />
-                                                                        <FormLabel
-                                                                            htmlFor={type.id}
-                                                                            className={cn(
-                                                                                'flex min-h-20 cursor-pointer flex-col items-center justify-center rounded-md border-2 bg-popover p-3 transition-all hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary',
-                                                                                'border-transparent',
-                                                                                type.bg
-                                                                            )}
-                                                                        >
-                                                                            <Icon className={cn('mb-1.5 h-5 w-5', type.color)} />
-                                                                            <span className="text-center text-xs font-semibold leading-tight">{type.label}</span>
-                                                                        </FormLabel>
-                                                                    </div>
-                                                                )
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </RadioGroup>
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </CardContent>
-                    </Card>
+                    <FormField
+                        control={form.control}
+                        name="trainingType"
+                        render={({ field }) => (
+                            <FormItem className="space-y-2">
+                                <FormLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tipo de sesión</FormLabel>
+                                <FormControl>
+                                    <RadioGroup
+                                        onValueChange={field.onChange}
+                                        defaultValue={field.value}
+                                        className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+                                    >
+                                        {displayedSections.flatMap(section => section.types).map((type) => {
+                                            const Icon = type.icon
+                                            return (
+                                                <div key={type.id} className="min-w-0">
+                                                    <RadioGroupItem value={type.id} id={type.id} className="peer sr-only" />
+                                                    <FormLabel
+                                                        htmlFor={type.id}
+                                                        className={cn(
+                                                            'flex h-11 cursor-pointer items-center gap-2 rounded-xl border-2 border-transparent px-3 transition-all hover:opacity-90 peer-data-[state=checked]:border-primary',
+                                                            type.bg
+                                                        )}
+                                                    >
+                                                        <Icon className={cn('h-4 w-4 shrink-0', type.color)} />
+                                                        <span className="truncate text-sm font-semibold">{type.label}</span>
+                                                    </FormLabel>
+                                                </div>
+                                            )
+                                        })}
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
                 )}
 
                 {selectedTrainingType === 'other' && (
@@ -420,10 +405,10 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         name="customName"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel className="text-sm font-medium">Nombre de la sesion</FormLabel>
+                                <FormLabel className="text-sm font-medium">Nombre de la sesión</FormLabel>
                                 <FormControl>
                                     <Input
-                                        placeholder="Ej: Padel, senderismo, eliptica..."
+                                        placeholder="Ej: pádel, senderismo, elíptica…"
                                         {...field}
                                         value={field.value ?? ''}
                                     />
@@ -439,36 +424,36 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                     name="mode"
                     render={({ field }) => (
                         <FormItem className="space-y-3">
-                            <FormLabel className="text-base font-semibold">Modo de planificacion</FormLabel>
+                            <FormLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cómo quieres planificarla</FormLabel>
                             <FormControl>
                                 <RadioGroup
                                     value={field.value}
                                     onValueChange={(value) => {
                                         field.onChange(value)
                                     }}
-                                    className="grid gap-3 sm:grid-cols-2"
+                                    className="grid grid-cols-2 gap-2"
                                 >
                                     <FormLabel
                                         htmlFor="cardio-mode-free"
-                                        className="flex min-h-24 cursor-pointer items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+                                        className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
                                     >
                                         <RadioGroupItem id="cardio-mode-free" value="free_text" className="mt-1" />
                                         <span>
-                                            <span className="block font-semibold">Planificacion rapida</span>
-                                            <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                                                Escribe el entreno como texto libre.
+                                            <span className="block font-semibold">Texto libre</span>
+                                            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                                                Describe el entreno con tus palabras.
                                             </span>
                                         </span>
                                     </FormLabel>
                                     <FormLabel
                                         htmlFor="cardio-mode-structured"
-                                        className="flex min-h-24 cursor-pointer items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+                                        className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border/70 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
                                     >
                                         <RadioGroupItem id="cardio-mode-structured" value="structured" className="mt-1" />
                                         <span>
-                                            <span className="block font-semibold">Estructurado tipo Garmin</span>
-                                            <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                                                Define calentamiento, series, descansos y vuelta a la calma.
+                                            <span className="block font-semibold">Por bloques</span>
+                                            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                                                Calentamiento, series y vuelta a la calma, tipo Garmin.
                                             </span>
                                         </span>
                                     </FormLabel>
@@ -479,13 +464,13 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                     )}
                 />
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <FormField
                         control={form.control}
                         name="targetDistanceKm"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel className="text-sm font-medium">Distancia objetivo ({isSwim ? 'm' : 'km'})</FormLabel>
+                                <FormLabel className="text-sm font-medium">Distancia ({isSwim ? 'm' : 'km'})</FormLabel>
                                 <FormControl>
                                     <Input
                                         type="number"
@@ -506,7 +491,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                         name="targetDurationMin"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel className="text-sm font-medium">Duracion objetivo (min)</FormLabel>
+                                <FormLabel className="text-sm font-medium">Duración (min)</FormLabel>
                                 <FormControl>
                                     <Input
                                         type="number"
@@ -526,7 +511,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                             control={form.control}
                             name="targetPace"
                             render={({ field }) => (
-                                <FormItem>
+                                <FormItem className="col-span-2 sm:col-span-1">
                                     <FormLabel className="text-sm font-medium">{isSwim ? 'Ritmo objetivo (/100 m)' : isBike ? 'Objetivo (potencia, velocidad o FC)' : 'Ritmo objetivo (min/km)'}</FormLabel>
                                     <FormControl>
                                         <Input type="text" placeholder={isSwim ? 'Ej: 2:10/100 m' : isBike ? 'Ej: 180 W' : 'Ej: 5:30'} {...field} value={field.value ?? ''} />
@@ -545,7 +530,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                 <div className="min-w-0">
                                     <p className="text-sm font-semibold">Resumen estructurado</p>
                                     <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
-                                        {structuredSummary || 'Anade bloques para construir la sesion.'}
+                                        {structuredSummary || 'Añade bloques para construir la sesión.'}
                                     </p>
                                 </div>
                                 <div className="flex shrink-0 flex-wrap gap-2 text-xs text-muted-foreground">
@@ -553,7 +538,7 @@ export function CardioSessionForm({ initialData, onSubmit, isSubmitting, onCance
                                         {calculatedTotals.distanceKm ? isSwim ? `${Math.round(calculatedTotals.distanceKm * 1000)} m` : `${calculatedTotals.distanceKm} km` : 'Distancia libre'}
                                     </span>
                                     <span className="rounded-full bg-background px-2 py-1">
-                                        {calculatedTotals.durationMin ? `${calculatedTotals.durationMin} min` : 'Duracion libre'}
+                                        {calculatedTotals.durationMin ? `${calculatedTotals.durationMin} min` : 'Duración libre'}
                                     </span>
                                 </div>
                             </div>
@@ -611,7 +596,7 @@ Calentamiento:
 Bloque principal:
 - 4 x 1000 m a ritmo 10K
 
-Recuperacion:
+Recuperación:
 - 2 min de trote suave
 
 Vuelta a la calma:
@@ -651,7 +636,7 @@ Vuelta a la calma:
                         </Button>
                     )}
                     <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-                        {isSubmitting ? 'Guardando...' : 'Guardar sesion'}
+                        {isSubmitting ? 'Guardando...' : 'Guardar sesión'}
                     </Button>
                 </div>
             </form>
@@ -759,7 +744,7 @@ function StructuredBlockCard({
                 </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-2">
                 <LabeledInput
                     label="Nombre"
                     value={block.label || ''}
@@ -784,7 +769,7 @@ function StructuredBlockCard({
                             onChange={(value) => { const distance = parseNumericInput(value); onUpdate(block.id, { workDistance: isSwim && distance != null ? distance / 1000 : distance }) }}
                         />
                         <LabeledInput
-                            label="Trabajo duracion (min)"
+                            label="Trabajo duración (min)"
                             type="number"
                             value={toInputValue(block.workDuration)}
                             placeholder="Opcional"
@@ -797,14 +782,14 @@ function StructuredBlockCard({
                             onChange={(value) => onUpdate(block.id, { workTargetPace: value })}
                         />
                         <LabeledInput
-                            label="Recuperacion (min)"
+                            label="Recuperación (min)"
                             type="number"
                             value={toInputValue(block.restDuration)}
                             placeholder="2"
                             onChange={(value) => onUpdate(block.id, { restDuration: parseNumericInput(value) })}
                         />
                         <LabeledInput
-                            label={`Recuperacion (${isSwim ? 'm' : 'km'})`}
+                            label={`Recuperación (${isSwim ? 'm' : 'km'})`}
                             type="number"
                             step={isSwim ? '1' : '0.1'}
                             value={toInputValue(isSwim && block.restDistance != null ? Math.round(block.restDistance * 1000) : block.restDistance)}
@@ -823,7 +808,7 @@ function StructuredBlockCard({
                             onChange={(value) => { const distance = parseNumericInput(value); onUpdate(block.id, { distance: isSwim && distance != null ? distance / 1000 : distance }) }}
                         />
                         <LabeledInput
-                            label="Duracion (min)"
+                            label="Duración (min)"
                             type="number"
                             value={toInputValue(block.duration)}
                             placeholder={block.type === 'continuous' ? '20' : '10'}

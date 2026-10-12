@@ -420,7 +420,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
                                         key={ex}
                                         type="button"
                                         onClick={() => setPrompt(ex)}
-                                        className="text-xs px-3 py-1.5 rounded-full border border-border hover:border-primary/60 hover:bg-primary/5 transition-colors"
+                                        className="rounded-2xl border border-border px-3 py-1.5 text-left text-xs transition-colors hover:border-primary/60 hover:bg-primary/5"
                                     >
                                         {ex}
                                     </button>
