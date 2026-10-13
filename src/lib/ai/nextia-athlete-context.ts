@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { getAge } from '@/lib/age-distribution'
 import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
 import { resolveHrBounds, type CustomZones, type HrZoneMethod } from '@/lib/training/zones'
 
@@ -72,11 +71,13 @@ function formatGeneratedAthleteProfile(profile: any) {
 function formatBaseline(baseline: any) {
     if (!baseline) return 'Sin datos base configurados.'
 
-    const age = getAge(baseline.birth_date)
+    const age = baseline.birth_date
+        ? Math.floor((Date.now() - new Date(`${baseline.birth_date}T12:00:00`).getTime()) / (365.25 * 86400000))
+        : null
     const sexLabel = baseline.sex === 'male' ? 'hombre' : baseline.sex === 'female' ? 'mujer' : null
 
     return [
-        age !== null ? `Edad: ${age} anos${sexLabel ? ` (${sexLabel})` : ''}` : '',
+        age ? `Edad: ${age} anos${sexLabel ? ` (${sexLabel})` : ''}` : '',
         baseline.height_cm ? `Altura: ${baseline.height_cm} cm` : '',
         baseline.reference_weight_kg ? `Peso de referencia: ${baseline.reference_weight_kg} kg${baseline.reference_weight_date ? ` (${baseline.reference_weight_date})` : ''}` : '',
         baseline.vo2max ? `VO2max: ${baseline.vo2max} ml/kg/min` : '',
