@@ -83,8 +83,25 @@ export async function middleware(req: NextRequest) {
             console.warn(`[auth] Sesión perdida en ${pathname}: ${code ?? authError.name} (status ${authError.status ?? '-'})`)
         }
 
+        // Cookies de sesión presentes pero ilegibles o vacías: es justo el caso en
+        // que el atleta acaba en el login aunque su sesión siga viva en el móvil
+        if (hadSession && (!authError || isAuthSessionMissingError(authError))) {
+            const authCookies = req.cookies.getAll().filter(cookie => /^sb-.+-auth-token/.test(cookie.name))
+            const bytes = authCookies.reduce((sum, cookie) => sum + cookie.value.length, 0)
+            console.warn(`[auth] Cookies de sesión sin sesión válida en ${pathname}: ${authCookies.map(c => c.name.replace(/^sb-[^-]+-/, '')).join(', ')} (${bytes} bytes)`)
+        }
+
         if (isDev) console.log(`[Middleware] No authenticated user at ${pathname}, redirecting to /login`)
-        return redirectWithSession('/login')
+        const loginResponse = redirectWithSession('/login')
+        // Tras entrar, volver a donde iba (no para la raíz ni peticiones internas de datos)
+        const isPageRequest = req.method === 'GET' && !req.headers.get('rsc') && !req.headers.get('next-router-prefetch')
+        if (isPageRequest && pathname !== '/') {
+            const target = new URL(loginResponse.headers.get('location') ?? '/login', req.url)
+            target.search = ''
+            target.searchParams.set('redirect', `${pathname}${req.nextUrl.search}`)
+            loginResponse.headers.set('location', target.toString())
+        }
+        return loginResponse
     }
 
     // 2. Deterministic Role Detection via RPC
