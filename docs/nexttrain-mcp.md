@@ -34,7 +34,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `preview_cardio_session`: comprueba el modo, bloques, recuperaciones y totales sin guardar.
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
-- `create_strength_program`: crea un programa de fuerza completo; por defecto queda en borrador.
+- `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
 - `create_coach_task`: añade una tarea de seguimiento.
 
 ## Seguridad
@@ -182,6 +182,15 @@ La dieta por opciones y el plan de macros son registros independientes: `daily_t
 La función `save_nexttrain_nutrition_plan` guarda cabecera y estructura en una transacción, con `SECURITY INVOKER`, RLS y comprobación explícita de membresía owner/coach y pertenencia del cliente. `anon` no tiene permiso de ejecución. Un error revierte también cualquier archivo/cierre de planes anteriores. Las macros de alimentos se vuelven a calcular desde el catálogo en la base de datos.
 
 Verificación: `node --test scripts/mcp-nutrition.test.mjs scripts/diet-macros.test.mjs`, `deno check supabase/functions/nexttrain-mcp/index.ts`, `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts`. La prueba SQL `supabase/tests/mcp_nutrition_atomic_save.sql` utiliza un cliente temporal con rol `authenticated` y termina con `ROLLBACK` explícito.
+
+## Fuerza y cartera (MCP 0.6.1)
+
+- `create_strength_program` llama a `create_nexttrain_strength_program`, que crea programa, días y ejercicios en una transacción con `SECURITY INVOKER`, RLS y comprobación de membresía y cliente. Cualquier error revierte todo; ya no se intenta borrar a posteriori. También crea las columnas por defecto de la app (`training_columns`). Con `status="active"` archiva antes el programa activo anterior del cliente, igual que la app y como exige el índice `unique_active_program_per_client`, y devuelve `archived_program_ids`; un programa activo no puede empezar en el futuro.
+- `list_clients` obtiene el último check-in enviado de cada cliente con `nexttrain_latest_checkins` (`DISTINCT ON`), en lugar de un límite global que podía marcar como `sin_checkin` a clientes con check-ins antiguos. Si la consulta falla, la herramienta devuelve error en vez de omitir los check-ins.
+- La migración añade el índice `idx_checkins_coach_client_submitted_at` para esa consulta.
+- Todas las fechas de entrada se validan como fechas reales (`2026-02-31` se rechaza).
+
+Despliegue: aplicar la migración `20261015140000_mcp_strength_program_atomic_save.sql` antes de desplegar la función. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (8 verificaciones; termina con `ROLLBACK`).
 
 ## Ajustes requeridos en Supabase
 
