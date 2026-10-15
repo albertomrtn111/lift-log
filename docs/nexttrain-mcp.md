@@ -34,7 +34,8 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `preview_cardio_session`: comprueba el modo, bloques, recuperaciones y totales sin guardar.
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
-- `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
+- `list_exercise_catalog`: busca en la biblioteca común de ejercicios de fuerza por nombre, grupo o nombre alternativo.
+- `create_strength_program`: crea un programa de fuerza completo en una sola transacción, solo con ejercicios de la biblioteca; por defecto queda en borrador.
 - `create_coach_task`: añade una tarea de seguimiento.
 
 ## Seguridad
@@ -211,3 +212,12 @@ Verificación: `node --test scripts/mcp-strength-progress.test.mjs scripts/mcp-n
 3. Activar dynamic client registration.
 4. Mantener Site URL en `https://nexttrain.ascenttech.cloud`.
 5. Desplegar `nexttrain-mcp` con la verificación JWT del gateway desactivada. La función valida OAuth dentro de `withSupabase({ auth: 'user' })`; esto permite que el descubrimiento OAuth sin sesión responda correctamente.
+
+## Biblioteca de ejercicios (MCP 0.8.0)
+
+- `create_strength_program` solo admite ejercicios de `exercise_catalog`. `create_nexttrain_strength_program` resuelve cada uno por `catalog_exercise_id`, por nombre exacto (sin distinguir mayúsculas, tildes ni espacios) o por un alias histórico de `exercise_catalog_aliases`, y guarda el nombre, el `catalog_exercise_id` y el grupo muscular del catálogo. Si alguno no existe no se crea nada y el error lista los nombres pendientes.
+- El campo `muscle_group` ya no forma parte de la entrada: lo define el ejercicio de la biblioteca.
+- `list_exercise_catalog` devuelve `id`, `name` y `primary_group`, con filtros `search` (nombre, grupo o alias) y `primary_group`.
+- La migración añade `exercise_name_key`, `catalog_group_muscle_group` y `resolve_catalog_exercise` (`SECURITY INVOKER`, solo `authenticated`).
+
+Despliegue: aplicar `20261015140000_mcp_strength_program_atomic_save.sql` y después `20261016090000_mcp_strength_program_exercise_catalog.sql`, y luego desplegar la función. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (11 verificaciones; termina con `ROLLBACK`) y `deno check supabase/functions/nexttrain-mcp/index.ts`.

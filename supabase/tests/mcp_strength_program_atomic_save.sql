@@ -13,6 +13,8 @@ declare
   v_latest jsonb;
   v_before integer;
   v_assertions integer := 0;
+  v_alias record;
+  v_bench uuid;
 begin
   select coach_id, user_id into v_coach, v_user from public.coach_memberships
     where status = 'active' and role = 'owner' order by created_at limit 1;
@@ -49,10 +51,10 @@ begin
   v_payload := jsonb_build_object('name','Bloque test','weeks',4,'status','draft','effective_from',current_date,
     'days', jsonb_build_array(
       jsonb_build_object('name','Torso','weekday',1,'exercises',jsonb_build_array(
-        jsonb_build_object('name','Press banca','sets',4,'reps','6-8','rir',2,'rest_seconds',180,'muscle_group','pecho'),
-        jsonb_build_object('name','Remo','sets',4,'reps','8-10'))),
+        jsonb_build_object('name','Press de banca plano con barra','sets',4,'reps','6-8','rir',2,'rest_seconds',180),
+        jsonb_build_object('name','remo con barra','sets',4,'reps','8-10'))),
       jsonb_build_object('name','Pierna','weekday',4,'exercises',jsonb_build_array(
-        jsonb_build_object('name','Sentadilla','sets',5,'reps','5','rir',1.5,'notes','Pausa abajo')))));
+        jsonb_build_object('name','Sentadilla trasera con barra','sets',5,'reps','5','rir',1.5,'notes','Pausa abajo')))));
   v_program := public.create_nexttrain_strength_program(v_coach, v_client, v_payload);
   if (v_program->>'effective_to')::date <> current_date + 27 or (v_program->>'day_count')::integer <> 2
     or (v_program->>'exercise_count')::integer <> 3
@@ -61,10 +63,11 @@ begin
   end if;
   v_assertions := v_assertions + 1;
   if not exists(select 1 from public.training_exercises where program_id=(v_program->>'id')::uuid
-    and exercise_name='Remo' and muscle_group='otros' and order_index=2)
+    and exercise_name='Remo con barra' and muscle_group='espalda' and order_index=2 and catalog_exercise_id is not null)
     or not exists(select 1 from public.training_exercises where program_id=(v_program->>'id')::uuid
-    and exercise_name='Sentadilla' and rir=1.5) then
-    raise exception 'Ejercicio sin orden, grupo muscular por defecto o RIR decimal.';
+    and exercise_name='Sentadilla trasera con barra' and rir=1.5)
+    or exists(select 1 from public.training_exercises where program_id=(v_program->>'id')::uuid and catalog_exercise_id is null) then
+    raise exception 'Ejercicio sin orden, nombre o grupo del catálogo, enlace o RIR decimal.';
   end if;
   v_assertions := v_assertions + 1;
 
@@ -113,10 +116,49 @@ begin
   end if;
   v_assertions := v_assertions + 1;
 
+  -- 9. Un nombre histórico se resuelve por alias al ejercicio del catálogo.
+  select a.alias, c.name, c.id into v_alias from public.exercise_catalog_aliases a
+    join public.exercise_catalog c on c.id = a.catalog_exercise_id
+    where c.is_active and not exists (select 1 from public.exercise_catalog x
+      where public.exercise_name_key(x.name) = a.alias_key)
+    order by a.alias_key limit 1;
+  if v_alias.id is null then raise exception 'Se necesita al menos un alias para verificar la resolución.'; end if;
+  v_program := public.create_nexttrain_strength_program(v_coach, v_client, jsonb_set(v_payload,
+    '{days,1,exercises}', jsonb_build_array(jsonb_build_object('name', v_alias.alias, 'sets', 3))));
+  if not exists(select 1 from public.training_exercises where program_id=(v_program->>'id')::uuid
+    and catalog_exercise_id = v_alias.id and exercise_name = v_alias.name) then
+    raise exception 'El alias no se resolvió al ejercicio del catálogo.';
+  end if;
+  v_assertions := v_assertions + 1;
+
+  -- 10. Un ejercicio fuera de la biblioteca rechaza todo y lo nombra en el error.
+  select count(*) into v_before from public.training_programs where client_id = v_client;
+  begin
+    perform public.create_nexttrain_strength_program(v_coach, v_client, jsonb_set(v_payload,
+      '{days,1,exercises}', '[{"name":"Ejercicio inventado MCP test","sets":3}]'::jsonb));
+    raise exception 'Se aceptó un ejercicio fuera de la biblioteca.';
+  exception when others then
+    if sqlerrm not like 'Estos ejercicios no están en la biblioteca: Ejercicio inventado MCP test.%' then raise; end if;
+  end;
+  if (select count(*) from public.training_programs where client_id = v_client) <> v_before then
+    raise exception 'El rechazo por catálogo dejó un programa creado.';
+  end if;
+  v_assertions := v_assertions + 1;
+
+  -- 11. catalog_exercise_id manda sobre el nombre enviado.
+  select id into v_bench from public.exercise_catalog where name = 'Press de banca plano con barra';
+  v_program := public.create_nexttrain_strength_program(v_coach, v_client, jsonb_set(v_payload,
+    '{days,1,exercises}', jsonb_build_array(jsonb_build_object('name','cualquier texto','catalog_exercise_id',v_bench,'sets',3))));
+  if not exists(select 1 from public.training_exercises where program_id=(v_program->>'id')::uuid
+    and catalog_exercise_id = v_bench and exercise_name = 'Press de banca plano con barra' and muscle_group = 'pecho') then
+    raise exception 'catalog_exercise_id no se respetó.';
+  end if;
+  v_assertions := v_assertions + 1;
+
   execute 'reset role';
-  if v_assertions <> 8 then raise exception 'No se han completado las 8 verificaciones.'; end if;
+  if v_assertions <> 11 then raise exception 'No se han completado las 11 verificaciones.'; end if;
 end;
 $tests$;
 rollback;
-select 8 as assertions_completed_before_rollback,
+select 11 as assertions_completed_before_rollback,
   not exists(select 1 from public.clients where full_name='MCP strength rollback test') as temporary_data_rolled_back;
