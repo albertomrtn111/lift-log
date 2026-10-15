@@ -57,7 +57,13 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { addExerciseAction, deleteExerciseAction, reorderExerciseAction, reorderExercisesAction } from '../actions'
-import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup } from '@/lib/training/muscle-groups'
+import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPicker'
+import { ExerciseLibraryDialog } from '@/components/training/ExerciseLibraryDialog'
+import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
+import { loadExerciseCatalog } from '@/lib/training/exercise-catalog-client'
+import { catalogGroupToMuscleGroup, type CatalogExercise } from '@/lib/training/exercise-catalog'
+import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 import { cn } from '@/lib/utils'
 
 interface TrainingProgramWizardProps {
@@ -289,6 +295,13 @@ export function TrainingProgramWizard({
         programName?: string | null,
     ) {
         const supabase = createClient()
+        const resolved = resolveStrengthStructure(structure, await loadExerciseCatalog())
+        if (resolved.unresolved.length > 0) {
+            const message = `Elige de la biblioteca: ${resolved.unresolved.slice(0, 3).join(', ')}`
+            toast({ title: 'Ejercicios sin identificar', description: message, variant: 'destructive' })
+            throw new Error(message)
+        }
+        structure = resolved.structure
 
         const { data: existingDays } = await supabase
             .from('training_days')
@@ -325,6 +338,7 @@ export function TrainingProgramWizard({
                     id: crypto.randomUUID(),
                     day_id: newDayId,
                     exercise_name: ex.exercise_name || '',
+                    catalog_exercise_id: ex.catalog_exercise_id ?? null,
                     // Double-normalize: already normalized in proposalToStrengthStructure,
                     // but guard here too in case structure comes from another source.
                     muscle_group: normalizeMuscleGroup(ex.muscle_group),
@@ -370,6 +384,7 @@ export function TrainingProgramWizard({
                     coach_id: resolvedCoachId,
                     day_id: e.day_id,
                     exercise_name: e.exercise_name,
+                    catalog_exercise_id: e.catalog_exercise_id,
                     muscle_group: normalizeMuscleGroup(e.muscle_group),
                     order_index: e.order_index,
                     sets: e.sets,
@@ -409,7 +424,21 @@ export function TrainingProgramWizard({
             return
         }
 
-        const structure = template.structure as StrengthStructure
+        const catalog = await loadExerciseCatalog().catch(() => null)
+        if (!catalog) {
+            toast({ title: 'Error', description: 'No se pudo cargar la biblioteca de ejercicios.', variant: 'destructive' })
+            return
+        }
+        const resolved = resolveStrengthStructure(template.structure as StrengthStructure, catalog)
+        if (resolved.unresolved.length > 0) {
+            toast({
+                title: 'Plantilla pendiente de vincular',
+                description: `Edita la plantilla y elige de la biblioteca: ${resolved.unresolved.slice(0, 3).join(', ')}`,
+                variant: 'destructive',
+            })
+            return
+        }
+        const structure = resolved.structure
         if (!structure.days || structure.days.length === 0) {
             toast({ title: 'Aviso', description: 'La plantilla está vacía.' })
             return
@@ -433,6 +462,7 @@ export function TrainingProgramWizard({
                         id: crypto.randomUUID(),
                         day_id: newDayId,
                         exercise_name: ex.exercise_name || '',
+                        catalog_exercise_id: ex.catalog_exercise_id ?? null,
                         muscle_group: normalizeMuscleGroup(ex.muscle_group),
                         order_index: ex.order ?? eIdx + 1,
                         sets: ex.sets ?? 3,
@@ -487,6 +517,7 @@ export function TrainingProgramWizard({
                     coach_id: program.coach_id,
                     day_id: e.day_id,
                     exercise_name: e.exercise_name,
+                    catalog_exercise_id: e.catalog_exercise_id,
                     muscle_group: normalizeMuscleGroup(e.muscle_group),
                     order_index: e.order_index,
                     sets: e.sets,
@@ -952,6 +983,8 @@ function StepProgramTable({
 }) {
     const { toast } = useToast()
     const [isReorderingExercises, setIsReorderingExercises] = useState(false)
+    const [libraryOpen, setLibraryOpen] = useState(false)
+    const { exercises: catalog, loading: catalogLoading, error: catalogError } = useExerciseCatalog()
     const exerciseSensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
         useSensor(KeyboardSensor)
@@ -964,13 +997,18 @@ function StepProgramTable({
             return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
         })
 
-    async function addExercise() {
+    function openLibrary() {
         if (!activeDayId) {
             toast({ title: 'Atención', description: 'Selecciona primero un día de entrenamiento.' })
             return
         }
+        setLibraryOpen(true)
+    }
+
+    async function addExercise(selected: CatalogExercise) {
+        if (!activeDayId) return
         const order = activeDayExercises.length + 1
-        const result = await addExerciseAction(activeDayId, 'Nuevo Ejercicio', order)
+        const result = await addExerciseAction(activeDayId, selected.id, order)
         if (!result.success) {
             toast({ title: 'Error', description: result.error, variant: 'destructive' })
         } else if (result.exercise) {
@@ -1107,7 +1145,7 @@ function StepProgramTable({
                         </div>
                         <Button
                             size="sm"
-                            onClick={addExercise}
+                            onClick={openLibrary}
                             className="shrink-0 gap-1.5 rounded-full"
                             disabled={!activeDayId}
                         >
@@ -1134,6 +1172,9 @@ function StepProgramTable({
                                     onMoveUp={() => moveExerciseLocally(ex.id, 'up')}
                                     onMoveDown={() => moveExerciseLocally(ex.id, 'down')}
                                     dragDisabled={isReorderingExercises}
+                                    catalog={catalog}
+                                    catalogLoading={catalogLoading}
+                                    catalogError={catalogError}
                                 />
                             ))}
                         </div>
@@ -1142,7 +1183,7 @@ function StepProgramTable({
                             <Dumbbell className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
                             <p className="text-sm font-medium">{activeDayId ? 'Este día aún no tiene ejercicios' : 'Selecciona un día para empezar'}</p>
                             {activeDayId && (
-                                <Button size="sm" variant="outline" className="mt-3 gap-1.5 rounded-full" onClick={addExercise}>
+                                <Button size="sm" variant="outline" className="mt-3 gap-1.5 rounded-full" onClick={openLibrary}>
                                     <Plus className="h-4 w-4" />
                                     Añadir el primero
                                 </Button>
@@ -1151,11 +1192,20 @@ function StepProgramTable({
                     )}
                 </div>
             </DndContext>
+
+            <ExerciseLibraryDialog
+                open={libraryOpen}
+                onOpenChange={setLibraryOpen}
+                exercises={catalog}
+                onSelect={addExercise}
+                loading={catalogLoading}
+                error={catalogError}
+            />
         </div>
     )
 }
 
-function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMoveUp, onMoveDown, dragDisabled }: {
+function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMoveUp, onMoveDown, dragDisabled, catalog, catalogLoading, catalogError }: {
     exercise: any,
     index: number,
     total: number,
@@ -1164,7 +1214,10 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
     onDelete: () => void,
     onMoveUp: () => void,
     onMoveDown: () => void,
-    dragDisabled: boolean
+    dragDisabled: boolean,
+    catalog: CatalogExercise[],
+    catalogLoading: boolean,
+    catalogError: string | null,
 }) {
     const { toast } = useToast()
     const {
@@ -1277,14 +1330,21 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-muted-foreground">
                     {index + 1}
                 </span>
-                <Input
-                    className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-2 text-[15px] font-semibold shadow-none placeholder:font-normal placeholder:italic hover:border-border/70 focus-visible:border-primary/50 focus-visible:ring-0"
-                    value={exercise.exercise_name}
-                    onChange={e => onUpdate({ ...exercise, exercise_name: e.target.value })}
-                    onBlur={e => updateExerciseFields({ exercise_name: e.target.value })}
-                    placeholder="Nombre del ejercicio"
-                    aria-label="Nombre del ejercicio"
-                />
+                <div className="min-w-0 flex-1">
+                    <ExerciseCatalogPicker
+                        exercises={catalog}
+                        value={exercise.catalog_exercise_id}
+                        legacyName={exercise.exercise_name}
+                        loading={catalogLoading}
+                        error={catalogError}
+                        className="border-transparent bg-transparent px-2 text-[15px] shadow-none hover:border-border/70"
+                        onSelect={selected => updateExerciseFields({
+                            catalog_exercise_id: selected.id,
+                            exercise_name: selected.name,
+                            muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+                        })}
+                    />
+                </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" disabled={isProcessing} aria-label="Más acciones">
@@ -1355,25 +1415,9 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                 </label>
                 <label className="col-span-4 min-w-0 space-y-1 sm:col-span-1">
                     <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Grupo muscular</span>
-                    <Select
-                        value={normalizeMuscleGroup(exercise.muscle_group)}
-                        onValueChange={(value) => {
-                            const muscleGroup = normalizeMuscleGroup(value as MuscleGroup)
-                            onUpdate({ ...exercise, muscle_group: muscleGroup })
-                            void updateExerciseFields({ muscle_group: muscleGroup })
-                        }}
-                    >
-                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-muted/30 text-sm">
-                            <SelectValue placeholder="Grupo muscular" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {MUSCLE_GROUPS.map((group) => (
-                                <SelectItem key={group} value={group}>
-                                    {MUSCLE_GROUP_LABELS[group]}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <span className="flex h-9 items-center rounded-lg border border-border/70 bg-muted/30 px-2.5 text-sm text-muted-foreground" title="Lo define el ejercicio de la biblioteca">
+                        {MUSCLE_GROUP_LABELS[normalizeMuscleGroup(exercise.muscle_group)]}
+                    </span>
                 </label>
                 <label className="col-span-4 min-w-0 space-y-1 sm:col-span-5">
                     <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notas para el atleta</span>

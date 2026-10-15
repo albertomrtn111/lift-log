@@ -12,6 +12,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
+import { catalogGroupToMuscleGroup } from '@/lib/training/exercise-catalog'
+import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================
@@ -694,14 +696,13 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
 
     const { data: exercises, error: exercisesError } = await supabase
         .from('training_exercises')
-        .select('id, day_id, exercise_name, order_index, muscle_group, sets, reps, rir, rest_seconds, notes, created_at')
+        .select('id, day_id, exercise_name, catalog_exercise_id, order_index, muscle_group, sets, reps, rir, rest_seconds, notes, created_at')
         .eq('program_id', programId)
         .eq('coach_id', coachId)
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true })
 
     if (exercisesError) return { success: false, error: exercisesError.message }
-
     const exercisesByDay = new Map<string, typeof exercises>()
     ;(exercises || []).forEach((exercise) => {
         const current = exercisesByDay.get(exercise.day_id) || []
@@ -718,6 +719,7 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
             exercises: (exercisesByDay.get(day.id) || []).map((exercise, exerciseIndex) => ({
                 id: crypto.randomUUID(),
                 exercise_name: exercise.exercise_name || '',
+                catalog_exercise_id: exercise.catalog_exercise_id,
                 order: exercise.order_index ?? exerciseIndex + 1,
                 muscle_group: normalizeMuscleGroup(exercise.muscle_group),
                 sets: exercise.sets ?? 0,
@@ -729,6 +731,19 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
         })),
     }
 
+    const { data: catalog, error: catalogError } = await supabase
+        .from('exercise_catalog')
+        .select('id, name, primary_group')
+        .eq('is_active', true)
+    if (catalogError) return { success: false, error: 'No se pudo consultar el catálogo de ejercicios.' }
+    const resolved = resolveStrengthStructure(structure, catalog ?? [])
+    if (resolved.unresolved.length > 0) {
+        return {
+            success: false,
+            error: `Vincula estos ejercicios con el catálogo antes de copiarlos: ${resolved.unresolved.slice(0, 3).join(', ')}`,
+        }
+    }
+
     const templateName = `Plantilla - ${program.name || 'Rutina de fuerza'}`
     const { data: template, error: templateError } = await supabase
         .from('training_templates')
@@ -738,7 +753,7 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
             description: `Copiada desde el programa "${program.name || 'Rutina de fuerza'}".`,
             tags: ['fuerza'],
             type: 'strength',
-            structure,
+            structure: resolved.structure,
             is_public: false,
         })
         .select('id, name')
@@ -752,8 +767,19 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
     return { success: true, template }
 }
 
-export async function addExerciseAction(dayId: string, exerciseName: string, order: number) {
+export async function addExerciseAction(dayId: string, catalogExerciseId: string, order: number) {
     const supabase = await createClient()
+
+    const { data: catalogExercise, error: catalogError } = await supabase
+        .from('exercise_catalog')
+        .select('id, name, primary_group')
+        .eq('id', catalogExerciseId)
+        .eq('is_active', true)
+        .maybeSingle()
+
+    if (catalogError || !catalogExercise) {
+        return { success: false, error: 'Selecciona un ejercicio válido del catálogo.' }
+    }
 
     // Obtener coach_id y program_id del día
     const { data: dayData } = await supabase
@@ -772,8 +798,9 @@ export async function addExerciseAction(dayId: string, exerciseName: string, ord
             day_id: dayId,
             coach_id: dayData.coach_id,
             program_id: dayData.program_id,
-            exercise_name: exerciseName,
-            muscle_group: 'otros',
+            catalog_exercise_id: catalogExercise.id,
+            exercise_name: catalogExercise.name,
+            muscle_group: catalogGroupToMuscleGroup(catalogExercise.primary_group),
             order_index: order, // Usar order_index que es el nombre en la BBDD
         })
         .select()

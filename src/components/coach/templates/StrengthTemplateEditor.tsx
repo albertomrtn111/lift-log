@@ -27,14 +27,11 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import { MUSCLE_GROUP_LABELS, MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup } from '@/lib/training/muscle-groups'
+import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPicker'
+import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
+import { catalogGroupToMuscleGroup, type CatalogExercise } from '@/lib/training/exercise-catalog'
+import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 
 interface StrengthTemplateEditorProps {
     template: TrainingTemplate
@@ -46,6 +43,7 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
     const [activeDayId, setActiveDayId] = useState<string | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     const [isDirty, setIsDirty] = useState(false)
+    const { exercises: catalog, loading: catalogLoading, error: catalogError } = useExerciseCatalog()
 
     // Ensure structure complies with types and cast to StrengthStructure since we know this is a strength template
     const structure = (template.structure as StrengthStructure) || { days: [] }
@@ -60,9 +58,22 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
     }, [days.length, activeDayId])
 
     const handleSave = async () => {
+        if (catalogLoading || catalogError) {
+            toast({ title: 'Catálogo no disponible', description: catalogError ?? 'Espera a que carguen los ejercicios.', variant: 'destructive' })
+            return
+        }
+        const resolved = resolveStrengthStructure(structure, catalog)
+        if (resolved.unresolved.length > 0) {
+            toast({
+                title: 'Selecciona ejercicios del catálogo',
+                description: `Falta vincular: ${resolved.unresolved.slice(0, 3).join(', ')}`,
+                variant: 'destructive',
+            })
+            return
+        }
         const normalizedStructure: StrengthStructure = {
-            ...structure,
-            days: days.map((day) => ({
+            ...resolved.structure,
+            days: resolved.structure.days.map((day) => ({
                 ...day,
                 exercises: (day.exercises || []).map((exercise) => ({
                     ...exercise,
@@ -79,6 +90,7 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
         })
 
         if (res.success) {
+            setTemplate(previous => ({ ...previous, structure: normalizedStructure }))
             toast({
                 title: 'Cambios guardados',
                 description: 'La plantilla se ha actualizado correctamente.',
@@ -345,6 +357,9 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
                                     updateStructure({ ...structure, days: newDays })
                                 }}
                                 onDelete={() => removeDay(activeDay.id)}
+                                catalog={catalog}
+                                catalogLoading={catalogLoading}
+                                catalogError={catalogError}
                             />
                         ) : (
                             <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-50 space-y-4">
@@ -359,15 +374,23 @@ export function StrengthTemplateEditor({ template: initialTemplate }: StrengthTe
     )
 }
 
-function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d: TemplateDay) => void, onDelete: () => void }) {
+function DayEditor({ day, onUpdate, onDelete, catalog, catalogLoading, catalogError }: {
+    day: TemplateDay,
+    onUpdate: (d: TemplateDay) => void,
+    onDelete: () => void,
+    catalog: CatalogExercise[],
+    catalogLoading: boolean,
+    catalogError: string | null,
+}) {
     const exercises = day.exercises || []
 
-    const addExercise = () => {
+    const addExercise = (selected: CatalogExercise) => {
         const newEx = {
             id: crypto.randomUUID(),
-            exercise_name: '',
+            catalog_exercise_id: selected.id,
+            exercise_name: selected.name,
             order: exercises.length + 1,
-            muscle_group: 'otros' as MuscleGroup,
+            muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
             sets: 3,
             reps: '10-12',
             rir: '',
@@ -410,7 +433,8 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
             </div>
 
             <div className="bg-background rounded-lg border shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
                     <thead>
                         <tr className="bg-muted/50 border-b">
                             <th className="p-3 text-left font-medium w-[30%]">Ejercicio</th>
@@ -428,29 +452,31 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
                                 <td className="p-2">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs text-muted-foreground w-6 text-center">{idx + 1}</span>
-                                        <Input
-                                            value={ex.exercise_name}
-                                            onChange={(e) => updateExercise(ex.id, 'exercise_name', e.target.value)}
-                                            placeholder="Nombre del ejercicio"
-                                            className="h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50 font-medium"
+                                        <ExerciseCatalogPicker
+                                            exercises={catalog}
+                                            value={ex.catalog_exercise_id}
+                                            legacyName={ex.exercise_name}
+                                            loading={catalogLoading}
+                                            error={catalogError}
+                                            onSelect={selected => {
+                                                onUpdate({
+                                                    ...day,
+                                                    exercises: exercises.map(item => item.id === ex.id
+                                                        ? {
+                                                            ...item,
+                                                            catalog_exercise_id: selected.id,
+                                                            exercise_name: selected.name,
+                                                            muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+                                                        }
+                                                        : item),
+                                                })
+                                            }}
                                         />
                                     </div>
                                     <div className="pl-8 pt-2">
-                                        <Select
-                                            value={normalizeMuscleGroup(ex.muscle_group)}
-                                            onValueChange={(value) => updateExercise(ex.id, 'muscle_group', normalizeMuscleGroup(value as MuscleGroup))}
-                                        >
-                                            <SelectTrigger className="h-8 w-[180px] text-xs font-medium bg-muted/20">
-                                                <SelectValue placeholder="Grupo muscular" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {MUSCLE_GROUPS.map((group) => (
-                                                    <SelectItem key={group} value={group}>
-                                                        {MUSCLE_GROUP_LABELS[group]}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <span className="text-xs text-muted-foreground">
+                                            {MUSCLE_GROUP_LABELS[normalizeMuscleGroup(ex.muscle_group)]}
+                                        </span>
                                     </div>
                                 </td>
                                 <td className="p-2">
@@ -506,15 +532,20 @@ function DayEditor({ day, onUpdate, onDelete }: { day: TemplateDay, onUpdate: (d
                         ))}
                     </tbody>
                 </table>
+                </div>
                 {exercises.length === 0 && (
                     <div className="p-8 text-center text-muted-foreground bg-muted/10">
                         No hay ejercicios en este día.
                     </div>
                 )}
                 <div className="p-2 border-t bg-muted/20">
-                    <Button variant="ghost" className="w-full gap-2 text-primary" onClick={addExercise}>
-                        <Plus className="h-4 w-4" /> Añadir Ejercicio
-                    </Button>
+                    <ExerciseCatalogPicker
+                        exercises={catalog}
+                        loading={catalogLoading}
+                        error={catalogError}
+                        onSelect={addExercise}
+                        placeholder="Añadir ejercicio del catálogo"
+                    />
                 </div>
             </div>
         </div>

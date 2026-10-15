@@ -29,7 +29,9 @@ import {
 import { cn } from '@/lib/utils'
 import type { AITrainingProposal } from '@/types/ai-training'
 import type { StrengthStructure } from '@/types/templates'
-import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
+import { ExerciseCatalogReview, selectedCatalogExercise } from '@/components/training/ExerciseCatalogReview'
+import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
+import { catalogGroupToMuscleGroup, type CatalogExercise } from '@/lib/training/exercise-catalog'
 
 // ============================================================================
 // Types
@@ -66,24 +68,34 @@ interface AITrainingDialogProps {
 // Convert AI proposal → StrengthStructure (compatible with handleImportTemplate)
 // ============================================================================
 
-function proposalToStrengthStructure(proposal: AITrainingProposal): StrengthStructure {
+function proposalToStrengthStructure(
+    proposal: AITrainingProposal,
+    catalog: CatalogExercise[],
+    selections: Record<number, string>
+): StrengthStructure {
+    let index = 0
     return {
         weeks: proposal.weeks,
         days: proposal.days.map((day, dIdx) => ({
             id: crypto.randomUUID(),
             name: day.name,
             order: dIdx + 1,
-            exercises: day.exercises.map((ex, eIdx) => ({
-                id: crypto.randomUUID(),
-                exercise_name: ex.exercise_name,
-                order: eIdx + 1,
-                muscle_group: normalizeMuscleGroup(ex.muscle_group),
-                sets: ex.sets,
-                reps: ex.reps,
-                rir: ex.rir || undefined,
-                rest_seconds: ex.rest_seconds,
-                notes: ex.notes || null,
-            })),
+            exercises: day.exercises.map((ex, eIdx) => {
+                const selected = selectedCatalogExercise(catalog, ex.exercise_name, selections[index++])
+                if (!selected) throw new Error(`Selecciona un ejercicio del catálogo para ${ex.exercise_name}.`)
+                return {
+                    id: crypto.randomUUID(),
+                    catalog_exercise_id: selected.id,
+                    exercise_name: selected.name,
+                    order: eIdx + 1,
+                    muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+                    sets: ex.sets,
+                    reps: ex.reps,
+                    rir: ex.rir || undefined,
+                    rest_seconds: ex.rest_seconds,
+                    notes: ex.notes || null,
+                }
+            }),
         })),
     }
 }
@@ -251,6 +263,13 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
     const [proposal, setProposal] = useState<AITrainingProposal | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [isGenerating, setIsGenerating] = useState(false)
+    const { exercises: catalog, loading: catalogLoading, error: catalogError } = useExerciseCatalog()
+    const [catalogSelections, setCatalogSelections] = useState<Record<number, string>>({})
+
+    const proposalNames = proposal?.days.flatMap(day => day.exercises.map(exercise => exercise.exercise_name)) ?? []
+    const hasUnmatchedExercises = proposalNames.some((name, index) =>
+        !selectedCatalogExercise(catalog, name, catalogSelections[index])
+    )
 
 
     function resetDialog() {
@@ -258,6 +277,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
         setPrompt('')
         setProposal(null)
         setError(null)
+        setCatalogSelections({})
     }
 
     function handleOpenChange(value: boolean) {
@@ -296,6 +316,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
             }
 
             setProposal(data.proposal)
+            setCatalogSelections({})
             setStep('preview')
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Error inesperado. Inténtalo de nuevo.'
@@ -308,10 +329,14 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
 
     function handleConfirm() {
         if (!proposal) return
-        const structure = proposalToStrengthStructure(proposal)
-        onConfirm(structure, proposal.name, proposal.weeks, mode)
-        setOpen(false)
-        resetDialog()
+        try {
+            const structure = proposalToStrengthStructure(proposal, catalog, catalogSelections)
+            onConfirm(structure, proposal.name, proposal.weeks, mode)
+            setOpen(false)
+            resetDialog()
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'No se pudo vincular la propuesta al catálogo.')
+        }
     }
 
     const examples = mode === 'generate' ? GENERATE_EXAMPLES : MODIFY_EXAMPLES
@@ -326,7 +351,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
                 )}
             </DialogTrigger>
 
-            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[90dvh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5 text-primary" />
@@ -477,7 +502,18 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
                     <div className="flex flex-col gap-4 overflow-y-auto flex-1">
                         <div className="flex-1 overflow-y-auto pr-1">
                             <ProposalPreview proposal={proposal} mode={mode} />
+                            <div className="mt-4">
+                                <ExerciseCatalogReview
+                                    names={proposalNames}
+                                    catalog={catalog}
+                                    selections={catalogSelections}
+                                    onSelect={(index, exercise) => setCatalogSelections(previous => ({ ...previous, [index]: exercise.id }))}
+                                    loading={catalogLoading}
+                                    error={catalogError}
+                                />
+                            </div>
                         </div>
+                        {error && <p className="text-sm text-destructive">{error}</p>}
 
                         {/* Info about next step */}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
@@ -504,6 +540,7 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
                                 </Button>
                                 <Button
                                     onClick={handleConfirm}
+                                    disabled={catalogLoading || !!catalogError || hasUnmatchedExercises}
                                     className="gap-2"
                                 >
                                     <CheckCircle2 className="h-4 w-4" />

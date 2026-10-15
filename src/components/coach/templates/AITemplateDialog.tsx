@@ -35,6 +35,9 @@ import type {
     TemplateExercise,
 } from '@/types/templates'
 import type { AIStrengthTemplate, AICardioTemplate, AIGeneratedTemplate } from '@/types/ai-template'
+import { ExerciseCatalogReview, selectedCatalogExercise } from '@/components/training/ExerciseCatalogReview'
+import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
+import { catalogGroupToMuscleGroup, type CatalogExercise } from '@/lib/training/exercise-catalog'
 
 // ============================================================================
 // Types
@@ -52,29 +55,38 @@ interface AITemplateDialogProps {
 // Helpers: convert AI output → app structures
 // ============================================================================
 
-function aiStrengthToStructure(template: AIStrengthTemplate): StrengthStructure {
+function aiStrengthToStructure(
+    template: AIStrengthTemplate,
+    catalog: CatalogExercise[],
+    selections: Record<number, string>
+): StrengthStructure {
     // Group rows by "dia"
-    const dayMap = new Map<string, typeof template.rows>()
-    for (const row of template.rows) {
+    const dayMap = new Map<string, Array<{ row: AIStrengthTemplate['rows'][number]; index: number }>>()
+    for (const [index, row] of template.rows.entries()) {
         const existing = dayMap.get(row.dia) ?? []
-        existing.push(row)
+        existing.push({ row, index })
         dayMap.set(row.dia, existing)
     }
 
     const days: TemplateDay[] = []
     let dayOrder = 1
     for (const [dayName, rows] of dayMap) {
-        const exercises: TemplateExercise[] = rows.map((row, idx) => ({
-            id: crypto.randomUUID(),
-            exercise_name: row.ejercicio,
-            order: idx + 1,
-            muscle_group: 'otros',
-            sets: row.series,
-            reps: row.reps,
-            rir: row.rir || undefined,
-            rest_seconds: row.rest,
-            notes: row.notas || null,
-        }))
+        const exercises: TemplateExercise[] = rows.map(({ row, index }, idx) => {
+            const selected = selectedCatalogExercise(catalog, row.ejercicio, selections[index])
+            if (!selected) throw new Error(`Selecciona un ejercicio del catálogo para ${row.ejercicio}.`)
+            return {
+                id: crypto.randomUUID(),
+                catalog_exercise_id: selected.id,
+                exercise_name: selected.name,
+                order: idx + 1,
+                muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+                sets: row.series,
+                reps: row.reps,
+                rir: row.rir || undefined,
+                rest_seconds: row.rest,
+                notes: row.notas || null,
+            }
+        })
         days.push({
             id: crypto.randomUUID(),
             name: dayName,
@@ -285,6 +297,8 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
     const [error, setError] = useState<string | null>(null)
     const [isGenerating, setIsGenerating] = useState(false)
     const [isCreating, startCreatingTransition] = useTransition()
+    const { exercises: catalog, loading: catalogLoading, error: catalogError } = useExerciseCatalog()
+    const [catalogSelections, setCatalogSelections] = useState<Record<number, string>>({})
     const router = useRouter()
     const { toast } = useToast()
 
@@ -293,6 +307,7 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
         setPrompt('')
         setGeneratedTemplate(null)
         setError(null)
+        setCatalogSelections({})
     }
 
     function handleOpenChange(value: boolean) {
@@ -344,7 +359,7 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
                 let result
 
                 if (generatedTemplate.type === 'strength') {
-                    const structure = aiStrengthToStructure(generatedTemplate)
+                    const structure = aiStrengthToStructure(generatedTemplate, catalog, catalogSelections)
                     result = await createTemplate({
                         name: generatedTemplate.name,
                         description: generatedTemplate.description || undefined,
@@ -549,7 +564,17 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
                         {/* Preview content */}
                         <div className="flex-1 overflow-y-auto pr-1">
                             {generatedTemplate.type === 'strength' ? (
-                                <StrengthPreview template={generatedTemplate} />
+                                <div className="space-y-4">
+                                    <StrengthPreview template={generatedTemplate} />
+                                    <ExerciseCatalogReview
+                                        names={generatedTemplate.rows.map(row => row.ejercicio)}
+                                        catalog={catalog}
+                                        selections={catalogSelections}
+                                        onSelect={(index, exercise) => setCatalogSelections(previous => ({ ...previous, [index]: exercise.id }))}
+                                        loading={catalogLoading}
+                                        error={catalogError}
+                                    />
+                                </div>
                             ) : (
                                 <CardioPreview template={generatedTemplate} />
                             )}
@@ -576,7 +601,13 @@ export function AITemplateDialog({ trigger, defaultType = 'strength' }: AITempla
                                 </Button>
                                 <Button
                                     onClick={handleConfirm}
-                                    disabled={isCreating}
+                                    disabled={isCreating || (generatedTemplate.type === 'strength' && (
+                                        catalogLoading
+                                        || !!catalogError
+                                        || generatedTemplate.rows.some((row, index) =>
+                                            !selectedCatalogExercise(catalog, row.ejercicio, catalogSelections[index])
+                                        )
+                                    ))}
                                     className="gap-2"
                                 >
                                     {isCreating ? (

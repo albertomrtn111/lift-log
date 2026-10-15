@@ -32,6 +32,7 @@ export interface TrainingExercise {
   id: string;
   dayId: string;
   name: string;
+  catalogExerciseId?: string | null;
   order: number;
   muscleGroup?: MuscleGroup | null;
   sets?: number;
