@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isAuthRetryableFetchError, isAuthSessionMissingError } from '@supabase/supabase-js'
 
 export async function middleware(req: NextRequest) {
     // REQUIRED: Handle Debug Escape Hatch first
@@ -64,9 +65,24 @@ export async function middleware(req: NextRequest) {
     }
 
     // 1. Validate user via getUser() (server-side verification against Supabase Auth)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (!user) {
+        const hadSession = req.cookies.getAll().some(cookie => /^sb-.+-auth-token/.test(cookie.name))
+
+        // Un fallo de red al validar no significa que la sesión haya caducado:
+        // dejamos pasar la petición en vez de mandar al login a quien sigue dentro.
+        if (hadSession && authError && isAuthRetryableFetchError(authError)) {
+            console.warn(`[auth] Fallo de red validando la sesión en ${pathname}; no se cierra la sesión`)
+            return res
+        }
+
+        // Rastro en producción de por qué se pierde una sesión (sin datos sensibles)
+        if (hadSession && authError && !isAuthSessionMissingError(authError)) {
+            const code = 'code' in authError ? authError.code : undefined
+            console.warn(`[auth] Sesión perdida en ${pathname}: ${code ?? authError.name} (status ${authError.status ?? '-'})`)
+        }
+
         if (isDev) console.log(`[Middleware] No authenticated user at ${pathname}, redirecting to /login`)
         return redirectWithSession('/login')
     }
