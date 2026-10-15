@@ -7,13 +7,20 @@ import { z } from 'npm:zod@4.3.6'
 import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
 import { registerCardioTools } from './cardio.ts'
+import {
+  addDays,
+  createToolRunner,
+  day,
+  type Db,
+  idempotentWriteAnnotations,
+  isoDate,
+  jsonResult,
+  readOnlyAnnotations,
+  toolError,
+  toUtcDate,
+  writeAnnotations,
+} from './shared.ts'
 
-type SupabaseClientLike = any
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Usa el formato YYYY-MM-DD').refine((value) => {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-}, 'Fecha inválida; usa YYYY-MM-DD')
 const optionalCoachId = z.string().uuid().optional().describe(
   'Solo hace falta si el entrenador pertenece a más de un espacio de trabajo.',
 )
@@ -26,25 +33,6 @@ const athleteGoalType = z.enum([
   'health',
   'other',
 ])
-
-const readOnlyAnnotations = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-}
-
-const additiveWriteAnnotations = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false,
-}
-
-const idempotentWriteAnnotations = {
-  ...additiveWriteAnnotations,
-  idempotentHint: true,
-}
 
 const strengthExerciseSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -75,37 +63,6 @@ const strengthDaySchema = z.object({
   exercises: z.array(strengthExerciseSchema).min(1).max(30),
 })
 
-function jsonResult(data: unknown) {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
-  }
-}
-
-function toolError(message: string) {
-  return {
-    content: [{ type: 'text' as const, text: message }],
-    isError: true,
-  }
-}
-
-function audit(tool: string, details: Record<string, unknown>) {
-  console.error(JSON.stringify({ event: 'nexttrain_mcp_tool', tool, ...details }))
-}
-
-function toUtcDate(value: string) {
-  return new Date(`${value}T00:00:00.000Z`)
-}
-
-function formatDate(date: Date) {
-  return date.toISOString().slice(0, 10)
-}
-
-function addDays(value: string, days: number) {
-  const date = toUtcDate(value)
-  date.setUTCDate(date.getUTCDate() + days)
-  return formatDate(date)
-}
-
 function daysBetween(start: string, end: string) {
   return Math.floor((toUtcDate(end).getTime() - toUtcDate(start).getTime()) / 86_400_000)
 }
@@ -123,49 +80,14 @@ function asNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-async function resolveCoach(supabase: SupabaseClientLike, requestedCoachId?: string) {
-  let query = supabase
-    .from('coach_memberships')
-    .select('coach_id, role, status, created_at')
-    .eq('status', 'active')
-    .in('role', ['owner', 'coach'])
-    .order('created_at', { ascending: true })
-
-  if (requestedCoachId) query = query.eq('coach_id', requestedCoachId)
-
-  const { data, error } = await query
-  if (error) throw new Error('No se ha podido comprobar el acceso del entrenador.')
-  if (!data?.length) throw new Error('La cuenta no tiene una membresía activa de entrenador.')
-  if (!requestedCoachId && data.length > 1) {
-    throw new Error('La cuenta pertenece a varios espacios. Indica coach_id para elegir uno.')
-  }
-
-  return { coachId: data[0].coach_id as string, role: data[0].role as string }
-}
-
-async function requireClient(
-  supabase: SupabaseClientLike,
-  coachId: string,
-  clientId: string,
-) {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('id, coach_id, full_name, status, start_date, next_checkin_date')
-    .eq('id', clientId)
-    .eq('coach_id', coachId)
-    .maybeSingle()
-
-  if (error || !data) throw new Error('Cliente no encontrado en el espacio del entrenador.')
-  return data
-}
-
-function createNextTrainServer(supabase: SupabaseClientLike) {
+function createNextTrainServer(supabase: Db) {
   const server = new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.6.1',
+    version: '0.7.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   })
+  const run = createToolRunner(supabase)
 
   server.registerTool(
     'who_am_i',
@@ -197,65 +119,67 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         status: z.enum(['active', 'inactive', 'all']).default('active'),
         search: z.string().trim().max(120).optional(),
         limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).max(5000).default(0),
       }),
       annotations: readOnlyAnnotations,
     },
-    async ({ coach_id, status, search, limit }) => {
-      try {
-        const { coachId } = await resolveCoach(supabase, coach_id)
-        let query = supabase
-          .from('clients')
-          .select('id, full_name, status, start_date, next_checkin_date, checkin_frequency_days')
-          .eq('coach_id', coachId)
-          .order('full_name', { ascending: true })
-          .limit(limit)
+    ({ coach_id, status, search, limit, offset }) => run('list_clients', {
+      coachId: coach_id,
+      fallbackError: 'No se han podido listar los clientes.',
+    }, async ({ coachId, log }) => {
+      let query = supabase
+        .from('clients')
+        .select('id, full_name, status, start_date, next_checkin_date, checkin_frequency_days')
+        .eq('coach_id', coachId)
+        .order('full_name', { ascending: true })
+        .order('id', { ascending: true })
+        // Se pide una fila extra para saber si hay más páginas sin contar toda la cartera.
+        .range(offset, offset + limit)
 
-        if (status !== 'all') query = query.eq('status', status)
-        if (search) query = query.ilike('full_name', `%${search.replaceAll('%', '')}%`)
+      if (status !== 'all') query = query.eq('status', status)
+      if (search) query = query.ilike('full_name', `%${search.replaceAll('%', '')}%`)
 
-        const { data: clients, error } = await query
-        if (error) throw new Error('No se ha podido cargar la cartera de clientes.')
+      const { data, error } = await query
+      if (error) throw new Error('No se ha podido cargar la cartera de clientes.')
+      const hasMore = (data ?? []).length > limit
+      const clients = (data ?? []).slice(0, limit)
 
-        const clientIds = (clients ?? []).map((client: any) => client.id)
-        let checkins: any[] = []
-        if (clientIds.length) {
-          // Un límite global dejaba fuera a clientes con check-ins antiguos y los marcaba sin_checkin.
-          const response = await supabase.rpc('nexttrain_latest_checkins', {
-            p_coach_id: coachId,
-            p_client_ids: clientIds,
-          })
-          if (response.error) throw new Error('No se han podido cargar los últimos check-ins.')
-          checkins = response.data ?? []
-        }
-
-        const latestByClient = new Map<string, any>(checkins.map((checkin: any) => [checkin.client_id, checkin]))
-
-        const today = formatDate(new Date())
-        const result = (clients ?? []).map((client: any) => {
-          const latest = latestByClient.get(client.id) ?? null
-          const flags: string[] = []
-          if (!latest) flags.push('sin_checkin')
-          if (latest?.training_adherence_pct != null && latest.training_adherence_pct < 70) flags.push('adherencia_entreno_baja')
-          if (latest?.nutrition_adherence_pct != null && latest.nutrition_adherence_pct < 70) flags.push('adherencia_nutricion_baja')
-          if (latest?.energy != null && latest.energy <= 4) flags.push('energia_baja')
-          if (latest?.stress != null && latest.stress >= 7) flags.push('estres_alto')
-          if (latest?.injuries?.trim()) flags.push('lesion_o_molestia')
-          if (client.next_checkin_date && client.next_checkin_date < today) flags.push('checkin_atrasado')
-
-          return {
-            ...client,
-            latest_checkin: latest,
-            attention_flags: flags,
-          }
+      const clientIds = clients.map((client: any) => client.id)
+      let checkins: any[] = []
+      if (clientIds.length) {
+        // Un límite global dejaba fuera a clientes con check-ins antiguos y los marcaba sin_checkin.
+        const response = await supabase.rpc('nexttrain_latest_checkins', {
+          p_coach_id: coachId,
+          p_client_ids: clientIds,
         })
-
-        audit('list_clients', { coach_id: coachId, result_count: result.length, status: 'ok' })
-        return jsonResult({ coach_id: coachId, clients: result })
-      } catch (error) {
-        audit('list_clients', { status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se han podido listar los clientes.')
+        if (response.error) throw new Error('No se han podido cargar los últimos check-ins.')
+        checkins = response.data ?? []
       }
-    },
+
+      const latestByClient = new Map<string, any>(checkins.map((checkin: any) => [checkin.client_id, checkin]))
+
+      const today = day(new Date())
+      const result = clients.map((client: any) => {
+        const latest = latestByClient.get(client.id) ?? null
+        const flags: string[] = []
+        if (!latest) flags.push('sin_checkin')
+        if (latest?.training_adherence_pct != null && latest.training_adherence_pct < 70) flags.push('adherencia_entreno_baja')
+        if (latest?.nutrition_adherence_pct != null && latest.nutrition_adherence_pct < 70) flags.push('adherencia_nutricion_baja')
+        if (latest?.energy != null && latest.energy <= 4) flags.push('energia_baja')
+        if (latest?.stress != null && latest.stress >= 7) flags.push('estres_alto')
+        if (latest?.injuries?.trim()) flags.push('lesion_o_molestia')
+        if (client.next_checkin_date && client.next_checkin_date < today) flags.push('checkin_atrasado')
+
+        return {
+          ...client,
+          latest_checkin: latest,
+          attention_flags: flags,
+        }
+      })
+
+      log.result_count = result.length
+      return { coach_id: coachId, clients: result, has_more: hasMore, next_offset: hasMore ? offset + limit : null }
+    }),
   )
 
   server.registerTool(
@@ -269,110 +193,106 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       }),
       annotations: readOnlyAnnotations,
     },
-    async ({ client_id, coach_id }) => {
-      try {
-        const { coachId } = await resolveCoach(supabase, coach_id)
-        const client = await requireClient(supabase, coachId, client_id)
-        const today = formatDate(new Date())
+    ({ client_id, coach_id }) => run('get_client_overview', {
+      coachId: coach_id,
+      clientId: client_id,
+      fallbackError: 'No se ha podido cargar el cliente.',
+    }, async ({ coachId, client }) => {
+      const today = day(new Date())
 
-        const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult] = await Promise.all([
-          supabase
-            .from('checkins')
-            .select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, status')
-            .eq('coach_id', coachId)
-            .eq('client_id', client_id)
-            .not('submitted_at', 'is', null)
-            .order('submitted_at', { ascending: false })
-            .limit(8),
-          supabase
-            .from('cardio_sessions')
-            .select('id, scheduled_date, name, activity_type, training_type, target_distance_km, target_duration_min, target_pace, is_completed, actual_distance_km, actual_duration_min, rpe, feedback_notes')
-            .eq('coach_id', coachId)
-            .eq('client_id', client_id)
-            .gte('scheduled_date', addDays(today, -30))
-            .lte('scheduled_date', addDays(today, 30))
-            .order('scheduled_date', { ascending: true }),
-          supabase
-            .from('client_events')
-            .select('id, title, event_date, event_type, status, priority, target, location')
-            .eq('coach_id', coachId)
-            .eq('client_id', client_id)
-            .gte('event_date', today)
-            .order('event_date', { ascending: true })
-            .limit(10),
-          supabase
-            .from('training_programs')
-            .select('id, name, weeks, total_weeks, status, effective_from, effective_to, training_days(id, name, default_weekday)')
-            .eq('coach_id', coachId)
-            .eq('client_id', client_id)
-            .in('status', ['active', 'draft'])
-            .order('created_at', { ascending: false })
-            .limit(5),
-          supabase
-            .from('athlete_current_goals')
-            .select('id, goal_type, title, start_date, target_date, notes, updated_at')
-            .eq('coach_id', coachId)
-            .eq('client_id', client_id)
-            .maybeSingle(),
-        ])
+      const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult] = await Promise.all([
+        supabase
+          .from('checkins')
+          .select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, status')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .not('submitted_at', 'is', null)
+          .order('submitted_at', { ascending: false })
+          .limit(8),
+        supabase
+          .from('cardio_sessions')
+          .select('id, scheduled_date, name, activity_type, training_type, target_distance_km, target_duration_min, target_pace, is_completed, actual_distance_km, actual_duration_min, rpe, feedback_notes')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .gte('scheduled_date', addDays(today, -30))
+          .lte('scheduled_date', addDays(today, 30))
+          .order('scheduled_date', { ascending: true }),
+        supabase
+          .from('client_events')
+          .select('id, title, event_date, event_type, status, priority, target, location')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .gte('event_date', today)
+          .order('event_date', { ascending: true })
+          .limit(10),
+        supabase
+          .from('training_programs')
+          .select('id, name, weeks, total_weeks, status, effective_from, effective_to, training_days(id, name, default_weekday)')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .in('status', ['active', 'draft'])
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('athlete_current_goals')
+          .select('id, goal_type, title, start_date, target_date, notes, updated_at')
+          .eq('coach_id', coachId)
+          .eq('client_id', client_id)
+          .maybeSingle(),
+      ])
 
-        const failed = [checkinsResult, cardioResult, eventsResult, programsResult, goalResult].find((item) => item.error)
-        if (failed?.error) throw new Error('No se ha podido construir el resumen completo del cliente.')
+      const failed = [checkinsResult, cardioResult, eventsResult, programsResult, goalResult].find((item) => item.error)
+      if (failed?.error) throw new Error('No se ha podido construir el resumen completo del cliente.')
 
-        const checkins = checkinsResult.data ?? []
-        const latest = checkins[0] ?? null
-        const previous = checkins[1] ?? null
-        const metricDelta = (key: string) => {
-          const current = asNumber(latest?.[key])
-          const before = asNumber(previous?.[key])
-          return current == null || before == null ? null : Number((current - before).toFixed(2))
-        }
-
-        const attentionFlags: string[] = []
-        if (!latest) attentionFlags.push('No hay check-ins enviados.')
-        if (latest?.training_adherence_pct != null && latest.training_adherence_pct < 70) attentionFlags.push('Adherencia al entrenamiento por debajo del 70%.')
-        if (latest?.nutrition_adherence_pct != null && latest.nutrition_adherence_pct < 70) attentionFlags.push('Adherencia nutricional por debajo del 70%.')
-        if (latest?.sleep_avg_h != null && Number(latest.sleep_avg_h) < 6) attentionFlags.push('Media de sueño inferior a 6 horas.')
-        if (latest?.energy != null && latest.energy <= 4) attentionFlags.push('Energía baja en el último check-in.')
-        if (latest?.stress != null && latest.stress >= 7) attentionFlags.push('Estrés alto en el último check-in.')
-        if (latest?.injuries?.trim()) attentionFlags.push('Ha comunicado lesión o molestias.')
-        if (client.next_checkin_date && client.next_checkin_date < today) attentionFlags.push('El próximo check-in está atrasado.')
-
-        audit('get_client_overview', { coach_id: coachId, client_id, status: 'ok' })
-        return jsonResult({
-          client,
-          attention_flags: attentionFlags,
-          latest_checkin: latest,
-          recent_trend: {
-            compared_with: previous?.submitted_at ?? null,
-            weight_kg_delta: metricDelta('weight_avg_kg'),
-            training_adherence_points_delta: metricDelta('training_adherence_pct'),
-            nutrition_adherence_points_delta: metricDelta('nutrition_adherence_pct'),
-            sleep_hours_delta: metricDelta('sleep_avg_h'),
-            energy_delta: metricDelta('energy'),
-            stress_delta: metricDelta('stress'),
-          },
-          recent_checkins: checkins,
-          current_goal: goalResult.data
-            ? {
-              ...goalResult.data,
-              days_until_end: daysBetween(today, goalResult.data.target_date),
-              deadline_status: goalResult.data.target_date < today
-                ? 'overdue'
-                : goalResult.data.target_date === today
-                  ? 'ends_today'
-                  : 'upcoming',
-            }
-            : null,
-          cardio_window: cardioResult.data ?? [],
-          upcoming_events: eventsResult.data ?? [],
-          training_programs: programsResult.data ?? [],
-        })
-      } catch (error) {
-        audit('get_client_overview', { client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido cargar el cliente.')
+      const checkins = checkinsResult.data ?? []
+      const latest = checkins[0] ?? null
+      const previous = checkins[1] ?? null
+      const metricDelta = (key: string) => {
+        const current = asNumber(latest?.[key])
+        const before = asNumber(previous?.[key])
+        return current == null || before == null ? null : Number((current - before).toFixed(2))
       }
-    },
+
+      const attentionFlags: string[] = []
+      if (!latest) attentionFlags.push('No hay check-ins enviados.')
+      if (latest?.training_adherence_pct != null && latest.training_adherence_pct < 70) attentionFlags.push('Adherencia al entrenamiento por debajo del 70%.')
+      if (latest?.nutrition_adherence_pct != null && latest.nutrition_adherence_pct < 70) attentionFlags.push('Adherencia nutricional por debajo del 70%.')
+      if (latest?.sleep_avg_h != null && Number(latest.sleep_avg_h) < 6) attentionFlags.push('Media de sueño inferior a 6 horas.')
+      if (latest?.energy != null && latest.energy <= 4) attentionFlags.push('Energía baja en el último check-in.')
+      if (latest?.stress != null && latest.stress >= 7) attentionFlags.push('Estrés alto en el último check-in.')
+      if (latest?.injuries?.trim()) attentionFlags.push('Ha comunicado lesión o molestias.')
+      if (client?.next_checkin_date && client.next_checkin_date < today) attentionFlags.push('El próximo check-in está atrasado.')
+
+      return {
+        client,
+        attention_flags: attentionFlags,
+        latest_checkin: latest,
+        recent_trend: {
+          compared_with: previous?.submitted_at ?? null,
+          weight_kg_delta: metricDelta('weight_avg_kg'),
+          training_adherence_points_delta: metricDelta('training_adherence_pct'),
+          nutrition_adherence_points_delta: metricDelta('nutrition_adherence_pct'),
+          sleep_hours_delta: metricDelta('sleep_avg_h'),
+          energy_delta: metricDelta('energy'),
+          stress_delta: metricDelta('stress'),
+        },
+        recent_checkins: checkins,
+        current_goal: goalResult.data
+          ? {
+            ...goalResult.data,
+            days_until_end: daysBetween(today, goalResult.data.target_date),
+            deadline_status: goalResult.data.target_date < today
+              ? 'overdue'
+              : goalResult.data.target_date === today
+                ? 'ends_today'
+                : 'upcoming',
+          }
+          : null,
+        cardio_window: cardioResult.data ?? [],
+        upcoming_events: eventsResult.data ?? [],
+        training_programs: programsResult.data ?? [],
+      }
+    }),
   )
 
   server.registerTool(
@@ -386,38 +306,34 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       }),
       annotations: readOnlyAnnotations,
     },
-    async ({ client_id, coach_id }) => {
-      try {
-        const { coachId } = await resolveCoach(supabase, coach_id)
-        await requireClient(supabase, coachId, client_id)
-        const { data, error } = await supabase
-          .from('athlete_current_goals')
-          .select('id, goal_type, title, start_date, target_date, notes, updated_at')
-          .eq('coach_id', coachId)
-          .eq('client_id', client_id)
-          .maybeSingle()
-        if (error) throw new Error('No se ha podido consultar el objetivo actual.')
+    ({ client_id, coach_id }) => run('get_athlete_goal', {
+      coachId: coach_id,
+      clientId: client_id,
+      fallbackError: 'No se ha podido consultar el objetivo actual.',
+    }, async ({ coachId }) => {
+      const { data, error } = await supabase
+        .from('athlete_current_goals')
+        .select('id, goal_type, title, start_date, target_date, notes, updated_at')
+        .eq('coach_id', coachId)
+        .eq('client_id', client_id)
+        .maybeSingle()
+      if (error) throw new Error('No se ha podido consultar el objetivo actual.')
 
-        const today = formatDate(new Date())
-        const goal = data
-          ? {
-            ...data,
-            days_until_end: daysBetween(today, data.target_date),
-            deadline_status: data.target_date < today
-              ? 'overdue'
-              : data.target_date === today
-                ? 'ends_today'
-                : 'upcoming',
-          }
-          : null
+      const today = day(new Date())
+      const goal = data
+        ? {
+          ...data,
+          days_until_end: daysBetween(today, data.target_date),
+          deadline_status: data.target_date < today
+            ? 'overdue'
+            : data.target_date === today
+              ? 'ends_today'
+              : 'upcoming',
+        }
+        : null
 
-        audit('get_athlete_goal', { coach_id: coachId, client_id, status: 'ok' })
-        return jsonResult({ client_id, current_goal: goal })
-      } catch (error) {
-        audit('get_athlete_goal', { client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido consultar el objetivo actual.')
-      }
-    },
+      return { client_id, current_goal: goal }
+    }),
   )
 
   server.registerTool(
@@ -437,13 +353,15 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       annotations: idempotentWriteAnnotations,
     },
     async (input) => {
-      try {
-        if (input.target_date < input.start_date) {
-          return toolError('La fecha límite debe ser igual o posterior a la fecha de inicio.')
-        }
+      if (input.target_date < input.start_date) {
+        return toolError('La fecha límite debe ser igual o posterior a la fecha de inicio.')
+      }
 
-        const { coachId } = await resolveCoach(supabase, input.coach_id)
-        await requireClient(supabase, coachId, input.client_id)
+      return run('set_athlete_goal', {
+        coachId: input.coach_id,
+        clientId: input.client_id,
+        fallbackError: 'No se ha podido guardar el objetivo actual.',
+      }, async ({ coachId, log }) => {
         const { data, error } = await supabase
           .from('athlete_current_goals')
           .upsert({
@@ -460,12 +378,9 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
           .single()
 
         if (error || !data) throw new Error('No se ha podido guardar el objetivo actual.')
-        audit('set_athlete_goal', { coach_id: coachId, client_id: input.client_id, record_id: data.id, status: 'ok' })
-        return jsonResult({ saved: true, current_goal: data })
-      } catch (error) {
-        audit('set_athlete_goal', { client_id: input.client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido guardar el objetivo actual.')
-      }
+        log.record_id = data.id
+        return { saved: true, current_goal: data }
+      })
     },
   )
 
@@ -483,14 +398,16 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       annotations: readOnlyAnnotations,
     },
     async ({ client_id, start_date, end_date, coach_id }) => {
-      try {
-        const rangeDays = daysBetween(start_date, end_date)
-        if (rangeDays < 0 || rangeDays > 120) {
-          return toolError('El rango debe estar ordenado y no puede superar 120 días.')
-        }
+      const rangeDays = daysBetween(start_date, end_date)
+      if (rangeDays < 0 || rangeDays > 120) {
+        return toolError('El rango debe estar ordenado y no puede superar 120 días.')
+      }
 
-        const { coachId } = await resolveCoach(supabase, coach_id)
-        await requireClient(supabase, coachId, client_id)
+      return run('list_client_schedule', {
+        coachId: coach_id,
+        clientId: client_id,
+        fallbackError: 'No se ha podido consultar la planificación.',
+      }, async ({ coachId, log }) => {
 
         const [cardioResult, eventsResult, programsResult] = await Promise.all([
           supabase
@@ -558,12 +475,9 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         }
 
         items.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind))
-        audit('list_client_schedule', { coach_id: coachId, client_id, result_count: items.length, status: 'ok' })
-        return jsonResult({ client_id, start_date, end_date, items })
-      } catch (error) {
-        audit('list_client_schedule', { client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido consultar la planificación.')
-      }
+        log.result_count = items.length
+        return { client_id, start_date, end_date, items }
+      })
     },
   )
 
@@ -581,52 +495,48 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         days: z.array(strengthDaySchema).min(1).max(7),
         coach_id: optionalCoachId,
       }),
-      annotations: additiveWriteAnnotations,
+      annotations: writeAnnotations,
     },
-    async (input) => {
-      try {
-        const { coachId } = await resolveCoach(supabase, input.coach_id)
-        await requireClient(supabase, coachId, input.client_id)
-
-        // Una única transacción en Postgres: si falla un día o ejercicio no queda nada guardado.
-        const { data, error } = await supabase.rpc('create_nexttrain_strength_program', {
-          p_coach_id: coachId,
-          p_client_id: input.client_id,
-          p_payload: {
-            name: input.name,
-            weeks: input.weeks,
-            status: input.status,
-            effective_from: input.effective_from,
-            days: input.days,
-          },
-        })
-        if (error || !data?.id) {
-          // P0001 y 42501 son los mensajes propios de la función; el resto se oculta.
-          const ownMessage = error && ['P0001', '42501'].includes(error.code) ? error.message : null
-          throw new Error(ownMessage ?? 'No se ha podido crear el programa de fuerza. No se guardó ningún cambio.')
-        }
-
-        audit('create_strength_program', { coach_id: coachId, client_id: input.client_id, record_id: data.id, status: 'ok' })
-        return jsonResult({
-          created: true,
-          program: {
-            id: data.id,
-            client_id: input.client_id,
-            name: data.name,
-            status: data.status,
-            effective_from: data.effective_from,
-            effective_to: data.effective_to,
-            weeks: data.weeks,
-            days: data.day_count,
-            exercises: data.exercise_count,
-          },
-          archived_program_ids: data.archived_program_ids ?? [],
-        })
-      } catch (error) {
-        audit('create_strength_program', { client_id: input.client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido crear el programa de fuerza.')
+    (input) => run('create_strength_program', {
+      coachId: input.coach_id,
+      clientId: input.client_id,
+      fallbackError: 'No se ha podido crear el programa de fuerza.',
+    }, async ({ coachId, log }) => {
+      // Una única transacción en Postgres: si falla un día o ejercicio no queda nada guardado.
+      const { data, error } = await supabase.rpc('create_nexttrain_strength_program', {
+        p_coach_id: coachId,
+        p_client_id: input.client_id,
+        p_payload: {
+          name: input.name,
+          weeks: input.weeks,
+          status: input.status,
+          effective_from: input.effective_from,
+          days: input.days,
+        },
+      })
+      if (error || !data?.id) {
+        // P0001 y 42501 son los mensajes propios de la función; el resto se oculta.
+        const ownMessage = error && ['P0001', '42501'].includes(error.code) ? error.message : null
+        throw new Error(ownMessage ?? 'No se ha podido crear el programa de fuerza. No se guardó ningún cambio.')
       }
-    },
+
+      log.record_id = data.id
+      return {
+        created: true,
+        program: {
+          id: data.id,
+          client_id: input.client_id,
+          name: data.name,
+          status: data.status,
+          effective_from: data.effective_from,
+          effective_to: data.effective_to,
+          weeks: data.weeks,
+          days: data.day_count,
+          exercises: data.exercise_count,
+        },
+        archived_program_ids: data.archived_program_ids ?? [],
+      }
+    }),
   )
 
   server.registerTool(
@@ -642,55 +552,36 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         client_id: z.string().uuid().optional(),
         coach_id: optionalCoachId,
       }),
-      annotations: additiveWriteAnnotations,
+      annotations: writeAnnotations,
     },
-    async (input) => {
-      try {
-        const { coachId } = await resolveCoach(supabase, input.coach_id)
-        if (input.client_id) await requireClient(supabase, coachId, input.client_id)
+    (input) => run('create_coach_task', {
+      coachId: input.coach_id,
+      clientId: input.client_id ?? null,
+      fallbackError: 'No se ha podido crear la tarea.',
+    }, async ({ coachId, log }) => {
+      const { data, error } = await supabase
+        .from('coach_tasks')
+        .insert({
+          coach_id: coachId,
+          client_id: input.client_id ?? null,
+          task_date: input.task_date,
+          title: input.title,
+          description: input.description ?? null,
+          priority: input.priority,
+          status: 'pending',
+        })
+        .select('id, client_id, task_date, title, priority, status')
+        .single()
 
-        const { data, error } = await supabase
-          .from('coach_tasks')
-          .insert({
-            coach_id: coachId,
-            client_id: input.client_id ?? null,
-            task_date: input.task_date,
-            title: input.title,
-            description: input.description ?? null,
-            priority: input.priority,
-            status: 'pending',
-          })
-          .select('id, client_id, task_date, title, priority, status')
-          .single()
-
-        if (error) throw new Error('No se ha podido crear la tarea.')
-        audit('create_coach_task', { coach_id: coachId, client_id: input.client_id ?? null, record_id: data.id, status: 'ok' })
-        return jsonResult({ created: true, task: data })
-      } catch (error) {
-        audit('create_coach_task', { client_id: input.client_id ?? null, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido crear la tarea.')
-      }
-    },
+      if (error) throw new Error('No se ha podido crear la tarea.')
+      log.record_id = data.id
+      return { created: true, task: data }
+    }),
   )
 
-  registerHistoryTools(server, supabase, {
-    resolveCoach,
-    requireClient,
-    jsonResult,
-    toolError,
-    audit,
-    annotations: readOnlyAnnotations,
-  })
-
-  registerNutritionTools(server, supabase, {
-    resolveCoach, requireClient, jsonResult, toolError, audit,
-    annotations: readOnlyAnnotations,
-  })
-
-  registerCardioTools(server, supabase, {
-    resolveCoach, requireClient, jsonResult, toolError, audit,
-    annotations: readOnlyAnnotations,
-  })
+  registerHistoryTools(server, supabase)
+  registerNutritionTools(server, supabase)
+  registerCardioTools(server, supabase)
 
   return server
 }

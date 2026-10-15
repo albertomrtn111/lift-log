@@ -36,7 +36,7 @@ function fixture() {
   registerCardioTools({ registerTool(name: string, config: any, run: any) { registered.set(name, { config, run }) } }, db, {
     resolveCoach: async (_db: any, id?: string) => { if (id && id !== coach) throw new Error('Espacio no autorizado'); return { coachId: coach } },
     requireClient: async (_db: any, space: string, id: string) => { if (space !== coach || id !== client) throw new Error('Cliente no autorizado') },
-    jsonResult: (data: any) => ({ data }), toolError: (error: string) => ({ error }), audit() {}, annotations: { readOnlyHint: true },
+    jsonResult: (data: any) => ({ data }), toolError: (error: string) => ({ error }), audit() {},
   })
   return { state, async run(name: string, value: any) { const tool = registered.get(name); return await tool.run(tool.config.inputSchema.parse(value)) } }
 }
