@@ -1,23 +1,139 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AuthDivider, AuthHeading, AuthShell } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, AuthInput, PasswordInput } from '@/components/auth/AuthFields'
 import { authErrorMessage, classifyAuthError, safeRedirectPath } from '@/lib/auth/auth-errors'
 
+// Si el login vuelve a abrirse con sesión a los pocos segundos de continuar,
+// no se reintenta solo (evita un bucle si el servidor no ve la sesión)
+const AUTO_CONTINUE_KEY = 'auth:auto-continue-at'
+const AUTO_CONTINUE_WINDOW_MS = 20_000
+
+type ExistingSession = { status: 'checking' } | { status: 'none' } | { status: 'found'; email: string; auto: boolean }
+
+function readAutoContinueAt() {
+    try {
+        return Number(window.sessionStorage.getItem(AUTO_CONTINUE_KEY)) || 0
+    } catch {
+        return 0
+    }
+}
+
+function markAutoContinue() {
+    try {
+        window.sessionStorage.setItem(AUTO_CONTINUE_KEY, String(Date.now()))
+    } catch {
+        // Sin almacenamiento simplemente no hay protección contra bucles
+    }
+}
+
+/**
+ * El login no pasa por el middleware: si quien llega aquí ya tiene sesión
+ * (p. ej. el servidor no la reconoció al abrir la app del móvil, pero sigue
+ * viva), se continúa con ella en vez de pedir la contraseña otra vez.
+ */
+function useExistingSession(redirectTo: string) {
+    const router = useRouter()
+    const [state, setState] = useState<ExistingSession>({ status: 'checking' })
+
+    useEffect(() => {
+        let cancelled = false
+        const supabase = createClient()
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (cancelled) return
+            if (!user) {
+                setState({ status: 'none' })
+                return
+            }
+            const recentlyTried = Date.now() - readAutoContinueAt() < AUTO_CONTINUE_WINDOW_MS
+            setState({ status: 'found', email: user.email ?? '', auto: !recentlyTried })
+
+            void fetch('/api/auth/session-recovered', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: redirectTo,
+                    standalone: window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as { standalone?: boolean }).standalone === true,
+                }),
+                keepalive: true,
+            }).catch(() => undefined)
+
+            if (!recentlyTried) {
+                markAutoContinue()
+                router.replace(redirectTo)
+                router.refresh()
+            }
+        }).catch(() => {
+            if (!cancelled) setState({ status: 'none' })
+        })
+        return () => { cancelled = true }
+    }, [redirectTo, router])
+
+    const signOutExisting = async () => {
+        await createClient().auth.signOut({ scope: 'local' })
+        setState({ status: 'none' })
+    }
+
+    return { state, signOutExisting }
+}
+
 // useSearchParams() tiene que estar dentro de un Suspense (Next.js 14)
 function LoginForm() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const redirectTo = safeRedirectPath(searchParams.get('redirect'))
+    const { state: existing, signOutExisting } = useExistingSession(redirectTo)
     const [email, setEmail] = useState(searchParams.get('email') ?? '')
     const [password, setPassword] = useState('')
     const [error, setError] = useState<{ kind: string; message: string } | null>(null)
     const [loading, setLoading] = useState(false)
+    const [switching, setSwitching] = useState(false)
+
+    if (existing.status === 'checking') {
+        return <div className="flex h-[260px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+    }
+
+    if (existing.status === 'found') {
+        return (
+            <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        {existing.auto ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserRound className="h-5 w-5" />}
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold">{existing.auto ? 'Entrando…' : 'Ya tienes la sesión iniciada'}</p>
+                        <p className="truncate text-sm text-muted-foreground">{existing.email}</p>
+                    </div>
+                </div>
+                {!existing.auto && (
+                    <>
+                        <Button
+                            size="lg"
+                            className="h-11 w-full rounded-xl text-[15px] font-semibold"
+                            onClick={() => { router.replace(redirectTo); router.refresh() }}
+                        >
+                            Continuar
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            className="h-10 w-full rounded-xl"
+                            disabled={switching}
+                            onClick={async () => { setSwitching(true); await signOutExisting(); setSwitching(false) }}
+                        >
+                            {switching && <Loader2 className="h-4 w-4 animate-spin" />}
+                            Usar otra cuenta
+                        </Button>
+                    </>
+                )}
+            </div>
+        )
+    }
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -35,7 +151,7 @@ function LoginForm() {
             }
 
             // Con ?redirect= (p. ej. /forms/[id]) volvemos allí; si no, la raíz decide según el rol
-            router.push(safeRedirectPath(searchParams.get('redirect')))
+            router.push(redirectTo)
             router.refresh()
         } catch (err) {
             setError({ kind: 'unknown', message: authErrorMessage(err) })
