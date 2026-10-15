@@ -8,33 +8,61 @@ import { getAppUrl } from '@/lib/app-url'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
-import { syncClientCurrentMonth } from '@/data/billing'
+import {
+    getCoachBillingSettings,
+    settleBillingBeforeReactivation,
+    syncClientCurrentMonth,
+    todayKeyIn,
+    waiveCurrentMonthOnDeactivation,
+} from '@/data/billing'
 
 export async function deactivateClientAction(clientId: string) {
-    const result = await setClientStatus(clientId, 'inactive')
-
-    if (result.success) {
-        revalidatePath('/coach/members')
-        revalidatePath('/coach/clients')
+    let coachId: string
+    try {
+        ; ({ coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: 'No autorizado: ' + e.message }
     }
 
+    const today = todayKeyIn((await getCoachBillingSettings(coachId)).timeZone)
+    const result = await setClientStatus(clientId, 'inactive', today)
+    if (!result.success) return result
+
+    revalidatePath('/coach/members')
+    revalidatePath('/coach/clients')
+
+    const billing = await waiveCurrentMonthOnDeactivation(coachId, clientId, today)
+    if (!billing.success) {
+        return { success: false, error: 'Se dio de baja, pero no se pudo actualizar el cobro de este mes.' }
+    }
     return result
 }
 
 export async function reactivateClientAction(clientId: string) {
-    const result = await setClientStatus(clientId, 'active')
-
-    if (result.success) {
-        try {
-            const { coachId } = await requireActiveCoachId()
-            await syncClientCurrentMonth(coachId, clientId)
-        } catch (error) {
-            console.error('[reactivateClientAction] Could not sync billing:', error)
-        }
-        revalidatePath('/coach/members')
-        revalidatePath('/coach/clients')
+    let coachId: string
+    try {
+        ; ({ coachId } = await requireActiveCoachId())
+    } catch (e: any) {
+        return { success: false, error: 'No autorizado: ' + e.message }
     }
 
+    // Antes de cambiar el estado: necesita la fecha de baja para cerrar esos meses
+    const today = todayKeyIn((await getCoachBillingSettings(coachId)).timeZone)
+    const settled = await settleBillingBeforeReactivation(coachId, clientId, today)
+    if (!settled.success) {
+        return { success: false, error: 'No se pudo reactivar: fallo al registrar los meses de baja en Facturación.' }
+    }
+
+    const result = await setClientStatus(clientId, 'active')
+    if (!result.success) return result
+
+    revalidatePath('/coach/members')
+    revalidatePath('/coach/clients')
+
+    const billing = await syncClientCurrentMonth(coachId, clientId)
+    if (!billing.success) {
+        return { success: false, error: 'Se reactivó, pero no se pudo actualizar el cobro de este mes.' }
+    }
     return result
 }
 

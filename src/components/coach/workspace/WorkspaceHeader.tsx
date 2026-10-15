@@ -36,7 +36,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
-import { toggleClientStatusAction } from './actions'
+import { deactivateClientAction, reactivateClientAction } from '../actions'
 import { resendInviteAction } from '../invite-actions'
 import { sendOnboardingAction } from '../onboarding-actions'
 import { sendReviewAction } from '../review-actions'
@@ -76,7 +76,12 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
 
     const handleToggleStatus = () => {
         startTransition(async () => {
-            await toggleClientStatusAction(client.id, client.status)
+            const result = client.status === 'active'
+                ? await deactivateClientAction(client.id)
+                : await reactivateClientAction(client.id)
+            if (!result.success) {
+                toast({ title: 'Error al cambiar el estado', description: result.error, variant: 'destructive' })
+            }
             onClientUpdated()
         })
     }

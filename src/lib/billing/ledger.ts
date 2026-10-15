@@ -4,8 +4,10 @@
 // servidor y cliente.
 //
 // Reglas:
-// - Un atleta es facturable en un mes si está activo, tiene cuota > 0 y su
-//   alta (start_date, o la fecha de creación) es anterior o igual a ese mes.
+// - Un atleta es facturable en un mes si tiene cuota > 0, su alta
+//   (start_date, o la fecha de creación) es anterior o igual a ese mes y
+//   seguía activo el día de cobro (sin baja, o con la baja posterior a ese
+//   día). Un atleta de baja sin fecha conocida no es facturable.
 // - Los meses futuros no se facturan todavía: solo cuentan como previsión.
 // - Un registro existente siempre manda (aunque el atleta ya esté inactivo
 //   o haya cambiado de cuota).
@@ -26,6 +28,8 @@ export interface LedgerClient {
     created_at: string | null
     payment_amount: number | string | null
     payment_day: number | null
+    /** Día de la baja (YYYY-MM-DD); solo cuenta si el atleta no está activo */
+    deactivated_at?: string | null
 }
 
 export interface LedgerRecord {
@@ -125,9 +129,16 @@ export function feeOf(client: LedgerClient) {
     return Number.isFinite(amount) && amount > 0 ? amount : 0
 }
 
+/** Seguía activo el día de cobro de ese mes */
+function activeOnDueDate(client: LedgerClient, year: number, month: number) {
+    if (client.status === 'active') return true
+    const deactivatedOn = client.deactivated_at?.slice(0, 10)
+    return !!deactivatedOn && dueDateFor(year, month, client.payment_day) < deactivatedOn
+}
+
 /** Debe pagar este mes según su ficha (sin mirar registros) */
 export function isBillable(client: LedgerClient, year: number, month: number) {
-    if (client.status !== 'active' || feeOf(client) <= 0) return false
+    if (feeOf(client) <= 0 || !activeOnDueDate(client, year, month)) return false
     const start = startPeriodOf(client)
     if (!start) return false
     return periodIndex(start.year, start.month) <= periodIndex(year, month)
@@ -183,7 +194,7 @@ export function buildMonthRows(
                 clientId: client.id,
                 name: client.full_name || 'Atleta',
                 email: client.email || '',
-                clientActive: true,
+                clientActive: client.status === 'active',
                 amount: feeOf(client),
                 state: 'missing',
                 dueDate,
@@ -272,6 +283,25 @@ export function debtsByClient(
         }
     }
     return [...debts.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'es'))
+}
+
+/**
+ * Meses ya empezados (sin contar el actual) que un atleta de baja habría
+ * pagado de haber seguido activo. Al reactivarlo se registran como exentos
+ * para que no reaparezcan como «sin registrar».
+ */
+export function monthsMissedWhileInactive(client: LedgerClient, today: string) {
+    const deactivatedOn = client.deactivated_at?.slice(0, 10)
+    if (client.status === 'active' || !deactivatedOn) return []
+    const asActive = { ...client, status: 'active' }
+    const todayPeriod = periodIndex(Number(today.slice(0, 4)), Number(today.slice(5, 7)))
+    const months: Array<{ year: number; month: number }> = []
+    for (let period = periodIndex(Number(deactivatedOn.slice(0, 4)), Number(deactivatedOn.slice(5, 7))); period < todayPeriod; period++) {
+        const year = Math.floor(period / 12)
+        const month = (period % 12) + 1
+        if (isBillable(asActive, year, month) && !isBillable(client, year, month)) months.push({ year, month })
+    }
+    return months
 }
 
 /** Atletas activos que no aparecen en facturación porque no tienen cuota */
