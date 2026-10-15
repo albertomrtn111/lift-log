@@ -187,14 +187,20 @@ function ClientRow({
 
     const handleDeactivate = () => {
         startTransition(async () => {
-            await deactivateClientAction(client.id)
+            const result = await deactivateClientAction(client.id)
+            if (!result.success) {
+                toast({ title: 'Error al cambiar el estado', description: result.error, variant: 'destructive' })
+            }
             onUpdate()
         })
     }
 
     const handleReactivate = () => {
         startTransition(async () => {
-            await reactivateClientAction(client.id)
+            const result = await reactivateClientAction(client.id)
+            if (!result.success) {
+                toast({ title: 'Error al cambiar el estado', description: result.error, variant: 'destructive' })
+            }
             onUpdate()
         })
     }

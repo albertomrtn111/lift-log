@@ -46,25 +46,6 @@ export async function updateClientBasicsAction(
     return { success: true }
 }
 
-export async function toggleClientStatusAction(clientId: string, currentStatus: 'active' | 'inactive' | 'pending') {
-    const supabase = await createClient()
-    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
-
-    const { error } = await supabase
-        .from('clients')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', clientId)
-
-    if (error) {
-        console.error('Error toggling client status:', error)
-        return { success: false, error: error.message }
-    }
-
-    revalidatePath('/coach/clients')
-    revalidatePath('/coach/members')
-    return { success: true, newStatus }
-}
-
 // ============================================================================
 // REVIEW ACTIONS
 // ============================================================================

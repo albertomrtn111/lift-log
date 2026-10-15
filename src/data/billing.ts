@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { BillingLedgerData } from '@/types/billing'
-import { isBillable, feeOf, type LedgerClient, type LedgerRecord } from '@/lib/billing/ledger'
+import { dueDateFor, isBillable, feeOf, monthsMissedWhileInactive, type LedgerClient, type LedgerRecord } from '@/lib/billing/ledger'
 
 export type { BillingLedgerData } from '@/types/billing'
 
@@ -18,6 +18,9 @@ export function todayKeyIn(timeZone: string | null | undefined) {
         return new Date().toISOString().slice(0, 10)
     }
 }
+
+/** Nota de los cobros que se eximen automáticamente al dar de baja */
+const DEACTIVATION_NOTE = 'Exento por baja'
 
 export async function getCoachBillingSettings(coachId: string) {
     const supabase = await createClient()
@@ -59,7 +62,7 @@ export async function getBillingLedger(coachId: string, year: number): Promise<B
     const [{ data: clients }, { data: records }, { data: previousYear }] = await Promise.all([
         supabase
             .from('clients')
-            .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
+            .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
             .eq('coach_id', coachId)
             .order('full_name', { ascending: true }),
         supabase
@@ -95,7 +98,7 @@ export async function generateMonthlyRecords(coachId: string, year: number, mont
 
     const { data: clients, error: clientsErr } = await supabase
         .from('clients')
-        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
+        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
         .eq('coach_id', coachId)
         .eq('status', 'active')
 
@@ -146,11 +149,11 @@ export async function syncClientCurrentMonth(coachId: string, clientId: string):
 
     const { data: client } = await supabase
         .from('clients')
-        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day')
+        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
         .eq('id', clientId)
         .eq('coach_id', coachId)
         .maybeSingle()
-    if (!client || !isBillable(client as LedgerClient, year, month)) return { success: true }
+    if (!client || client.status !== 'active' || !isBillable(client as LedgerClient, year, month)) return { success: true }
 
     const amount = feeOf(client as LedgerClient)
     const now = new Date().toISOString()
@@ -170,6 +173,87 @@ export async function syncClientCurrentMonth(coachId: string, clientId: string):
             { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true },
         )
     if (error) return { success: false, error: error.message }
+
+    revalidatePath('/coach/billing')
+    return { success: true }
+}
+
+/**
+ * Al dar de baja (`today` es el día de la baja): si el cobro del mes en curso
+ * sigue pendiente y su día de cobro aún no ha llegado, ya no lo debe y se
+ * marca como exento. Si ya venció es deuda real y se queda como está; los
+ * cobrados no se tocan.
+ */
+export async function waiveCurrentMonthOnDeactivation(coachId: string, clientId: string, today: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const year = Number(today.slice(0, 4))
+    const month = Number(today.slice(5, 7))
+
+    const [{ data: client }, { data: record }] = await Promise.all([
+        supabase.from('clients').select('payment_day').eq('id', clientId).eq('coach_id', coachId).maybeSingle(),
+        supabase.from('payment_records')
+            .select('id, status, notes')
+            .eq('coach_id', coachId).eq('client_id', clientId).eq('year', year).eq('month', month)
+            .maybeSingle(),
+    ])
+    if (!client || !record || !['pending', 'overdue'].includes(record.status)) return { success: true }
+    if (today > dueDateFor(year, month, client.payment_day)) return { success: true }
+
+    const { error } = await supabase
+        .from('payment_records')
+        .update({ status: 'waived', notes: record.notes || DEACTIVATION_NOTE, updated_at: new Date().toISOString() })
+        .eq('id', record.id)
+        .eq('coach_id', coachId)
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/coach/billing')
+    return { success: true }
+}
+
+/**
+ * Antes de reactivar (con el atleta aún de baja): los meses que se perdió
+ * quedan registrados como exentos, porque al volver a estar activo dejarían
+ * de distinguirse de meses sin cobrar. Si el cobro del mes en curso se eximió
+ * por la baja y aún no ha llegado su día de cobro, vuelve a pendiente.
+ */
+export async function settleBillingBeforeReactivation(coachId: string, clientId: string, today: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const year = Number(today.slice(0, 4))
+    const month = Number(today.slice(5, 7))
+
+    const { data: client } = await supabase
+        .from('clients')
+        .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
+        .eq('id', clientId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+    if (!client) return { success: true }
+
+    const missed = monthsMissedWhileInactive(client as LedgerClient, today).map(period => ({
+        coach_id: coachId,
+        client_id: clientId,
+        year: period.year,
+        month: period.month,
+        amount: feeOf(client as LedgerClient),
+        status: 'waived',
+        notes: DEACTIVATION_NOTE,
+    }))
+    if (missed.length > 0) {
+        const { error } = await supabase
+            .from('payment_records')
+            .upsert(missed, { onConflict: 'coach_id,client_id,year,month', ignoreDuplicates: true })
+        if (error) return { success: false, error: error.message }
+    }
+
+    if (today <= dueDateFor(year, month, client.payment_day)) {
+        const { error } = await supabase
+            .from('payment_records')
+            .update({ status: 'pending', notes: null, updated_at: new Date().toISOString() })
+            .eq('coach_id', coachId).eq('client_id', clientId).eq('year', year).eq('month', month)
+            .eq('status', 'waived')
+            .eq('notes', DEACTIVATION_NOTE)
+        if (error) return { success: false, error: error.message }
+    }
 
     revalidatePath('/coach/billing')
     return { success: true }

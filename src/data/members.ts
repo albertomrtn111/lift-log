@@ -279,15 +279,18 @@ export async function updateClientDetails(
 /**
  * Set client status (activate/deactivate)
  */
+/** Activa o da de baja; la baja guarda su día (`deactivatedOn`, por defecto hoy en UTC) */
 export async function setClientStatus(
     clientId: string,
-    status: 'active' | 'inactive'
+    status: 'active' | 'inactive',
+    deactivatedOn?: string
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
+    const deactivated_at = status === 'inactive' ? deactivatedOn ?? new Date().toISOString().slice(0, 10) : null
 
     const { error } = await supabase
         .from('clients')
-        .update({ status, updated_at: new Date().toISOString() })
+        .update({ status, deactivated_at, updated_at: new Date().toISOString() })
         .eq('id', clientId)
 
     if (error) {
