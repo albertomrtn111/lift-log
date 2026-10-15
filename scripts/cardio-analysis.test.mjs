@@ -35,7 +35,6 @@ test('analyzeCardioSessionExecution slices structured intervals from streams', (
     'Serie 1',
     'Rec 1',
     'Serie 2',
-    'Rec 2',
     'Vuelta calma',
   ])
   assert.deepEqual(result.segments.map((segment) => segment.kind), [
@@ -43,7 +42,6 @@ test('analyzeCardioSessionExecution slices structured intervals from streams', (
     'work',
     'recovery',
     'work',
-    'recovery',
     'cooldown',
   ])
   assert.equal(result.segments[0].actualDurationSec, 600)

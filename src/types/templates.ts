@@ -60,6 +60,7 @@ export interface CardioBlock {
     restDuration?: number // minutos
     restDistance?: number // km (recuperación activa)
     restType?: 'active' | 'passive'
+    restTargetPace?: string // Ritmo propio de la recuperación, nunca el de trabajo
     restAfterLastRep?: boolean
 
     // Deprecated fields kept for type safety during migration if needed, but intended to be removed/unused

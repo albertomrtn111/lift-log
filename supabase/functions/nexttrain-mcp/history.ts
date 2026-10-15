@@ -354,31 +354,6 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
     return { client_id, checkins: mapped, has_more: !checkin_id && checkins.length > limit, next_offset: !checkin_id && checkins.length > limit ? offset + limit : null }
   }))
 
-  server.registerTool('get_current_nutrition', {
-    title: 'Nutrición vigente',
-    description: 'Objetivo vigente de calorías y macronutrientes, fechas de validez y plan de dieta activo si existe.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, on_date: dateSchema.optional() }),
-    annotations,
-  }, async ({ client_id, coach_id, on_date }: any) => scoped('get_current_nutrition', client_id, coach_id, async (coachId) => {
-    const date = on_date ?? day(new Date())
-    const [macrosResult, dietsResult] = await Promise.all([
-      db.from('macro_plans').select('id, name, kcal, protein_g, carbs_g, fat_g, steps, day_type_config, effective_from, effective_to, notes')
-        .eq('coach_id', coachId).eq('client_id', client_id).lte('effective_from', date)
-        .or(`effective_to.is.null,effective_to.gte.${date}`).order('effective_from', { ascending: false }).limit(1),
-      db.from('diet_plans').select('id, name, type, status, effective_from, effective_to, notes')
-        .eq('coach_id', coachId).eq('client_id', client_id).eq('status', 'active').lte('effective_from', date)
-        .or(`effective_to.is.null,effective_to.gte.${date}`).order('effective_from', { ascending: false }).limit(1),
-    ])
-    const macro = rows(macrosResult, 'los objetivos nutricionales')[0] ?? null
-    const diet = rows(dietsResult, 'los planes de dieta')[0] ?? null
-    return {
-      client_id, on_date: date,
-      macro_target: macro ? { ...macro, kcal: num(macro.kcal), protein_g: num(macro.protein_g), carbs_g: num(macro.carbs_g), fat_g: num(macro.fat_g) } : null,
-      active_diet_plan: diet,
-      note: macro ? null : 'No hay objetivo de macronutrientes vigente; no se infieren calorías a partir del nombre de los alimentos.',
-    }
-  }))
-
   server.registerTool('get_recovery_history', {
     title: 'Recuperación y fatiga',
     description: 'Sueño y pasos diarios junto con energía, estrés, hambre, rendimiento y molestias comunicadas en check-ins. No inventa una puntuación de recuperación.',
@@ -469,8 +444,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
       const linked = stravaById.get(session.strava_activity_id) ?? stravaBySession.get(session.id) ??
         strava.find((activity) => activity.provider_activity_id && activity.provider_activity_id === session.provider_activity_id)
       if (linked) linkedStravaIds.add(linked.id)
-      const distanceKm = num(session.actual_distance_km) ?? (num(linked?.distance_meters) === null ? null : rounded(Number(linked.distance_meters) / 1000, 3))
-      const durationMin = num(session.actual_duration_min) ?? (num(linked?.moving_time_seconds) === null ? null : rounded(Number(linked.moving_time_seconds) / 60, 1))
+      const distanceKm = num(session.actual_distance_km) ?? (num(linked?.distance_meters) === null ? null : rounded(Number(linked?.distance_meters) / 1000, 3))
+      const durationMin = num(session.actual_duration_min) ?? (num(linked?.moving_time_seconds) === null ? null : rounded(Number(linked?.moving_time_seconds) / 60, 1))
       const lapData = linked?.laps ?? session.source_laps
       return {
         source: session.source_provider ?? (linked ? 'strava' : 'nexttrain'), id: session.id, strava_activity_id: linked?.id ?? session.strava_activity_id,

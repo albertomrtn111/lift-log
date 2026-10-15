@@ -5,7 +5,8 @@ import { pipeline } from 'npm:@supabase/middleware@1.0.0'
 import { withOAuthProtectedResource, withSupabase } from 'npm:@supabase/server@1.9.0'
 import { z } from 'npm:zod@4.3.6'
 import { registerHistoryTools } from './history.ts'
-import { normalizeCardioPlan } from './cardio-plan.js'
+import { registerNutritionTools } from './nutrition.ts'
+import { registerCardioTools } from './cardio.ts'
 
 type SupabaseClientLike = any
 
@@ -41,20 +42,6 @@ const idempotentWriteAnnotations = {
   ...additiveWriteAnnotations,
   idempotentHint: true,
 }
-
-const cardioBlockSchema = z.strictObject({
-  type: z.enum(['warmup', 'continuous', 'intervals', 'cooldown', 'station']),
-  description: z.string().trim().min(1).max(800),
-  distance_m: z.number().positive().max(300_000).optional().describe('Distancia total del bloque, en metros. Solo para bloques sin repeticiones.'),
-  duration_min: z.number().positive().max(600).optional(),
-  repetitions: z.number().int().positive().max(100).optional().describe('Número de repeticiones; solo para intervals.'),
-  distance_per_rep_m: z.number().positive().max(100_000).optional().describe('Distancia de CADA repetición en metros; no la suma del bloque.'),
-  duration_per_rep_seconds: z.number().positive().max(36_000).optional(),
-  recovery_seconds: z.number().min(0).max(3600).optional().describe('Recuperación entre repeticiones, sin añadir una después de la última.'),
-  target_pace: z.string().trim().max(80).optional(),
-  target_hr: z.string().trim().max(80).optional(),
-  target_rpe: z.string().trim().max(40).optional(),
-})
 
 const strengthExerciseSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -173,7 +160,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
   const server = new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.4.0',
+    version: '0.6.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   })
 
@@ -583,73 +570,6 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
   )
 
   server.registerTool(
-    'schedule_cardio_session',
-    {
-      title: 'Programar sesión de cardio',
-      description: 'Añade cardio al calendario solo tras una petición explícita. Usa planning_mode=quick para sesiones sencillas de texto libre; structured solo para bloques ejecutables. En series, distance_per_rep_m es por repetición y las demás distancias de bloques están en metros.',
-      inputSchema: z.object({
-        client_id: z.string().uuid(),
-        scheduled_date: isoDate,
-        name: z.string().trim().min(1).max(160),
-        activity_type: z.string().trim().min(1).max(80).default('Running'),
-        training_type: z.string().trim().max(120).optional(),
-        planning_mode: z.enum(['quick', 'structured']).describe('quick: descripción libre sin bloques; structured: intervalos y bloques ejecutables.'),
-        description: z.string().trim().max(2000).optional(),
-        target_distance_km: z.number().positive().max(300).optional(),
-        target_duration_min: z.number().positive().max(1440).optional(),
-        target_pace: z.string().trim().max(80).optional(),
-        coach_notes: z.string().trim().max(2000).optional(),
-        blocks: z.array(cardioBlockSchema).max(30).optional(),
-        coach_id: optionalCoachId,
-      }),
-      annotations: additiveWriteAnnotations,
-    },
-    async (input) => {
-      try {
-        const normalized = normalizeCardioPlan(input)
-        const { coachId } = await resolveCoach(supabase, input.coach_id)
-        await requireClient(supabase, coachId, input.client_id)
-        const { data, error } = await supabase
-          .from('cardio_sessions')
-          .insert({
-            coach_id: coachId,
-            client_id: input.client_id,
-            scheduled_date: input.scheduled_date,
-            date: input.scheduled_date,
-            name: input.name,
-            activity_type: input.activity_type,
-            training_type: input.training_type ?? null,
-            description: normalized.description,
-            target_distance_km: normalized.target_distance_km,
-            target_duration_min: normalized.target_duration_min,
-            target_pace: normalized.target_pace,
-            coach_notes: input.coach_notes ?? null,
-            notes: input.coach_notes ?? null,
-            planned_structure: normalized.planned_structure,
-            structure: normalized.structure,
-            is_completed: false,
-          })
-          .select('id, client_id, scheduled_date, name, activity_type, training_type, description, target_distance_km, target_duration_min, target_pace, structure, planned_structure')
-          .single()
-
-        if (error) throw new Error('No se ha podido guardar la sesión de cardio.')
-        audit('schedule_cardio_session', { coach_id: coachId, client_id: input.client_id, record_id: data.id, status: 'ok' })
-        return jsonResult({ created: true, session: data, normalized: {
-          planning_mode: normalized.planning_mode,
-          distance_validation: normalized.distance_validation,
-          structure: data.structure,
-          planned_structure: data.planned_structure,
-          target_distance_km: data.target_distance_km,
-          target_duration_min: data.target_duration_min,
-        } })
-      } catch (error) {
-        audit('schedule_cardio_session', { client_id: input.client_id, status: 'error' })
-        return toolError(error instanceof Error ? error.message : 'No se ha podido programar la sesión.')
-      }
-    },
-  )
-
-  server.registerTool(
     'create_strength_program',
     {
       title: 'Crear programa de fuerza',
@@ -791,6 +711,16 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
     jsonResult,
     toolError,
     audit,
+    annotations: readOnlyAnnotations,
+  })
+
+  registerNutritionTools(server, supabase, {
+    resolveCoach, requireClient, jsonResult, toolError, audit,
+    annotations: readOnlyAnnotations,
+  })
+
+  registerCardioTools(server, supabase, {
+    resolveCoach, requireClient, jsonResult, toolError, audit,
     annotations: readOnlyAnnotations,
   })
 

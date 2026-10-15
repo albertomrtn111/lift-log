@@ -39,6 +39,16 @@ test('buildPlanningCardioSummary falls back to structured totals when explicit t
         ],
       },
     }),
-    '15 km / 54 min'
+    '15 km'
   )
+})
+
+test('calendar totals prefer the complete shared calculation over old incorrect aggregates', () => {
+  assert.equal(buildPlanningCardioSummary({ target_distance_km: 3, target_duration_min: 26, structure: {
+    mode: 'structured', blocks: [
+      { type: 'warmup', distance: 2, duration: 12 },
+      { type: 'intervals', sets: 4, workDistance: 1, workDuration: 4, restDistance: 0.25, restDuration: 1.5 },
+      { type: 'cooldown', distance: 1, duration: 6 },
+    ],
+  } }), '7.75 km / 38.5 min')
 })

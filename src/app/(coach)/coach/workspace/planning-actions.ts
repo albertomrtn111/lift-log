@@ -7,7 +7,7 @@ import { requireActiveCoachId } from "@/lib/auth/require-coach";
 import { generateWeeklyPlanningProposal } from "@/lib/ai/generate-weekly-planning";
 import { getAthleteProfileContextForCoach } from "@/lib/ai/athlete-profile-context";
 import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
-import { calculateCardioStructureTotals, hasRenderableCardioBlocks, summarizeCardioStructure } from "@/lib/cardio/structure";
+import { cardioActivityType, cardioSessionMetrics, hasRenderableCardioBlocks, prepareCardioSessionPlan, resolveCardioPlanForDisplay, summarizeCardioStructure } from "@/lib/cardio/structure";
 import { requireAIClient } from '@/lib/ai/access';
 import { dateSchema } from '@/lib/ai/planning-block';
 
@@ -105,13 +105,8 @@ function deriveStrengthFocus(dayName: string | null | undefined, exerciseNames: 
 
 function getCardioSummaryLine(cardio: any) {
     const parts: string[] = [];
-    let distance = cardio.target_distance_km ? Number(cardio.target_distance_km) : undefined;
-    let duration = cardio.target_duration_min ? Number(cardio.target_duration_min) : undefined;
-    const structureSummary = summarizeCardioStructure(cardio.structure);
-    const structureTotals = calculateCardioStructureTotals(cardio.structure);
-
-    if (!distance && structureTotals.distanceKm) distance = structureTotals.distanceKm;
-    if (!duration && structureTotals.durationMin) duration = structureTotals.durationMin;
+    const { distanceKm: distance, durationMin: duration } = cardioSessionMetrics(cardio);
+    const structureSummary = summarizeCardioStructure(resolveCardioPlanForDisplay(cardio) ?? cardio.structure);
 
     if (distance) parts.push(`${distance} km`);
     if (duration) parts.push(`${duration} min`);
@@ -419,6 +414,7 @@ export async function getWeeklySchedule(
                 description,
                 notes,
                 structure,
+                planned_structure,
                 is_completed,
                 created_at,
                 target_distance_km,
@@ -439,13 +435,13 @@ export async function getWeeklySchedule(
             name: c.name,
             description: c.description,
             notes: c.notes,
-            structure: c.structure,
+            structure: c.structure?.mode === 'free_text' ? c.structure : resolveCardioPlanForDisplay(c) || c.structure,
             is_completed: c.is_completed,
             created_at: c.created_at,
             target_distance_km: c.target_distance_km ? Number(c.target_distance_km) : undefined,
             target_duration_min: c.target_duration_min ? Number(c.target_duration_min) : undefined,
             target_pace: c.target_pace || undefined,
-            cardio_type: c.structure?.trainingType || 'rodaje',
+            cardio_type: (resolveCardioPlanForDisplay(c) || c.structure)?.trainingType || 'rodaje',
             summary_line: getCardioSummaryLine(c),
         }));
 
@@ -804,16 +800,13 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
     try {
         const dateStr = date;
 
-        const finalStructure: CardioStructure = {
+        const normalized = prepareCardioSessionPlan({ structure: {
             ...structure,
             mode: structure?.mode || (structure?.blocks?.length ? 'structured' : 'free_text'),
             trainingType: structure?.trainingType || 'rodaje',
             description: structure?.description || description || '',
             blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
-        };
-        if (finalStructure.mode === 'structured' && !hasRenderableCardioBlocks(finalStructure)) {
-            throw new Error('La estructura de cardio tiene bloques incompletos. Revisa distancias, tiempos u objetivos.');
-        }
+        }, description, targetDistanceKm, targetDurationMin, targetPace });
 
         // If notes were passed in structure (from deprecated form logic) but not as separate arg, use them.
         // But priority to the argument 'notes'
@@ -825,6 +818,7 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
             .from('clients')
             .select('coach_id')
             .eq('id', clientId)
+            .eq('coach_id', coachId)
             .single();
 
         if (clientError || !clientData?.coach_id) {
@@ -837,15 +831,19 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
                 client_id: clientId,
                 coach_id: clientData.coach_id,
                 scheduled_date: dateStr,
+                date: dateStr,
                 name: name || 'Cardio',
-                description: description || '',
+                activity_type: cardioActivityType(normalized.structure.trainingType),
+                training_type: normalized.structure.trainingType,
+                description: normalized.description,
                 notes: finalNotes,
-                structure: finalStructure,
-                planned_structure: finalStructure.mode === 'structured' && hasRenderableCardioBlocks(finalStructure) ? finalStructure : null,
+                coach_notes: finalNotes ?? null,
+                structure: normalized.structure,
+                planned_structure: normalized.planned_structure,
                 is_completed: false,
-                target_distance_km: targetDistanceKm ?? null,
-                target_duration_min: targetDurationMin ?? null,
-                target_pace: targetPace || null,
+                target_distance_km: normalized.target_distance_km,
+                target_duration_min: normalized.target_duration_min,
+                target_pace: normalized.target_pace,
             });
 
         if (error) throw new Error(error.message);
@@ -953,31 +951,37 @@ export async function updateCardioSession({
     const supabase = await createClient();
 
     try {
-        const finalStructure: CardioStructure = {
+        const normalized = prepareCardioSessionPlan({ structure: {
             ...structure,
             mode: structure?.mode || (structure?.blocks?.length ? 'structured' : 'free_text'),
             trainingType: structure?.trainingType || 'rodaje',
             description: structure?.description || description || '',
             blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
-        };
-        if (finalStructure.mode === 'structured' && !hasRenderableCardioBlocks(finalStructure)) {
-            throw new Error('La estructura de cardio tiene bloques incompletos. Revisa distancias, tiempos u objetivos.');
-        }
+        }, description, targetDistanceKm, targetDurationMin, targetPace });
+        const { data: existing, error: readError } = await supabase.from('cardio_sessions')
+            .select('id, coach_id, client_id').eq('id', id).single();
+        if (readError || !existing) throw new Error('Sesión de cardio no encontrada.');
+        await requireActiveCoachId(existing.coach_id);
         const payload = {
             name,
-            description,
-            structure: finalStructure,
-            planned_structure: finalStructure.mode === 'structured' && hasRenderableCardioBlocks(finalStructure) ? finalStructure : null,
-            notes: finalStructure.notes || null,
-            target_distance_km: targetDistanceKm ?? null,
-            target_duration_min: targetDurationMin ?? null,
-            target_pace: targetPace || null,
+            activity_type: cardioActivityType(normalized.structure.trainingType),
+            training_type: normalized.structure.trainingType,
+            description: normalized.description,
+            structure: normalized.structure,
+            planned_structure: normalized.planned_structure,
+            notes: normalized.structure.notes || null,
+            coach_notes: normalized.structure.notes || null,
+            target_distance_km: normalized.target_distance_km,
+            target_duration_min: normalized.target_duration_min,
+            target_pace: normalized.target_pace,
+            updated_at: new Date().toISOString(),
         };
 
         const { error } = await supabase
             .from('cardio_sessions')
             .update(payload)
-            .eq('id', id);
+            .eq('id', id).eq('coach_id', existing.coach_id).eq('client_id', existing.client_id)
+            .select('id').single();
 
         if (error) {
             console.error('Error updating cardio session:', error);
@@ -1008,7 +1012,7 @@ export async function moveSession(
 
         const { error } = await supabase
             .from(table)
-            .update({ [dateColumn]: newDate })
+            .update({ [dateColumn]: newDate, ...(type === 'cardio' ? { date: newDate, updated_at: new Date().toISOString() } : {}) })
             .eq('id', sessionId);
 
         if (error) {

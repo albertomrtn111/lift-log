@@ -34,6 +34,7 @@ export function findStrengthSession(program, trainingDay, weekIndex, sessions) {
   return matches[0]
 }
 
+/** @param {number[] | null} confirmedWeekIndices */
 export function programProgress(program, days, sessions, asOfDate, confirmedWeekIndices = null) {
   const weeks = Number(program.total_weeks ?? program.weeks)
   const validWeeks = Number.isInteger(weeks) && weeks > 0 ? weeks : null

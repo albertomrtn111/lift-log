@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeCardioPlan } from '../supabase/functions/nexttrain-mcp/cardio-plan.js'
+import { cardioPlanInputFromSession, mergeCardioPlanEdit, normalizeCardioPlan } from '../supabase/functions/nexttrain-mcp/cardio-plan.js'
 import { calculateCardioStructureTotals, hasRenderableCardioBlocks, resolveCardioPlanForDisplay } from '../src/lib/cardio/structure.js'
 
 const swimBlocks = [
@@ -58,4 +58,61 @@ test('quick mode refuses blocks instead of silently dropping them', () => {
   assert.throws(() => normalizeCardioPlan({
     planning_mode: 'quick', activity_type: 'Natación', description: 'Suave', blocks: swimBlocks,
   }), /no admite bloques/)
+})
+
+const running = { planning_mode: 'structured', activity_type: 'Running', blocks: [
+  { type: 'warmup', description: '2 km suaves', distance_m: 2000, duration_min: 12 },
+  { type: 'intervals', description: '4×1000 m', repetitions: 4, distance_per_rep_m: 1000, duration_per_rep_seconds: 240,
+    recovery_distance_m: 250, recovery_seconds: 90, recovery_type: 'active' },
+  { type: 'cooldown', description: '1 km suave', distance_m: 1000, duration_min: 6 },
+] }
+
+test('MCP and editor count exactly the same active recovery metres and minutes', () => {
+  const plan = normalizeCardioPlan(running)
+  assert.equal(plan.target_distance_km, 7.75)
+  assert.equal(plan.target_duration_min, 38.5)
+  assert.deepEqual(calculateCardioStructureTotals(plan.structure), { distanceKm: 7.75, durationMin: 38.5 })
+  assert.equal(plan.totals.recoveryCount, 3)
+  assert.throws(() => normalizeCardioPlan({ ...running, target_distance_km: 7 }), /7750 m.*7000 m/)
+  assert.throws(() => normalizeCardioPlan({ ...running, target_duration_min: 20 }), /38.5 min/)
+  const finalRest = normalizeCardioPlan({ ...running, blocks: running.blocks.map(block => block.type === 'intervals' ? { ...block, recovery_after_last_rep: true } : block) })
+  assert.equal(finalRest.target_distance_km, 8)
+  assert.equal(finalRest.target_duration_min, 40)
+})
+
+test('MCP distinguishes passive pauses from timed active recovery with unknown distance', () => {
+  const blocks = [{ type: 'intervals', description: 'Series', repetitions: 4, distance_per_rep_m: 1000, duration_per_rep_seconds: 240, recovery_seconds: 90 }]
+  const passive = normalizeCardioPlan({ planning_mode: 'structured', blocks })
+  assert.equal(passive.target_distance_km, 4)
+  assert.equal(passive.target_duration_min, 20.5)
+  const active = normalizeCardioPlan({ planning_mode: 'structured', blocks: [{ ...blocks[0], recovery_type: 'active' }] })
+  assert.equal(active.target_distance_km, null)
+  assert.equal(active.distance_validation.status, 'partial')
+  const paced = normalizeCardioPlan({ planning_mode: 'structured', blocks: [{ ...blocks[0], recovery_type: 'active', recovery_target_pace: '6:00/km' }] })
+  assert.equal(paced.target_distance_km, 4.75)
+  assert.equal(paced.distance_validation.estimated, true)
+  assert.throws(() => normalizeCardioPlan({ planning_mode: 'structured', blocks: [{ ...blocks[0], recovery_type: 'passive', recovery_distance_m: 250 }] }), /pausa parada/)
+})
+
+test('structured edit recalculates inherited targets instead of retaining old session totals', () => {
+  const first = normalizeCardioPlan(running)
+  const session = { ...first, activity_type: 'Running', name: 'Original' }
+  const editable = cardioPlanInputFromSession(session)
+  assert.equal(editable.blocks[1].distance_per_rep_m, 1000)
+  assert.equal(editable.blocks[1].recovery_distance_m, 250)
+  const edit = mergeCardioPlanEdit(session, { blocks: editable.blocks.map(block => block.type === 'intervals' ? { ...block, repetitions: 5 } : block) })
+  assert.equal(edit.target_distance_km, 9)
+  assert.equal(edit.target_duration_min, 44)
+  const quick = mergeCardioPlanEdit(session, { planning_mode: 'quick', description: 'Rodaje libre' })
+  assert.equal(quick.planned_structure, null)
+  assert.deepEqual(quick.structure.blocks, [])
+  assert.equal(quick.target_distance_km, null)
+  assert.equal(quick.target_duration_min, null)
+  assert.throws(() => mergeCardioPlanEdit({ structure: { mode: 'free_text' }, description: 'Rodaje' }, { blocks: running.blocks }), /no admite bloques/)
+})
+
+test('swim totals accept metres without an ambiguous kilometre conversion', () => {
+  const plan = normalizeCardioPlan({ planning_mode: 'structured', activity_type: 'Natación', target_distance_m: 1500, blocks: swimBlocks })
+  assert.equal(plan.target_distance_km, 1.5)
+  assert.throws(() => normalizeCardioPlan({ planning_mode: 'quick', description: 'Nadar', target_distance_m: 1500, target_distance_km: 15 }), /no coinciden/)
 })

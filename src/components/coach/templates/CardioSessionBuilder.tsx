@@ -125,8 +125,7 @@ export function CardioSessionBuilder({ template }: CardioSessionBuilderProps) {
                 </p>
                 {hasLegacyBlocks && (
                     <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
-                        ⚠️ Esta plantilla tenía un diseño por bloques. Se ha convertido a texto.
-                        Al guardar se usará el formato simple.
+                        Esta plantilla conserva sus bloques. Revisa las recuperaciones y los totales antes de guardar.
                     </p>
                 )}
             </div>

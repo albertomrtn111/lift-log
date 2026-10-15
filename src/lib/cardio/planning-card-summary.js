@@ -1,4 +1,4 @@
-import { calculateCardioStructureTotals } from './structure.js'
+import { cardioSessionMetrics } from './structure.js'
 
 function numberOrNull(value) {
   const number = Number(value)
@@ -6,7 +6,7 @@ function numberOrNull(value) {
 }
 
 function formatNumber(value) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return String(Number(value.toFixed(3)))
 }
 
 function formatDistanceKm(value) {
@@ -22,12 +22,7 @@ function formatDurationMin(value) {
 export function buildPlanningCardioSummary(session) {
   if (!session || typeof session !== 'object') return ''
 
-  const explicitDistance = numberOrNull(session.target_distance_km ?? session.distance_km)
-  const explicitDuration = numberOrNull(session.target_duration_min ?? session.duration_minutes)
-  const hasExplicitMetrics = Boolean(explicitDistance || explicitDuration)
-  const totals = hasExplicitMetrics ? {} : calculateCardioStructureTotals(session.structure)
-  const distance = explicitDistance ?? totals.distanceKm
-  const duration = explicitDuration ?? totals.durationMin
+  const { distanceKm: distance, durationMin: duration } = cardioSessionMetrics(session)
 
   return [formatDistanceKm(distance), formatDurationMin(duration)]
     .filter(Boolean)

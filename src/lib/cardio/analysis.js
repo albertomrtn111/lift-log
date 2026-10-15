@@ -1,3 +1,5 @@
+import { cardioRecoveryCount } from './structure.js'
+
 function numberOrNull(value) {
   const number = Number(value)
   return Number.isFinite(number) ? number : null
@@ -90,7 +92,7 @@ function expandPlannedSegments(structure) {
           target: block.workTargetPace || block.workIntensity || block.workTargetHR || null,
         })
 
-        if (positiveNumberOrNull(block.restDistance) || positiveNumberOrNull(block.restDuration)) {
+        if (index <= cardioRecoveryCount(block)) {
           segments.push({
             label: `Rec ${index}`,
             kind: 'recovery',

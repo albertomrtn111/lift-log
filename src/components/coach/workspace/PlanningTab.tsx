@@ -36,6 +36,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { buildPlanningCardioSummary } from '@/lib/cardio/planning-card-summary'
+import { cardioSessionMetrics } from '@/lib/cardio/structure'
 
 // ---------------------------------------------------------------------------
 // Metrics helpers
@@ -43,26 +44,16 @@ import { buildPlanningCardioSummary } from '@/lib/cardio/planning-card-summary'
 
 interface PlanningMetricsData {
     strength: { sessions: number; totalExercises: number; avgExercises: number }
-    cardio: { sessions: number; totalKm: number; totalMin: number }
+    cardio: { sessions: number; totalKm: number; totalMin: number; distanceIncomplete: boolean; durationIncomplete: boolean }
     hybrid: { sessions: number; totalMin: number }
 }
 
 function getCardioDistance(item: UnifiedCalendarItem & { type: 'cardio' }): number {
-    if (item.target_distance_km) return item.target_distance_km
-    const blocks = item.structure?.blocks
-    if (!blocks?.length) return 0
-    return blocks.reduce((sum, b) => sum + (b.distance ?? 0), 0)
+    return cardioSessionMetrics(item).distanceKm ?? 0
 }
 
 function getCardioDuration(item: UnifiedCalendarItem & { type: 'cardio' }): number {
-    if (item.target_duration_min) return item.target_duration_min
-    const blocks = item.structure?.blocks
-    if (!blocks?.length) return 0
-    return blocks.reduce((sum, b) => {
-        const work = (b.duration ?? 0) + (b.workDuration ?? 0) * (b.sets ?? 1)
-        const rest = (b.restDuration ?? 0) * (b.sets ?? 1)
-        return sum + work + rest
-    }, 0)
+    return cardioSessionMetrics(item).durationMin ?? 0
 }
 
 function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number): PlanningMetricsData {
@@ -81,6 +72,8 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
     const cardioCount = cardioSessions.length
     const totalKm = cardioSessions.reduce((sum, s) => sum + getCardioDistance(s), 0)
     const cardioTotalMin = cardioSessions.reduce((sum, s) => sum + getCardioDuration(s), 0)
+    const distanceIncomplete = cardioSessions.some(session => cardioSessionMetrics(session).distanceKm === null)
+    const durationIncomplete = cardioSessions.some(session => cardioSessionMetrics(session).durationMin === null)
 
     const hybridCount = hybridSessions.length
     const totalMin = hybridSessions.reduce((sum, s) => sum + getCardioDuration(s), 0)
@@ -92,6 +85,7 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
                 sessions: cardioCount,
                 totalKm: Math.round(totalKm * 10) / 10,
                 totalMin: Math.round(cardioTotalMin),
+                distanceIncomplete, durationIncomplete,
             },
             hybrid: { sessions: hybridCount, totalMin: Math.round(totalMin) },
         }
@@ -109,6 +103,7 @@ function computePlanningMetrics(items: UnifiedCalendarItem[], weekCount: number)
             sessions: r1(cardioCount),
             totalKm: Math.round((totalKm / weekCount) * 10) / 10,
             totalMin: Math.round(cardioTotalMin / weekCount),
+            distanceIncomplete, durationIncomplete,
         },
         hybrid: {
             sessions: r1(hybridCount),
@@ -1306,8 +1301,8 @@ function PlanningMetrics({ metrics, isMonthly, hasData }: {
             tone: 'bg-green-500/10 text-green-600 dark:text-green-400',
             stats: [
                 { value: fmtNum(metrics.cardio.sessions), unit: sessionUnit(metrics.cardio.sessions) },
-                metrics.cardio.totalKm > 0 && { value: fmtNum(metrics.cardio.totalKm), unit: 'km' },
-                metrics.cardio.totalMin > 0 && { value: fmtNum(metrics.cardio.totalMin), unit: 'min' },
+                metrics.cardio.totalKm > 0 && { value: fmtNum(metrics.cardio.totalKm), unit: metrics.cardio.distanceIncomplete ? 'km (parcial)' : 'km' },
+                metrics.cardio.totalMin > 0 && { value: fmtNum(metrics.cardio.totalMin), unit: metrics.cardio.durationIncomplete ? 'min (parcial)' : 'min' },
             ].filter(Boolean) as Array<{ value: string; unit: string }>,
         },
         metrics.hybrid.sessions > 0 && {
