@@ -85,3 +85,17 @@ export function isCycle(value: string | null): value is Cycle {
 export function priceOf(tier: Tier, cycle: Cycle) {
     return cycle === 'monthly' ? tier.monthly : tier.yearly
 }
+
+/** Tabla comparativa: true = incluido, false = no, texto = valor concreto */
+export const COMPARISON: Array<{ label: string; values: Record<TierId, boolean | string> }> = [
+    { label: 'Atletas activos', values: { starter: '20', pro: '75', studio: '250' } },
+    { label: 'Entrenamiento y nutrición', values: { starter: true, pro: true, studio: true } },
+    { label: 'Check-ins semanales', values: { starter: true, pro: true, studio: true } },
+    { label: 'App para tus atletas', values: { starter: true, pro: true, studio: true } },
+    { label: 'Inteligencia artificial', values: { starter: 'Básica', pro: 'Completa', studio: 'Completa' } },
+    { label: 'Automatizaciones y métricas', values: { starter: false, pro: true, studio: true } },
+    { label: 'Branding mejorado', values: { starter: false, pro: true, studio: true } },
+    { label: 'Varios coaches y permisos', values: { starter: false, pro: false, studio: true } },
+    { label: 'Onboarding guiado', values: { starter: false, pro: false, studio: true } },
+    { label: 'Soporte', values: { starter: 'Estándar', pro: 'Estándar', studio: 'Prioritario' } },
+]
