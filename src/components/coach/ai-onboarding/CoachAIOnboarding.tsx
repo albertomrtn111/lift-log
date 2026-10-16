@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -854,9 +855,14 @@ export function CoachAIOnboarding({ initialProfile }: { initialProfile?: CoachAI
 
                 {/* Header */}
                 <div className="mb-6">
-                    <div className="flex items-center gap-2 text-primary mb-3">
-                        <Sparkles className="h-4 w-4" />
-                        <span className="text-xs font-semibold uppercase tracking-widest">Perfil IA del coach</span>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2 text-primary">
+                            <Sparkles className="h-4 w-4" />
+                            <span className="text-xs font-semibold uppercase tracking-widest">Perfil IA del coach · opcional</span>
+                        </div>
+                        <Link href="/coach/dashboard" className="text-xs font-medium text-muted-foreground hover:text-foreground">
+                            Hacerlo más tarde
+                        </Link>
                     </div>
                     <div className="flex items-end justify-between mb-1">
                         <h1 className="text-2xl font-bold text-foreground">Configura tu IA personal</h1>

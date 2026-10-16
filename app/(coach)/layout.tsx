@@ -3,30 +3,23 @@ import { CoachAssistantWidget } from '@/components/coach/assistant/CoachAssistan
 import { CoachProvider } from '@/contexts/CoachContext'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import { coachNeedsAIOnboarding } from '@/data/coach-ai-profile'
+import { getCoachWorkspaceInfo } from '@/lib/onboarding/coach-workspace'
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 
 export default async function CoachLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
-    // Check if coach needs AI onboarding — skip if already on the onboarding page
-    const headersList = await headers()
-    const pathname = headersList.get('x-pathname') ?? headersList.get('x-invoke-path') ?? ''
-    const isOnboardingPage = pathname.includes('/ai-onboarding')
-
-    if (!isOnboardingPage) {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-            const coachId = await getCoachIdForUser(user.id)
-            if (coachId) {
-                const needsOnboarding = await coachNeedsAIOnboarding(coachId)
-                if (needsOnboarding) {
-                    redirect('/coach/ai-onboarding')
-                }
+    // El onboarding de IA ya no es obligatorio: solo exigimos contestar la bienvenida
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+        const coachId = await getCoachIdForUser(user.id)
+        if (coachId) {
+            const workspace = await getCoachWorkspaceInfo(coachId)
+            if (workspace?.onboarding_state.welcome_pending) {
+                redirect('/welcome')
             }
         }
     }
