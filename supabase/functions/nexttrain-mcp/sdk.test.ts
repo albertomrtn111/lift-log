@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.3.0'
 import { registerAgendaTools } from './agenda.ts'
 import { registerCardioTools } from './cardio.ts'
+import { registerCoachWriteTools } from './coach-writes.ts'
 import { registerClientTools } from './clients.ts'
 import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
@@ -40,6 +41,7 @@ function server() {
   registerNutritionTools(instance, db, helpers)
   registerCardioTools(instance, db, helpers)
   registerAgendaTools(instance, db, helpers)
+  registerCoachWriteTools(instance, db, helpers)
   registerPrompts(instance)
   return instance
 }

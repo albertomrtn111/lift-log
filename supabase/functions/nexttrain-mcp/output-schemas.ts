@@ -92,6 +92,12 @@ export const outputSchemas: Record<string, z.ZodType> = {
     checkins_to_review: inboxSection, unlinked_strava_activities: inboxSection.extend({ since: day }), pending_tasks: inboxSection, note: text,
   }),
 
+  save_review_draft: z.looseObject({ saved: z.boolean(), review: z.looseObject({ id: z.string(), status: z.string() }), note: text }),
+  update_strength_program: z.looseObject({
+    updated: z.boolean(), program: z.looseObject({ id: z.string(), status: z.string() }),
+    archived_program_ids: z.array(z.string()), removed_scheduled_sessions: z.number().int(),
+  }),
+
   preview_cardio_session: z.looseObject({ saved: z.literal(false), normalized: record }),
   schedule_cardio_session: z.looseObject({ created: z.boolean(), session: record, normalized: record }),
   get_cardio_session: z.looseObject({ session: record, editable_plan: record, legacy_recovery_types_missing: z.boolean(), expected_updated_at: maybe(z.string()), note: text }),

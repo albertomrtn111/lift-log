@@ -107,7 +107,7 @@ function scheduledSetDate(program: Row | undefined, trainingDay: Row | undefined
 }
 
 async function strengthContext(db: Db, coachId: string, clientId: string, programId?: string, programOffset = 0, programLimit = 30) {
-  let query = db.from('training_programs').select('id, name, status, weeks, total_weeks, effective_from, effective_to, created_at')
+  let query = db.from('training_programs').select('id, name, status, weeks, total_weeks, effective_from, effective_to, created_at, updated_at')
     .eq('coach_id', coachId).eq('client_id', clientId).order('created_at', { ascending: false }).order('id', { ascending: true })
   if (programId) query = query.eq('id', programId).limit(1)
   else query = query.range(programOffset, programOffset + programLimit)

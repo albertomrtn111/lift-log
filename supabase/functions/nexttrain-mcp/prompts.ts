@@ -28,7 +28,8 @@ export const promptTexts = {
     '- Un resumen interno para mí: adherencia, evolución, alertas y qué cambiarías.',
     '- Un mensaje para el cliente en segunda persona, cercano y concreto, con 2-4 ajustes accionables.',
     '',
-    'Separa los datos medidos de tus interpretaciones y no inventes valores que no estén en las herramientas. No envíes nada al cliente ni guardes cambios sin mi confirmación.',
+    'Separa los datos medidos de tus interpretaciones y no inventes valores que no estén en las herramientas.',
+    'Cuando te confirme el texto, guárdalo con save_review_draft (queda en borrador; aprobar y enviar al cliente lo hago yo desde la app). No guardes cambios sin mi confirmación.',
   ].join('\n'),
 
   nextBlock: (client: string, weeks?: string) => [
@@ -41,7 +42,7 @@ export const promptTexts = {
     '4. get_checkins recientes: molestias, energía y adherencia.',
     '',
     `Propón un bloque${weeks ? ` de ${weeks} semanas` : ''} con días, ejercicios, series, repeticiones, RIR y descansos, justificando la progresión con los datos reales.`,
-    'Espera mi confirmación. Después créalo con create_strength_program en borrador (status draft) y no lo actives sin que te lo pida.',
+    'Espera mi confirmación. Después créalo con create_strength_program en borrador (status draft) y no lo actives sin que te lo pida; para activarlo o archivar el actual usa update_strength_program.',
   ].join('\n'),
 
   dailyInbox: () => [
