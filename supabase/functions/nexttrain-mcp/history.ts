@@ -342,12 +342,12 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
 
   server.registerTool('list_client_events', {
     title: 'Eventos y objetivos',
-    description: 'Carreras, pruebas y objetivos con fecha, tipo, prioridad, meta, notas y distancia cuando está escrita explícitamente.',
+    description: 'Carreras, pruebas y objetivos con fecha, tipo, prioridad, meta, notas y distancia cuando está escrita explícitamente. Devuelve updated_at para editarlos con update_client_event.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
   }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('list_client_events', client_id, coach_id, async (coachId, today) => {
     const range = dateRange(today, from_date ?? addDays(today, -365), to_date ?? addDays(today, 365), 730, 1460)
-    const result = rows(await db.from('client_events').select('id, title, event_date, event_type, status, priority, location, target, notes')
+    const result = rows(await db.from('client_events').select('id, title, event_date, event_type, status, priority, location, target, notes, updated_at')
       .eq('coach_id', coachId).eq('client_id', client_id).gte('event_date', range.from_date).lte('event_date', range.to_date)
       .order('event_date', { ascending: true }).range(offset, offset + limit), 'los eventos')
     return {

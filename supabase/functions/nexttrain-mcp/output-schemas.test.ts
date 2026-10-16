@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { outputSchemas, withOutputSchemas } from './output-schemas.ts'
 import { jsonResult } from './shared.ts'
 
-const moduleFiles = ['index.ts', 'clients.ts', 'schedule.ts', 'history.ts', 'nutrition.ts', 'cardio.ts']
+const moduleFiles = ['index.ts', 'clients.ts', 'schedule.ts', 'history.ts', 'nutrition.ts', 'cardio.ts', 'agenda.ts']
 
 Deno.test('every registered tool declares an output schema', async () => {
   const names: string[] = []
@@ -10,7 +10,7 @@ Deno.test('every registered tool declares an output schema', async () => {
     const source = await Deno.readTextFile(new URL(`./${file}`, import.meta.url))
     for (const match of source.matchAll(/registerTool\(\s*'([a-z_]+)'/g)) names.push(match[1])
   }
-  assert.ok(names.length >= 28)
+  assert.ok(names.length >= 33)
   assert.deepEqual(names.filter((name) => !outputSchemas[name]), [])
   assert.deepEqual(Object.keys(outputSchemas).filter((name) => !names.includes(name)), [])
 })
