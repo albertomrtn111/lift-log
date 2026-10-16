@@ -183,8 +183,13 @@ function ClientRow({
         console.warn(`[MembersTable] Client "${client.full_name}" (${client.id}) has NULL/undefined status — showing as 'Desconocido'`)
     }
 
-    // La atleta de ejemplo no tiene cuenta ni se le invita
-    const isPendingSignup = !client.auth_user_id && !client.is_sample
+    // La atleta de ejemplo no tiene cuenta ni se le invita. Con el flujo nuevo la
+    // cuenta existe desde la invitación: está pendiente hasta que pone su contraseña.
+    const guidedOnboarding = (client as { preferences?: { onboarding?: { guided?: boolean; password_set_at?: string } } | null })
+        .preferences?.onboarding
+    const isPendingSignup = !client.is_sample && (guidedOnboarding?.guided
+        ? !guidedOnboarding.password_set_at
+        : !client.auth_user_id)
 
     const handleDeactivate = () => {
         startTransition(async () => {
