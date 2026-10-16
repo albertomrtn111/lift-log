@@ -11,6 +11,7 @@ import { registerClientTools } from './clients.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { withOutputSchemas } from './output-schemas.ts'
 import { registerAgendaTools } from './agenda.ts'
+import { registerCoachWriteTools } from './coach-writes.ts'
 import { registerPrompts } from './prompts.ts'
 import {
   addDays,
@@ -81,7 +82,7 @@ function createNextTrainServer(supabase: Db) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.10.0',
+    version: '0.11.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }))
   const run = createToolRunner(supabase)
@@ -413,6 +414,7 @@ function createNextTrainServer(supabase: Db) {
   registerNutritionTools(server, supabase)
   registerCardioTools(server, supabase)
   registerAgendaTools(server, supabase)
+  registerCoachWriteTools(server, supabase)
   registerPrompts(server)
 
   return server

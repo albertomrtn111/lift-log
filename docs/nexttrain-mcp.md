@@ -35,6 +35,8 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
 - `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
+- `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
+- `save_review_draft`: guarda en borrador el resumen interno y el mensaje para el cliente de la revisión de un check-in.
 - `create_coach_task`: añade una tarea de seguimiento.
 - `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
 - `create_client_event` / `update_client_event`: crea y edita carreras, pruebas y otros eventos del cliente.
@@ -306,6 +308,35 @@ Guían al modelo sobre qué herramientas usar y en qué orden; no modifican dato
 - `cliente` admite nombre o ID; si es un nombre, se busca con `list_clients`.
 
 Verificación: `agenda.test.ts` (tareas, eventos, bandeja y prompts) y `sdk.test.ts` (`prompts/list` y `prompts/get` con el SDK real), además del resto de pruebas de Deno y node. No requiere migraciones: las tablas `coach_tasks` y `client_events` ya permiten a los miembros activos del espacio leer y escribir (`sql/create_coach_tasks.sql`, `sql/create_client_events.sql`).
+
+## Revisiones en borrador y estado de los programas (MCP 0.11.0)
+
+Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_update.sql` **antes** de desplegar la función.
+
+### `save_review_draft`
+
+- Guarda `summary` (resumen interno) y `message_to_client` (borrador del mensaje) de la revisión de un check-in enviado. Si no existe revisión, la crea en borrador con `ai_status='pending'`, igual que la app al recibir el formulario.
+- Solo trabaja con revisiones en `draft`. Aprobar, enviar al cliente, notificar y archivar el check-in siguen siendo exclusivos de la app. Una revisión aprobada se rechaza.
+- Concurrencia: no hay `updated_at` fiable en `reviews`, así que hay que enviar `expected_summary` y `expected_message_to_client` con los valores actuales devueltos por `get_checkins` (`null` si no hay revisión). Si alguno no coincide, no se guarda nada.
+- Omitir un campo lo conserva; `null` o texto vacío lo vacía. Cada texto admite hasta 10 000 caracteres.
+- Permisos: `save_nexttrain_review_draft` es `SECURITY INVOKER` con `search_path` vacío. RLS se aplica con la política `reviews_rw_member` (`is_coach_member`: miembro activo owner/coach). Además comprueba con `auth.uid()` la membresía, que el cliente pertenece al espacio y que el check-in es de ese cliente y está enviado. Solo modifica esas dos columnas. `anon` no tiene permiso de ejecución.
+
+### `update_strength_program`
+
+- Cambia `name`, `weeks`, `effective_from` y `status` (`draft`, `active`, `archived`) con `expected_updated_at`. `get_program_history` devuelve ahora `updated_at` de cada programa.
+- Activar archiva antes el programa activo del cliente en la misma transacción, como la creación. Si no se indica fecha, el programa empieza hoy (en la zona del espacio), como `activateTrainingProgramAction`. Un programa activo no puede empezar en el futuro.
+- Cambiar la fecha de inicio o las semanas recalcula `effective_to` y borra las sesiones programadas **no completadas** de ese programa, como hace la app al regenerar el calendario (`generateProgramSchedule`). La plantilla las sustituye en el calendario. La respuesta devuelve `removed_scheduled_sessions`. Las sesiones completadas se conservan.
+- `update_nexttrain_strength_program` es `SECURITY INVOKER`, con RLS y comprobación de membresía y cliente.
+- No edita días ni ejercicios. Eso queda para cuando se fusione el catálogo de ejercicios (`feature/mcp-exercise-catalog`), para resolver los ejercicios igual que al crear.
+
+### Prompts
+
+`revision_semanal` termina guardando el texto confirmado con `save_review_draft`. `preparar_bloque_siguiente` usa `update_strength_program` para activar o archivar.
+
+Verificación:
+- `coach-writes.test.ts`: parámetros, versiones, errores propios y ocultos, y «hoy» en la zona del espacio.
+- `supabase/tests/mcp_review_draft_and_program_update.sql`: 9 verificaciones; termina con `ROLLBACK`.
+- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo. Hay que repetirla contra la base real tras aplicar la migración.
 
 ## Ajustes requeridos en Supabase
 
