@@ -21,6 +21,7 @@ import {
   isoDate,
   jsonResult,
   readOnlyAnnotations,
+  type Row,
   toolError,
   toUtcDate,
   writeAnnotations,
@@ -39,28 +40,22 @@ const athleteGoalType = z.enum([
   'other',
 ])
 
+// Solo ejercicios de la biblioteca: el grupo muscular y el nombre final los pone el catálogo.
 const strengthExerciseSchema = z.object({
-  name: z.string().trim().min(1).max(160),
+  catalog_exercise_id: z.string().uuid().optional().describe(
+    'ID de list_exercise_catalog. Si se omite, name debe coincidir con un ejercicio o alias de la biblioteca.',
+  ),
+  name: z.string().trim().min(1).max(160).describe('Nombre del ejercicio en la biblioteca (list_exercise_catalog).'),
   sets: z.number().int().min(1).max(20).optional(),
   reps: z.string().trim().max(80).optional(),
   rir: z.number().min(0).max(10).optional(),
   rest_seconds: z.number().int().min(0).max(1800).optional(),
   notes: z.string().trim().max(800).optional(),
-  muscle_group: z.enum([
-    'hombro',
-    'pecho',
-    'espalda',
-    'abdomen',
-    'cuádriceps',
-    'femorales',
-    'gemelos',
-    'tríceps',
-    'bíceps',
-    'glúteo',
-    'aductores',
-    'otros',
-  ]).optional(),
 })
+
+function exerciseNameKey(name: string) {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
 
 const strengthDaySchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -82,7 +77,7 @@ function createNextTrainServer(supabase: Db) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.12.0',
+    version: '0.13.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }))
   const run = createToolRunner(supabase)
@@ -313,10 +308,53 @@ function createNextTrainServer(supabase: Db) {
   registerScheduleTools(server, supabase)
 
   server.registerTool(
+    'list_exercise_catalog',
+    {
+      title: 'Consultar biblioteca de ejercicios',
+      description: 'Lista los ejercicios de fuerza de la biblioteca común. create_strength_program solo admite ejercicios de esta lista (nombre exacto, alias o catalog_exercise_id).',
+      inputSchema: z.object({
+        search: z.string().trim().max(80).optional().describe('Texto a buscar en el nombre, el grupo o los nombres alternativos.'),
+        primary_group: z.string().trim().max(40).optional().describe('Grupo exacto, por ejemplo Pecho, Espalda o Cuádriceps.'),
+        coach_id: optionalCoachId,
+      }),
+      annotations: readOnlyAnnotations,
+    },
+    (input) => run('list_exercise_catalog', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido consultar la biblioteca de ejercicios.',
+    }, async ({ log }) => {
+      const [catalogResult, aliasResult] = await Promise.all([
+        supabase.from('exercise_catalog').select('id, name, primary_group').eq('is_active', true).order('name'),
+        supabase.from('exercise_catalog_aliases').select('alias_key, catalog_exercise_id'),
+      ])
+      if (catalogResult.error) throw new Error('No se ha podido consultar la biblioteca de ejercicios.')
+
+      const aliasKeys = new Map<string, string[]>()
+      for (const alias of aliasResult.data ?? []) {
+        const keys = aliasKeys.get(alias.catalog_exercise_id) ?? []
+        keys.push(alias.alias_key)
+        aliasKeys.set(alias.catalog_exercise_id, keys)
+      }
+      const query = input.search ? exerciseNameKey(input.search) : ''
+      const group = input.primary_group ? exerciseNameKey(input.primary_group) : ''
+      const exercises = (catalogResult.data ?? []).filter((exercise: Row) => {
+        if (group && exerciseNameKey(exercise.primary_group) !== group) return false
+        if (!query) return true
+        return exerciseNameKey(exercise.name).includes(query)
+          || exerciseNameKey(exercise.primary_group).includes(query)
+          || (aliasKeys.get(exercise.id) ?? []).some((key) => key.includes(query))
+      })
+
+      log.result_count = exercises.length
+      return { exercises }
+    }),
+  )
+
+  server.registerTool(
     'create_strength_program',
     {
       title: 'Crear programa de fuerza',
-      description: 'Crea un programa de fuerza completo con días y ejercicios. Por seguridad se crea en borrador salvo que status sea active. active archiva el programa activo anterior del cliente y no admite fecha de inicio futura.',
+      description: 'Crea un programa de fuerza completo con días y ejercicios de la biblioteca (consulta list_exercise_catalog). Si algún ejercicio no está en la biblioteca no se crea nada y el error lo indica. Por seguridad se crea en borrador salvo que status sea active. active archiva el programa activo anterior del cliente y no admite fecha de inicio futura.',
       inputSchema: z.object({
         client_id: z.string().uuid(),
         name: z.string().trim().min(1).max(160),

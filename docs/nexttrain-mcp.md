@@ -34,7 +34,8 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `preview_cardio_session`: comprueba el modo, bloques, recuperaciones y totales sin guardar.
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
-- `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
+- `list_exercise_catalog`: busca en la biblioteca común de ejercicios de fuerza por nombre, grupo o nombre alternativo.
+- `create_strength_program`: crea un programa de fuerza completo en una sola transacción, solo con ejercicios de la biblioteca; por defecto queda en borrador.
 - `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
 - `update_strength_program_days`: reemplaza los días y ejercicios de un programa conservando los identificadores y los resultados.
 - `save_review_draft`: guarda en borrador el resumen interno y el mensaje para el cliente de la revisión de un check-in.
@@ -357,7 +358,7 @@ Migración `20261016150000_mcp_strength_program_days_update.sql`: aplicada en pr
   - El error dice cuáles son.
 - Cambiar el día de la semana de un día existente borra sus sesiones programadas no completadas, que quedaban en el día anterior; la plantilla las sustituye. Quitar un día borra también las suyas. La respuesta devuelve `removed_scheduled_sessions`, `removed_day_count` y `removed_exercise_count`.
 - **Biblioteca de ejercicios:** si la base tiene `public.resolve_catalog_exercise` (migración de la rama `feature/mcp-exercise-catalog`), los ejercicios nuevos o con nombre o `catalog_exercise_id` cambiado deben estar en la biblioteca. Se guardan con el nombre, el enlace y el grupo muscular del catálogo, igual que al crear con esa rama, y si alguno falta el error los lista.
-- Sin esa función se aceptan nombres libres y `muscle_group` (por defecto `otros`), como `create_strength_program` en esta versión. Los ejercicios que no cambian no se vuelven a resolver, para no bloquear programas anteriores a la biblioteca. `catalog_enforced` indica qué modo se usó.
+- Sin esa función se aceptan nombres libres y `muscle_group` (por defecto `otros`). Los ejercicios que no cambian no se vuelven a resolver, para no bloquear programas anteriores a la biblioteca. `catalog_enforced` indica qué modo se usó.
 
 Verificación:
 - `coach-writes.test.ts`: estructura enviada, validaciones y errores.
@@ -380,6 +381,18 @@ Migración `20261016180000_mcp_coach_today_in_sql.sql`: aplicada en producción 
 - `update_nexttrain_strength_program` ya recibía el día del espacio desde el MCP (`today`), y `update_nexttrain_strength_program_days` y `save_nexttrain_review_draft` no dependen de la fecha.
 
 Verificación: `supabase/tests/mcp_coach_today_in_sql.sql` (6 verificaciones, con y sin biblioteca; termina con `ROLLBACK`). Usa un espacio en `Pacific/Kiritimati` (UTC+14) para crear un programa activo que empieza «hoy» cuando en UTC aún es el día anterior. Se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, con las migraciones de nutrición, de la #12 y, en un segundo modo, la de la biblioteca. Sin el parche, la prueba falla. En producción pasa 6/6; se ejecutó con UTC en día 16 y Kiritimati en día 17.
+
+## Biblioteca de ejercicios (MCP 0.13.0)
+
+- `create_strength_program` solo admite ejercicios de `exercise_catalog`. `create_nexttrain_strength_program` resuelve cada uno por `catalog_exercise_id`, por nombre exacto (sin distinguir mayúsculas, tildes ni espacios) o por un alias histórico de `exercise_catalog_aliases`, y guarda el nombre, el `catalog_exercise_id` y el grupo muscular del catálogo. Si alguno no existe no se crea nada y el error lista los nombres pendientes.
+- El campo `muscle_group` ya no forma parte de la entrada: lo define el ejercicio de la biblioteca.
+- `list_exercise_catalog` devuelve `id`, `name` y `primary_group`, con filtros `search` (nombre, grupo o alias) y `primary_group`.
+- La migración añade `exercise_name_key`, `catalog_group_muscle_group` y `resolve_catalog_exercise` (`SECURITY INVOKER`, solo `authenticated`).
+
+- `update_strength_program_days` usa la misma resolución: con la biblioteca instalada, los ejercicios nuevos o cambiados deben estar en ella y su `muscle_group` se ignora.
+- `preparar_bloque_siguiente` pide buscar los ejercicios con `list_exercise_catalog` antes de crear el bloque.
+
+Migraciones: `20261015140000_mcp_strength_program_atomic_save.sql` y `20261016090000_mcp_strength_program_exercise_catalog.sql`, aplicadas en producción como `20261015210310` y `20261015210318`. La de «hoy» en SQL (`20261016180000`) se aplicó después y ya parchea la versión con biblioteca. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (11 verificaciones; termina con `ROLLBACK`), que pasa en producción.
 
 ## Ajustes requeridos en Supabase
 

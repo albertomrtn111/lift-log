@@ -208,6 +208,7 @@ Deno.test('prompts guide the model through the tools without writing data', () =
   const blockText = block.build(block.config.argsSchema.parse({ cliente: 'Ana', semanas: '6' })).messages[0].content.text
   assert.match(blockText, /6 semanas/)
   assert.match(blockText, /status draft/)
+  assert.match(blockText, /list_exercise_catalog/)
   assert.throws(() => block.config.argsSchema.parse({ cliente: 'Ana', semanas: 'seis' }))
 
   const inbox = prompts.get('bandeja_del_dia')

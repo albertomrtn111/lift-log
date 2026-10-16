@@ -48,6 +48,7 @@ export const outputSchemas: Record<string, z.ZodType> = {
     client_id: z.string(), start_date: day, end_date: day,
     items: z.array(z.looseObject({ kind: z.enum(['cardio', 'event', 'strength']), date: day })),
   }),
+  list_exercise_catalog: z.looseObject({ exercises: z.array(z.looseObject({ id: z.string(), name: z.string() })) }),
   create_strength_program: z.looseObject({ created: z.boolean(), program: record, archived_program_ids: z.array(z.string()) }),
   create_coach_task: z.looseObject({ created: z.boolean(), task: record }),
 
