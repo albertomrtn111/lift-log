@@ -10,7 +10,10 @@ import { registerCardioTools } from './cardio.ts'
 
 type SupabaseClientLike = any
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Usa el formato YYYY-MM-DD')
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Usa el formato YYYY-MM-DD').refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}, 'Fecha inválida; usa YYYY-MM-DD')
 const optionalCoachId = z.string().uuid().optional().describe(
   'Solo hace falta si el entrenador pertenece a más de un espacio de trabajo.',
 )
@@ -160,7 +163,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
   const server = new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.6.0',
+    version: '0.6.1',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   })
 
@@ -216,21 +219,16 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
         const clientIds = (clients ?? []).map((client: any) => client.id)
         let checkins: any[] = []
         if (clientIds.length) {
-          const response = await supabase
-            .from('checkins')
-            .select('client_id, submitted_at, weight_avg_kg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, stress, injuries')
-            .in('client_id', clientIds)
-            .eq('coach_id', coachId)
-            .not('submitted_at', 'is', null)
-            .order('submitted_at', { ascending: false })
-            .limit(Math.min(clientIds.length * 5, 500))
-          if (!response.error) checkins = response.data ?? []
+          // Un límite global dejaba fuera a clientes con check-ins antiguos y los marcaba sin_checkin.
+          const response = await supabase.rpc('nexttrain_latest_checkins', {
+            p_coach_id: coachId,
+            p_client_ids: clientIds,
+          })
+          if (response.error) throw new Error('No se han podido cargar los últimos check-ins.')
+          checkins = response.data ?? []
         }
 
-        const latestByClient = new Map<string, any>()
-        for (const checkin of checkins) {
-          if (!latestByClient.has(checkin.client_id)) latestByClient.set(checkin.client_id, checkin)
-        }
+        const latestByClient = new Map<string, any>(checkins.map((checkin: any) => [checkin.client_id, checkin]))
 
         const today = formatDate(new Date())
         const result = (clients ?? []).map((client: any) => {
@@ -573,7 +571,7 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
     'create_strength_program',
     {
       title: 'Crear programa de fuerza',
-      description: 'Crea un programa de fuerza completo con días y ejercicios. Por seguridad se crea en borrador salvo que status sea active.',
+      description: 'Crea un programa de fuerza completo con días y ejercicios. Por seguridad se crea en borrador salvo que status sea active. active archiva el programa activo anterior del cliente y no admite fecha de inicio futura.',
       inputSchema: z.object({
         client_id: z.string().uuid(),
         name: z.string().trim().min(1).max(160),
@@ -586,76 +584,46 @@ function createNextTrainServer(supabase: SupabaseClientLike) {
       annotations: additiveWriteAnnotations,
     },
     async (input) => {
-      let programId: string | null = null
       try {
         const { coachId } = await resolveCoach(supabase, input.coach_id)
         await requireClient(supabase, coachId, input.client_id)
 
-        programId = crypto.randomUUID()
-        const effectiveTo = addDays(input.effective_from, input.weeks * 7 - 1)
-        const { error: programError } = await supabase.from('training_programs').insert({
-          id: programId,
-          coach_id: coachId,
-          client_id: input.client_id,
-          name: input.name,
-          weeks: input.weeks,
-          total_weeks: input.weeks,
-          status: input.status,
-          effective_from: input.effective_from,
-          effective_to: effectiveTo,
+        // Una única transacción en Postgres: si falla un día o ejercicio no queda nada guardado.
+        const { data, error } = await supabase.rpc('create_nexttrain_strength_program', {
+          p_coach_id: coachId,
+          p_client_id: input.client_id,
+          p_payload: {
+            name: input.name,
+            weeks: input.weeks,
+            status: input.status,
+            effective_from: input.effective_from,
+            days: input.days,
+          },
         })
-        if (programError) throw new Error('No se ha podido crear el programa de fuerza.')
+        if (error || !data?.id) {
+          // P0001 y 42501 son los mensajes propios de la función; el resto se oculta.
+          const ownMessage = error && ['P0001', '42501'].includes(error.code) ? error.message : null
+          throw new Error(ownMessage ?? 'No se ha podido crear el programa de fuerza. No se guardó ningún cambio.')
+        }
 
-        const dayRows = input.days.map((day, index) => ({
-          id: crypto.randomUUID(),
-          coach_id: coachId,
-          program_id: programId,
-          name: day.name,
-          day_name: day.name,
-          order_index: index + 1,
-          day_order: index + 1,
-          default_weekday: day.weekday,
-        }))
-        const { error: daysError } = await supabase.from('training_days').insert(dayRows)
-        if (daysError) throw new Error('No se han podido crear los días del programa.')
-
-        const exerciseRows = input.days.flatMap((day, dayIndex) =>
-          day.exercises.map((exercise, exerciseIndex) => ({
-            id: crypto.randomUUID(),
-            coach_id: coachId,
-            program_id: programId,
-            day_id: dayRows[dayIndex].id,
-            order_index: exerciseIndex + 1,
-            exercise_name: exercise.name,
-            sets: exercise.sets ?? null,
-            reps: exercise.reps ?? null,
-            rir: exercise.rir ?? null,
-            rest_seconds: exercise.rest_seconds ?? null,
-            notes: exercise.notes ?? null,
-            muscle_group: exercise.muscle_group ?? 'otros',
-          })),
-        )
-        const { error: exercisesError } = await supabase.from('training_exercises').insert(exerciseRows)
-        if (exercisesError) throw new Error('No se han podido crear los ejercicios del programa.')
-
-        audit('create_strength_program', { coach_id: coachId, client_id: input.client_id, record_id: programId, status: 'ok' })
+        audit('create_strength_program', { coach_id: coachId, client_id: input.client_id, record_id: data.id, status: 'ok' })
         return jsonResult({
           created: true,
           program: {
-            id: programId,
+            id: data.id,
             client_id: input.client_id,
-            name: input.name,
-            status: input.status,
-            effective_from: input.effective_from,
-            effective_to: effectiveTo,
-            weeks: input.weeks,
-            days: input.days.length,
-            exercises: exerciseRows.length,
+            name: data.name,
+            status: data.status,
+            effective_from: data.effective_from,
+            effective_to: data.effective_to,
+            weeks: data.weeks,
+            days: data.day_count,
+            exercises: data.exercise_count,
           },
+          archived_program_ids: data.archived_program_ids ?? [],
         })
       } catch (error) {
-        if (programId) await supabase.from('training_programs').delete().eq('id', programId)
-        audit('create_strength_program', { client_id: input.client_id, record_id: programId, status: 'error' })
+        audit('create_strength_program', { client_id: input.client_id, status: 'error' })
         return toolError(error instanceof Error ? error.message : 'No se ha podido crear el programa de fuerza.')
       }
     },
