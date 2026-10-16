@@ -36,6 +36,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
 - `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
 - `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
+- `update_strength_program_days`: reemplaza los días y ejercicios de un programa conservando los identificadores y los resultados.
 - `save_review_draft`: guarda en borrador el resumen interno y el mensaje para el cliente de la revisión de un check-in.
 - `create_coach_task`: añade una tarea de seguimiento.
 - `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
@@ -327,7 +328,7 @@ Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_upda
 - Activar archiva antes el programa activo del cliente en la misma transacción, como la creación. Si no se indica fecha, el programa empieza hoy (en la zona del espacio), como `activateTrainingProgramAction`. Un programa activo no puede empezar en el futuro.
 - Cambiar la fecha de inicio o las semanas recalcula `effective_to` y borra las sesiones programadas **no completadas** de ese programa, como hace la app al regenerar el calendario (`generateProgramSchedule`). La plantilla las sustituye en el calendario. La respuesta devuelve `removed_scheduled_sessions`. Las sesiones completadas se conservan.
 - `update_nexttrain_strength_program` es `SECURITY INVOKER`, con RLS y comprobación de membresía y cliente.
-- No edita días ni ejercicios. Eso queda para cuando se fusione el catálogo de ejercicios (`feature/mcp-exercise-catalog`), para resolver los ejercicios igual que al crear.
+- No edita días ni ejercicios: para eso está `update_strength_program_days`.
 
 ### Prompts
 
@@ -337,6 +338,31 @@ Verificación:
 - `coach-writes.test.ts`: parámetros, versiones, errores propios y ocultos, y «hoy» en la zona del espacio.
 - `supabase/tests/mcp_review_draft_and_program_update.sql`: 9 verificaciones; termina con `ROLLBACK`.
 - La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, en el que RLS bloquea el insert directo en `reviews`. Hay que repetirla contra la base real antes de desplegar.
+
+## Edición de días y ejercicios (MCP 0.12.0)
+
+Requiere aplicar la migración `20261016150000_mcp_strength_program_days_update.sql` **antes** de desplegar la función.
+
+`update_strength_program_days` llama a `update_nexttrain_strength_program_days` (`SECURITY INVOKER`, RLS y comprobación de membresía y cliente). Reemplaza la estructura completa en una transacción:
+
+- Leer antes `get_program_history` con `program_id`. Devuelve los días con sus ejercicios e IDs y el `updated_at` del programa, que se envía en `expected_updated_at`.
+- `days` es la estructura entera, de 1 a 7 días con 1 a 30 ejercicios cada uno. El orden del array define `order_index`.
+- Un día o ejercicio **con `id`** se actualiza y conserva su identificador, así que sus series, registros, celdas y sesiones siguen enlazados. Un ejercicio puede cambiar de día enviándolo con su `id` dentro de otro día; sus celdas de prescripción lo acompañan.
+- **Sin `id`** se crea.
+- Los días y ejercicios que **no se envían se eliminan**, con sus series de prescripción y celdas, como `deleteExerciseAction`.
+- En un ejercicio existente, omitir `sets`, `reps`, `rir`, `rest_seconds` o `notes` conserva el valor y `null` lo vacía. Cambiar `name` o `catalog_exercise_id` lo convierte en otro ejercicio.
+- Nunca se pierden resultados. No se guarda nada si se quita:
+  - un ejercicio con una serie completada, una serie editada con valores o un registro en `training_exercise_logs`;
+  - un día con sesiones completadas o con registros que apunten a él.
+  - El error dice cuáles son.
+- Cambiar el día de la semana de un día existente borra sus sesiones programadas no completadas, que quedaban en el día anterior; la plantilla las sustituye. Quitar un día borra también las suyas. La respuesta devuelve `removed_scheduled_sessions`, `removed_day_count` y `removed_exercise_count`.
+- **Biblioteca de ejercicios:** si la base tiene `public.resolve_catalog_exercise` (migración de la rama `feature/mcp-exercise-catalog`), los ejercicios nuevos o con nombre o `catalog_exercise_id` cambiado deben estar en la biblioteca. Se guardan con el nombre, el enlace y el grupo muscular del catálogo, igual que al crear con esa rama, y si alguno falta el error los lista.
+- Sin esa función se aceptan nombres libres y `muscle_group` (por defecto `otros`), como `create_strength_program` en esta versión. Los ejercicios que no cambian no se vuelven a resolver, para no bloquear programas anteriores a la biblioteca. `catalog_enforced` indica qué modo se usó.
+
+Verificación:
+- `coach-writes.test.ts`: estructura enviada, validaciones y errores.
+- `supabase/tests/mcp_strength_program_days_update.sql`: 8 verificaciones, válida con y sin biblioteca; termina con `ROLLBACK`.
+- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, sin la biblioteca y con la migración de la biblioteca de `feature/mcp-exercise-catalog`. Hay que repetirla contra la base real antes de desplegar.
 
 ## Ajustes requeridos en Supabase
 
