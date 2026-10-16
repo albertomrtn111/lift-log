@@ -1,5 +1,5 @@
 import { z } from 'npm:zod@4.3.6'
-import { findStrengthSession, programProgress, programTransitions, setEvidence } from './strength-progress.js'
+import { findStrengthSession, groupStrengthResults, programProgress, programTransitions, setEvidence } from './strength-progress.js'
 import {
   addDays,
   allRows,
@@ -19,6 +19,17 @@ type Server = any
 
 const clientIdSchema = z.string().uuid()
 const coachIdSchema = z.string().uuid().optional().describe('Indícalo si tienes acceso a varios espacios de entrenamiento.')
+const resultFormat = z.enum(['grouped', 'flat']).default('grouped').describe(
+  'grouped (por defecto) agrupa las series por sesión y ejercicio sin repetir sus datos y omite los campos nulos de cada serie; flat devuelve una fila por serie, como antes.',
+)
+
+// Página de resultados en el formato pedido. La paginación cuenta series en ambos formatos.
+function strengthResultPage(page: Row[], format: 'grouped' | 'flat') {
+  return format === 'flat'
+    ? { format, results: page }
+    : { format, workouts: groupStrengthResults(page), result_count: page.length }
+}
+
 const historyDates = {
   from_date: dateSchema.optional(),
   to_date: dateSchema.optional(),
@@ -349,21 +360,21 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
   server.registerTool('get_strength_results', {
     title: 'Resultados reales de fuerza',
     description: 'Series, cargas, reps, RIR/RPE, notas e identificador comparable. Distingue ejecución confirmada de valores editados sin confirmar; una sesión completada no confirma sus series.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80), offset: z.number().int().min(0).max(5000).default(0) }),
+    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80).describe('Número máximo de series.'), offset: z.number().int().min(0).max(5000).default(0), format: resultFormat }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId, today) => {
+  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset, format }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId, today) => {
     const range = dateRange(today, from_date, to_date, 180)
     const context = await strengthContext(db, coachId, client_id, program_id)
     const data = await completedStrengthRows(db, coachId, client_id, context, range)
     return {
       client_id, ...range, program_id: program_id ?? null,
-      results: data.results.slice(offset, offset + limit),
+      ...strengthResultPage(data.results.slice(offset, offset + limit), format),
       completed_sessions: data.sessions.filter((session) => session.is_completed),
       has_more: data.results.length > offset + limit, next_offset: data.results.length > offset + limit ? offset + limit : null,
       programs_scanned: context.programs.map((program) => ({ id: program.id, name: program.name })),
       older_programs_available: context.hasMorePrograms,
       source_counts: data.source_counts, data_quality: data.data_quality,
-      note: 'results incluye series confirmadas y valores editados sin confirmar, identificados por execution_status. Las series prescritas sin edición no aparecen. performed_at no se infiere a partir de la fecha prevista o de updated_at.',
+      note: 'Los resultados (workouts o results) incluyen series confirmadas y valores editados sin confirmar, identificados por execution_status. Las series prescritas sin edición no aparecen. performed_at no se infiere a partir de la fecha prevista o de updated_at.',
     }
   }))
 
@@ -435,9 +446,9 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
   server.registerTool('get_program_history', {
     title: 'Histórico de programas de fuerza',
     description: 'Bloques con semana natural, fecha final estimada, semanas con sesiones marcadas completas y semanas con series confirmadas. Distingue valores de fuerza confirmados o sin confirmar; no inventa omisiones ni descargas.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200), result_offset: z.number().int().min(0).max(5000).default(0) }),
+    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200).describe('Número máximo de series.'), result_offset: z.number().int().min(0).max(5000).default(0), format: resultFormat }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId, today) => {
+  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset, format }: any) => scoped('get_program_history', client_id, coach_id, async (coachId, today) => {
     const asOfDate = as_of_date ?? today
     const context = await strengthContext(db, coachId, client_id, program_id, program_offset, program_limit)
     const programIds = context.programs.map((item) => item.id)
@@ -476,11 +487,11 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
       client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks) }, days, sessions,
       program_changes: transitions.filter((event) => event.from_program_id === program_id || event.to_program_id === program_id),
       possible_deload_blocks: timelinePrograms.filter((item) => /descarga|deload/i.test(item.name || '')).map((item) => ({ id: item.id, name: item.name, effective_from: item.effective_from, inference_source: 'program_name' })),
-      results: detail.results.slice(result_offset, result_offset + result_limit),
+      ...strengthResultPage(detail.results.slice(result_offset, result_offset + result_limit), format),
       has_more_results: detail.results.length > result_offset + result_limit,
       next_result_offset: detail.results.length > result_offset + result_limit ? result_offset + result_limit : null,
       result_source_counts: detail.source_counts, result_data_quality: detail.data_quality,
-      note: 'Las series prescritas aparecen en days. results separa ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
+      note: 'Las series prescritas aparecen en days. Los resultados (workouts o results) separan ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
     }
   }))
 }

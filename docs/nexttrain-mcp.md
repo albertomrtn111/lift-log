@@ -17,7 +17,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
 - `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
-- `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas.
+- `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas. Por defecto agrupa las series por sesión y ejercicio (`format: "flat"` mantiene una fila por serie).
 - `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión.
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
@@ -242,6 +242,31 @@ Todas las consultas filtran por `coach_id` y `client_id` además de RLS. Los pro
 - `buildStrengthSchedule` es la función pura que resuelve la fuerza; `clientAttentionFlags` calcula las señales de cada cliente.
 
 Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` (incluye `schedule.test.ts` y `timezone.test.ts`) y `node --test scripts/mcp-*.test.mjs`. No requiere migraciones.
+
+## Respuestas estructuradas y resultados agrupados (MCP 0.9.0)
+
+### JSON compacto
+
+Las respuestas ya se devolvían en una sola línea desde la 0.7.0 (`jsonResult` en `shared.ts`); no ha hecho falta cambiarlo.
+
+### `structuredContent` y `outputSchema` (MCP 2025-06-18)
+
+- Cada respuesta correcta incluye `structuredContent` con los mismos datos que el texto JSON. El texto se mantiene, como recomienda la especificación, para los clientes que no leen `structuredContent`. Ambos se generan a partir de la misma serialización, así que coinciden exactamente.
+- Todas las herramientas declaran `outputSchema` (`output-schemas.ts`). Se añade en `index.ts` con `withOutputSchemas(new McpServer(...))`, sin tocar cada registro. Un esquema explícito en el registro tiene prioridad.
+- El SDK valida `structuredContent` contra el esquema y, si no encaja, convierte la respuesta en error. Por eso los esquemas solo fijan las claves de primer nivel y sus tipos, y los objetos anidados admiten campos extra (`z.looseObject`). Los errores (`isError`) no se validan.
+- Contrapartida: un cliente que entregue al modelo tanto el texto como `structuredContent` enviaría los datos dos veces. Los clientes habituales usan uno u otro.
+
+### Resultados de fuerza agrupados
+
+`get_strength_results` y el detalle de `get_program_history` (con `program_id`) aceptan `format`:
+
+- `grouped` (por defecto): `workouts`, con una entrada por sesión (`program_id`, `program_name`, `day_id`, `day_name`, `week_index`, `scheduled_date`, `scheduled_date_source`, `session_id`, `session_completed`). Cada sesión tiene `exercises` (`exercise_id`, `exercise`, `catalog_exercise_id`, `comparison_exercise_id`, `comparison_scope`) y cada ejercicio tiene `sets` con lo propio de la serie (`id`, `source`, `execution_status`, `set_number`, `weight_kg`, `reps`, `rir`, `rpe`, `completed`, `performed_at`, `recorded_at`, `notes`, `note_source`). En las series se omiten los campos nulos y `set_index`. `result_count` cuenta las series de la página.
+- `flat`: `results`, una fila por serie con todos los campos, como hasta la 0.8.0.
+- **Cambio de formato:** por defecto ya no se devuelve `results`, sino `workouts`. Para el formato anterior hay que enviar `format: "flat"`.
+- La paginación (`limit`/`offset`, `result_limit`/`result_offset`) sigue contando series. Una sesión partida entre dos páginas aparece en ambas con sus series de cada página.
+- En una página típica de 200 series (10 sesiones × 5 ejercicios × 4 series), el JSON agrupado ocupa un 34 % del plano (prueba en `strength-results.test.ts`).
+
+Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` y `node --test scripts/mcp-*.test.mjs`. `sdk.test.ts` usa el SDK real (`createMcpHandler`) para comprobar que `tools/list` publica los esquemas y que `tools/call` devuelve `structuredContent`. Las pruebas de cardio, nutrición, planificación, clientes e historial validan sus respuestas contra los esquemas. No requiere migraciones.
 
 ## Ajustes requeridos en Supabase
 

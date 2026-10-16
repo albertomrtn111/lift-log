@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { buildStrengthSchedule, registerScheduleTools } from './schedule.ts'
+import { outputSchemas } from './output-schemas.ts'
 
 const client = '11111111-1111-4111-8111-111111111111'
 const coach = '22222222-2222-4222-8222-222222222222'
@@ -132,7 +133,9 @@ function fixture() {
   })
   async function run(input: any) {
     const tool = tools.get('list_client_schedule')
-    return await tool.run(tool.config.inputSchema.parse(input))
+    const result = await tool.run(tool.config.inputSchema.parse(input))
+    if (result.data) outputSchemas.list_client_schedule.parse(JSON.parse(JSON.stringify(result.data)))
+    return result
   }
   return { run, queries }
 }

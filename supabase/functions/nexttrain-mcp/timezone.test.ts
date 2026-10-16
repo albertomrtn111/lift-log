@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { clientAttentionFlags, registerClientTools } from './clients.ts'
+import { outputSchemas } from './output-schemas.ts'
 import { createToolRunner, DEFAULT_TIME_ZONE, resolveCoach, resolveTimeZone, todayIn } from './shared.ts'
 
 const coach = '22222222-2222-4222-8222-222222222222'
@@ -94,7 +95,11 @@ function listClientsFixture(timeZone: string | undefined) {
     now: () => lateNight,
   })
   const tool = tools.get('list_clients')
-  return () => tool.run(tool.config.inputSchema.parse({}))
+  return async () => {
+    const result = await tool.run(tool.config.inputSchema.parse({}))
+    outputSchemas.list_clients.parse(JSON.parse(JSON.stringify(result.data)))
+    return result
+  }
 }
 
 Deno.test('list_clients flags checkin_atrasado using the Madrid day after midnight', async () => {

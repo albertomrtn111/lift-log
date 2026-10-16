@@ -71,9 +71,13 @@ export function todayIn(timeZone: string, now: Date = new Date()) {
 }
 
 export function jsonResult(data: unknown) {
+  // Sin sangría: el resultado lo lee un modelo y los espacios solo suman tokens.
+  const text = JSON.stringify(data)
   return {
-    // Sin sangría: el resultado lo lee un modelo y los espacios solo suman tokens.
-    content: [{ type: 'text' as const, text: JSON.stringify(data) }],
+    // El texto se mantiene para los clientes que no leen structuredContent (MCP 2025-06-18).
+    content: [{ type: 'text' as const, text }],
+    // Misma información ya serializada: sin undefined ni fechas como objetos, igual que el texto.
+    structuredContent: JSON.parse(text) as Record<string, unknown>,
   }
 }
 
