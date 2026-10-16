@@ -8,7 +8,10 @@ import { getAppUrl } from '@/lib/app-url'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+/** Cookie con la pantalla a la que volver tras conectar (solo valores conocidos) */
+const STRAVA_RETURN_COOKIE = 'strava_return'
+
+export async function GET(request: Request) {
     try {
         const context = await getAuthenticatedClientContext()
         if (!context) {
@@ -24,6 +27,16 @@ export async function GET() {
             path: '/',
             maxAge,
         })
+        // Desde la bienvenida del atleta, al terminar se vuelve allí
+        if (new URL(request.url).searchParams.get('return') === 'bienvenida') {
+            response.cookies.set(STRAVA_RETURN_COOKIE, 'bienvenida', {
+                httpOnly: true,
+                sameSite: 'lax',
+                secure: process.env.NODE_ENV === 'production',
+                path: '/',
+                maxAge,
+            })
+        }
         return response
     } catch (error) {
         console.error('[strava/connect]', error)

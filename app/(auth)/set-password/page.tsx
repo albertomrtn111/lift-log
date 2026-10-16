@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { AuthHeading, AuthShell, AuthStatus } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, PasswordInput, PasswordStrength } from '@/components/auth/AuthFields'
 import { authErrorMessage } from '@/lib/auth/auth-errors'
+import { markAthleteSignedUpAction } from './actions'
 
 function SetPasswordInner() {
     const router = useRouter()
@@ -53,6 +54,7 @@ function SetPasswordInner() {
                 setError(authErrorMessage(error))
                 return
             }
+            if (!isReset) await markAthleteSignedUpAction().catch(() => undefined)
             setSuccess(true)
             setTimeout(() => {
                 router.push('/')

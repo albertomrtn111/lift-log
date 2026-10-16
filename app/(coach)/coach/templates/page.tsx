@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AITemplateDialog } from '@/components/coach/templates/AITemplateDialog'
 
 export const metadata = {
-    title: 'Plantillas de Entrenamiento | NextTrain Coach',
+    title: 'Plantillas de Entrenamiento | NexTrain Coach',
     description: 'Gestiona tus plantillas de entrenamiento reutilizables.',
 }
 

@@ -51,6 +51,8 @@ import type { StrengthStructure } from '@/types/templates'
 import { SupplementsPanel } from './plan/SupplementsPanel'
 import { ProgramOverview, type ProgramDetail } from './plan/ProgramOverview'
 import { getAITrainingWizardConfig } from '@/lib/training/ai-training-flow'
+import { FirstPlanChooser } from '@/components/coach/onboarding/FirstPlanChooser'
+import { usePlanStartIntent, type PlanStartIntent } from '@/components/coach/onboarding/plan-start'
 
 function getDerivedProgramWeek(effectiveFrom: string | null | undefined, totalWeeks: number) {
     if (!effectiveFrom || totalWeeks <= 1) return 1
@@ -117,7 +119,26 @@ export function PlanTab({
         router.replace(`/coach/clients?${params.toString()}`)
     }
 
+    // Paso 4 de "Primeros pasos": elegir cómo empezar el primer plan
+    const showFirstPlanChooser = searchParams.get('guide') === 'first-plan'
+    const handleFirstPlan = (intent: PlanStartIntent | null) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('guide')
+        params.set('tab', 'plan')
+        if (intent) {
+            const nextSubTab = intent === 'csv' ? 'diet' : 'training'
+            setActiveSubTab(nextSubTab)
+            params.set('plan', nextSubTab)
+            params.set('start', intent)
+        }
+        router.replace(`/coach/clients?${params.toString()}`, { scroll: false })
+    }
+
     return (
+        <>
+        {showFirstPlanChooser && (
+            <FirstPlanChooser onChoose={handleFirstPlan} onDismiss={() => handleFirstPlan(null)} />
+        )}
         <Tabs value={activeSubTab} onValueChange={handleSubTabChange} className="w-full min-w-0">
             {/* Segundo nivel de navegación: pastillas siempre visibles (antes desplegable en móvil) */}
             <div
@@ -174,6 +195,7 @@ export function PlanTab({
                 <SupplementsPanel clientId={clientId} coachId={coachId} />
             </TabsContent>
         </Tabs>
+        </>
     )
 }
 
@@ -219,6 +241,14 @@ function EntrenoSubtab({
 
     // AI state
     const [pendingAIStructure, setPendingAIStructure] = useState<StrengthStructure | null>(null)
+    // Primer plan desde "Primeros pasos": abrir directamente plantilla o IA
+    const [autoOpenTemplateImport, setAutoOpenTemplateImport] = useState(false)
+    const [autoOpenAI, setAutoOpenAI] = useState(false)
+    usePlanStartIntent('template', () => {
+        setAutoOpenTemplateImport(true)
+        setWizardConfig({ isOpen: true, programId: null, step: 1 })
+    })
+    usePlanStartIntent('ai', () => setAutoOpenAI(true))
     const [pendingAIName, setPendingAIName] = useState<string | null>(null)
     const [programSummaryDetail, setProgramSummaryDetail] = useState<ProgramDetail | null>(null)
     const [summaryWeek, setSummaryWeek] = useState(1)
@@ -399,6 +429,8 @@ function EntrenoSubtab({
                                 : null
                             }
                             onConfirm={handleAIConfirm}
+                            autoOpen={autoOpenAI}
+                            onAutoOpened={() => setAutoOpenAI(false)}
                             trigger={
                                 <AIActionButton size="sm" className="rounded-full">
                                     Generar con IA
@@ -511,8 +543,10 @@ function EntrenoSubtab({
                     initialStep={wizardConfig.step}
                     pendingAIStructure={pendingAIStructure}
                     pendingAIName={pendingAIName}
+                    autoOpenTemplateImport={autoOpenTemplateImport}
                     onOpenChange={(open) => setWizardConfig(prev => ({ ...prev, isOpen: open }))}
                     onClose={() => {
+                        setAutoOpenTemplateImport(false)
                         setWizardConfig({ isOpen: false, programId: null, step: 1 })
                         setPendingAIStructure(null)
                         setPendingAIName(null)

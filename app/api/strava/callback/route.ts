@@ -9,7 +9,8 @@ import {
 export const dynamic = 'force-dynamic'
 
 function redirectToProfile(request: NextRequest, status: 'connected' | 'error') {
-    const url = new URL('/profile', request.url)
+    const fromWelcome = request.cookies.get('strava_return')?.value === 'bienvenida'
+    const url = new URL(fromWelcome ? '/bienvenida' : '/profile', request.url)
     url.searchParams.set('strava', status)
     return NextResponse.redirect(url)
 }
@@ -17,6 +18,7 @@ function redirectToProfile(request: NextRequest, status: 'connected' | 'error') 
 export async function GET(request: NextRequest) {
     const responseWithClearedCookie = (response: NextResponse) => {
         response.cookies.set('strava_oauth_nonce', '', { path: '/', maxAge: 0 })
+        response.cookies.set('strava_return', '', { path: '/', maxAge: 0 })
         return response
     }
 

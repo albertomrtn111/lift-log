@@ -161,9 +161,20 @@ export async function middleware(req: NextRequest) {
     const isProfilePage = pathname === '/profile'
     const isModeSelectionPage = pathname === '/mode'
     const isLoginPage = pathname === '/login'
+    const isWelcomePage = pathname === '/welcome'
 
     // CASE: NONE (No active roles)
     if (resolvedMode === 'none') {
+        // Coach recién registrado (eligió plan en /signup): su espacio se crea en /welcome
+        const signupTier = user.user_metadata?.subscription_tier
+        const isCoachSignup = Boolean(user.email_confirmed_at) && typeof signupTier === 'string' && signupTier.length > 0
+        if (isWelcomePage) {
+            return isCoachSignup ? res : redirectWithSession('/no-access')
+        }
+        if (isCoachSignup && !isProfilePage && !isLoginPage) {
+            if (isDev) console.log(`[Middleware] Coach signup without workspace for ${user.id}, redirecting to /welcome`)
+            return redirectWithSession('/welcome')
+        }
         if (!isNoAccessPage && !isProfilePage && !isLoginPage) {
             if (isDev) console.log(`[Middleware] No active roles for ${user.id}, redirecting to /no-access`)
             return redirectWithSession('/no-access')

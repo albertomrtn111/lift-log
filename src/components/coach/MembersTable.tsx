@@ -183,7 +183,8 @@ function ClientRow({
         console.warn(`[MembersTable] Client "${client.full_name}" (${client.id}) has NULL/undefined status — showing as 'Desconocido'`)
     }
 
-    const isPendingSignup = !client.auth_user_id
+    // La atleta de ejemplo no tiene cuenta ni se le invita
+    const isPendingSignup = !client.auth_user_id && !client.is_sample
 
     const handleDeactivate = () => {
         startTransition(async () => {
@@ -315,7 +316,11 @@ function ClientRow({
         </Badge>
     )
 
-    const signupBadge = isPendingSignup ? (
+    const signupBadge = client.is_sample ? (
+        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-0">
+            Ejemplo
+        </Badge>
+    ) : isPendingSignup ? (
         <Badge className="bg-amber-500/10 text-amber-500 border-0">
             Registro pendiente
         </Badge>
@@ -429,7 +434,7 @@ function ClientRow({
                                 <p className="truncate text-xs text-muted-foreground">{client.email}</p>
                                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                     {statusBadge}
-                                    {isPendingSignup && signupBadge}
+                                    {(isPendingSignup || client.is_sample) && signupBadge}
                                 </div>
                                 {client.status === 'active' && (
                                     <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

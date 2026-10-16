@@ -1,5 +1,6 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
 import { Target, Utensils } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DietPlanPanel } from '../workspace/plan/DietPlanPanel'
@@ -11,8 +12,10 @@ interface DietTabProps {
 }
 
 export function DietTab({ clientId, coachId }: DietTabProps) {
+    // Primer plan "importar CSV": la importación está en la dieta por opciones
+    const searchParams = useSearchParams()
     return (
-        <Tabs defaultValue="macros" className="w-full">
+        <Tabs defaultValue={searchParams.get('start') === 'csv' ? 'options' : 'macros'} className="w-full">
             <div className="mb-4 flex items-end justify-between border-b border-border/70">
                 <TabsList className="h-auto gap-0 border-none bg-transparent p-0">
                     <TabsTrigger

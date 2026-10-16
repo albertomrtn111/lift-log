@@ -3,8 +3,7 @@
 import { createNewClient, setClientStatus, updateClientDetails, UpdateClientInput } from '@/data/members'
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendInviteEmailSmtp } from '@/lib/email/mailer'
-import { getAppUrl } from '@/lib/app-url'
+import { sendAthleteInvite } from '@/lib/onboarding/athlete-invite'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
@@ -151,9 +150,9 @@ export async function createClientAction(data: {
     onboarding_template_id?: string
 }) {
     // Validate coach_id against membership
-    let coachId: string, supabase
+    let coachId: string, supabase, userId: string
     try {
-        ({ coachId, supabase } = await requireActiveCoachId(data.coach_id))
+        ({ coachId, supabase, userId } = await requireActiveCoachId(data.coach_id))
     } catch (e: any) {
         return {
             success: false,
@@ -306,16 +305,12 @@ export async function createClientAction(data: {
 
             console.log(`[createClientAction] auth_user_id linked successfully`)
 
-            // 4. Send invite email with temp password (non-blocking)
-            sendInviteEmailSmtp({
-                to: client.email,
-                clientName: client.full_name ?? undefined,
-                tempPassword: data.password,
-                appUrl: getAppUrl(),
-                coachId,
-            }).catch((err) => {
-                console.warn('[createClientAction] invite email failed (non-blocking):', err)
-            })
+            // 4. Email de invitación con la contraseña temporal (non-blocking)
+            sendAthleteInvite({ coachId, coachUserId: userId, clientId: client.id, tempPassword: data.password })
+                .then(result => { if (!result.ok) console.warn('[createClientAction] invite email failed (non-blocking):', result.error) })
+                .catch((err) => {
+                    console.warn('[createClientAction] invite email failed (non-blocking):', err)
+                })
         } catch (err: any) {
             console.error(`[createClientAction] Unexpected error in auth user creation:`, err)
             return {
@@ -325,17 +320,8 @@ export async function createClientAction(data: {
                 authWarning: `Cliente creado, pero error inesperado al crear usuario Auth: ${err.message}`,
             }
         }
-    } else {
-        // No password — send invite email without password (non-blocking)
-        sendInviteEmailSmtp({
-            to: client.email,
-            clientName: client.full_name ?? undefined,
-            appUrl: getAppUrl(),
-            coachId,
-        }).catch((err) => {
-            console.warn('[createClientAction] invite email failed (non-blocking):', err)
-        })
     }
+    // Sin contraseña, la invitación la envía quien llama (sendInviteAction) si el coach lo pide
 
     revalidatePath('/coach/members')
     revalidatePath('/coach/clients')
