@@ -119,6 +119,7 @@ export async function createPaymentRecordAction(input: {
             .select('id')
             .eq('id', input.clientId)
             .eq('coach_id', coachId)
+            .eq('is_sample', false)
             .maybeSingle()
         if (!client) return { success: false, error: 'Atleta no encontrado.' }
 

@@ -189,6 +189,7 @@ export interface ClientSelectorOption {
     email: string
     status: string | null
     auth_user_id: string | null
+    is_sample?: boolean
     hasOverdueCheckin?: boolean
     hasPendingReview?: boolean
 }
@@ -198,7 +199,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
 
     const { data, error } = await supabase
         .from('clients')
-        .select('id, full_name, email, status, auth_user_id, next_checkin_date')
+        .select('id, full_name, email, status, auth_user_id, next_checkin_date, is_sample')
         .eq('coach_id', coachId)
         .order('status', { ascending: true })
         .order('full_name', { ascending: true })
@@ -251,6 +252,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
             email: c.email,
             status: c.status,
             auth_user_id: c.auth_user_id,
+            is_sample: Boolean(c.is_sample),
             hasOverdueCheckin: daysUntil !== null && daysUntil < 0,
             hasPendingReview: reviewStatus != null && reviewStatus !== 'approved',
         }

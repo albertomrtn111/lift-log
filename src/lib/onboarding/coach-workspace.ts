@@ -13,6 +13,7 @@ export interface CoachOnboardingState {
     welcome_pending?: boolean
     welcome_completed_at?: string
     checklist_dismissed_at?: string
+    sample_created_at?: string
     sample_explored_at?: string
     ai_offer_dismissed_at?: string
 }

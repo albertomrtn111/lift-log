@@ -5,6 +5,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCoachWorkspaceInfo } from '@/lib/onboarding/coach-workspace'
 import { isDisciplineId, isExpectedAthletesId } from '@/lib/onboarding/coach-options'
+import { createSampleAthlete } from '@/lib/onboarding/sample-athlete'
 
 export async function completeWelcomeAction(input: {
     businessName: string
@@ -12,8 +13,9 @@ export async function completeWelcomeAction(input: {
     expectedAthletes: string
 }): Promise<{ success: true } | { success: false; error: string }> {
     let coachId: string
+    let userId: string
     try {
-        ({ coachId } = await requireActiveCoachId())
+        ({ coachId, userId } = await requireActiveCoachId())
     } catch {
         return { success: false, error: 'Tu sesión ha caducado. Vuelve a iniciar sesión.' }
     }
@@ -44,6 +46,13 @@ export async function completeWelcomeAction(input: {
     if (error) {
         console.error('[completeWelcomeAction]', error)
         return { success: false, error: 'No se pudo guardar. Inténtalo de nuevo.' }
+    }
+
+    // Lucía, la atleta de ejemplo. Si falla, el coach entra igualmente a su panel.
+    if (state.guided) {
+        await createSampleAthlete(coachId, userId).catch(sampleError => {
+            console.error('[completeWelcomeAction] No se pudo crear la atleta de ejemplo:', sampleError)
+        })
     }
 
     revalidatePath('/coach', 'layout')

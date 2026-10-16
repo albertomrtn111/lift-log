@@ -23,12 +23,16 @@ export async function sendInviteAction(
     // Fetch client data
     const { data: client, error: clientError } = await supabase
         .from('clients')
-        .select('id, email, full_name')
+        .select('id, email, full_name, is_sample')
         .eq('id', clientId)
         .single()
 
     if (clientError || !client) {
         return { success: false, error: 'Client not found' }
+    }
+
+    if (client.is_sample) {
+        return { success: false, error: 'Es tu atleta de ejemplo: a ella no se le envía nada.' }
     }
 
     // Email directo desde la app (sustituye al webhook de n8n)

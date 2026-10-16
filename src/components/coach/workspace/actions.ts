@@ -9,6 +9,8 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
 import { sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSampleClient } from '@/lib/onboarding/sample-athlete'
+import { updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
@@ -1106,7 +1108,7 @@ export async function completeReviewAction(input: {
     checkinId: string
     feedbackMessage?: string
     sendToClient?: boolean
-}): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; error?: string }> {
+}): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; isSample?: boolean; error?: string }> {
     const feedbackMessage = input.feedbackMessage?.trim() || ''
 
     if (input.sendToClient && !feedbackMessage) {
@@ -1120,6 +1122,13 @@ export async function completeReviewAction(input: {
 
         const { coachId: validatedCoachId } = await requireActiveCoachId(input.coachId)
         const admin = createAdminClient()
+        // Atleta de ejemplo: se aprueba de verdad, pero nunca sale ningún aviso
+        const isSample = await isSampleClient(input.clientId)
+        const markSampleExplored = async () => {
+            if (!isSample) return
+            await updateCoachOnboardingState(validatedCoachId, { sample_explored_at: new Date().toISOString() })
+                .catch(err => console.warn('[completeReviewAction] onboarding state not updated:', err))
+        }
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
@@ -1199,16 +1208,18 @@ export async function completeReviewAction(input: {
                 }
             }
 
-            await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            await markSampleExplored()
             revalidateReviewSurfaces()
-            return { success: true, sentToClient: true }
+            return { success: true, sentToClient: true, isSample }
         }
 
-        if (!isAlreadyApproved) {
+        if (!isAlreadyApproved && !isSample) {
             await sendReviewApprovedNotification(input.clientId)
         }
+        await markSampleExplored()
         revalidateReviewSurfaces()
-        return { success: true, sentToClient: false }
+        return { success: true, sentToClient: false, isSample }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo completar la revisión.'
         return { success: false, error: message }

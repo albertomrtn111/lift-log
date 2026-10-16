@@ -20,6 +20,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { useCoachContext } from '@/contexts/CoachContext'
+import { SampleDeliveryPreview } from '@/components/coach/onboarding/SampleDeliveryPreview'
+import { buildSampleFeedback } from '@/lib/onboarding/sample-athlete-data.js'
 
 interface ReviewApprovalDialogProps {
     open: boolean
@@ -28,6 +31,8 @@ interface ReviewApprovalDialogProps {
     clientId: string
     checkin: CheckinWithReview | null
     onCompleted?: () => void
+    /** Atleta de ejemplo: mensaje ya escrito y vista previa en vez de envío */
+    isSampleClient?: boolean
 }
 
 function getReviewStateMeta(checkin: CheckinWithReview | null) {
@@ -72,19 +77,31 @@ export function ReviewApprovalDialog({
     clientId,
     checkin,
     onCompleted,
+    isSampleClient = false,
 }: ReviewApprovalDialogProps) {
     const [feedbackText, setFeedbackText] = useState('')
     const [isPending, startTransition] = useTransition()
+    const [samplePreview, setSamplePreview] = useState<{ feedback: string | null } | null>(null)
     const { toast } = useToast()
+    const { coach } = useCoachContext()
+    const coachFirstName = coach?.profile.full_name?.trim().split(/\s+/)[0] || null
 
     const stateMeta = useMemo(() => getReviewStateMeta(checkin), [checkin])
 
     useEffect(() => {
         if (!open) return
-        setFeedbackText('')
-    }, [open, checkin?.id])
+        setFeedbackText(isSampleClient && checkin?.review?.status !== 'approved' ? buildSampleFeedback(coachFirstName) : '')
+    }, [open, checkin?.id, checkin?.review?.status, isSampleClient, coachFirstName])
 
-    if (!checkin) return null
+    const preview = (
+        <SampleDeliveryPreview
+            open={samplePreview !== null}
+            onOpenChange={(next) => !next && setSamplePreview(null)}
+            feedback={samplePreview?.feedback ?? null}
+        />
+    )
+
+    if (!checkin) return preview
 
     const formattedDate = checkin.submitted_at
         ? format(new Date(checkin.submitted_at), "d MMM yyyy", { locale: es })
@@ -103,6 +120,13 @@ export function ReviewApprovalDialog({
                 feedbackMessage: feedbackText,
                 sendToClient,
             })
+
+            if (result.success && result.isSample) {
+                setSamplePreview({ feedback: sendToClient ? feedbackText.trim() : null })
+                onOpenChange(false)
+                onCompleted?.()
+                return
+            }
 
             if (result.success) {
                 toast({
@@ -138,6 +162,8 @@ export function ReviewApprovalDialog({
     }
 
     return (
+        <>
+        {preview}
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="w-[calc(100%-2rem)] sm:w-full max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader className="space-y-3">
@@ -177,7 +203,9 @@ export function ReviewApprovalDialog({
                         <div className="flex items-start gap-2">
                             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <p>
-                                Si eliges <strong>{sendLabel}</strong>, el mensaje llegará a mensajes del cliente como un bloque formal de revisión, no como un mensaje casual.
+                                {isSampleClient
+                                    ? <>Te hemos dejado un mensaje de ejemplo. Pulsa <strong>{sendLabel}</strong> y verás lo que recibe el atleta. Con Lucía no se envía nada.</>
+                                    : <>Si eliges <strong>{sendLabel}</strong>, el mensaje llegará a mensajes del cliente como un bloque formal de revisión, no como un mensaje casual.</>}
                             </p>
                         </div>
                     </div>
@@ -200,5 +228,6 @@ export function ReviewApprovalDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        </>
     )
 }

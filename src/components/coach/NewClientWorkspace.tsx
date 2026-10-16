@@ -18,6 +18,7 @@ import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
 import type { ReviewTemplate } from '@/data/review-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SampleAthleteBanner } from '@/components/coach/onboarding/SampleAthleteBanner'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -182,7 +183,8 @@ export function NewClientWorkspace({
 
     const handleClientChange = navigateToClient
 
-    const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
+    // La atleta de ejemplo no tiene cuenta, pero se puede explorar entera
+    const isPendingSignup = selectedClient ? !selectedClient.auth_user_id && !selectedClient.is_sample : false
 
     // Mejora 10: Prev/next navigation
     const activeClients = useMemo(() =>
@@ -292,6 +294,13 @@ export function NewClientWorkspace({
                                 Cargando cliente...
                             </div>
                         </div>
+                    )}
+                    {selectedClient.is_sample && (
+                        <SampleAthleteBanner
+                            coachId={coachId}
+                            clientId={selectedClient.id}
+                            clientName={selectedClient.full_name || 'Lucía'}
+                        />
                     )}
                     <WorkspaceHeader
                         client={selectedClient}
@@ -448,6 +457,7 @@ export function NewClientWorkspace({
                                         onRefresh={handleRefresh}
                                         metricDefinitions={metricDefinitions}
                                         formTemplates={formTemplates}
+                                        isSampleClient={Boolean(selectedClient.is_sample)}
                                     />
                                 )}
                             </TabsContent>

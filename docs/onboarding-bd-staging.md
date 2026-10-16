@@ -40,4 +40,25 @@ select has_function_privilege('authenticated', 'public.create_coach_workspace(uu
        has_function_privilege('service_role', 'public.create_coach_workspace(uuid, text, text, text, integer)', 'execute');
 ```
 
-Y pasar al dueño cualquier error o advertencia que salga al aplicar la migración.
+## 4. Migración de la fase 2 (atleta de ejemplo)
+
+Fichero: `supabase/migrations/20261016100000_delete_sample_client.sql`. Crea `delete_sample_client(uuid, uuid)`: borra en una transacción a la atleta de ejemplo (solo si `is_sample = true` y es del coach indicado) con todo lo que cuelga de ella. Ejecutable **solo** por `service_role`.
+
+Comprobaciones:
+
+```sql
+select has_function_privilege('authenticated', 'public.delete_sample_client(uuid, uuid)', 'execute'),  -- false
+       has_function_privilege('service_role', 'public.delete_sample_client(uuid, uuid)', 'execute');   -- true
+
+-- Con un atleta NO de ejemplo debe fallar con 'Solo se puede borrar la atleta de ejemplo de tu espacio'
+-- (con un coach y un cliente de prueba creados en staging, nunca en producción; dentro de begin/rollback)
+begin;
+select public.delete_sample_client('<coach_id>', '<client_id_real>');
+rollback;
+```
+
+Si hay triggers en `clients`, `checkins`, `reviews` o `messages` que no estén en el repo (webhooks, envíos de email o push), avisar: Lucía inserta filas en esas tablas y no debe disparar nada hacia fuera.
+
+## 5. Al terminar
+
+Pasar al dueño cualquier error o advertencia que salga al aplicar las migraciones.
