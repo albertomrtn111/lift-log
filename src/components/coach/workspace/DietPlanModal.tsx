@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { saveMacroPlanAction } from './actions'
 import { createDietOptionsPlanFromModal } from '@/data/nutrition/dietOptions'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 import type { DietPlanMealItem, DietPlanMealOption, DietPlanMeals } from '@/data/workspace'
 
 interface DietPlanModalProps {
@@ -192,6 +193,7 @@ export function DietPlanModal({ open, onOpenChange, coachId, clientId, onSuccess
             }
 
             const { verification } = result
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: result.planId })
             console.log('[DietPlanModal] Diet plan saved successfully:', {
                 planId: result.planId,
                 verification

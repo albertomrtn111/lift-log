@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import { activateTrainingProgramAction, archiveTrainingProgramAction, copyTrainingProgramToTemplateAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 import { TrainingProgramWizard } from './plan/TrainingProgramWizard'
 import { AITrainingDialog } from './plan/AITrainingDialog'
 import { createClient } from '@/lib/supabase/client'
@@ -312,6 +313,10 @@ function EntrenoSubtab({
                 if (!result.success) {
                     toast({ title: 'Error', description: result.error || 'Error al crear', variant: 'destructive' })
                     return
+                }
+
+                if (result.programId) {
+                    void notifyClientPlanUpdatedAction({ clientId, kind: 'training', planId: result.programId })
                 }
 
                 await Promise.all([

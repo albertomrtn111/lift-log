@@ -1,21 +1,28 @@
+export const NOTIFICATION_PREFERENCE_KEYS = [
+  'messages_enabled',
+  'reviews_enabled',
+  'supplements_enabled',
+  'activities_enabled',
+  'plans_enabled',
+]
+
 export const DEFAULT_CLIENT_NOTIFICATION_PREFERENCES = {
   messages_enabled: true,
   reviews_enabled: true,
   supplements_enabled: true,
+  activities_enabled: true,
+  plans_enabled: true,
 }
 
 export function sanitizeNotificationPreferences(input = {}) {
-  return {
-    messages_enabled: typeof input.messages_enabled === 'boolean'
-      ? input.messages_enabled
-      : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.messages_enabled,
-    reviews_enabled: typeof input.reviews_enabled === 'boolean'
-      ? input.reviews_enabled
-      : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.reviews_enabled,
-    supplements_enabled: typeof input.supplements_enabled === 'boolean'
-      ? input.supplements_enabled
-      : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES.supplements_enabled,
+  const source = input && typeof input === 'object' ? input : {}
+  const sanitized = {}
+  for (const key of NOTIFICATION_PREFERENCE_KEYS) {
+    sanitized[key] = typeof source[key] === 'boolean'
+      ? source[key]
+      : DEFAULT_CLIENT_NOTIFICATION_PREFERENCES[key]
   }
+  return sanitized
 }
 
 export function readNotificationPreferencesFromClientPreferences(preferences) {

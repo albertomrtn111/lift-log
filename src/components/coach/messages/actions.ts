@@ -80,7 +80,10 @@ export async function sendMessageAction(
             || (attachment?.type === 'audio' ? '🎤 Mensaje de voz'
                 : attachment?.type === 'image' ? '📷 Imagen'
                 : `📎 ${attachment?.name ?? 'Documento'}`)
-        await sendCoachMessageNotification(clientId, preview)
+        // Sin await: el mensaje ya está guardado y el coach no espera al push.
+        void sendCoachMessageNotification(clientId, preview).catch((notificationError) => {
+            console.warn('[sendMessageAction] notification failed (non-blocking):', notificationError)
+        })
     }
 
     return { success: true, message: data as Message }

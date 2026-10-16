@@ -19,6 +19,8 @@ test('sanitizeNotificationPreferences keeps only boolean notification flags', ()
       messages_enabled: false,
       reviews_enabled: true,
       supplements_enabled: false,
+      activities_enabled: true,
+      plans_enabled: true,
     }
   )
 })
@@ -44,6 +46,8 @@ test('readNotificationPreferencesFromClientPreferences reads nested notification
       messages_enabled: false,
       reviews_enabled: true,
       supplements_enabled: false,
+      activities_enabled: true,
+      plans_enabled: true,
     }
   )
 })
@@ -61,7 +65,26 @@ test('writeNotificationPreferencesToClientPreferences preserves unrelated prefer
         messages_enabled: false,
         reviews_enabled: true,
         supplements_enabled: false,
+        activities_enabled: true,
+        plans_enabled: true,
       },
     }
   )
+})
+
+test('sanitizeNotificationPreferences keeps activity and plan flags', () => {
+  assert.deepEqual(
+    sanitizeNotificationPreferences({ activities_enabled: false, plans_enabled: false, extra: true }),
+    {
+      messages_enabled: true,
+      reviews_enabled: true,
+      supplements_enabled: true,
+      activities_enabled: false,
+      plans_enabled: false,
+    }
+  )
+})
+
+test('sanitizeNotificationPreferences tolerates null input', () => {
+  assert.deepEqual(sanitizeNotificationPreferences(null), DEFAULT_CLIENT_NOTIFICATION_PREFERENCES)
 })
