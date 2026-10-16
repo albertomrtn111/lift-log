@@ -64,9 +64,9 @@ const WORKSPACE_TABS = [
     { value: 'resumen', label: 'Resumen', icon: LayoutDashboard, gated: false },
     { value: 'nextia', label: 'Chat NextIA', icon: Bot, gated: false },
     { value: 'progreso', label: 'Progreso', icon: TrendingUp, gated: true },
-    { value: 'plan', label: 'Plan', icon: CalendarDays, gated: true },
+    { value: 'plan', label: 'Plan', icon: CalendarDays, gated: false },
     { value: 'checkins', label: 'Revisiones', icon: FileText, gated: true },
-    { value: 'events', label: 'Eventos', icon: Flag, gated: true },
+    { value: 'events', label: 'Eventos', icon: Flag, gated: false },
 ] as const
 
 interface NewClientWorkspaceProps {
@@ -420,30 +420,22 @@ export function NewClientWorkspace({
                             </TabsContent>
 
                             <TabsContent value="plan" className="mt-0 min-w-0">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <PlanTab
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        activeProgram={activeProgram}
-                                        programs={programs}
-                                        onRefresh={handleRefresh}
-                                    />
-                                )}
+                                <PlanTab
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    activeProgram={activeProgram}
+                                    programs={programs}
+                                    onRefresh={handleRefresh}
+                                />
                             </TabsContent>
 
                             <TabsContent value="events" className="mt-0 min-w-0">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <EventsTab
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        events={events}
-                                        onRefresh={handleRefresh}
-                                    />
-                                )}
+                                <EventsTab
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    events={events}
+                                    onRefresh={handleRefresh}
+                                />
                             </TabsContent>
 
                             <TabsContent value="checkins" className="mt-0 min-w-0">

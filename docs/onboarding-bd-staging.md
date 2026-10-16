@@ -59,6 +59,15 @@ rollback;
 
 Si hay triggers en `clients`, `checkins`, `reviews` o `messages` que no estén en el repo (webhooks, envíos de email o push), avisar: Lucía inserta filas en esas tablas y no debe disparar nada hacia fuera.
 
-## 5. Al terminar
+## 5. Fase 3 (invitación del atleta): Auth y vinculación
+
+Sin migración nueva. Comprobar en staging, y **contarle al dueño** cómo está en producción, sin cambiarlo:
+
+1. **Caducidad del enlace**: Authentication → Providers → Email → "Email OTP Expiration". La invitación usa enlaces generados con `auth.admin.generateLink` (tipo `invite` o `magiclink`), que caducan con ese valor (por defecto 3600 s). Recomendado: 86400 (24 h, el máximo).
+2. **Redirect URLs**: deben admitir `<APP_URL>/auth/callback?next=...` (con `http://localhost:3107/**` en staging basta).
+3. **Trigger de vinculación**: pegar la definición de `public.link_client_on_profile_insert()` y del trigger que la llama (`select pg_get_functiondef('public.link_client_on_profile_insert'::regproc);` y `select tgname, tgrelid::regclass from pg_trigger where tgfoid = 'public.link_client_on_profile_insert'::regproc;`). Necesito saber qué columnas de `clients` rellena (`user_id`, `auth_user_id`, `status`…) cuando se crea el perfil del atleta.
+4. Confirmar que `client_review_schedules` tiene la restricción única `(client_id, review_template_id)` (la invitación hace `upsert` sobre ella).
+
+## 6. Al terminar
 
 Pasar al dueño cualquier error o advertencia que salga al aplicar las migraciones.

@@ -6,7 +6,7 @@
  *   SMTP_PORT      p.ej. 465 (SSL) o 587 (STARTTLS)
  *   SMTP_USER      usuario/cuenta
  *   SMTP_PASS      contraseña (en Gmail: contraseña de aplicación)
- *   SMTP_FROM      remitente, p.ej. "NextTrain <no-reply@ascenttech.cloud>"
+ *   SMTP_FROM      remitente, p.ej. "NexTrain <no-reply@ascenttech.cloud>"
  *
  * Si SMTP no está configurado, las funciones devuelven { ok: false } sin
  * lanzar — igual de non-blocking que era la llamada a n8n.
@@ -130,7 +130,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: str
         </td></tr>
       </table>
       <p style="font-size:11px;color:#9ca3af;margin-top:16px;">
-        Este email se ha enviado automáticamente desde NextTrain.
+        Este email se ha enviado automáticamente desde NexTrain.
       </p>
     </td></tr>
   </table>
@@ -243,4 +243,71 @@ export async function sendTestEmail(params: { to: string; coachId: string }): Pr
         },
         params.coachId
     )
+}
+
+// ---------------------------------------------------------------------------
+// Invitación del onboarding guiado
+// ---------------------------------------------------------------------------
+
+/** Escapa texto que va dentro del HTML del email de invitación */
+function escapeInviteText(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+/**
+ * Email "Álex te ha invitado a entrenar en NexTrain". Un solo botón con el
+ * enlace de acceso; si el coach puso contraseña inicial, se muestra y el
+ * botón lleva al login.
+ */
+export interface AthleteInviteEmailParams {
+    to: string
+    athleteName?: string | null
+    coachName: string
+    businessName?: string | null
+    accessUrl: string
+    tempPassword?: string | null
+    coachId?: string
+}
+
+export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { subject: string; html: string } {
+    const athleteFirstName = escapeInviteText(params.athleteName?.trim().split(/\s+/)[0] || 'atleta')
+    const coach = escapeInviteText(params.coachName.trim())
+    const business = params.businessName?.trim() && params.businessName.trim() !== params.coachName.trim()
+        ? ` (${escapeInviteText(params.businessName.trim())})`
+        : ''
+
+    const accessBlock = params.tempPassword
+        ? `<p>Tu contraseña temporal es:</p>
+           <p style="font-size:18px;font-weight:700;letter-spacing:1px;background:#f3f4f6;
+                     padding:10px 16px;border-radius:8px;display:inline-block;">
+             ${escapeInviteText(params.tempPassword)}
+           </p>
+           <p>Entra con tu email y esta contraseña; luego podrás cambiarla.</p>`
+        : `<p>Solo tienes que crear tu contraseña. En unos minutos tendrás todo listo.</p>`
+
+    const body = `
+        <p>Hola, <strong>${athleteFirstName}</strong>:</p>
+        <p>${coach}${business} te ha dado de alta en NexTrain, la app donde verás tu plan,
+        registrarás tus entrenamientos y hablarás con ${coach}.</p>
+        ${accessBlock}
+        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:14px;">
+          📱 <strong>Ábrelo en el móvil donde vas a usar la app.</strong>
+          Si lo abres en otro dispositivo o navegador, el enlace puede no funcionar.
+        </p>
+        <p style="font-size:13px;color:#6b7280;">Si el enlace ha caducado, pide a ${coach} que te reenvíe la invitación.</p>`
+
+    return {
+        subject: `${params.coachName.trim()} te ha invitado a entrenar en NexTrain`,
+        html: layout('Tu acceso a NexTrain', body, params.tempPassword ? 'Entrar en NexTrain' : 'Crear mi acceso', params.accessUrl),
+    }
+}
+
+export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): Promise<EmailResult> {
+    const { subject, html } = buildAthleteInviteEmail(params)
+    return send({ to: params.to, subject, html }, params.coachId)
 }

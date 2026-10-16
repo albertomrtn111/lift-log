@@ -30,6 +30,7 @@ export function MembersPageClient({
     reviewTemplates,
 }: MembersPageClientProps) {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const [search, setSearch] = useState(initialSearch)
     const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter)
 
@@ -84,7 +85,7 @@ export function MembersPageClient({
                             </button>
                         )}
                     </form>
-                    <AddClientButton coachId={coachId} formTemplates={formTemplates} />
+                    <AddClientButton coachId={coachId} formTemplates={formTemplates} defaultOpen={searchParams.get('invite') === '1'} />
                 </div>
                 <ClientTabSwitcher
                     className="sm:max-w-md"

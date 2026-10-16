@@ -249,7 +249,7 @@ export function EmailSettingsPanel() {
                             id="from-name"
                             value={fromName}
                             onChange={(e) => setFromName(e.target.value)}
-                            placeholder="P. ej. Alberto — NextTrain"
+                            placeholder="P. ej. Alberto — NexTrain"
                             className="sm:w-72"
                         />
                     </div>

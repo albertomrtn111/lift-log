@@ -2,8 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
-import { sendInviteEmailSmtp } from '@/lib/email/mailer'
-import { getAppUrl } from '@/lib/app-url'
+import { sendAthleteInvite } from '@/lib/onboarding/athlete-invite'
 
 interface InviteResult {
     success: boolean
@@ -11,58 +10,27 @@ interface InviteResult {
 }
 
 /**
- * Send an invite to a client via n8n webhook.
- * Updates invite_status and invited_at in the DB on success.
+ * Envía (o reenvía) la invitación del atleta: email "X te ha invitado a
+ * entrenar en NexTrain" con el enlace "Crear mi acceso".
  */
 export async function sendInviteAction(
     clientId: string,
     coachId: string
 ): Promise<InviteResult> {
-    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
-
-    // Fetch client data
-    const { data: client, error: clientError } = await supabase
-        .from('clients')
-        .select('id, email, full_name, is_sample')
-        .eq('id', clientId)
-        .single()
-
-    if (clientError || !client) {
-        return { success: false, error: 'Client not found' }
+    let validatedCoachId: string
+    let userId: string
+    try {
+        ({ coachId: validatedCoachId, userId } = await requireActiveCoachId(coachId))
+    } catch {
+        return { success: false, error: 'No autorizado' }
     }
 
-    if (client.is_sample) {
-        return { success: false, error: 'Es tu atleta de ejemplo: a ella no se le envía nada.' }
-    }
-
-    // Email directo desde la app (sustituye al webhook de n8n)
-    const result = await sendInviteEmailSmtp({
-        to: client.email,
-        clientName: client.full_name ?? undefined,
-        appUrl: getAppUrl(),
-        coachId: validatedCoachId,
-    })
-
-    if (!result.ok) {
-        return { success: false, error: result.error || 'Failed to send invitation' }
-    }
-
-    // Update invite fields in DB
-    const { error: updateError } = await supabase
-        .from('clients')
-        .update({
-            invite_status: 'sent',
-            invited_at: new Date().toISOString(),
-            onboarding_updated_at: new Date().toISOString(),
-        })
-        .eq('id', clientId)
-
-    if (updateError) {
-        console.error('[sendInviteAction] DB update error:', updateError)
-    }
+    const result = await sendAthleteInvite({ coachId: validatedCoachId, coachUserId: userId, clientId })
+    if (!result.ok) return { success: false, error: result.error }
 
     revalidatePath('/coach/members')
     revalidatePath('/coach/clients')
+    revalidatePath('/coach/dashboard')
 
     return { success: true }
 }
