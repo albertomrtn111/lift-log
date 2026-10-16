@@ -68,6 +68,10 @@ Sin migración nueva. Comprobar en staging, y **contarle al dueño** cómo está
 3. **Trigger de vinculación**: pegar la definición de `public.link_client_on_profile_insert()` y del trigger que la llama (`select pg_get_functiondef('public.link_client_on_profile_insert'::regproc);` y `select tgname, tgrelid::regclass from pg_trigger where tgfoid = 'public.link_client_on_profile_insert'::regproc;`). Necesito saber qué columnas de `clients` rellena (`user_id`, `auth_user_id`, `status`…) cuando se crea el perfil del atleta.
 4. Confirmar que `client_review_schedules` tiene la restricción única `(client_id, review_template_id)` (la invitación hace `upsert` sobre ella).
 
-## 6. Al terminar
+## 6. Fase 4 (primer plan e IA)
+
+Sin cambios de base de datos.
+
+## 7. Al terminar
 
 Pasar al dueño cualquier error o advertencia que salga al aplicar las migraciones.

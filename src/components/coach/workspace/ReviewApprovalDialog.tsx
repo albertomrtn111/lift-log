@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useCoachContext } from '@/contexts/CoachContext'
 import { SampleDeliveryPreview } from '@/components/coach/onboarding/SampleDeliveryPreview'
+import { AiProfileOfferDialog } from '@/components/coach/onboarding/AiProfileOfferDialog'
 import { buildSampleFeedback } from '@/lib/onboarding/sample-athlete-data.js'
 
 interface ReviewApprovalDialogProps {
@@ -82,6 +83,7 @@ export function ReviewApprovalDialog({
     const [feedbackText, setFeedbackText] = useState('')
     const [isPending, startTransition] = useTransition()
     const [samplePreview, setSamplePreview] = useState<{ feedback: string | null } | null>(null)
+    const [aiOfferOpen, setAiOfferOpen] = useState(false)
     const { toast } = useToast()
     const { coach } = useCoachContext()
     const coachFirstName = coach?.profile.full_name?.trim().split(/\s+/)[0] || null
@@ -94,11 +96,14 @@ export function ReviewApprovalDialog({
     }, [open, checkin?.id, checkin?.review?.status, isSampleClient, coachFirstName])
 
     const preview = (
-        <SampleDeliveryPreview
-            open={samplePreview !== null}
-            onOpenChange={(next) => !next && setSamplePreview(null)}
-            feedback={samplePreview?.feedback ?? null}
-        />
+        <>
+            <SampleDeliveryPreview
+                open={samplePreview !== null}
+                onOpenChange={(next) => !next && setSamplePreview(null)}
+                feedback={samplePreview?.feedback ?? null}
+            />
+            <AiProfileOfferDialog open={aiOfferOpen} onOpenChange={setAiOfferOpen} />
+        </>
     )
 
     if (!checkin) return preview
@@ -129,6 +134,7 @@ export function ReviewApprovalDialog({
             }
 
             if (result.success) {
+                if (result.offerAiProfile) setAiOfferOpen(true)
                 toast({
                     title: result.sentToClient
                         ? isAlreadyApproved ? 'Feedback enviado' : 'Revisión aprobada y enviada'

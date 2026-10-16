@@ -71,6 +71,8 @@ interface TrainingProgramWizardProps {
     /** When set, the wizard auto-imports this structure into Step 2 after the program is created in Step 1 */
     pendingAIStructure?: import('@/types/templates').StrengthStructure | null
     pendingAIName?: string | null
+    /** Primer plan "desde plantilla": al llegar a los días se abre el selector de plantillas */
+    autoOpenTemplateImport?: boolean
 }
 
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
@@ -85,6 +87,7 @@ export function TrainingProgramWizard({
     onClose,
     pendingAIStructure,
     pendingAIName,
+    autoOpenTemplateImport = false,
 }: TrainingProgramWizardProps) {
     const { toast } = useToast()
     const [step, setStep] = useState(initialStep)
@@ -99,6 +102,13 @@ export function TrainingProgramWizard({
     const [currentProgramId, setCurrentProgramId] = useState<string | null>(programId)
     const [isStepping, setIsStepping] = useState(false)
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+    const [autoImportShown, setAutoImportShown] = useState(false)
+    useEffect(() => {
+        if (autoOpenTemplateImport && step === 2 && !autoImportShown) {
+            setAutoImportShown(true)
+            setIsImportDialogOpen(true)
+        }
+    }, [autoOpenTemplateImport, step, autoImportShown])
     const appliedPendingAIKeyRef = useRef<string | null>(null)
 
     // Refs for imperative save

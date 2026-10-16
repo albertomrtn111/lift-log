@@ -15,7 +15,8 @@ export interface CoachOnboardingState {
     checklist_dismissed_at?: string
     sample_created_at?: string
     sample_explored_at?: string
-    ai_offer_dismissed_at?: string
+    /** Ya se le ofreció configurar su IA tras aprobar una revisión */
+    ai_offer_shown_at?: string
 }
 
 export interface SignupIntent {
@@ -101,4 +102,20 @@ export async function updateCoachOnboardingState(coachId: string, patch: Partial
         .eq('id', coachId)
     if (updateError) throw new Error(updateError.message)
     return next
+}
+
+/**
+ * ¿Toca ofrecer "¿Quieres que los análisis suenen como tú?"? Solo una vez y
+ * solo si el coach aún no tiene su perfil de IA aprobado. Lo marca como ofrecido.
+ */
+export async function claimAiProfileOffer(coachId: string): Promise<boolean> {
+    const admin = createAdminClient()
+    const [workspace, { data: aiProfile }] = await Promise.all([
+        getCoachWorkspaceInfo(coachId),
+        admin.from('coach_ai_profiles').select('profile_status').eq('coach_id', coachId).maybeSingle(),
+    ])
+    if (!workspace || aiProfile?.profile_status === 'approved') return false
+    if (workspace.onboarding_state.ai_offer_shown_at) return false
+    await updateCoachOnboardingState(coachId, { ai_offer_shown_at: new Date().toISOString() })
+    return true
 }
