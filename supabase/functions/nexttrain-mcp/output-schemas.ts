@@ -98,6 +98,12 @@ export const outputSchemas: Record<string, z.ZodType> = {
     archived_program_ids: z.array(z.string()), removed_scheduled_sessions: z.number().int(),
   }),
 
+  update_strength_program_days: z.looseObject({
+    updated: z.boolean(), program: z.looseObject({ id: z.string() }), day_count: z.number().int(), exercise_count: z.number().int(),
+    removed_day_count: z.number().int(), removed_exercise_count: z.number().int(), removed_scheduled_sessions: z.number().int(),
+    catalog_enforced: z.boolean(), note: text,
+  }),
+
   preview_cardio_session: z.looseObject({ saved: z.literal(false), normalized: record }),
   schedule_cardio_session: z.looseObject({ created: z.boolean(), session: record, normalized: record }),
   get_cardio_session: z.looseObject({ session: record, editable_plan: record, legacy_recovery_types_missing: z.boolean(), expected_updated_at: maybe(z.string()), note: text }),

@@ -82,3 +82,49 @@ Deno.test('update_strength_program rejects empty edits and invalid values before
   assert.throws(() => parse('update_strength_program', { client_id: client, program_id: program, expected_updated_at: version, effective_from: '2026-02-30' }))
   assert.throws(() => parse('update_strength_program', { client_id: client, program_id: program, expected_updated_at: version, days: [] }))
 })
+
+const dayId = '66666666-6666-4666-8666-666666666666'
+const exerciseId = '77777777-7777-4777-8777-777777777777'
+
+Deno.test('update_strength_program_days sends the whole structure, keeping omitted fields absent and null explicit', async () => {
+  const { run, calls } = fixture((_name, args) => ({ data: {
+    id: args.p_program_id, client_id: client, name: 'Bloque', status: 'active', updated_at: '2026-10-16T08:00:00+00:00',
+    day_count: 2, exercise_count: 3, removed_day_count: 0, removed_exercise_count: 1, removed_scheduled_sessions: 2, catalog_enforced: false,
+  }, error: null }))
+  const days = [
+    { id: dayId, name: 'Pierna', weekday: 1, exercises: [{ id: exerciseId, sets: 5, notes: null }] },
+    { name: 'Torso', weekday: 4, exercises: [{ name: 'Press banca', sets: 4, reps: '6-8', rir: 2 }, { name: 'Remo', muscle_group: 'espalda' }] },
+  ]
+  const { data } = await run('update_strength_program_days', { client_id: client, program_id: program, expected_updated_at: version, days })
+  assert.equal(calls[0].name, 'update_nexttrain_strength_program_days')
+  assert.deepEqual(calls[0].args, { p_coach_id: coach, p_client_id: client, p_program_id: program, p_payload: { expected_updated_at: version, days } })
+  // Lo que viaja a SQL: el campo omitido no existe y null se mantiene para vaciarlo.
+  const sent = JSON.parse(JSON.stringify(calls[0].args.p_payload.days[0].exercises[0]))
+  assert.deepEqual(sent, { id: exerciseId, sets: 5, notes: null })
+  assert.equal(data.removed_exercise_count, 1)
+  assert.equal(data.removed_scheduled_sessions, 2)
+  assert.equal(data.catalog_enforced, false)
+})
+
+Deno.test('update_strength_program_days validates the structure before calling SQL', () => {
+  const { parse } = fixture(() => ({ data: null, error: null }))
+  const base = { client_id: client, program_id: program, expected_updated_at: version }
+  const day = (exercises: any[], extra: any = {}) => ({ name: 'Pierna', weekday: 1, exercises, ...extra })
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [] }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [day([])] }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [day([{ sets: 3 }])] }), /name/)
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [day([{ name: 'X' }], { weekday: 8 })] }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [day([{ name: 'X', muscle_group: 'piernas' }])] }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: Array.from({ length: 8 }, () => day([{ name: 'X' }])) }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [day([{ name: 'X', weight: 80 }])] }))
+})
+
+Deno.test('update_strength_program_days shows the SQL reasons for rejecting an edit', async () => {
+  const input = { client_id: client, program_id: program, expected_updated_at: version, days: [{ name: 'Pierna', weekday: 1, exercises: [{ name: 'Sentadilla' }] }] }
+  const blocked = fixture(() => ({ data: null, error: { code: 'P0001', message: 'No se pueden quitar ejercicios con resultados registrados: Prensa. Mantenlos con su id o crea un programa nuevo.' } }))
+  assert.match((await blocked.run('update_strength_program_days', input)).error, /resultados registrados: Prensa/)
+  const missing = fixture(() => ({ data: null, error: { code: 'P0001', message: 'Estos ejercicios no están en la biblioteca: Sentadilla rara.' } }))
+  assert.match((await missing.run('update_strength_program_days', input)).error, /biblioteca/)
+  const internal = fixture(() => ({ data: null, error: { code: '23503', message: 'foreign key violation' } }))
+  assert.equal((await internal.run('update_strength_program_days', input)).error, 'No se han podido editar los días del programa. No se guardó ningún cambio.')
+})

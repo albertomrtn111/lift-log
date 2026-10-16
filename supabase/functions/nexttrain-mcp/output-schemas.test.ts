@@ -10,7 +10,7 @@ Deno.test('every registered tool declares an output schema', async () => {
     const source = await Deno.readTextFile(new URL(`./${file}`, import.meta.url))
     for (const match of source.matchAll(/registerTool\(\s*'([a-z_]+)'/g)) names.push(match[1])
   }
-  assert.ok(names.length >= 35)
+  assert.ok(names.length >= 36)
   assert.deepEqual(names.filter((name) => !outputSchemas[name]), [])
   assert.deepEqual(Object.keys(outputSchemas).filter((name) => !names.includes(name)), [])
 })
