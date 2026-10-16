@@ -312,7 +312,7 @@ Verificación: `agenda.test.ts` (tareas, eventos, bandeja y prompts) y `sdk.test
 
 ## Revisiones en borrador y estado de los programas (MCP 0.11.0)
 
-Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_update.sql` **antes** de desplegar la función.
+Migración `20261016120000_mcp_review_draft_and_program_update.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140407`).
 
 ### `save_review_draft`
 
@@ -337,11 +337,11 @@ Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_upda
 Verificación:
 - `coach-writes.test.ts`: parámetros, versiones, errores propios y ocultos, y «hoy» en la zona del espacio.
 - `supabase/tests/mcp_review_draft_and_program_update.sql`: 9 verificaciones; termina con `ROLLBACK`.
-- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo. Hay que repetirla contra la base real tras aplicar la migración.
+- La prueba SQL pasa en producción (9/9, con las políticas RLS reales; los datos de prueba se descartan con `ROLLBACK`) y en PGlite.
 
 ## Edición de días y ejercicios (MCP 0.12.0)
 
-Requiere aplicar la migración `20261016150000_mcp_strength_program_days_update.sql` **antes** de desplegar la función.
+Migración `20261016150000_mcp_strength_program_days_update.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140504`). Producción tiene la biblioteca de ejercicios, así que la edición la exige (`catalog_enforced: true`).
 
 `update_strength_program_days` llama a `update_nexttrain_strength_program_days` (`SECURITY INVOKER`, RLS y comprobación de membresía y cliente). Reemplaza la estructura completa en una transacción:
 
@@ -362,11 +362,11 @@ Requiere aplicar la migración `20261016150000_mcp_strength_program_days_update.
 Verificación:
 - `coach-writes.test.ts`: estructura enviada, validaciones y errores.
 - `supabase/tests/mcp_strength_program_days_update.sql`: 8 verificaciones, válida con y sin biblioteca; termina con `ROLLBACK`.
-- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, sin la biblioteca y con la migración de la biblioteca de `feature/mcp-exercise-catalog`. Hay que repetirla contra la base real antes de desplegar.
+- La prueba SQL pasa en producción en modo biblioteca (8/8) y en PGlite en los dos modos.
 
 ## «Hoy» en SQL (migración 20261016180000)
 
-Requiere aplicar `20261016180000_mcp_coach_today_in_sql.sql`. No hace falta redesplegar la función por esta migración.
+Migración `20261016180000_mcp_coach_today_in_sql.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140526`), después de la de la biblioteca. No hace falta redesplegar la función por ella.
 
 - `public.nexttrain_coach_today(coach_id)` devuelve el día actual en `coaches.timezone`. Sin zona o con una zona desconocida usa `Europe/Madrid`, igual que la app y `todayIn` en el MCP. Es `SECURITY INVOKER`, sin permiso para `anon`.
 - `create_nexttrain_strength_program` y `save_nexttrain_nutrition_plan` lo usan en lugar de `current_date` (UTC):
@@ -379,7 +379,7 @@ Requiere aplicar `20261016180000_mcp_coach_today_in_sql.sql`. No hace falta rede
   - **Si la migración de la biblioteca se aplica después de esta**, vuelve a escribir `current_date` en `create_nexttrain_strength_program`. En ese caso hay que repetir esta migración, que solo parchea lo que falte, o que esa rama use `nexttrain_coach_today`.
 - `update_nexttrain_strength_program` ya recibía el día del espacio desde el MCP (`today`), y `update_nexttrain_strength_program_days` y `save_nexttrain_review_draft` no dependen de la fecha.
 
-Verificación: `supabase/tests/mcp_coach_today_in_sql.sql` (6 verificaciones, con y sin biblioteca; termina con `ROLLBACK`). Usa un espacio en `Pacific/Kiritimati` (UTC+14) para crear un programa activo que empieza «hoy» cuando en UTC aún es el día anterior. Se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, con las migraciones de nutrición, de la #12 y, en un segundo modo, la de la biblioteca. Sin el parche, la prueba falla. Hay que repetirla contra la base real.
+Verificación: `supabase/tests/mcp_coach_today_in_sql.sql` (6 verificaciones, con y sin biblioteca; termina con `ROLLBACK`). Usa un espacio en `Pacific/Kiritimati` (UTC+14) para crear un programa activo que empieza «hoy» cuando en UTC aún es el día anterior. Se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, con las migraciones de nutrición, de la #12 y, en un segundo modo, la de la biblioteca. Sin el parche, la prueba falla. En producción pasa 6/6; se ejecutó con UTC en día 16 y Kiritimati en día 17.
 
 ## Ajustes requeridos en Supabase
 
