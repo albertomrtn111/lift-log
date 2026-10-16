@@ -41,6 +41,35 @@ export function addDays(value: string, days: number) {
   return day(date)
 }
 
+// Lunes (YYYY-MM-DD) de la semana de una fecha.
+export function mondayOf(value: string) {
+  const date = toUtcDate(value)
+  return addDays(value, -((date.getUTCDay() + 6) % 7))
+}
+
+// Igual que la app (src/data/billing.ts): sin zona guardada, el espacio trabaja en hora de Madrid.
+export const DEFAULT_TIME_ZONE = 'Europe/Madrid'
+
+function dateFormatter(timeZone: string) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
+// Devuelve una zona IANA válida; una vacía o desconocida cae en la zona por defecto.
+export function resolveTimeZone(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return DEFAULT_TIME_ZONE
+  try {
+    dateFormatter(value.trim())
+    return value.trim()
+  } catch {
+    return DEFAULT_TIME_ZONE
+  }
+}
+
+// «Hoy» (YYYY-MM-DD) en la zona del espacio de trabajo, no en UTC.
+export function todayIn(timeZone: string, now: Date = new Date()) {
+  return dateFormatter(resolveTimeZone(timeZone)).format(now)
+}
+
 export function jsonResult(data: unknown) {
   return {
     // Sin sangría: el resultado lo lee un modelo y los espacios solo suman tokens.
@@ -102,7 +131,8 @@ export async function inBatches(db: Db, table: string, select: string, field: st
 export async function resolveCoach(db: Db, requestedCoachId?: string) {
   let query = db
     .from('coach_memberships')
-    .select('coach_id, role, status, created_at')
+    // La zona del espacio viene en la misma consulta para no añadir una por herramienta.
+    .select('coach_id, role, status, created_at, coaches(timezone)')
     .eq('status', 'active')
     .in('role', ['owner', 'coach'])
     .order('created_at', { ascending: true })
@@ -116,7 +146,8 @@ export async function resolveCoach(db: Db, requestedCoachId?: string) {
     throw new Error('La cuenta pertenece a varios espacios. Indica coach_id para elegir uno.')
   }
 
-  return { coachId: data[0].coach_id as string, role: data[0].role as string }
+  const coach = Array.isArray(data[0].coaches) ? data[0].coaches[0] : data[0].coaches
+  return { coachId: data[0].coach_id as string, role: data[0].role as string, timeZone: resolveTimeZone(coach?.timezone) }
 }
 
 export async function requireClient(db: Db, coachId: string, clientId: string): Promise<Row> {
@@ -133,11 +164,13 @@ export async function requireClient(db: Db, coachId: string, clientId: string): 
 
 // Las pruebas sustituyen estas funciones para no depender de Supabase.
 export type ToolHelpers = {
-  resolveCoach: (db: Db, coachId?: string) => Promise<{ coachId: string }>
+  resolveCoach: (db: Db, coachId?: string) => Promise<{ coachId: string; timeZone?: string }>
   requireClient: (db: Db, coachId: string, clientId: string) => Promise<unknown>
   jsonResult: (data: unknown) => any
   toolError: (message: string) => any
   audit: (tool: string, details: Record<string, unknown>) => void
+  // Reloj de la petición; las pruebas lo fijan para comprobar el cambio de día.
+  now?: () => Date
 }
 
 export const defaultHelpers: ToolHelpers = { resolveCoach, requireClient, jsonResult, toolError, audit }
@@ -150,22 +183,27 @@ type RunOptions = {
   fallbackError: string
 }
 
-type RunContext = {
+export type RunContext = {
   coachId: string
+  // Zona del espacio de trabajo y «hoy» en esa zona, resueltos una vez por petición.
+  timeZone: string
+  today: string
   client: Row | null
   // Campos extra para la auditoría de éxito (record_id, result_count...).
   log: Record<string, unknown>
 }
 
 export function createToolRunner(db: Db, helpers: ToolHelpers = defaultHelpers) {
-  const { resolveCoach, requireClient, jsonResult, toolError, audit } = helpers
+  const { resolveCoach, requireClient, jsonResult, toolError, audit, now = () => new Date() } = helpers
   return async (tool: string, options: RunOptions, action: (context: RunContext) => Promise<unknown>) => {
     const scope = options.clientId === undefined ? {} : { client_id: options.clientId }
     try {
-      const { coachId } = await resolveCoach(db, options.coachId)
+      const resolved = await resolveCoach(db, options.coachId)
+      const coachId = resolved.coachId
+      const timeZone = resolveTimeZone(resolved.timeZone)
       const client = options.clientId ? await requireClient(db, coachId, options.clientId) as Row : null
       const log: Record<string, unknown> = {}
-      const result = await action({ coachId, client, log })
+      const result = await action({ coachId, timeZone, today: todayIn(timeZone, now()), client, log })
       audit(tool, { coach_id: coachId, ...scope, ...log, status: 'ok' })
       return jsonResult(result)
     } catch (error) {

@@ -15,7 +15,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `get_client_overview`: resume check-ins, tendencias, alertas, eventos y programas.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
-- `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas.
+- `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
 - `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas.
 - `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión.
@@ -55,7 +55,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `execution_status` distingue `confirmed` (serie marcada completada), `logged` (registro explícito con fecha de realización o confirmación) y `recorded_unverified` (valor editado sin confirmar). Las series prescritas que no se editaron no aparecen en `results`. Una sesión marcada completa no confirma automáticamente sus series. `data_quality` cuenta por separado series confirmadas, valores no confirmados y sesiones completas sin series confirmadas.
 - `exercise_id` identifica el ejercicio dentro del programa. `comparison_exercise_id` usa el identificador del catálogo cuando existe para comparar programas; si falta, solo es estable dentro del programa (`comparison_scope`).
 - El progreso de programas separa semana natural actual, semanas naturales completas, semanas con una sesión marcada completa y semanas con series confirmadas (estas últimas solo en el detalle del bloque; `null` en la lista). `estimated_end_date` se calcula a partir del inicio y duración si no se guardó `effective_to`; `end_date_source` indica el origen.
-- `get_program_history` acepta `as_of_date` para evaluar el progreso en una fecha concreta; si se omite, usa la fecha UTC actual.
+- `get_program_history` acepta `as_of_date` para evaluar el progreso en una fecha concreta; si se omite, usa el día actual en la zona horaria del espacio de trabajo.
 - Las sesiones previstas por la plantilla actual son una estimación; las sesiones pasadas sin confirmación no se presentan como omisiones verificadas. No existe estado de «omitida» ni semanas de descarga estructuradas: esos campos son `null`. Los cambios de bloque se infieren por el inicio del siguiente programa y los bloques de descarga solo se sugieren por su nombre.
 - La recuperación diaria disponible contiene sueño, pasos y notas. Energía, estrés, hambre, rendimiento y molestias proceden de check-ins.
 - Los eventos no tienen distancia estructurada; solo se extrae si aparece una cantidad explícita en su texto.
@@ -203,6 +203,45 @@ Despliegue: aplicar la migración `20261015140000_mcp_strength_program_atomic_sa
 - Una fecha con formato incorrecto muestra ahora en todas las herramientas el mismo aviso: «Usa el formato YYYY-MM-DD».
 
 Verificación: `node --test scripts/mcp-strength-progress.test.mjs scripts/mcp-nutrition.test.mjs scripts/mcp-cardio-plan.test.mjs`, `deno check supabase/functions/nexttrain-mcp/index.ts`, `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts supabase/functions/nexttrain-mcp/cardio.test.ts`. No requiere migraciones.
+
+## Planificación real y zona horaria (MCP 0.8.0)
+
+### Fuerza en `list_client_schedule`
+
+La fuerza sigue la misma lógica que el calendario de la app (`getWeeklySchedule` en la planificación del coach y `getClientWeeklySchedule` en la del atleta):
+
+- Cada fila de `scheduled_strength_sessions` del cliente aparece en su `scheduled_date`, con su `is_completed`. La app guarda ahí la finalización: al marcar la sesión o al registrar un ejercicio (`markStrengthSessionCompleted` / `autoMarkStrengthDayComplete`). Mover una sesión en el calendario cambia la fecha de esa fila; mover un día de plantilla crea la fila.
+- Cuentan también las filas de programas archivados, igual que en la app. `program_status` indica el estado del programa.
+- El programa activo (el más reciente con días de la semana asignados) completa los días que no tienen fila: `weeks` semanas (4 si falta) desde el lunes de la semana de `effective_from`, por `default_weekday`. Igual que en la app, no se usa `effective_to` y la primera semana incluye los días anteriores al inicio dentro de esa semana.
+- Un día de plantilla se oculta cuando, en la misma semana de lunes a domingo, existe una fila del mismo día del programa. Por eso una sesión reprogramada solo aparece en su fecha nueva. Para aplicar esta regla se leen siempre las semanas completas que cubren el rango, aunque este empiece o acabe a mitad de semana.
+
+Campos nuevos en los elementos `kind: "strength"` (se mantienen `date`, `program_id`, `program_name`, `week`, `day_id`, `day_name` y `exercises`):
+
+- `source`: `scheduled_session` (fila guardada) o `program_template` (día previsto por la plantilla, sin fila).
+- `session_id`: ID de la fila, o `null` en los días de plantilla.
+- `is_completed`: `true` solo si la fila está marcada como completada. Los días de plantilla siempre son `false`; que no esté marcada no demuestra que se omitiera.
+- `rescheduled` y `original_date`: si la fila cae en otra fecha que el mismo día de la plantilla en esa semana, `rescheduled=true` y `original_date` es la fecha de la plantilla. La base de datos no guarda la fecha original: se deduce de la plantilla de la semana, como hace la app al mostrar «Ajustada». Si una sesión se mueve a otra semana, la app y el MCP la comparan con la plantilla de la semana de destino, y en la semana de origen vuelve a aparecer el día de plantilla.
+- `extra_session`: `true` si la fila no sustituye a ningún día de la plantilla en esa semana (sesión añadida, duplicada o de otro programa). En la app se muestra como «Manual».
+- `program_status`: estado del programa de la fila.
+- `week` de una fila se calcula con el programa de esa fila y es `null` fuera de sus semanas. Los ejercicios se ordenan por `order_index`.
+
+Todas las consultas filtran por `coach_id` y `client_id` además de RLS. Los programas de las filas que no son el activo se leen con el mismo filtro.
+
+### «Hoy» en la zona del espacio de trabajo
+
+- `resolveCoach` lee `coaches.timezone` en la misma consulta de la membresía (`coaches(timezone)`), sin consultas extra. Si falta o no es una zona IANA válida, se usa `Europe/Madrid`, como en la app (`src/data/billing.ts`).
+- `createToolRunner` calcula una vez por petición `timeZone` y `today` con `todayIn(timeZone)` (`Intl.DateTimeFormat('en-CA', { timeZone })`) y los pasa a cada herramienta.
+- Usan ese día: `checkin_atrasado` en `list_clients` y en `get_client_overview`, `days_until_end` y `deadline_status` del objetivo, la ventana de cardio y los próximos eventos del resumen, los rangos por defecto del historial (`get_body_history`, `get_recovery_history`, `list_client_events`, `get_strength_results`, `get_cardio_results`), `as_of_date` por defecto en `get_program_history` y `on_date` por defecto en `get_current_nutrition`.
+- `list_clients` y `get_client_overview` devuelven `today` para que se vea qué día se usó.
+- No cambian: las fechas que ya son días (`scheduled_date`, `event_date`…), ni las marcas de tiempo `updated_at`. Las fechas de envío de check-ins (`submitted_at`) y sus filtros por rango siguen en UTC.
+- Las funciones SQL `create_nexttrain_strength_program` y `save_nexttrain_nutrition_plan` siguen usando `current_date` de Postgres (UTC) para rechazar un programa o una dieta activos con inicio futuro. Entre las 00:00 y las 02:00 en España pueden rechazar una fecha de inicio de hoy. Cambiarlo requiere una migración aparte.
+
+### Código y pruebas
+
+- `list_clients` pasa a `clients.ts` y `list_client_schedule` a `schedule.ts`. Aceptan los sustitutos de pruebas de `ToolHelpers`, que ahora incluye `now` opcional para fijar el reloj.
+- `buildStrengthSchedule` es la función pura que resuelve la fuerza; `clientAttentionFlags` calcula las señales de cada cliente.
+
+Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` (incluye `schedule.test.ts` y `timezone.test.ts`) y `node --test scripts/mcp-*.test.mjs`. No requiere migraciones.
 
 ## Ajustes requeridos en Supabase
 
