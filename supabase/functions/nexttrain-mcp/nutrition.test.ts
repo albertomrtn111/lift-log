@@ -49,7 +49,6 @@ function fixture() {
       if (coach !== coachId || client !== clientId) throw new Error('Cliente no autorizado')
     },
     jsonResult: (data: any) => ({ data }), toolError: (message: string) => ({ error: message }), audit() {},
-    annotations: { readOnlyHint: true },
   })
   async function run(name: string, input: any) {
     const tool = tools.get(name)

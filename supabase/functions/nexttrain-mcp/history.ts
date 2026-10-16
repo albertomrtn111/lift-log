@@ -1,38 +1,27 @@
 import { z } from 'npm:zod@4.3.6'
 import { findStrengthSession, programProgress, programTransitions, setEvidence } from './strength-progress.js'
+import {
+  addDays,
+  allRows,
+  createToolRunner,
+  day,
+  type Db,
+  defaultHelpers,
+  inBatches,
+  isoDate as dateSchema,
+  readOnlyAnnotations as annotations,
+  type Row,
+  rows,
+  type ToolHelpers,
+} from './shared.ts'
 
-type Db = any
 type Server = any
-type Row = Record<string, any>
 
-type Helpers = {
-  resolveCoach: (db: Db, coachId?: string) => Promise<{ coachId: string; role: string }>
-  requireClient: (db: Db, coachId: string, clientId: string) => Promise<Row>
-  jsonResult: (data: unknown) => unknown
-  toolError: (message: string) => unknown
-  audit: (tool: string, details: Record<string, unknown>) => void
-  annotations: Record<string, boolean>
-}
-
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-}, 'Fecha inválida; usa YYYY-MM-DD')
 const clientIdSchema = z.string().uuid()
 const coachIdSchema = z.string().uuid().optional().describe('Indícalo si tienes acceso a varios espacios de entrenamiento.')
 const historyDates = {
   from_date: dateSchema.optional(),
   to_date: dateSchema.optional(),
-}
-
-function day(value: string | Date) {
-  return new Date(value).toISOString().slice(0, 10)
-}
-
-function addDays(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return day(date)
 }
 
 function dateRange(from?: string, to?: string, defaultDays = 90, maxDays = 730) {
@@ -51,11 +40,6 @@ function num(value: unknown): number | null {
 
 function rounded(value: number, decimals = 2) {
   return Number(value.toFixed(decimals))
-}
-
-function rows(result: { data: Row[] | null; error: { message?: string } | null }, label: string): Row[] {
-  if (result.error) throw new Error(`No se han podido cargar ${label}.`)
-  return result.data ?? []
 }
 
 function object(value: unknown): Row {
@@ -231,43 +215,10 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
   }
 }
 
-async function inBatches(db: Db, table: string, select: string, field: string, ids: string[], configure?: (query: any) => any) {
-  const result: Row[] = []
-  for (let index = 0; index < ids.length; index += 60) {
-    const batch = ids.slice(index, index + 60)
-    result.push(...await allRows(() => {
-      let query = db.from(table).select(select).in(field, batch)
-      if (configure) query = configure(query)
-      return query.order('id', { ascending: true })
-    }, table))
-  }
-  return result
-}
-
-async function allRows(makeQuery: () => any, label: string) {
-  const result: Row[] = []
-  for (let offset = 0; offset < 50_000; offset += 1000) {
-    const page = rows(await makeQuery().range(offset, offset + 999), label)
-    result.push(...page)
-    if (page.length < 1000) return result
-  }
-  throw new Error(`La consulta de ${label} es demasiado amplia. Acota el rango de fechas o el programa.`)
-}
-
-export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
-  const { resolveCoach, requireClient, jsonResult, toolError, audit, annotations } = helpers
-  const scoped = async (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string) => Promise<unknown>) => {
-    try {
-      const { coachId } = await resolveCoach(db, requestedCoachId)
-      await requireClient(db, coachId, clientId)
-      const result = await run(coachId)
-      audit(tool, { coach_id: coachId, client_id: clientId, status: 'ok' })
-      return jsonResult(result)
-    } catch (error) {
-      audit(tool, { client_id: clientId, status: 'error' })
-      return toolError(error instanceof Error ? error.message : 'No se han podido cargar los datos del cliente.')
-    }
-  }
+export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelpers = defaultHelpers) {
+  const runTool = createToolRunner(db, helpers)
+  const scoped = (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string) => Promise<unknown>) =>
+    runTool(tool, { coachId: requestedCoachId, clientId, fallbackError: 'No se han podido cargar los datos del cliente.' }, ({ coachId }) => run(coachId))
 
   server.registerTool('get_body_history', {
     title: 'Histórico corporal',

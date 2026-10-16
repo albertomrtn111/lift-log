@@ -1,14 +1,21 @@
 import { z } from 'npm:zod@4.3.6'
 import { buildLegacyDiet, describeMeals, legacyMeals, macroPayload, normalizeMacroPlan, prepareDiet } from './nutrition-model.js'
+import {
+  allRows as allRowsBase,
+  createToolRunner,
+  defaultHelpers,
+  idempotentWriteAnnotations,
+  isoDate as date,
+  readOnlyAnnotations as annotations,
+  type Row,
+  rows as rowsBase,
+  type ToolHelpers,
+  writeAnnotations as write,
+} from './shared.ts'
 
-type Row = Record<string, any>
 const FOOD_FIELDS = 'id, name, brand, kcal, protein_g, carbs_g, fat_g, serving_size_g, unit_weight_g, unit_label, food_group, is_generic'
 const PLAN_FIELDS = 'id, name, type, status, effective_from, effective_to, notes, created_at, updated_at, meals'
 const MACRO_FIELDS = 'id, name, kcal, protein_g, carbs_g, fat_g, steps, cardio_target, day_type_config, effective_from, effective_to, notes, created_at'
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
-  const parsed = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
-}, 'Fecha inválida; usa YYYY-MM-DD')
 const scope = {
   client_id: z.string().uuid(), coach_id: z.string().uuid().optional(),
 }
@@ -44,21 +51,19 @@ const dietSettings = {
   adjust_to_targets: z.boolean().default(true).describe('Ajusta gramos con el mismo motor que la app. Revisa desviaciones en la respuesta.'),
   strict_targets: z.boolean().default(false).describe('Si true, rechaza opciones fuera de tolerancia o con alimentos sin macros.'),
 }
-const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
 
+// Nutrición conserva sus mensajes y pagina de 500 en 500 (máximo 10 500 filas).
 function rows(result: any, label: string): Row[] {
-  if (result.error) throw new Error(`No se ha podido cargar ${label}.`)
-  return result.data ?? []
+  return rowsBase(result, label, `No se ha podido cargar ${label}.`)
 }
 
-async function allRows(query: () => any, label: string) {
-  const result: Row[] = []
-  for (let offset = 0; offset <= 10000; offset += 500) {
-    const page = rows(await query().range(offset, offset + 499), label)
-    result.push(...page)
-    if (page.length < 500) return result
-  }
-  throw new Error(`Demasiados registros en ${label}; no se devuelve una dieta truncada.`)
+function allRows(query: () => any, label: string) {
+  return allRowsBase(query, label, {
+    pageSize: 500,
+    maxRows: 10_500,
+    loadError: `No se ha podido cargar ${label}.`,
+    tooManyError: `Demasiados registros en ${label}; no se devuelve una dieta truncada.`,
+  })
 }
 
 export async function loadDiet(db: any, coachId: string, clientId: string, plan: Row) {
@@ -77,19 +82,11 @@ export async function loadDiet(db: any, coachId: string, clientId: string, plan:
   return { ...plan, ...describeMeals(nested), structure_source: 'normalized_tables' }
 }
 
-export function registerNutritionTools(server: any, db: any, helpers: any) {
-  const { resolveCoach, requireClient, jsonResult, toolError, audit, annotations } = helpers
-  async function scoped(tool: string, input: Row, action: (coachId: string) => Promise<unknown>) {
-    try {
-      const { coachId } = await resolveCoach(db, input.coach_id)
-      if (input.client_id) await requireClient(db, coachId, input.client_id)
-      const result = await action(coachId)
-      audit(tool, { coach_id: coachId, client_id: input.client_id ?? null, status: 'ok' })
-      return jsonResult(result)
-    } catch (error) {
-      audit(tool, { client_id: input.client_id ?? null, status: 'error' })
-      return toolError(error instanceof Error ? error.message : 'No se ha podido gestionar la nutrición.')
-    }
+export function registerNutritionTools(server: any, db: any, helpers: ToolHelpers = defaultHelpers) {
+  const run = createToolRunner(db, helpers)
+  function scoped(tool: string, input: Row, action: (coachId: string) => Promise<unknown>) {
+    return run(tool, { coachId: input.coach_id, clientId: input.client_id ?? null, fallbackError: 'No se ha podido gestionar la nutrición.' },
+      ({ coachId }) => action(coachId))
   }
 
   async function planById(coachId: string, clientId: string, planId: string) {
@@ -193,7 +190,7 @@ export function registerNutritionTools(server: any, db: any, helpers: any) {
   server.registerTool('update_macro_plan', {
     title: 'Editar plan de macros', description: 'Edita un plan del cliente por ID. Los campos omitidos se conservan. target edita un plan simple; day_type_config edita ambos tipos de día.',
     inputSchema: z.strictObject({ ...scope, plan_id: z.string().uuid(), ...macroSettings, effective_from: date.optional() }),
-    annotations: { ...write, idempotentHint: true },
+    annotations: idempotentWriteAnnotations,
   }, (input: Row) => scoped('update_macro_plan', input, async coachId => {
     const raw = rows(await db.from('macro_plans').select(MACRO_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id).eq('id', input.plan_id), 'el plan de macros')[0]
     const current = normalizeMacroPlan(raw)

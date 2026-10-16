@@ -11,7 +11,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 ## Herramientas
 
 - `who_am_i`: comprueba los espacios de entrenador disponibles.
-- `list_clients`: lista clientes y señales de seguimiento.
+- `list_clients`: lista clientes y señales de seguimiento, paginado con `offset`, `has_more` y `next_offset`.
 - `get_client_overview`: resume check-ins, tendencias, alertas, eventos y programas.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
@@ -191,6 +191,18 @@ Verificación: `node --test scripts/mcp-nutrition.test.mjs scripts/diet-macros.t
 - Todas las fechas de entrada se validan como fechas reales (`2026-02-31` se rechaza).
 
 Despliegue: aplicar la migración `20261015140000_mcp_strength_program_atomic_save.sql` antes de desplegar la función. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (8 verificaciones; termina con `ROLLBACK`).
+
+## Respuestas compactas y código común (MCP 0.7.0)
+
+- Todas las herramientas devuelven el JSON en una sola línea, sin sangría, para gastar menos tokens. El contenido y los nombres de campo no cambian.
+- `list_clients` acepta `offset` (por defecto 0) y devuelve `has_more` y `next_offset`, como el resto de listas. El orden es `full_name` y después `id`, para que las páginas no se solapen con nombres repetidos. Los últimos check-ins se consultan solo para los clientes de la página.
+- `shared.ts` reúne lo que antes estaba copiado en `index.ts`, `history.ts`, `nutrition.ts` y `cardio.ts`: validación de fechas, `day`/`addDays`, `rows`, `allRows`, `inBatches`, `jsonResult`, `toolError`, `audit`, `resolveCoach`, `requireClient` y las anotaciones de lectura y escritura.
+- `createToolRunner` es el envoltorio común de las herramientas con espacio de entrenador: resuelve el `coach_id`, comprueba el cliente si se indica, registra la auditoría (`record_id` o `result_count` cuando aplica) y convierte los errores en `toolError` con el mismo mensaje que antes. Las validaciones previas, como el orden de fechas en `set_athlete_goal` o `list_client_schedule`, siguen respondiendo antes de consultar la base de datos y sin auditoría.
+- Los módulos de historial, nutrición y cardio aceptan sustitutos de `resolveCoach`, `requireClient`, `jsonResult`, `toolError` y `audit` para las pruebas; por defecto usan los de `shared.ts`.
+- Nutrición mantiene sus mensajes de error y su paginación de 500 filas (hasta 10 500 por consulta).
+- Una fecha con formato incorrecto muestra ahora en todas las herramientas el mismo aviso: «Usa el formato YYYY-MM-DD».
+
+Verificación: `node --test scripts/mcp-strength-progress.test.mjs scripts/mcp-nutrition.test.mjs scripts/mcp-cardio-plan.test.mjs`, `deno check supabase/functions/nexttrain-mcp/index.ts`, `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts supabase/functions/nexttrain-mcp/cardio.test.ts`. No requiere migraciones.
 
 ## Ajustes requeridos en Supabase
 
