@@ -320,7 +320,7 @@ Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_upda
 - Solo trabaja con revisiones en `draft`. Aprobar, enviar al cliente, notificar y archivar el check-in siguen siendo exclusivos de la app. Una revisión aprobada se rechaza.
 - Concurrencia: no hay `updated_at` fiable en `reviews`, así que hay que enviar `expected_summary` y `expected_message_to_client` con los valores actuales devueltos por `get_checkins` (`null` si no hay revisión). Si alguno no coincide, no se guarda nada.
 - Omitir un campo lo conserva; `null` o texto vacío lo vacía. Cada texto admite hasta 10 000 caracteres.
-- Permisos: la app escribe en `reviews` con la clave administrativa, porque las políticas RLS de esa tabla no garantizan la escritura con el token del coach. `save_nexttrain_review_draft` es `SECURITY DEFINER` con `search_path` vacío. Antes de escribir comprueba con `auth.uid()` la membresía activa (owner/coach), que el cliente pertenece al espacio y que el check-in es de ese cliente y está enviado. Solo modifica esas dos columnas. `anon` no tiene permiso de ejecución.
+- Permisos: `save_nexttrain_review_draft` es `SECURITY INVOKER` con `search_path` vacío. RLS se aplica con la política `reviews_rw_member` (`is_coach_member`: miembro activo owner/coach). Además comprueba con `auth.uid()` la membresía, que el cliente pertenece al espacio y que el check-in es de ese cliente y está enviado. Solo modifica esas dos columnas. `anon` no tiene permiso de ejecución.
 
 ### `update_strength_program`
 
@@ -337,7 +337,7 @@ Requiere aplicar la migración `20261016120000_mcp_review_draft_and_program_upda
 Verificación:
 - `coach-writes.test.ts`: parámetros, versiones, errores propios y ocultos, y «hoy» en la zona del espacio.
 - `supabase/tests/mcp_review_draft_and_program_update.sql`: 9 verificaciones; termina con `ROLLBACK`.
-- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, en el que RLS bloquea el insert directo en `reviews`. Hay que repetirla contra la base real antes de desplegar.
+- La prueba SQL se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo. Hay que repetirla contra la base real tras aplicar la migración.
 
 ## Edición de días y ejercicios (MCP 0.12.0)
 
