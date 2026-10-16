@@ -24,8 +24,8 @@ const historyDates = {
   to_date: dateSchema.optional(),
 }
 
-function dateRange(from?: string, to?: string, defaultDays = 90, maxDays = 730) {
-  const end = to ?? day(new Date())
+function dateRange(today: string, from?: string, to?: string, defaultDays = 90, maxDays = 730) {
+  const end = to ?? today
   const start = from ?? addDays(end, 1 - defaultDays)
   const length = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
   if (length < 0 || length > maxDays) throw new Error(`El rango debe estar ordenado y no superar ${maxDays} días.`)
@@ -217,16 +217,17 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
 
 export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelpers = defaultHelpers) {
   const runTool = createToolRunner(db, helpers)
-  const scoped = (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string) => Promise<unknown>) =>
-    runTool(tool, { coachId: requestedCoachId, clientId, fallbackError: 'No se han podido cargar los datos del cliente.' }, ({ coachId }) => run(coachId))
+  // today es el día actual en la zona del espacio de trabajo, no en UTC.
+  const scoped = (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string, today: string) => Promise<unknown>) =>
+    runTool(tool, { coachId: requestedCoachId, clientId, fallbackError: 'No se han podido cargar los datos del cliente.' }, ({ coachId, today }) => run(coachId, today))
 
   server.registerTool('get_body_history', {
     title: 'Histórico corporal',
     description: 'Peso diario, media semanal calculada con pesajes, peso medio del check-in y medidas corporales con nombre. Acepta hasta dos años.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_body_history', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 180)
+  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_body_history', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 180)
     const [dailyResult, checkinResult, definitionsResult] = await Promise.all([
       db.from('client_metrics').select('metric_date, weight_kg, notes').eq('coach_id', coachId).eq('client_id', client_id)
         .gte('metric_date', range.from_date).lte('metric_date', range.to_date).order('metric_date', { ascending: true }).limit(1000),
@@ -310,8 +311,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     description: 'Sueño y pasos diarios junto con energía, estrés, hambre, rendimiento y molestias comunicadas en check-ins. No inventa una puntuación de recuperación.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_recovery_history', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 90)
+  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_recovery_history', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 90)
     const [metricsResult, checkinsResult] = await Promise.all([
       db.from('client_metrics').select('metric_date, sleep_h, steps, notes').eq('coach_id', coachId).eq('client_id', client_id)
         .gte('metric_date', range.from_date).lte('metric_date', range.to_date).order('metric_date', { ascending: true }).limit(1000),
@@ -333,9 +334,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     description: 'Carreras, pruebas y objetivos con fecha, tipo, prioridad, meta, notas y distancia cuando está escrita explícitamente.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('list_client_events', client_id, coach_id, async (coachId) => {
-    const today = day(new Date())
-    const range = dateRange(from_date ?? addDays(today, -365), to_date ?? addDays(today, 365), 730, 1460)
+  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('list_client_events', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date ?? addDays(today, -365), to_date ?? addDays(today, 365), 730, 1460)
     const result = rows(await db.from('client_events').select('id, title, event_date, event_type, status, priority, location, target, notes')
       .eq('coach_id', coachId).eq('client_id', client_id).gte('event_date', range.from_date).lte('event_date', range.to_date)
       .order('event_date', { ascending: true }).range(offset, offset + limit), 'los eventos')
@@ -351,8 +351,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     description: 'Series, cargas, reps, RIR/RPE, notas e identificador comparable. Distingue ejecución confirmada de valores editados sin confirmar; una sesión completada no confirma sus series.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80), offset: z.number().int().min(0).max(5000).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 180)
+  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 180)
     const context = await strengthContext(db, coachId, client_id, program_id)
     const data = await completedStrengthRows(db, coachId, client_id, context, range)
     return {
@@ -372,8 +372,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     description: 'Distancia, tiempo, ritmo, FC, RPE, desnivel, laps y comentarios. Incluye actividades de Strava no vinculadas a una sesión para evitar huecos.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(60).default(20), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('get_cardio_results', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 90)
+  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('get_cardio_results', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 90)
     const [cardio, strava] = await Promise.all([
       allRows(() => db.from('cardio_sessions').select('id, scheduled_date, performed_date, name, activity_type, training_type, is_completed, actual_distance_km, actual_duration_min, actual_avg_pace, avg_heart_rate, max_heart_rate, rpe, feedback_notes, source_provider, provider_activity_id, strava_activity_id, planned_structure, source_laps:source_payload->laps, source_elevation:source_payload->total_elevation_gain')
         .eq('coach_id', coachId).eq('client_id', client_id).eq('is_completed', true)
@@ -437,8 +437,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     description: 'Bloques con semana natural, fecha final estimada, semanas con sesiones marcadas completas y semanas con series confirmadas. Distingue valores de fuerza confirmados o sin confirmar; no inventa omisiones ni descargas.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200), result_offset: z.number().int().min(0).max(5000).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId) => {
-    const asOfDate = as_of_date ?? day(new Date())
+  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId, today) => {
+    const asOfDate = as_of_date ?? today
     const context = await strengthContext(db, coachId, client_id, program_id, program_offset, program_limit)
     const programIds = context.programs.map((item) => item.id)
     const [sessions, timelinePrograms] = await Promise.all([

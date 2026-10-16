@@ -84,9 +84,10 @@ export async function loadDiet(db: any, coachId: string, clientId: string, plan:
 
 export function registerNutritionTools(server: any, db: any, helpers: ToolHelpers = defaultHelpers) {
   const run = createToolRunner(db, helpers)
-  function scoped(tool: string, input: Row, action: (coachId: string) => Promise<unknown>) {
+  // today es el día actual en la zona del espacio de trabajo, no en UTC.
+  function scoped(tool: string, input: Row, action: (coachId: string, today: string) => Promise<unknown>) {
     return run(tool, { coachId: input.coach_id, clientId: input.client_id ?? null, fallbackError: 'No se ha podido gestionar la nutrición.' },
-      ({ coachId }) => action(coachId))
+      ({ coachId, today }) => action(coachId, today))
   }
 
   async function planById(coachId: string, clientId: string, planId: string) {
@@ -119,8 +120,8 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     title: 'Nutrición vigente completa',
     description: 'Macros vigentes y configuración de entreno/descanso como objetos, dieta completa con comidas, opciones, cantidades, alternativas y totales. Los alimentos sin macros se señalan, no se inventan.',
     inputSchema: z.strictObject({ ...scope, on_date: date.optional(), day_type: z.enum(['default', 'training', 'rest']).optional() }), annotations,
-  }, (input: Row) => scoped('get_current_nutrition', input, async coachId => {
-    const onDate = input.on_date ?? new Date().toISOString().slice(0, 10)
+  }, (input: Row) => scoped('get_current_nutrition', input, async (coachId, today) => {
+    const onDate = input.on_date ?? today
     const [macrosResult, dietsResult] = await Promise.all([
       db.from('macro_plans').select(MACRO_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id)
         .lte('effective_from', onDate).or(`effective_to.is.null,effective_to.gte.${onDate}`).order('effective_from', { ascending: false }).order('created_at', { ascending: false }).limit(1),
