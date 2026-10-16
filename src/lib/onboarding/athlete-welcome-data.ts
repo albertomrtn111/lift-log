@@ -57,7 +57,7 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
     const admin = createAdminClient()
     const { data: client } = await admin
         .from('clients')
-        .select('id, coach_id, full_name, signed_up_at, preferences')
+        .select('id, coach_id, full_name, preferences')
         .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
@@ -98,7 +98,8 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
         guided: Boolean(state.guided),
         firstName: (client.full_name as string | null)?.trim().split(/\s+/)[0] || 'atleta',
         coachName,
-        needsPassword: !client.signed_up_at,
+        // signed_up_at no sirve: el trigger de vinculación lo rellena al crear la cuenta
+        needsPassword: !state.password_set_at,
         state,
         hasPushSubscription,
         stravaConnected,

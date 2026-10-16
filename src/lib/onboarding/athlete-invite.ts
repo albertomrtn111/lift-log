@@ -95,17 +95,23 @@ export async function sendAthleteInvite(params: {
     }
 
     const now = new Date().toISOString()
-    // Invitado con el flujo nuevo: al entrar verá la bienvenida guiada
+    // Invitado con el flujo nuevo: al entrar verá la bienvenida guiada.
+    // Ojo: el trigger link_client_on_profile_insert marca signed_up_at y
+    // invite_status='accepted' en cuanto el enlace crea la cuenta, así que
+    // "cuenta creada" es password_set_at (el atleta ya tiene contraseña).
     const preferences = (client.preferences ?? {}) as { onboarding?: Record<string, unknown> }
+    const onboarding: Record<string, unknown> = { ...(preferences.onboarding ?? {}), guided: true }
+    if (params.tempPassword && !onboarding.password_set_at) onboarding.password_set_at = now
+    const accountReady = Boolean(onboarding.password_set_at)
     await admin
         .from('clients')
-        .update({ preferences: { ...preferences, onboarding: { ...(preferences.onboarding ?? {}), guided: true } } })
+        .update({
+            preferences: { ...preferences, onboarding },
+            invited_at: now,
+            onboarding_updated_at: now,
+            ...(accountReady ? {} : { invite_status: 'sent' }),
+        })
         .eq('id', client.id)
-    await admin
-        .from('clients')
-        .update({ invite_status: 'sent', invited_at: now, onboarding_updated_at: now })
-        .eq('id', client.id)
-        .is('signed_up_at', null)
     await logInvite(params, client.email, 'sent', null)
     return { ok: true }
 }

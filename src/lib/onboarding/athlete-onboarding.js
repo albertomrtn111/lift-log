@@ -3,7 +3,7 @@
  * Lógica pura (testeada en scripts/).
  *
  * @typedef {'done' | 'skipped'} StepResolution
- * @typedef {{ guided?: boolean, install?: StepResolution, push?: StepResolution, watch?: StepResolution, completed_at?: string }} AthleteOnboardingState
+ * @typedef {{ guided?: boolean, password_set_at?: string, install?: StepResolution, push?: StepResolution, watch?: StepResolution, completed_at?: string }} AthleteOnboardingState
  * @typedef {'install' | 'push' | 'watch' | 'form'} AthleteStepId
  * @typedef {{ id: AthleteStepId, title: string, duration: string, optional: boolean, resolved: boolean }} AthleteStep
  */
