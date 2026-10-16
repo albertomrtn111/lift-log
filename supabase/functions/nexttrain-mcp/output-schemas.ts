@@ -30,6 +30,8 @@ const strengthResults = {
   result_count: maybe(z.number().int()),
 }
 
+const inboxSection = z.looseObject({ items: records, has_more: z.boolean() })
+
 const createdOrUpdated = { created: maybe(z.boolean()), updated: maybe(z.boolean()) }
 
 export const outputSchemas: Record<string, z.ZodType> = {
@@ -80,6 +82,15 @@ export const outputSchemas: Record<string, z.ZodType> = {
   update_macro_plan: z.looseObject({ ...createdOrUpdated, macro_plan: record }),
   create_diet_plan: z.looseObject({ ...createdOrUpdated, diet_plan: record, warnings: maybe(z.array(z.unknown())) }),
   update_diet_plan: z.looseObject({ ...createdOrUpdated, diet_plan: record, warnings: maybe(z.array(z.unknown())) }),
+
+  list_coach_tasks: z.looseObject({ coach_id: z.string(), today: day, tasks: records, ...page }),
+  update_coach_task: z.looseObject({ updated: z.boolean(), task: record }),
+  create_client_event: z.looseObject({ created: z.boolean(), event: record }),
+  update_client_event: z.looseObject({ updated: z.boolean(), event: record }),
+  get_coach_inbox: z.looseObject({
+    coach_id: z.string(), today: day,
+    checkins_to_review: inboxSection, unlinked_strava_activities: inboxSection.extend({ since: day }), pending_tasks: inboxSection, note: text,
+  }),
 
   preview_cardio_session: z.looseObject({ saved: z.literal(false), normalized: record }),
   schedule_cardio_session: z.looseObject({ created: z.boolean(), session: record, normalized: record }),

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { createMcpHandler, McpServer } from 'npm:@modelcontextprotocol/server@2.3.0'
+import { registerAgendaTools } from './agenda.ts'
 import { registerCardioTools } from './cardio.ts'
 import { registerClientTools } from './clients.ts'
 import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
 import { outputSchemas, withOutputSchemas } from './output-schemas.ts'
+import { registerPrompts } from './prompts.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { jsonResult, type ToolHelpers, toolError } from './shared.ts'
 
@@ -37,6 +39,8 @@ function server() {
   registerHistoryTools(instance, db, helpers)
   registerNutritionTools(instance, db, helpers)
   registerCardioTools(instance, db, helpers)
+  registerAgendaTools(instance, db, helpers)
+  registerPrompts(instance)
   return instance
 }
 
@@ -69,4 +73,13 @@ Deno.test('tools/call returns structuredContent together with the compact text',
   assert.equal(result.structuredContent.today, '2026-10-16')
   assert.deepEqual(result.structuredContent.clients[0].attention_flags, ['sin_checkin', 'checkin_atrasado'])
   assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent)
+})
+
+Deno.test('prompts/list and prompts/get serve the guided workflows', async () => {
+  const { prompts } = await call('prompts/list', {})
+  assert.deepEqual(prompts.map((prompt: any) => prompt.name), ['revision_semanal', 'preparar_bloque_siguiente', 'bandeja_del_dia'])
+  assert.deepEqual(prompts[0].arguments.map((argument: any) => [argument.name, argument.required]), [['cliente', true], ['checkin_id', false]])
+  const result = await call('prompts/get', { name: 'revision_semanal', arguments: { cliente: 'Ana' } })
+  assert.equal(result.messages[0].role, 'user')
+  assert.match(result.messages[0].content.text, /get_checkins/)
 })

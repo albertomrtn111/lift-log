@@ -36,6 +36,11 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
 - `create_strength_program`: crea un programa de fuerza completo en una sola transacción; por defecto queda en borrador.
 - `create_coach_task`: añade una tarea de seguimiento.
+- `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
+- `create_client_event` / `update_client_event`: crea y edita carreras, pruebas y otros eventos del cliente.
+- `get_coach_inbox`: check-ins por revisar, actividades de Strava sin enlazar y tareas pendientes de todos los clientes en una sola llamada.
+
+Prompts: `revision_semanal`, `preparar_bloque_siguiente` y `bandeja_del_dia`.
 
 ## Seguridad
 
@@ -267,6 +272,40 @@ Las respuestas ya se devolvían en una sola línea desde la 0.7.0 (`jsonResult` 
 - En una página típica de 200 series (10 sesiones × 5 ejercicios × 4 series), el JSON agrupado ocupa un 34 % del plano (prueba en `strength-results.test.ts`).
 
 Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` y `node --test scripts/mcp-*.test.mjs`. `sdk.test.ts` usa el SDK real (`createMcpHandler`) para comprobar que `tools/list` publica los esquemas y que `tools/call` devuelve `structuredContent`. Las pruebas de cardio, nutrición, planificación, clientes e historial validan sus respuestas contra los esquemas. No requiere migraciones.
+
+## Agenda, eventos, bandeja y prompts (MCP 0.10.0)
+
+### Tareas del entrenador
+
+- `list_coach_tasks`: filtra por `status` (`pending` por defecto, `completed` o `all`), `client_id` y fechas. Paginada con `has_more` y `next_offset`. Devuelve `client_name`, `overdue` (pendiente con fecha anterior a hoy, en la zona del espacio) y `updated_at`.
+- `update_coach_task`: edita título, descripción, fecha (también para aplazar), prioridad y cliente (`null` lo desvincula). `status: "completed"` rellena `completed_at`, igual que la app; `status: "pending"` la reabre y lo vacía.
+- Mismo mecanismo de concurrencia que cardio y nutrición: hay que enviar `expected_updated_at` (el `updated_at` leído) y la escritura se filtra por ese valor. Si la tarea cambió entretanto, no se guarda nada.
+- No se borran tareas desde el MCP.
+
+### Eventos del cliente
+
+- `create_client_event`: mismos valores que la app. `event_type` puede ser `race` (por defecto), `test`, `camp` u `other`; `status`, `planned` (por defecto), `completed` o `cancelled`; `priority`, `a`, `b` (por defecto) o `c`. Los textos vacíos se guardan como `null`.
+- `update_client_event`: edición parcial con `expected_updated_at`. `list_client_events` devuelve ahora `updated_at`. Para anular un evento se usa `status: "cancelled"`; el MCP no borra eventos.
+
+### Bandeja del entrenador
+
+`get_coach_inbox` reúne, solo de clientes activos (como el panel de la app):
+
+- `checkins_to_review`: check-ins enviados que siguen en `reviewed` (la app los pasa a `archived` al aprobar), sin revisión aprobada, del más antiguo al más reciente. Incluye señales breves, `review_status`, `ai_status` y `has_draft_message`.
+- `unlinked_strava_activities`: actividades no borradas sin `cardio_session_id` ni `matched_planned_session_id` de los últimos `strava_days` días (21 por defecto, como la app). `feedback_status=pending` indica que el atleta aún no las ha revisado.
+- `pending_tasks`: tareas pendientes de hoy o vencidas, con `overdue`. Incluye las tareas sin cliente.
+- Cada sección devuelve como mucho `limit` elementos (30 por defecto) y `has_more`. Son cuatro consultas en total y una más para los nombres, independientemente del número de clientes.
+
+### Prompts MCP
+
+Guían al modelo sobre qué herramientas usar y en qué orden; no modifican datos por sí mismos y piden confirmación antes de guardar.
+
+- `revision_semanal` (`cliente`, `checkin_id` opcional): check-in, resumen del cliente, peso, recuperación, fuerza, cardio, planificación y nutrición. Termina con un resumen interno y un borrador de mensaje para el cliente.
+- `preparar_bloque_siguiente` (`cliente`, `semanas` opcional): historial de programas, resultados agrupados, objetivo, eventos y check-ins recientes. Propone el bloque y lo crea en borrador tras la confirmación.
+- `bandeja_del_dia`: `get_coach_inbox` ordenado por prioridad.
+- `cliente` admite nombre o ID; si es un nombre, se busca con `list_clients`.
+
+Verificación: `agenda.test.ts` (tareas, eventos, bandeja y prompts) y `sdk.test.ts` (`prompts/list` y `prompts/get` con el SDK real), además del resto de pruebas de Deno y node. No requiere migraciones: las tablas `coach_tasks` y `client_events` ya permiten a los miembros activos del espacio leer y escribir (`sql/create_coach_tasks.sql`, `sql/create_client_events.sql`).
 
 ## Ajustes requeridos en Supabase
 
