@@ -42,6 +42,7 @@ export const promptTexts = {
     '4. get_checkins recientes: molestias, energía y adherencia.',
     '',
     `Propón un bloque${weeks ? ` de ${weeks} semanas` : ''} con días, ejercicios, series, repeticiones, RIR y descansos, justificando la progresión con los datos reales.`,
+    'Usa solo ejercicios de la biblioteca: búscalos con list_exercise_catalog y envía su nombre exacto o catalog_exercise_id.',
     'Espera mi confirmación. Después créalo con create_strength_program en borrador (status draft) y no lo actives sin que te lo pida; para activarlo o archivar el actual usa update_strength_program. Si solo hay que ajustar el bloque actual, usa update_strength_program_days conservando los id.',
   ].join('\n'),
 

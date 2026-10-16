@@ -12,14 +12,14 @@ const muscleGroup = z.enum(['hombro', 'pecho', 'espalda', 'abdomen', 'cuádricep
 // Omitir un campo de un ejercicio existente lo conserva; null lo vacía.
 const programExercise = z.strictObject({
   id: z.string().uuid().optional().describe('ID del ejercicio existente (get_program_history). Sin id se crea uno nuevo.'),
-  catalog_exercise_id: z.string().uuid().optional().describe('ID de la biblioteca de ejercicios, si está disponible.'),
+  catalog_exercise_id: z.string().uuid().optional().describe('ID de list_exercise_catalog. Si se omite en un ejercicio nuevo, name debe coincidir con un ejercicio o alias de la biblioteca.'),
   name: z.string().trim().min(1).max(160).optional().describe('Obligatorio en ejercicios nuevos. En uno existente, cambiarlo lo sustituye por otro ejercicio.'),
   sets: z.number().int().min(1).max(20).nullable().optional(),
   reps: z.string().trim().max(80).nullable().optional(),
   rir: z.number().min(0).max(10).nullable().optional(),
   rest_seconds: z.number().int().min(0).max(1800).nullable().optional(),
   notes: z.string().trim().max(800).nullable().optional(),
-  muscle_group: muscleGroup.nullable().optional(),
+  muscle_group: muscleGroup.nullable().optional().describe('Solo sin biblioteca de ejercicios; con ella manda el grupo del catálogo.'),
 }).refine((exercise) => exercise.id || exercise.name, 'Un ejercicio nuevo necesita name.')
 
 const programDay = z.strictObject({
