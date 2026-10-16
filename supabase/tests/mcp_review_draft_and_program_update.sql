@@ -79,7 +79,7 @@ begin
   end;
   v_assertions := v_assertions + 1;
 
-  -- 5. Otro espacio queda fuera aunque la función sea SECURITY DEFINER.
+  -- 5. Otro espacio queda fuera.
   begin
     perform public.save_nexttrain_review_draft(gen_random_uuid(), v_client, v_checkin,
       jsonb_build_object('summary', 'x', 'expected_summary', 'Buena adherencia', 'expected_message_to_client', 'Gran semana'));
