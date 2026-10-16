@@ -4,17 +4,16 @@
 -- ---------------------------------------------------------------------------
 -- 1. Borrador de revisión de un check-in
 -- ---------------------------------------------------------------------------
--- La app escribe en reviews con la clave administrativa: las políticas RLS de
--- reviews no garantizan que el coach pueda insertarlas o editarlas con su token.
--- Esta función usa SECURITY DEFINER, pero solo después de comprobar con
--- auth.uid() la membresía activa (owner/coach), el cliente y el check-in, y
--- solo toca summary y message_to_client de una revisión en borrador. Aprobar o
--- enviar al cliente sigue siendo exclusivo de la app.
+-- SECURITY INVOKER: la política reviews_rw_member (is_coach_member) permite a los
+-- miembros activos owner/coach leer y escribir las revisiones de su espacio. Además
+-- se comprueba de forma explícita la membresía, el cliente y el check-in, y solo se
+-- tocan summary y message_to_client de una revisión en borrador. Aprobar o enviar
+-- al cliente sigue siendo exclusivo de la app.
 create or replace function public.save_nexttrain_review_draft(
   p_coach_id uuid, p_client_id uuid, p_checkin_id uuid, p_payload jsonb
 ) returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $function$
 declare
