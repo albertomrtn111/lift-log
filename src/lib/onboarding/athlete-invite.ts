@@ -4,8 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/app-url'
 import { sendAthleteInviteEmail } from '@/lib/email/mailer'
 
-/** Pantalla a la que llega el atleta tras abrir el enlace (crear contraseña) */
-export const ATHLETE_LANDING_PATH = '/set-password?mode=invite'
+/** Pantalla a la que llega el atleta tras abrir el enlace: bienvenida y contraseña */
+export const ATHLETE_LANDING_PATH = '/bienvenida'
 
 function isAlreadyRegistered(message: string) {
     const text = message.toLowerCase()
@@ -60,7 +60,7 @@ export async function sendAthleteInvite(params: {
     const admin = createAdminClient()
     const { data: client, error } = await admin
         .from('clients')
-        .select('id, email, full_name, is_sample')
+        .select('id, email, full_name, is_sample, preferences')
         .eq('id', params.clientId)
         .eq('coach_id', params.coachId)
         .maybeSingle()
@@ -95,6 +95,12 @@ export async function sendAthleteInvite(params: {
     }
 
     const now = new Date().toISOString()
+    // Invitado con el flujo nuevo: al entrar verá la bienvenida guiada
+    const preferences = (client.preferences ?? {}) as { onboarding?: Record<string, unknown> }
+    await admin
+        .from('clients')
+        .update({ preferences: { ...preferences, onboarding: { ...(preferences.onboarding ?? {}), guided: true } } })
+        .eq('id', client.id)
     await admin
         .from('clients')
         .update({ invite_status: 'sent', invited_at: now, onboarding_updated_at: now })

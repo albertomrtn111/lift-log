@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { resolveUserMode } from '@/lib/auth/get-user-context'
+import { getAthleteWelcomeData } from '@/lib/onboarding/athlete-welcome-data'
 import { APP_MODE_COOKIE, LAST_MODE_COOKIE, type AppMode, getModeRedirectPath } from '@/lib/mode-utils'
 
 export default async function HomePage() {
@@ -25,6 +26,9 @@ export default async function HomePage() {
     }
 
     if (modeResolution === 'client') {
+        // Atleta nuevo con la bienvenida a medias: seguir donde lo dejó
+        const welcome = await getAthleteWelcomeData(user.id).catch(() => null)
+        if (welcome?.guided && (welcome.needsPassword || !welcome.steps.complete)) redirect('/bienvenida')
         redirect(getModeRedirectPath('client'))
     }
 

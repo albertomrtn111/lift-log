@@ -72,6 +72,14 @@ Sin migración nueva. Comprobar en staging, y **contarle al dueño** cómo está
 
 Sin cambios de base de datos.
 
-## 7. Al terminar
+## 7. Fase 5 (bienvenida del atleta)
+
+Sin migración. Usa columnas que ya existen: `clients.preferences` (jsonb; el progreso va en `preferences.onboarding`) y `checkins.raw_payload` (el borrador autoguardado va en `raw_payload._draft` mientras el formulario está pendiente). Comprobar:
+
+1. Que nada en la BD (triggers, vistas, funciones) dependa de que `raw_payload` de un checkin pendiente esté vacío.
+2. Que `clients.preferences` no lo use ningún proceso externo (n8n, MCP…) con otro formato.
+3. Redirect URLs: el enlace de invitación vuelve a `<APP_URL>/auth/callback?next=%2Fbienvenida`.
+
+## 8. Al terminar
 
 Pasar al dueño cualquier error o advertencia que salga al aplicar las migraciones.
