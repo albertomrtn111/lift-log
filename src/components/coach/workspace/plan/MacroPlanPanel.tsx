@@ -7,6 +7,7 @@ import { AIActionButton } from '@/components/ui/ai-action-button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
     Dialog,
@@ -30,12 +31,14 @@ import {
     Dumbbell,
     Moon,
     ArrowLeft,
+    Wand2,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useActiveMacroPlan, useUpsertMacroPlan } from '@/hooks/useMacroPlan'
 import type { MacroPlan, MacroDayTypeConfig, MacroDayTypeValues } from '@/data/nutrition/types'
 import { cn } from '@/lib/utils'
+import { autofitCarbs, isBalanced, kcalGap, macroKcal, withAutofitCarbs } from '@/lib/nutrition/macro-autofit'
 import { AINutritionDialog } from './AINutritionDialog'
 
 // ============================================================================
@@ -49,6 +52,10 @@ interface MacroPlanPanelProps {
 
 type MacroMode = 'simple' | 'day_type'
 type ModalStep = 'mode' | 'form'
+type BlockKey = 'simple' | 'training' | 'rest'
+type AutoCarbs = Record<BlockKey, boolean>
+
+const ALL_AUTO: AutoCarbs = { simple: true, training: true, rest: true }
 
 interface MacroValues {
     kcal: number
@@ -128,9 +135,9 @@ function planToFormData(plan: MacroPlan): { mode: MacroMode; formData: FormData 
 
 function freshFormData(): FormData {
     return {
-        simple: { ...DEFAULT_VALUES },
-        training: { ...DEFAULT_VALUES, kcal: 2500, carbs: 250 },
-        rest: { ...DEFAULT_VALUES, kcal: 1800, carbs: 150 },
+        simple: withAutofitCarbs({ ...DEFAULT_VALUES }),
+        training: withAutofitCarbs({ ...DEFAULT_VALUES, kcal: 2500 }),
+        rest: withAutofitCarbs({ ...DEFAULT_VALUES, kcal: 1800 }),
         steps: undefined,
         notes: '',
         effective_from: new Date().toISOString().split('T')[0],
@@ -151,6 +158,8 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
     const [macroMode, setMacroMode] = useState<MacroMode>('simple')
     const [modalStep, setModalStep] = useState<ModalStep>('mode')
     const [formData, setFormData] = useState<FormData>(freshFormData())
+    // Carbos automáticos por bloque: completan las kcal que dejan proteína y grasa
+    const [autoCarbs, setAutoCarbs] = useState<AutoCarbs>(ALL_AUTO)
 
     // ---- handlers -------------------------------------------------------
 
@@ -159,16 +168,26 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
         setMacroMode('simple')
         setModalStep('mode')
         setFormData(freshFormData())
+        setAutoCarbs(ALL_AUTO)
         setShowForm(true)
     }
 
     const handleEdit = () => {
         if (!activePlan) return
         const { mode, formData: fd } = planToFormData(activePlan)
+        // Un plan cuyas kcal ya cuadran sigue en automático; si no, se respeta
+        // lo guardado y el coach decide si ajusta (no se cambia nada sin querer)
+        const editedKeys: BlockKey[] = mode === 'simple' ? ['simple'] : ['training', 'rest']
+        const auto: AutoCarbs = { ...ALL_AUTO }
+        for (const key of editedKeys) auto[key] = isBalanced(fd[key])
+        for (const key of ['simple', 'training', 'rest'] as BlockKey[]) {
+            if (!editedKeys.includes(key)) fd[key] = withAutofitCarbs(fd[key])
+        }
         setEditingPlan(activePlan)
         setMacroMode(mode)
         setModalStep('form') // skip mode selection when editing
         setFormData(fd)
+        setAutoCarbs(auto)
         setShowForm(true)
     }
 
@@ -228,11 +247,16 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
         }
     }
 
-    const updateValues = (key: 'simple' | 'training' | 'rest', field: keyof MacroValues, value: number) => {
-        setFormData(prev => ({
-            ...prev,
-            [key]: { ...prev[key], [field]: value },
-        }))
+    const updateValues = (key: BlockKey, field: keyof MacroValues, value: number) => {
+        setFormData(prev => {
+            const next = { ...prev[key], [field]: value }
+            return { ...prev, [key]: autoCarbs[key] && field !== 'carbs' ? withAutofitCarbs(next) : next }
+        })
+    }
+
+    const toggleAutoCarbs = (key: BlockKey, enabled: boolean) => {
+        setAutoCarbs(prev => ({ ...prev, [key]: enabled }))
+        if (enabled) setFormData(prev => ({ ...prev, [key]: withAutofitCarbs(prev[key]) }))
     }
 
     // ---- loading / error ------------------------------------------------
@@ -327,6 +351,8 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
                             isEditing={!!editingPlan}
                             isSaving={upsertMutation.isPending}
                             onUpdateValues={updateValues}
+                            autoCarbs={autoCarbs}
+                            onToggleAutoCarbs={toggleAutoCarbs}
                             onFormDataChange={setFormData}
                             onBack={() => setModalStep('mode')}
                             onSave={handleSave}
@@ -410,7 +436,9 @@ interface MacroFormStepProps {
     formData: FormData
     isEditing: boolean
     isSaving: boolean
-    onUpdateValues: (key: 'simple' | 'training' | 'rest', field: keyof MacroValues, value: number) => void
+    onUpdateValues: (key: BlockKey, field: keyof MacroValues, value: number) => void
+    autoCarbs: AutoCarbs
+    onToggleAutoCarbs: (key: BlockKey, enabled: boolean) => void
     onFormDataChange: (fd: FormData) => void
     onBack: () => void
     onSave: () => void
@@ -423,6 +451,8 @@ function MacroFormStep({
     isEditing,
     isSaving,
     onUpdateValues,
+    autoCarbs,
+    onToggleAutoCarbs,
     onFormDataChange,
     onBack,
     onSave,
@@ -447,6 +477,8 @@ function MacroFormStep({
                 <MacroFieldsBlock
                     values={formData.simple}
                     onChange={(field, val) => onUpdateValues('simple', field, val)}
+                    autoCarbs={autoCarbs.simple}
+                    onToggleAutoCarbs={(enabled) => onToggleAutoCarbs('simple', enabled)}
                 />
             ) : (
                 <Tabs defaultValue="training" className="w-full">
@@ -464,12 +496,16 @@ function MacroFormStep({
                         <MacroFieldsBlock
                             values={formData.training}
                             onChange={(field, val) => onUpdateValues('training', field, val)}
+                            autoCarbs={autoCarbs.training}
+                            onToggleAutoCarbs={(enabled) => onToggleAutoCarbs('training', enabled)}
                         />
                     </TabsContent>
                     <TabsContent value="rest" className="mt-3">
                         <MacroFieldsBlock
                             values={formData.rest}
                             onChange={(field, val) => onUpdateValues('rest', field, val)}
+                            autoCarbs={autoCarbs.rest}
+                            onToggleAutoCarbs={(enabled) => onToggleAutoCarbs('rest', enabled)}
                         />
                     </TabsContent>
                 </Tabs>
@@ -537,44 +573,84 @@ function MacroFormStep({
 function MacroFieldsBlock({
     values,
     onChange,
+    autoCarbs,
+    onToggleAutoCarbs,
 }: {
     values: MacroValues
     onChange: (field: keyof MacroValues, value: number) => void
+    autoCarbs: boolean
+    onToggleAutoCarbs: (enabled: boolean) => void
 }) {
+    const { overflowKcal } = autofitCarbs(values)
+    const gap = kcalGap(values)
+    const total = Math.round(macroKcal(values))
+    const balanced = isBalanced(values)
+    const num = (value: string) => (value === '' ? 0 : Number(value))
+
     return (
-        <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-                <Label>Calorías (kcal)</Label>
-                <Input
-                    type="number"
-                    value={values.kcal}
-                    onChange={(e) => onChange('kcal', Number(e.target.value))}
-                />
+        <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Calorías (kcal)</Label>
+                    <Input type="number" inputMode="numeric" value={values.kcal} onChange={(e) => onChange('kcal', num(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                    <Label>Proteína (g)</Label>
+                    <Input type="number" inputMode="numeric" value={values.protein} onChange={(e) => onChange('protein', num(e.target.value))} />
+                </div>
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="carbs-input">Carbohidratos (g)</Label>
+                        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <Wand2 className={cn('h-3 w-3', autoCarbs && 'text-primary')} />
+                            Auto
+                            <Switch checked={autoCarbs} onCheckedChange={onToggleAutoCarbs} className="scale-75" aria-label="Ajustar carbohidratos automáticamente" />
+                        </label>
+                    </div>
+                    <Input
+                        id="carbs-input"
+                        type="number"
+                        inputMode="numeric"
+                        value={values.carbs}
+                        readOnly={autoCarbs}
+                        tabIndex={autoCarbs ? -1 : undefined}
+                        onChange={(e) => onChange('carbs', num(e.target.value))}
+                        className={cn(autoCarbs && 'cursor-default border-dashed bg-primary/[0.04] font-semibold text-primary focus-visible:ring-0')}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label>Grasas (g)</Label>
+                    <Input type="number" inputMode="numeric" value={values.fat} onChange={(e) => onChange('fat', num(e.target.value))} />
+                </div>
             </div>
-            <div className="space-y-2">
-                <Label>Proteína (g)</Label>
-                <Input
-                    type="number"
-                    value={values.protein}
-                    onChange={(e) => onChange('protein', Number(e.target.value))}
-                />
-            </div>
-            <div className="space-y-2">
-                <Label>Carbohidratos (g)</Label>
-                <Input
-                    type="number"
-                    value={values.carbs}
-                    onChange={(e) => onChange('carbs', Number(e.target.value))}
-                />
-            </div>
-            <div className="space-y-2">
-                <Label>Grasas (g)</Label>
-                <Input
-                    type="number"
-                    value={values.fat}
-                    onChange={(e) => onChange('fat', Number(e.target.value))}
-                />
-            </div>
+
+            {/* Cuadre de kcal */}
+            {autoCarbs && overflowKcal > 0 ? (
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-xs">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                    <span>
+                        La proteína y la grasa ya suman <strong>{overflowKcal} kcal más</strong> que el objetivo. Sube las calorías o baja proteína o grasa.
+                    </span>
+                </div>
+            ) : !autoCarbs && !balanced ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-xs">
+                    <span>
+                        Los macros suman <strong className="tabular-nums">{total} kcal</strong>,{' '}
+                        <span className="tabular-nums">{Math.abs(gap)} kcal {gap > 0 ? 'más' : 'menos'}</span> que el objetivo.
+                    </span>
+                    <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => onToggleAutoCarbs(true)}>
+                        <Wand2 className="h-3 w-3" />
+                        Ajustar carbos
+                    </Button>
+                </div>
+            ) : (
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground tabular-nums">
+                    <span><span className="font-medium text-rose-500">P</span> {Math.round(values.protein * 4)} kcal</span>
+                    <span><span className="font-medium text-amber-500">C</span> {Math.round(values.carbs * 4)} kcal</span>
+                    <span><span className="font-medium text-sky-500">G</span> {Math.round(values.fat * 9)} kcal</span>
+                    <span className="ml-auto font-medium text-foreground">= {total} kcal</span>
+                </p>
+            )}
         </div>
     )
 }
