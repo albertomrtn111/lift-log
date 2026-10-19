@@ -17,6 +17,27 @@ export async function POST(request: NextRequest) {
     const { clientId } = await request.json()
     if (!clientId) return NextResponse.json({ error: 'clientId requerido' }, { status: 400 })
 
+    // El atleta tiene que pertenecer a un coach donde el usuario tenga membresía activa.
+    const { data: client } = await supabase
+        .from('clients')
+        .select('coach_id')
+        .eq('id', clientId)
+        .maybeSingle()
+
+    const { data: membership } = client
+        ? await supabase
+            .from('coach_memberships')
+            .select('coach_id')
+            .eq('user_id', user.id)
+            .eq('coach_id', client.coach_id)
+            .eq('status', 'active')
+            .maybeSingle()
+        : { data: null }
+
+    if (!membership) {
+        return NextResponse.json({ error: 'Atleta no encontrado' }, { status: 404 })
+    }
+
     if (!isPushServerConfigured()) {
         return NextResponse.json({
             success: false,

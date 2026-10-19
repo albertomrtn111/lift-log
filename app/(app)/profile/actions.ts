@@ -6,6 +6,8 @@ import { getUserContext } from '@/lib/auth/get-user-context'
 import {
     DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
     isMissingPreferencesTable,
+    selectPreferencesRow,
+    upsertPreferencesRow,
     type ClientNotificationPreferences,
 } from '@/lib/notifications/preferences'
 import {
@@ -164,11 +166,7 @@ export async function getNotificationPreferencesAction(): Promise<{
     }
 
     const admin = createAdminClient()
-    const { data, error } = await admin
-        .from('client_notification_preferences')
-        .select('messages_enabled, reviews_enabled, supplements_enabled')
-        .eq('client_id', context.clientId)
-        .maybeSingle()
+    const { data, error } = await selectPreferencesRow(admin, context.clientId)
 
     if (error) {
         if (isMissingPreferencesTable(error)) {
@@ -182,14 +180,11 @@ export async function getNotificationPreferencesAction(): Promise<{
         return { success: true, preferences: sanitizePreferences(data) }
     }
 
-    const { data: created, error: createError } = await admin
-        .from('client_notification_preferences')
-        .insert({
-            client_id: context.clientId,
-            ...DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
-        })
-        .select('messages_enabled, reviews_enabled, supplements_enabled')
-        .single()
+    const { data: created, error: createError } = await upsertPreferencesRow(
+        admin,
+        context.clientId,
+        DEFAULT_CLIENT_NOTIFICATION_PREFERENCES as ClientNotificationPreferences
+    )
 
     if (createError) {
         if (isMissingPreferencesTable(createError)) {
@@ -202,7 +197,7 @@ export async function getNotificationPreferencesAction(): Promise<{
         return { success: false, error: createError.message }
     }
 
-    return { success: true, preferences: sanitizePreferences(created) }
+    return { success: true, preferences: sanitizePreferences(created ?? {}) }
 }
 
 export async function updateNotificationPreferencesAction(
@@ -219,15 +214,7 @@ export async function updateNotificationPreferencesAction(
 
     const sanitized = sanitizePreferences(preferences)
     const admin = createAdminClient()
-    const { data, error } = await admin
-        .from('client_notification_preferences')
-        .upsert({
-            client_id: context.clientId,
-            ...sanitized,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'client_id' })
-        .select('messages_enabled, reviews_enabled, supplements_enabled')
-        .single()
+    const { data, error } = await upsertPreferencesRow(admin, context.clientId, sanitized)
 
     if (error) {
         if (isMissingPreferencesTable(error)) {
@@ -238,5 +225,5 @@ export async function updateNotificationPreferencesAction(
     }
 
     revalidatePath('/profile')
-    return { success: true, preferences: sanitizePreferences(data) }
+    return { success: true, preferences: sanitizePreferences(data ?? {}) }
 }

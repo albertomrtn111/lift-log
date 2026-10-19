@@ -102,8 +102,25 @@ async function handleReminderRun(request: NextRequest) {
 
         if (error) throw error
 
+        // Los atletas dados de baja no reciben recordatorios aunque sus suplementos sigan activos.
+        const supplementRows = (supplements || []) as SupplementReminderRow[]
+        const clientIds = Array.from(new Set(supplementRows.map((row) => row.client_id)))
+        const activeClientIds = new Set<string>()
+        if (clientIds.length > 0) {
+            const { data: activeClients, error: clientsError } = await supabase
+                .from('clients')
+                .select('id')
+                .in('id', clientIds)
+                .eq('status', 'active')
+
+            if (clientsError) throw clientsError
+            for (const client of activeClients || []) activeClientIds.add(client.id)
+        }
+
         const due: DueReminder[] = []
-        for (const row of (supplements || []) as SupplementReminderRow[]) {
+        for (const row of supplementRows) {
+            if (!activeClientIds.has(row.client_id)) continue
+
             const schedule = Array.isArray(row.dose_schedule)
                 ? row.dose_schedule.filter((time): time is string => /^\d{2}:\d{2}$/.test(time))
                 : []
@@ -116,9 +133,16 @@ async function handleReminderRun(request: NextRequest) {
         }
 
         let sentNotifications = 0
+        let failedNotifications = 0
         let queuedDoses = 0
         let skipped = 0
-        const grouped = new Map<string, { clientId: string; date: string; time: string; rows: SupplementReminderRow[] }>()
+        const grouped = new Map<string, {
+            clientId: string
+            date: string
+            time: string
+            rows: SupplementReminderRow[]
+            deliveryIds: string[]
+        }>()
 
         for (const item of due) {
             const row = item.supplement
@@ -137,7 +161,7 @@ async function handleReminderRun(request: NextRequest) {
                 continue
             }
 
-            const { error: deliveryError } = await supabase
+            const { data: delivery, error: deliveryError } = await supabase
                 .from('supplement_reminder_deliveries')
                 .insert({
                     supplement_id: row.id,
@@ -146,6 +170,8 @@ async function handleReminderRun(request: NextRequest) {
                     scheduled_date: date,
                     scheduled_time: time,
                 })
+                .select('id')
+                .single()
 
             if (deliveryError) {
                 if (deliveryError.code === '23505') {
@@ -161,8 +187,10 @@ async function handleReminderRun(request: NextRequest) {
                 date,
                 time,
                 rows: [],
+                deliveryIds: [],
             }
             group.rows.push(row)
+            group.deliveryIds.push(delivery.id)
             grouped.set(groupKey, group)
             queuedDoses += 1
         }
@@ -173,13 +201,29 @@ async function handleReminderRun(request: NextRequest) {
             const url = `/diet?tab=supplements&date=${group.date}`
             const tag = `supplement-${group.clientId}-${group.date}-${group.time}`
 
-            await sendSupplementReminderNotification(group.clientId, {
+            const result = await sendSupplementReminderNotification(group.clientId, {
                 title,
                 body,
                 url,
                 tag,
             })
-            sentNotifications += 1
+
+            if (result.status === 'failed') {
+                // No llegó por ningún canal: liberamos la marca de entrega para que la
+                // siguiente pasada (dentro de la ventana de lookback) lo reintente.
+                const { error: releaseError } = await supabase
+                    .from('supplement_reminder_deliveries')
+                    .delete()
+                    .in('id', group.deliveryIds)
+                if (releaseError) {
+                    console.error('[supplements/reminders] No se pudo liberar la entrega para reintentar:', releaseError)
+                }
+                failedNotifications += 1
+                continue
+            }
+
+            if (result.status === 'sent') sentNotifications += 1
+            else skipped += group.rows.length
         }
 
         return NextResponse.json({
@@ -189,6 +233,7 @@ async function handleReminderRun(request: NextRequest) {
             due: due.length,
             queuedDoses,
             sentNotifications,
+            failedNotifications,
             skipped,
         })
     } catch (error) {

@@ -8,7 +8,9 @@ import {
     AlertCircle,
     Briefcase,
     Camera,
+    Activity,
     ClipboardCheck,
+    Dumbbell,
     KeyRound,
     Loader2,
     LogOut,
@@ -39,6 +41,8 @@ type ClientNotificationPreferences = {
     messages_enabled: boolean
     reviews_enabled: boolean
     supplements_enabled: boolean
+    activities_enabled: boolean
+    plans_enabled: boolean
 }
 
 function getCookie(name: string): string | undefined {
@@ -64,6 +68,8 @@ export default function ProfilePage() {
         messages_enabled: true,
         reviews_enabled: true,
         supplements_enabled: true,
+        activities_enabled: true,
+        plans_enabled: true,
     })
     const [loadingNotificationPreferences, setLoadingNotificationPreferences] = useState(true)
     const [savingNotificationKey, setSavingNotificationKey] = useState<keyof ClientNotificationPreferences | null>(null)
@@ -301,6 +307,24 @@ export default function ProfilePage() {
                         checked={notificationPreferences.supplements_enabled}
                         disabled={loadingNotificationPreferences || savingNotificationKey === 'supplements_enabled'}
                         onCheckedChange={(checked) => handleNotificationToggle('supplements_enabled', checked)}
+                    />
+                    <NotificationPreferenceRow
+                        icon={Dumbbell}
+                        iconTone="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        title="Cambios de plan"
+                        description="Cuando tu entrenador actualiza tu entrenamiento, dieta o macros"
+                        checked={notificationPreferences.plans_enabled}
+                        disabled={loadingNotificationPreferences || savingNotificationKey === 'plans_enabled'}
+                        onCheckedChange={(checked) => handleNotificationToggle('plans_enabled', checked)}
+                    />
+                    <NotificationPreferenceRow
+                        icon={Activity}
+                        iconTone="bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                        title="Actividades importadas"
+                        description="Cuando llega una actividad nueva desde Strava"
+                        checked={notificationPreferences.activities_enabled}
+                        disabled={loadingNotificationPreferences || savingNotificationKey === 'activities_enabled'}
+                        onCheckedChange={(checked) => handleNotificationToggle('activities_enabled', checked)}
                     />
                 </SettingsGroup>
 

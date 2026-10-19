@@ -7,6 +7,7 @@ import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
 import { toLocalDateStr } from '@/lib/date-utils'
 import { sendReviewCreatedNotification } from '@/lib/notifications/client'
+import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
 import {
     listSchedulesForClient,
     type ClientReviewScheduleWithTemplate,
@@ -181,18 +182,21 @@ export async function sendReviewAction(
             .eq('id', chosenSchedule.id)
     }
 
-    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking
-    const emailResult = await sendReviewEmailSmtp({
-        to: client.email,
-        clientName: client.full_name ?? undefined,
-        formUrl,
-        reviewTemplateName: chosenSchedule?.review_template?.name,
-        periodEnd: scheduledDate,
-        coachId: validatedCoachId,
-    })
+    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking.
+    //    Respeta la preferencia "Revisiones" del cliente igual que push y buzón.
+    if (await isClientNotificationChannelEnabled(client.id, 'reviews')) {
+        const emailResult = await sendReviewEmailSmtp({
+            to: client.email,
+            clientName: client.full_name ?? undefined,
+            formUrl,
+            reviewTemplateName: chosenSchedule?.review_template?.name,
+            periodEnd: scheduledDate,
+            coachId: validatedCoachId,
+        })
 
-    if (!emailResult.ok) {
-        console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
+        if (!emailResult.ok) {
+            console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
+        }
     }
 
     try {

@@ -42,6 +42,7 @@ import { useToast } from '@/hooks/use-toast'
 import { TemplateImportDialog } from './TemplateImportDialog'
 import { TrainingTemplate, StrengthStructure } from '@/types/templates'
 import { saveTrainingDays } from '../clientActions'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 import {
     Select,
     SelectContent,
@@ -285,6 +286,14 @@ export function TrainingProgramWizard({
     }
 
     const prevStep = () => setStep(s => Math.max(s - 1, 1))
+
+    function handleFinish() {
+        const targetClientId = clientId || program?.client_id
+        if (currentProgramId && targetClientId) {
+            void notifyClientPlanUpdatedAction({ clientId: targetClientId, kind: 'training', planId: currentProgramId })
+        }
+        onClose()
+    }
 
     /**
      * Writes days + exercises directly to DB using explicit IDs.
@@ -640,7 +649,7 @@ export function TrainingProgramWizard({
                                 )}
                             </Button>
                         ) : (
-                            <Button onClick={onClose} className="gap-2 bg-success hover:bg-success/90 px-6 font-semibold shadow-sm shadow-success/10">
+                            <Button onClick={handleFinish} className="gap-2 bg-success hover:bg-success/90 px-6 font-semibold shadow-sm shadow-success/10">
                                 <Save className="h-4 w-4" /> Finalizar
                             </Button>
                         )}

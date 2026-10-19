@@ -16,6 +16,8 @@ create table if not exists public.client_notification_preferences (
   messages_enabled boolean not null default true,
   reviews_enabled boolean not null default true,
   supplements_enabled boolean not null default true,
+  activities_enabled boolean not null default true,
+  plans_enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

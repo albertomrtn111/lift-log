@@ -7,7 +7,7 @@ import { ensureReviewForCheckin } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
-import { sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
+import { sendPlanUpdatedNotification, sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSampleClient } from '@/lib/onboarding/sample-athlete'
 import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
@@ -527,6 +527,14 @@ export async function saveMacroPlanAction(plan: {
         }
     }
 
+    // Aviso al cliente si el plan está (o va a estar) vigente — non-blocking.
+    const today = new Date().toISOString().slice(0, 10)
+    if (!plan.effective_to || plan.effective_to >= today) {
+        void sendPlanUpdatedNotification(plan.client_id, 'macros').catch((err) => {
+            console.warn('[saveMacroPlanAction] notification failed (non-blocking):', err)
+        })
+    }
+
     revalidatePath('/coach/clients')
     return { success: true }
 }
@@ -633,6 +641,10 @@ export async function activateTrainingProgramAction(programId: string, clientId:
     if (error) {
         return { success: false, error: error.message }
     }
+
+    void sendPlanUpdatedNotification(clientId, 'training').catch((err) => {
+        console.warn('[activateTrainingProgramAction] notification failed (non-blocking):', err)
+    })
 
     revalidatePath('/coach/clients')
     return { success: true }

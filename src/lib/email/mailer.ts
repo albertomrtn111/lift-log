@@ -94,11 +94,22 @@ async function send(options: Mail.Options, coachId?: string): Promise<EmailResul
     }
 }
 
+/** Escapa texto que va dentro del HTML del email (nombres, plantillas, etc.). */
+export function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
 // ---------------------------------------------------------------------------
 // Layout base
 // ---------------------------------------------------------------------------
 
-function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: string): string {
+function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: string): string {
+    const ctaUrl = rawCtaUrl ? escapeHtml(rawCtaUrl) : undefined
     const button = ctaLabel && ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px;">
              <tr><td style="border-radius:8px;background:#111827;">
@@ -122,7 +133,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: str
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="max-width:560px;background:#ffffff;border-radius:12px;padding:36px 32px;text-align:left;">
         <tr><td>
-          <h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${title}</h1>
+          <h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${escapeHtml(title)}</h1>
           <div style="font-size:15px;line-height:1.6;color:#374151;">
             ${bodyHtml}
           </div>
@@ -150,9 +161,10 @@ export async function sendReviewEmailSmtp(params: {
     periodEnd?: string | null
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
-    const reviewName = params.reviewTemplateName?.trim() || 'Revisión'
-    const subject = `📋 Tu ${reviewName.toLowerCase()} está lista — completa tu check-in`
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
+    const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
+    const reviewName = escapeHtml(rawReviewName)
+    const subject = `📋 Tu ${rawReviewName.toLowerCase()} está lista — completa tu check-in`
 
     const body = `
         <p>Hola <strong>${name}</strong>,</p>
@@ -165,7 +177,7 @@ export async function sendReviewEmailSmtp(params: {
         {
             to: params.to,
             subject,
-            html: layout(`${reviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
         },
         params.coachId
     )
@@ -177,7 +189,7 @@ export async function sendOnboardingEmailSmtp(params: {
     formUrl: string
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const body = `
         <p>Hola <strong>${name}</strong>, ¡bienvenido/a! 🎉</p>
         <p>Para empezar a trabajar juntos, tu entrenador necesita conocerte mejor.
@@ -201,12 +213,12 @@ export async function sendInviteEmailSmtp(params: {
     appUrl: string
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const passwordBlock = params.tempPassword
         ? `<p>Tu contraseña temporal es:</p>
            <p style="font-size:18px;font-weight:700;letter-spacing:1px;background:#f3f4f6;
                      padding:10px 16px;border-radius:8px;display:inline-block;">
-             ${params.tempPassword}
+             ${escapeHtml(params.tempPassword)}
            </p>
            <p>Al entrar por primera vez podrás cambiarla.</p>`
         : `<p>Regístrate con este mismo email para que tu cuenta quede vinculada con tu entrenador.</p>`

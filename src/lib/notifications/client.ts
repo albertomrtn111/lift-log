@@ -2,44 +2,71 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToClient } from '@/lib/push'
-import { isClientNotificationChannelEnabled, type ClientNotificationChannel } from '@/lib/notifications/preferences'
+import {
+    getClientNotificationPreferences,
+    isChannelEnabled,
+    type ClientNotificationChannel,
+} from '@/lib/notifications/preferences'
 import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
 
-async function sendClientNotification(
-    clientId: string,
-    payload: {
-        title: string
-        body: string
-        url: string
-        tag: string
-    },
-    channel: ClientNotificationChannel
-) {
-    const enabled = await isClientNotificationChannelEnabled(clientId, channel)
-    if (!enabled) return
+type InboxType = 'general' | 'message' | 'plan_updated' | 'check_in' | 'macro_updated' | 'supplement'
 
-    const result = await sendPushToClient(clientId, payload)
-
-    if (!result.ok && result.reason && result.reason !== 'misconfigured' && result.reason !== 'dependency_missing') {
-        console.warn('[notifications] Push no enviado:', result)
-    }
+type ClientNotificationPayload = {
+    title: string
+    body: string
+    url: string
+    tag: string
+    type: InboxType
 }
 
-async function createClientInboxNotification(
-    clientId: string,
-    payload: {
-        title: string
-        body: string
-        url: string
-        type: 'general' | 'message' | 'check_in' | 'supplement'
-    },
-    channel?: ClientNotificationChannel
-) {
-    if (channel) {
-        const enabled = await isClientNotificationChannelEnabled(clientId, channel)
-        if (!enabled) return false
-    }
+export type ClientNotificationResult =
+    | { status: 'sent'; inbox: boolean; pushDelivered: number }
+    | { status: 'skipped'; reason: 'client_inactive' | 'channel_disabled' | 'duplicate' }
+    | { status: 'failed'; inbox: false; pushDelivered: 0 }
 
+const PUSH_SILENT_REASONS = new Set(['misconfigured', 'dependency_missing'])
+
+function truncate(text: string, max = 100) {
+    return text.length > max ? `${text.substring(0, max - 3)}...` : text
+}
+
+async function isClientActive(clientId: string): Promise<boolean> {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+        .from('clients')
+        .select('status')
+        .eq('id', clientId)
+        .maybeSingle()
+
+    if (error) {
+        // Ante la duda, no bloquear el aviso: el fallo de lectura no es del cliente.
+        console.warn('[notifications] No se pudo leer el estado del cliente:', error)
+        return true
+    }
+    return data?.status === 'active'
+}
+
+async function hasRecentUnread(clientId: string, payload: ClientNotificationPayload, withinHours: number) {
+    const admin = createAdminClient()
+    const since = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString()
+    const { data, error } = await admin
+        .from('client_notifications')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('type', payload.type)
+        .eq('url', payload.url)
+        .eq('is_read', false)
+        .gte('created_at', since)
+        .limit(1)
+
+    if (error) {
+        console.warn('[notifications] No se pudo comprobar duplicados:', error)
+        return false
+    }
+    return (data?.length ?? 0) > 0
+}
+
+async function insertInbox(clientId: string, payload: ClientNotificationPayload): Promise<boolean> {
     try {
         const admin = createAdminClient()
         const { error } = await admin
@@ -63,41 +90,77 @@ async function createClientInboxNotification(
     }
 }
 
+/**
+ * Punto único de envío al cliente: buzón in-app + push.
+ * - No notifica a clientes dados de baja.
+ * - Lee las preferencias una sola vez.
+ * - `dedupeUnreadWithinHours`: si ya hay un aviso igual sin leer reciente, no repite.
+ * Nunca lanza; devuelve si el aviso llegó por al menos un canal.
+ */
+async function notifyClient(
+    clientId: string,
+    payload: ClientNotificationPayload,
+    channel: ClientNotificationChannel,
+    options: { dedupeUnreadWithinHours?: number } = {}
+): Promise<ClientNotificationResult> {
+    try {
+        if (!(await isClientActive(clientId))) {
+            return { status: 'skipped', reason: 'client_inactive' }
+        }
+
+        const preferences = await getClientNotificationPreferences(clientId)
+        if (!isChannelEnabled(preferences, channel)) {
+            return { status: 'skipped', reason: 'channel_disabled' }
+        }
+
+        if (options.dedupeUnreadWithinHours
+            && await hasRecentUnread(clientId, payload, options.dedupeUnreadWithinHours)) {
+            return { status: 'skipped', reason: 'duplicate' }
+        }
+
+        const inbox = await insertInbox(clientId, payload)
+
+        const push = await sendPushToClient(clientId, {
+            title: payload.title,
+            body: payload.body,
+            url: payload.url,
+            tag: payload.tag,
+        })
+        if (!push.ok && push.reason && !PUSH_SILENT_REASONS.has(push.reason)) {
+            console.warn('[notifications] Push no enviado:', push)
+        }
+
+        const pushDelivered = push.deliveredCount ?? 0
+        if (!inbox && pushDelivered === 0) {
+            return { status: 'failed', inbox: false, pushDelivered: 0 }
+        }
+        return { status: 'sent', inbox, pushDelivered }
+    } catch (error) {
+        console.warn('[notifications] Error inesperado notificando al cliente:', error)
+        return { status: 'failed', inbox: false, pushDelivered: 0 }
+    }
+}
+
 export async function sendCoachMessageNotification(clientId: string, message: string) {
     const trimmed = message.trim()
     if (!trimmed) return
 
-    const body = trimmed.length > 100 ? `${trimmed.substring(0, 97)}...` : trimmed
-    await createClientInboxNotification(clientId, {
+    await notifyClient(clientId, {
         title: 'Nuevo mensaje de tu entrenador',
-        body,
-        url: '/chat',
-        type: 'message',
-    }, 'messages')
-
-    await sendClientNotification(clientId, {
-        title: 'Tu entrenador',
-        body,
+        body: truncate(trimmed),
         url: '/chat',
         tag: 'new-message',
+        type: 'message',
     }, 'messages')
 }
 
 export async function sendReviewApprovedNotification(clientId: string) {
-    const title = 'Tu revisión ya está aprobada'
-    const body = 'Tu entrenador ha revisado y aprobado tu revisión.'
-    await createClientInboxNotification(clientId, {
-        title,
-        body,
-        url: '/summary?tab=revisiones',
-        type: 'check_in',
-    }, 'reviews')
-
-    await sendClientNotification(clientId, {
-        title,
-        body,
+    await notifyClient(clientId, {
+        title: 'Tu revisión ya está aprobada',
+        body: 'Tu entrenador ha revisado y aprobado tu revisión.',
         url: '/summary?tab=revisiones',
         tag: 'review-approved',
+        type: 'check_in',
     }, 'reviews')
 }
 
@@ -105,19 +168,12 @@ export async function sendReviewFeedbackNotification(clientId: string, feedbackM
     const trimmed = feedbackMessage.trim()
     if (!trimmed) return
 
-    const body = trimmed.length > 100 ? `${trimmed.substring(0, 97)}...` : trimmed
-    await createClientInboxNotification(clientId, {
+    await notifyClient(clientId, {
         title: 'Tu entrenador ha revisado tu revisión',
-        body,
-        url: '/chat',
-        type: 'check_in',
-    }, 'reviews')
-
-    await sendClientNotification(clientId, {
-        title: 'Tu entrenador ha revisado tu revisión',
-        body,
+        body: truncate(trimmed),
         url: '/chat',
         tag: 'review-feedback',
+        type: 'check_in',
     }, 'reviews')
 }
 
@@ -126,24 +182,14 @@ export async function sendReviewCreatedNotification(
     checkinId: string,
     reviewTemplateName?: string,
 ) {
-    const url = `/summary?tab=revisiones&checkin=${checkinId}`
-    const title = reviewTemplateName
-        ? `Nueva revisión: ${reviewTemplateName}`
-        : 'Nueva revisión disponible'
-    const body = 'Tu entrenador ha enviado una revisión para completar. Puedes rellenarla desde la app o desde el email.'
-
-    await createClientInboxNotification(clientId, {
-        title,
-        body,
-        url,
-        type: 'check_in',
-    }, 'reviews')
-
-    await sendClientNotification(clientId, {
-        title,
-        body,
-        url,
+    await notifyClient(clientId, {
+        title: reviewTemplateName
+            ? `Nueva revisión: ${reviewTemplateName}`
+            : 'Nueva revisión disponible',
+        body: 'Tu entrenador ha enviado una revisión para completar. Puedes rellenarla desde la app o desde el email.',
+        url: `/summary?tab=revisiones&checkin=${checkinId}`,
         tag: `review-created-${checkinId}`,
+        type: 'check_in',
     }, 'reviews')
 }
 
@@ -155,15 +201,8 @@ export async function sendSupplementReminderNotification(
         url: string
         tag: string
     }
-) {
-    await createClientInboxNotification(clientId, {
-        title: payload.title,
-        body: payload.body,
-        url: payload.url,
-        type: 'supplement',
-    }, 'supplements')
-
-    await sendClientNotification(clientId, payload, 'supplements')
+): Promise<ClientNotificationResult> {
+    return notifyClient(clientId, { ...payload, type: 'supplement' }, 'supplements')
 }
 
 export async function sendStravaActivityImportedNotification(
@@ -173,21 +212,46 @@ export async function sendStravaActivityImportedNotification(
 ) {
     const payload = buildStravaActivityImportedNotification(activityName, providerActivityId)
 
-    await createClientInboxNotification(clientId, {
-        title: payload.title,
-        body: payload.body,
-        url: payload.url,
-        type: 'general',
-    })
-
-    const result = await sendPushToClient(clientId, {
+    await notifyClient(clientId, {
         title: payload.title,
         body: payload.body,
         url: payload.url,
         tag: payload.tag,
-    })
+        type: 'general',
+    }, 'activities')
+}
 
-    if (!result.ok && result.reason && result.reason !== 'misconfigured' && result.reason !== 'dependency_missing') {
-        console.warn('[notifications] Push Strava no enviado:', result)
-    }
+export type PlanUpdateKind = 'training' | 'diet' | 'macros'
+
+const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
+    training: {
+        title: 'Tu entrenamiento se ha actualizado',
+        body: 'Tu entrenador ha hecho cambios en tu plan de entrenamiento.',
+        url: '/routine',
+        tag: 'plan-updated-training',
+        type: 'plan_updated',
+    },
+    diet: {
+        title: 'Tu dieta se ha actualizado',
+        body: 'Tu entrenador ha hecho cambios en tu plan de alimentación.',
+        url: '/diet',
+        tag: 'plan-updated-diet',
+        type: 'plan_updated',
+    },
+    macros: {
+        title: 'Tus macros se han actualizado',
+        body: 'Tu entrenador ha ajustado tus objetivos de macros.',
+        url: '/diet',
+        tag: 'plan-updated-macros',
+        type: 'macro_updated',
+    },
+}
+
+/** Ediciones seguidas del coach no generan un aviso por cada guardado. */
+const PLAN_UPDATE_DEDUPE_HOURS = 12
+
+export async function sendPlanUpdatedNotification(clientId: string, kind: PlanUpdateKind) {
+    return notifyClient(clientId, PLAN_UPDATE_COPY[kind], 'plans', {
+        dedupeUnreadWithinHours: PLAN_UPDATE_DEDUPE_HOURS,
+    })
 }

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/hooks/use-toast'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 import {
     getActiveDietPlanOptions,
     listDietPlansOptions,
@@ -97,6 +98,7 @@ export function useCreateDietPlan(coachId: string, clientId: string) {
         },
         onSuccess: async (data) => {
             console.log('[useCreateDietPlan] Success:', data)
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: data.id })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             // Force immediate refetch
@@ -131,6 +133,7 @@ export function useUpdateDietPlan(clientId: string) {
             input: Omit<DietPlanInput, 'coach_id' | 'client_id'>
         }) => updateDietPlanOptions(planId, input),
         onSuccess: async (_, variables) => {
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: variables.planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({
@@ -244,7 +247,8 @@ export function useSetDietPlanStatus(clientId: string) {
     return useMutation({
         mutationFn: ({ planId, status }: { planId: string; status: DietPlanStatus }) =>
             setDietPlanStatus(planId, status),
-        onSuccess: async () => {
+        onSuccess: async (_, variables) => {
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: variables.planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             // Force immediate refetch
@@ -273,7 +277,8 @@ export function useActivateDietPlan(coachId: string, clientId: string) {
 
     return useMutation({
         mutationFn: (planId: string) => activateDietPlan(planId, coachId, clientId),
-        onSuccess: async () => {
+        onSuccess: async (_, planId) => {
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             // Force immediate refetch

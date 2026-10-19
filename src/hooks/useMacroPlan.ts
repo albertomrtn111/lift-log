@@ -9,6 +9,7 @@ import {
 } from '@/data/nutrition/macros'
 import type { MacroPlan, MacroPlanInput } from '@/data/nutrition/types'
 import { formatSupabaseError, logSupabaseError } from '@/lib/supabase/helpers'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 
 // ============================================================================
 // QUERY KEYS
@@ -70,6 +71,7 @@ export function useUpsertMacroPlan(coachId: string, clientId: string) {
         },
         onSuccess: (data) => {
             console.log('[useUpsertMacroPlan] Success:', data)
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'macros', planId: data.id })
             queryClient.invalidateQueries({ queryKey: macroPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: macroPlanKeys.list(clientId) })
             toast({
