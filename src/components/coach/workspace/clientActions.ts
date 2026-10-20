@@ -275,6 +275,7 @@ export async function duplicateTrainingProgramClient(programId: string) {
                                 coach_id: ex.coach_id,
                                 day_id: newDay.id,
                                 exercise_name: ex.exercise_name,
+                                catalog_exercise_id: ex.catalog_exercise_id,
                                 order_index: ex.order_index,
                                 exercise_order: ex.exercise_order,
                                 muscle_group: ex.muscle_group,

@@ -86,6 +86,7 @@ export interface TemplateColumn {
 export interface TemplateExercise {
     id: string
     exercise_name: string
+    catalog_exercise_id?: string | null
     order: number
     muscle_group?: MuscleGroup | null
     sets: number

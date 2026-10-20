@@ -107,6 +107,7 @@ export async function getTrainingExercises(dayId: string): Promise<TrainingExerc
         id: e.id,
         dayId: e.day_id,
         name: e.exercise_name,
+        catalogExerciseId: e.catalog_exercise_id,
         order: e.order_index,
         muscleGroup: normalizeMuscleGroup(e.muscle_group),
     }))
@@ -319,6 +320,7 @@ export async function getTrainingProgramFull(programId: string): Promise<Trainin
             id: e.id,
             dayId: e.day_id,
             name: e.exercise_name,
+            catalogExerciseId: e.catalog_exercise_id,
             order: e.order_index,
             muscleGroup: normalizeMuscleGroup(e.muscle_group),
         })),

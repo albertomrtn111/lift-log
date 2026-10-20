@@ -358,7 +358,14 @@ export async function POST(req: NextRequest) {
             ? buildModifyPrompt(prompt, existingProgram, athleteContext, upcomingEvents)
             : buildGeneratePrompt(prompt, athleteContext, existingProgram, upcomingEvents)
 
-        const fullPrompt = coachContext + taskPrompt
+        const { data: catalog, error: catalogError } = await supabase
+            .from('exercise_catalog')
+            .select('name')
+            .eq('is_active', true)
+            .order('name')
+        if (catalogError) throw new Error('No se pudo cargar el catálogo de ejercicios.')
+
+        const fullPrompt = coachContext + taskPrompt + `\n\n## Catálogo de ejercicios\nUsa en exercise_name exclusivamente uno de estos nombres exactos. Si la petición menciona otra variante, elige el equivalente más cercano del catálogo.\n${JSON.stringify((catalog ?? []).map(item => item.name))}`
 
         const rawText = await callGemini(fullPrompt, {
             maxOutputTokens: 16384,

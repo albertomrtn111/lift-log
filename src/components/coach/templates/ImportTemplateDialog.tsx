@@ -31,8 +31,12 @@ import {
     Info,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { createTemplate, updateTemplate } from '../../../../app/(coach)/coach/templates/actions'
+import { createTemplate } from '../../../../app/(coach)/coach/templates/actions'
 import type { TemplateDay, TemplateExercise, StrengthStructure } from '@/types/templates'
+import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPicker'
+import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
+import { catalogGroupToMuscleGroup, findCatalogExercise, type CatalogExercise } from '@/lib/training/exercise-catalog'
+import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 import { cn } from '@/lib/utils'
 import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
 
@@ -43,6 +47,7 @@ import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/l
 interface ParsedExercise {
     day: string
     exercise_name: string
+    catalog_exercise_id?: string | null
     muscle_group: MuscleGroup
     sets: number
     reps: string
@@ -134,6 +139,7 @@ function buildStructure(grouped: Map<string, ParsedExercise[]>): StrengthStructu
         const templateExercises: TemplateExercise[] = exercises.map((ex, idx) => ({
             id: crypto.randomUUID(),
             exercise_name: ex.exercise_name,
+            catalog_exercise_id: ex.catalog_exercise_id,
             order: idx + 1,
             muscle_group: normalizeMuscleGroup(ex.muscle_group),
             sets: ex.sets,
@@ -164,6 +170,7 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
     const [isPending, startTransition] = useTransition()
     const router = useRouter()
     const { toast } = useToast()
+    const { exercises: catalog, loading: catalogLoading, error: catalogError } = useExerciseCatalog()
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Step 1: Metadata
@@ -178,6 +185,25 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
 
     // Step 2: Parsed data
     const [parsedData, setParsedData] = useState<Map<string, ParsedExercise[]>>(new Map())
+    const unresolvedCount = Array.from(parsedData.values())
+        .flat()
+        .filter(exercise => !findCatalogExercise(catalog, exercise))
+        .length
+
+    const selectCatalogExercise = (dayName: string, index: number, selected: CatalogExercise) => {
+        setParsedData(previous => {
+            const next = new Map(previous)
+            const rows = [...(next.get(dayName) ?? [])]
+            rows[index] = {
+                ...rows[index],
+                catalog_exercise_id: selected.id,
+                exercise_name: selected.name,
+                muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+            }
+            next.set(dayName, rows)
+            return next
+        })
+    }
 
     const reset = () => {
         setStep(1)
@@ -258,37 +284,38 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
 
     const handleSave = () => {
         if (parsedData.size === 0) return
+        if (catalogLoading || catalogError) {
+            toast({ title: 'Catálogo no disponible', description: catalogError ?? 'Espera a que carguen los ejercicios.', variant: 'destructive' })
+            return
+        }
+
+        const resolved = resolveStrengthStructure(buildStructure(parsedData), catalog)
+        if (resolved.unresolved.length > 0) {
+            toast({
+                title: 'Selecciona ejercicios del catálogo',
+                description: `Falta vincular: ${resolved.unresolved.slice(0, 3).join(', ')}`,
+                variant: 'destructive',
+            })
+            return
+        }
 
         const tagArray = tags
             ? tags.split(',').map(t => t.trim()).filter(Boolean)
             : []
 
         startTransition(async () => {
-            // Step 1: Create the template
             const result = await createTemplate({
                 name: name.trim(),
                 description: description.trim() || undefined,
                 tags: tagArray,
                 type: 'strength',
+                structure: resolved.structure,
             })
 
             if (!result.success || !result.template) {
                 toast({
                     title: 'Error al crear plantilla',
                     description: result.error || 'Error inesperado',
-                    variant: 'destructive',
-                })
-                return
-            }
-
-            // Step 2: Update with the parsed structure
-            const structure = buildStructure(parsedData)
-            const updateResult = await updateTemplate(result.template.id, { structure })
-
-            if (!updateResult.success) {
-                toast({
-                    title: 'Error al guardar estructura',
-                    description: updateResult.error || 'Error inesperado',
                     variant: 'destructive',
                 })
                 return
@@ -309,17 +336,14 @@ export function ImportTemplateDialog({ trigger }: ImportTemplateDialogProps) {
 
     const downloadExample = () => {
         const csvContent = `Dia,Ejercicio,Grupo muscular,Series,Reps,RIR,Rest,Notas
-Espalda,Dominadas,espalda,4,8-10,2,90,Agarre prono
+Espalda,Dominadas con agarre prono,espalda,4,8-10,2,90,
 Espalda,Remo con barra,espalda,4,10-12,2,90,
-Espalda,Jalón al pecho,espalda,3,12-15,1,60,
-Espalda,Face pulls,hombro,3,15-20,0,45,
-Pecho,Press banca,pecho,4,6-8,2,120,
-Pecho,Press inclinado mancuernas,pecho,4,10-12,2,90,
-Pecho,Aperturas en polea,pecho,3,12-15,1,60,
-Pierna,Sentadilla,cuádriceps,5,5,3,180,
-Pierna,Prensa,cuádriceps,4,10-12,2,90,
-Pierna,Curl femoral,femorales,3,12-15,1,60,
-Pierna,Extensiones,cuádriceps,3,15-20,0,60,`
+Espalda,Jalón al pecho con agarre neutro,espalda,3,12-15,1,60,
+Pecho,Press de banca plano con barra,pecho,4,6-8,2,120,
+Pecho,Press de banca inclinado con mancuernas,pecho,4,10-12,2,90,
+Pierna,Sentadilla trasera con barra,cuádriceps,5,5,3,180,
+Pierna,Prensa de piernas a 45°,cuádriceps,4,10-12,2,90,
+Pierna,Curl femoral tumbado,femorales,3,12-15,1,60,`
 
         const blob = new Blob([csvContent], { type: 'text/csv' })
         const url = URL.createObjectURL(blob)
@@ -529,7 +553,16 @@ Pierna,Extensiones,cuádriceps,3,15-20,0,60,`
                                             <tbody className="divide-y">
                                                 {exercises.map((ex, idx) => (
                                                     <tr key={idx} className="hover:bg-muted/20">
-                                                        <td className="p-2 font-medium">{ex.exercise_name}</td>
+                                                        <td className="min-w-[230px] p-2 font-medium">
+                                                            <ExerciseCatalogPicker
+                                                                exercises={catalog}
+                                                                value={findCatalogExercise(catalog, ex)?.id}
+                                                                legacyName={ex.exercise_name}
+                                                                loading={catalogLoading}
+                                                                error={catalogError}
+                                                                onSelect={selected => selectCatalogExercise(dayName, idx, selected)}
+                                                            />
+                                                        </td>
                                                         <td className="p-2 text-muted-foreground text-xs">{MUSCLE_GROUP_LABELS[ex.muscle_group]}</td>
                                                         <td className="p-2 text-center">{ex.sets}</td>
                                                         <td className="p-2 text-center">{ex.reps}</td>
@@ -551,13 +584,18 @@ Pierna,Extensiones,cuádriceps,3,15-20,0,60,`
                             <span>·</span>
                             <span><strong>{totalExercises}</strong> ejercicios</span>
                         </div>
+                        {unresolvedCount > 0 && (
+                            <p className="text-center text-sm text-amber-600">
+                                Selecciona {unresolvedCount} ejercicio{unresolvedCount === 1 ? '' : 's'} del catálogo antes de guardar.
+                            </p>
+                        )}
 
                         <DialogFooter className="gap-2 sm:gap-0">
                             <Button variant="outline" onClick={() => setStep(1)}>
                                 <ArrowLeft className="mr-2 h-4 w-4" />
                                 Volver
                             </Button>
-                            <Button onClick={handleSave} disabled={isPending}>
+                            <Button onClick={handleSave} disabled={isPending || catalogLoading || !!catalogError || unresolvedCount > 0}>
                                 {isPending ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
