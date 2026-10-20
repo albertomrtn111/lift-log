@@ -1,42 +1,42 @@
 import { z } from 'npm:zod@4.3.6'
-import { findStrengthSession, programProgress, programTransitions, setEvidence } from './strength-progress.js'
+import { findStrengthSession, groupStrengthResults, programProgress, programTransitions, setEvidence } from './strength-progress.js'
+import {
+  addDays,
+  allRows,
+  createToolRunner,
+  day,
+  type Db,
+  defaultHelpers,
+  inBatches,
+  isoDate as dateSchema,
+  readOnlyAnnotations as annotations,
+  type Row,
+  rows,
+  type ToolHelpers,
+} from './shared.ts'
 
-type Db = any
 type Server = any
-type Row = Record<string, any>
 
-type Helpers = {
-  resolveCoach: (db: Db, coachId?: string) => Promise<{ coachId: string; role: string }>
-  requireClient: (db: Db, coachId: string, clientId: string) => Promise<Row>
-  jsonResult: (data: unknown) => unknown
-  toolError: (message: string) => unknown
-  audit: (tool: string, details: Record<string, unknown>) => void
-  annotations: Record<string, boolean>
-}
-
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-}, 'Fecha inválida; usa YYYY-MM-DD')
 const clientIdSchema = z.string().uuid()
 const coachIdSchema = z.string().uuid().optional().describe('Indícalo si tienes acceso a varios espacios de entrenamiento.')
+const resultFormat = z.enum(['grouped', 'flat']).default('grouped').describe(
+  'grouped (por defecto) agrupa las series por sesión y ejercicio sin repetir sus datos y omite los campos nulos de cada serie; flat devuelve una fila por serie, como antes.',
+)
+
+// Página de resultados en el formato pedido. La paginación cuenta series en ambos formatos.
+function strengthResultPage(page: Row[], format: 'grouped' | 'flat') {
+  return format === 'flat'
+    ? { format, results: page }
+    : { format, workouts: groupStrengthResults(page), result_count: page.length }
+}
+
 const historyDates = {
   from_date: dateSchema.optional(),
   to_date: dateSchema.optional(),
 }
 
-function day(value: string | Date) {
-  return new Date(value).toISOString().slice(0, 10)
-}
-
-function addDays(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return day(date)
-}
-
-function dateRange(from?: string, to?: string, defaultDays = 90, maxDays = 730) {
-  const end = to ?? day(new Date())
+function dateRange(today: string, from?: string, to?: string, defaultDays = 90, maxDays = 730) {
+  const end = to ?? today
   const start = from ?? addDays(end, 1 - defaultDays)
   const length = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
   if (length < 0 || length > maxDays) throw new Error(`El rango debe estar ordenado y no superar ${maxDays} días.`)
@@ -51,11 +51,6 @@ function num(value: unknown): number | null {
 
 function rounded(value: number, decimals = 2) {
   return Number(value.toFixed(decimals))
-}
-
-function rows(result: { data: Row[] | null; error: { message?: string } | null }, label: string): Row[] {
-  if (result.error) throw new Error(`No se han podido cargar ${label}.`)
-  return result.data ?? []
 }
 
 function object(value: unknown): Row {
@@ -112,7 +107,7 @@ function scheduledSetDate(program: Row | undefined, trainingDay: Row | undefined
 }
 
 async function strengthContext(db: Db, coachId: string, clientId: string, programId?: string, programOffset = 0, programLimit = 30) {
-  let query = db.from('training_programs').select('id, name, status, weeks, total_weeks, effective_from, effective_to, created_at')
+  let query = db.from('training_programs').select('id, name, status, weeks, total_weeks, effective_from, effective_to, created_at, updated_at')
     .eq('coach_id', coachId).eq('client_id', clientId).order('created_at', { ascending: false }).order('id', { ascending: true })
   if (programId) query = query.eq('id', programId).limit(1)
   else query = query.range(programOffset, programOffset + programLimit)
@@ -231,51 +226,19 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
   }
 }
 
-async function inBatches(db: Db, table: string, select: string, field: string, ids: string[], configure?: (query: any) => any) {
-  const result: Row[] = []
-  for (let index = 0; index < ids.length; index += 60) {
-    const batch = ids.slice(index, index + 60)
-    result.push(...await allRows(() => {
-      let query = db.from(table).select(select).in(field, batch)
-      if (configure) query = configure(query)
-      return query.order('id', { ascending: true })
-    }, table))
-  }
-  return result
-}
-
-async function allRows(makeQuery: () => any, label: string) {
-  const result: Row[] = []
-  for (let offset = 0; offset < 50_000; offset += 1000) {
-    const page = rows(await makeQuery().range(offset, offset + 999), label)
-    result.push(...page)
-    if (page.length < 1000) return result
-  }
-  throw new Error(`La consulta de ${label} es demasiado amplia. Acota el rango de fechas o el programa.`)
-}
-
-export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
-  const { resolveCoach, requireClient, jsonResult, toolError, audit, annotations } = helpers
-  const scoped = async (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string) => Promise<unknown>) => {
-    try {
-      const { coachId } = await resolveCoach(db, requestedCoachId)
-      await requireClient(db, coachId, clientId)
-      const result = await run(coachId)
-      audit(tool, { coach_id: coachId, client_id: clientId, status: 'ok' })
-      return jsonResult(result)
-    } catch (error) {
-      audit(tool, { client_id: clientId, status: 'error' })
-      return toolError(error instanceof Error ? error.message : 'No se han podido cargar los datos del cliente.')
-    }
-  }
+export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelpers = defaultHelpers) {
+  const runTool = createToolRunner(db, helpers)
+  // today es el día actual en la zona del espacio de trabajo, no en UTC.
+  const scoped = (tool: string, clientId: string, requestedCoachId: string | undefined, run: (coachId: string, today: string) => Promise<unknown>) =>
+    runTool(tool, { coachId: requestedCoachId, clientId, fallbackError: 'No se han podido cargar los datos del cliente.' }, ({ coachId, today }) => run(coachId, today))
 
   server.registerTool('get_body_history', {
     title: 'Histórico corporal',
     description: 'Peso diario, media semanal calculada con pesajes, peso medio del check-in y medidas corporales con nombre. Acepta hasta dos años.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_body_history', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 180)
+  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_body_history', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 180)
     const [dailyResult, checkinResult, definitionsResult] = await Promise.all([
       db.from('client_metrics').select('metric_date, weight_kg, notes').eq('coach_id', coachId).eq('client_id', client_id)
         .gte('metric_date', range.from_date).lte('metric_date', range.to_date).order('metric_date', { ascending: true }).limit(1000),
@@ -359,8 +322,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
     description: 'Sueño y pasos diarios junto con energía, estrés, hambre, rendimiento y molestias comunicadas en check-ins. No inventa una puntuación de recuperación.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_recovery_history', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 90)
+  }, async ({ client_id, coach_id, from_date, to_date }: any) => scoped('get_recovery_history', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 90)
     const [metricsResult, checkinsResult] = await Promise.all([
       db.from('client_metrics').select('metric_date, sleep_h, steps, notes').eq('coach_id', coachId).eq('client_id', client_id)
         .gte('metric_date', range.from_date).lte('metric_date', range.to_date).order('metric_date', { ascending: true }).limit(1000),
@@ -379,13 +342,12 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
 
   server.registerTool('list_client_events', {
     title: 'Eventos y objetivos',
-    description: 'Carreras, pruebas y objetivos con fecha, tipo, prioridad, meta, notas y distancia cuando está escrita explícitamente.',
+    description: 'Carreras, pruebas y objetivos con fecha, tipo, prioridad, meta, notas y distancia cuando está escrita explícitamente. Devuelve updated_at para editarlos con update_client_event.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('list_client_events', client_id, coach_id, async (coachId) => {
-    const today = day(new Date())
-    const range = dateRange(from_date ?? addDays(today, -365), to_date ?? addDays(today, 365), 730, 1460)
-    const result = rows(await db.from('client_events').select('id, title, event_date, event_type, status, priority, location, target, notes')
+  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('list_client_events', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date ?? addDays(today, -365), to_date ?? addDays(today, 365), 730, 1460)
+    const result = rows(await db.from('client_events').select('id, title, event_date, event_type, status, priority, location, target, notes, updated_at')
       .eq('coach_id', coachId).eq('client_id', client_id).gte('event_date', range.from_date).lte('event_date', range.to_date)
       .order('event_date', { ascending: true }).range(offset, offset + limit), 'los eventos')
     return {
@@ -398,21 +360,21 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
   server.registerTool('get_strength_results', {
     title: 'Resultados reales de fuerza',
     description: 'Series, cargas, reps, RIR/RPE, notas e identificador comparable. Distingue ejecución confirmada de valores editados sin confirmar; una sesión completada no confirma sus series.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80), offset: z.number().int().min(0).max(5000).default(0) }),
+    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), ...historyDates, limit: z.number().int().min(1).max(200).default(80).describe('Número máximo de series.'), offset: z.number().int().min(0).max(5000).default(0), format: resultFormat }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 180)
+  }, async ({ client_id, coach_id, program_id, from_date, to_date, limit, offset, format }: any) => scoped('get_strength_results', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 180)
     const context = await strengthContext(db, coachId, client_id, program_id)
     const data = await completedStrengthRows(db, coachId, client_id, context, range)
     return {
       client_id, ...range, program_id: program_id ?? null,
-      results: data.results.slice(offset, offset + limit),
+      ...strengthResultPage(data.results.slice(offset, offset + limit), format),
       completed_sessions: data.sessions.filter((session) => session.is_completed),
       has_more: data.results.length > offset + limit, next_offset: data.results.length > offset + limit ? offset + limit : null,
       programs_scanned: context.programs.map((program) => ({ id: program.id, name: program.name })),
       older_programs_available: context.hasMorePrograms,
       source_counts: data.source_counts, data_quality: data.data_quality,
-      note: 'results incluye series confirmadas y valores editados sin confirmar, identificados por execution_status. Las series prescritas sin edición no aparecen. performed_at no se infiere a partir de la fecha prevista o de updated_at.',
+      note: 'Los resultados (workouts o results) incluyen series confirmadas y valores editados sin confirmar, identificados por execution_status. Las series prescritas sin edición no aparecen. performed_at no se infiere a partir de la fecha prevista o de updated_at.',
     }
   }))
 
@@ -421,8 +383,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
     description: 'Distancia, tiempo, ritmo, FC, RPE, desnivel, laps y comentarios. Incluye actividades de Strava no vinculadas a una sesión para evitar huecos.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(60).default(20), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('get_cardio_results', client_id, coach_id, async (coachId) => {
-    const range = dateRange(from_date, to_date, 90)
+  }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('get_cardio_results', client_id, coach_id, async (coachId, today) => {
+    const range = dateRange(today, from_date, to_date, 90)
     const [cardio, strava] = await Promise.all([
       allRows(() => db.from('cardio_sessions').select('id, scheduled_date, performed_date, name, activity_type, training_type, is_completed, actual_distance_km, actual_duration_min, actual_avg_pace, avg_heart_rate, max_heart_rate, rpe, feedback_notes, source_provider, provider_activity_id, strava_activity_id, planned_structure, source_laps:source_payload->laps, source_elevation:source_payload->total_elevation_gain')
         .eq('coach_id', coachId).eq('client_id', client_id).eq('is_completed', true)
@@ -484,10 +446,10 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
   server.registerTool('get_program_history', {
     title: 'Histórico de programas de fuerza',
     description: 'Bloques con semana natural, fecha final estimada, semanas con sesiones marcadas completas y semanas con series confirmadas. Distingue valores de fuerza confirmados o sin confirmar; no inventa omisiones ni descargas.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200), result_offset: z.number().int().min(0).max(5000).default(0) }),
+    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, program_id: z.string().uuid().optional(), as_of_date: dateSchema.optional(), program_offset: z.number().int().min(0).max(5000).default(0), program_limit: z.number().int().min(1).max(50).default(30), result_limit: z.number().int().min(1).max(500).default(200).describe('Número máximo de series.'), result_offset: z.number().int().min(0).max(5000).default(0), format: resultFormat }),
     annotations,
-  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset }: any) => scoped('get_program_history', client_id, coach_id, async (coachId) => {
-    const asOfDate = as_of_date ?? day(new Date())
+  }, async ({ client_id, coach_id, program_id, as_of_date, program_offset, program_limit, result_limit, result_offset, format }: any) => scoped('get_program_history', client_id, coach_id, async (coachId, today) => {
+    const asOfDate = as_of_date ?? today
     const context = await strengthContext(db, coachId, client_id, program_id, program_offset, program_limit)
     const programIds = context.programs.map((item) => item.id)
     const [sessions, timelinePrograms] = await Promise.all([
@@ -525,11 +487,11 @@ export function registerHistoryTools(server: Server, db: Db, helpers: Helpers) {
       client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks) }, days, sessions,
       program_changes: transitions.filter((event) => event.from_program_id === program_id || event.to_program_id === program_id),
       possible_deload_blocks: timelinePrograms.filter((item) => /descarga|deload/i.test(item.name || '')).map((item) => ({ id: item.id, name: item.name, effective_from: item.effective_from, inference_source: 'program_name' })),
-      results: detail.results.slice(result_offset, result_offset + result_limit),
+      ...strengthResultPage(detail.results.slice(result_offset, result_offset + result_limit), format),
       has_more_results: detail.results.length > result_offset + result_limit,
       next_result_offset: detail.results.length > result_offset + result_limit ? result_offset + result_limit : null,
       result_source_counts: detail.source_counts, result_data_quality: detail.data_quality,
-      note: 'Las series prescritas aparecen en days. results separa ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
+      note: 'Las series prescritas aparecen en days. Los resultados (workouts o results) separan ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
     }
   }))
 }

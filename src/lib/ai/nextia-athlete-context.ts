@@ -151,7 +151,8 @@ function formatEvents(events: any[], referenceDate: string) {
 function formatPayloadSummary(payload: unknown) {
     if (!payload || typeof payload !== 'object') return ''
     const entries = Object.entries(payload as Record<string, unknown>)
-        .filter(([, value]) => value != null && value !== '')
+        // Las claves con "_" son internas (p. ej. el borrador autoguardado)
+        .filter(([key, value]) => !key.startsWith('_') && value != null && value !== '')
         .slice(0, 12)
         .map(([key, value]) => `${key}: ${stringifyCompact(value, 220)}`)
 

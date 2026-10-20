@@ -106,3 +106,37 @@ export function programTransitions(programs) {
     }]
   })
 }
+
+const WORKOUT_FIELDS = ['program_id', 'program_name', 'day_id', 'day_name', 'week_index', 'scheduled_date', 'scheduled_date_source', 'session_id', 'session_completed']
+const EXERCISE_FIELDS = ['exercise_id', 'exercise', 'catalog_exercise_id', 'comparison_exercise_id', 'comparison_scope']
+// set_index se omite: set_number ya identifica la serie y el id de un registro incluye su posición.
+const OMITTED_SET_FIELDS = new Set([...WORKOUT_FIELDS, ...EXERCISE_FIELDS, 'set_index'])
+
+/**
+ * Agrupa resultados planos de fuerza por sesión (programa, día, semana y fecha) y ejercicio,
+ * para no repetir en cada serie los datos comunes. Conserva el orden de entrada. En las series
+ * se omiten los campos nulos; en sesiones y ejercicios se mantienen todos.
+ */
+export function groupStrengthResults(results) {
+  const workouts = []
+  const workoutByKey = new Map()
+  for (const result of results) {
+    const key = [result.program_id, result.day_id, result.week_index, result.scheduled_date, result.session_id].join('|')
+    let workout = workoutByKey.get(key)
+    if (!workout) {
+      workout = { ...Object.fromEntries(WORKOUT_FIELDS.map((field) => [field, result[field] ?? null])), exercises: [] }
+      workout.exerciseById = new Map()
+      workoutByKey.set(key, workout)
+      workouts.push(workout)
+    }
+    let exercise = workout.exerciseById.get(result.exercise_id)
+    if (!exercise) {
+      exercise = { ...Object.fromEntries(EXERCISE_FIELDS.map((field) => [field, result[field] ?? null])), sets: [] }
+      workout.exerciseById.set(result.exercise_id, exercise)
+      workout.exercises.push(exercise)
+    }
+    exercise.sets.push(Object.fromEntries(Object.entries(result)
+      .filter(([field, value]) => !OMITTED_SET_FIELDS.has(field) && value !== null && value !== undefined)))
+  }
+  return workouts.map(({ exerciseById: _index, ...workout }) => workout)
+}

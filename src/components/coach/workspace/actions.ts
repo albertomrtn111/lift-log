@@ -7,8 +7,10 @@ import { ensureReviewForCheckin } from '@/data/workspace'
 import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
-import { sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
+import { sendPlanUpdatedNotification, sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSampleClient } from '@/lib/onboarding/sample-athlete'
+import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
@@ -527,6 +529,14 @@ export async function saveMacroPlanAction(plan: {
         }
     }
 
+    // Aviso al cliente si el plan está (o va a estar) vigente — non-blocking.
+    const today = new Date().toISOString().slice(0, 10)
+    if (!plan.effective_to || plan.effective_to >= today) {
+        void sendPlanUpdatedNotification(plan.client_id, 'macros').catch((err) => {
+            console.warn('[saveMacroPlanAction] notification failed (non-blocking):', err)
+        })
+    }
+
     revalidatePath('/coach/clients')
     return { success: true }
 }
@@ -633,6 +643,10 @@ export async function activateTrainingProgramAction(programId: string, clientId:
     if (error) {
         return { success: false, error: error.message }
     }
+
+    void sendPlanUpdatedNotification(clientId, 'training').catch((err) => {
+        console.warn('[activateTrainingProgramAction] notification failed (non-blocking):', err)
+    })
 
     revalidatePath('/coach/clients')
     return { success: true }
@@ -1133,7 +1147,7 @@ export async function completeReviewAction(input: {
     checkinId: string
     feedbackMessage?: string
     sendToClient?: boolean
-}): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; error?: string }> {
+}): Promise<{ success: boolean; sentToClient?: boolean; partialSuccess?: boolean; isSample?: boolean; offerAiProfile?: boolean; error?: string }> {
     const feedbackMessage = input.feedbackMessage?.trim() || ''
 
     if (input.sendToClient && !feedbackMessage) {
@@ -1147,6 +1161,17 @@ export async function completeReviewAction(input: {
 
         const { coachId: validatedCoachId } = await requireActiveCoachId(input.coachId)
         const admin = createAdminClient()
+        // Atleta de ejemplo: se aprueba de verdad, pero nunca sale ningún aviso
+        const isSample = await isSampleClient(input.clientId)
+        const markSampleExplored = async () => {
+            if (!isSample) return
+            await updateCoachOnboardingState(validatedCoachId, { sample_explored_at: new Date().toISOString() })
+                .catch(err => console.warn('[completeReviewAction] onboarding state not updated:', err))
+        }
+        // Tras aprobar la primera revisión real: ofrecer que la IA aprenda su método
+        const shouldOfferAiProfile = () => isSample
+            ? Promise.resolve(false)
+            : claimAiProfileOffer(validatedCoachId).catch(() => false)
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
@@ -1226,16 +1251,18 @@ export async function completeReviewAction(input: {
                 }
             }
 
-            await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            await markSampleExplored()
             revalidateReviewSurfaces()
-            return { success: true, sentToClient: true }
+            return { success: true, sentToClient: true, isSample, offerAiProfile: await shouldOfferAiProfile() }
         }
 
-        if (!isAlreadyApproved) {
+        if (!isAlreadyApproved && !isSample) {
             await sendReviewApprovedNotification(input.clientId)
         }
+        await markSampleExplored()
         revalidateReviewSurfaces()
-        return { success: true, sentToClient: false }
+        return { success: true, sentToClient: false, isSample, offerAiProfile: await shouldOfferAiProfile() }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'No se pudo completar la revisión.'
         return { success: false, error: message }

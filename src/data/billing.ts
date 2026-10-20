@@ -64,6 +64,7 @@ export async function getBillingLedger(coachId: string, year: number): Promise<B
             .from('clients')
             .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
             .eq('coach_id', coachId)
+            .eq('is_sample', false) // la atleta de ejemplo nunca se cobra
             .order('full_name', { ascending: true }),
         supabase
             .from('payment_records')
@@ -100,6 +101,7 @@ export async function generateMonthlyRecords(coachId: string, year: number, mont
         .from('clients')
         .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
         .eq('coach_id', coachId)
+        .eq('is_sample', false)
         .eq('status', 'active')
 
     if (clientsErr) {
@@ -152,6 +154,7 @@ export async function syncClientCurrentMonth(coachId: string, clientId: string):
         .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
         .eq('id', clientId)
         .eq('coach_id', coachId)
+        .eq('is_sample', false)
         .maybeSingle()
     if (!client || client.status !== 'active' || !isBillable(client as LedgerClient, year, month)) return { success: true }
 
@@ -226,6 +229,7 @@ export async function settleBillingBeforeReactivation(coachId: string, clientId:
         .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
         .eq('id', clientId)
         .eq('coach_id', coachId)
+        .eq('is_sample', false)
         .maybeSingle()
     if (!client) return { success: true }
 

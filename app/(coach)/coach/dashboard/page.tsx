@@ -27,6 +27,10 @@ import { ActivityFeed } from '@/components/coach/dashboard/ActivityFeed'
 import { WeekAgenda } from '@/components/coach/dashboard/WeekAgenda'
 import { DashboardFreshness } from '@/components/coach/dashboard/DashboardFreshness'
 import { cn } from '@/lib/utils'
+import { getCoachChecklist } from '@/lib/onboarding/checklist-data'
+import { OnboardingChecklistCard } from '@/components/coach/onboarding/OnboardingChecklistCard'
+import { getAthleteJourneys } from '@/lib/onboarding/athlete-journey-data'
+import { AthleteJourneyCard } from '@/components/coach/onboarding/AthleteJourneyCard'
 
 function getGreeting(): string {
     const hour = new Date().getHours()
@@ -87,10 +91,12 @@ export default async function CoachDashboardPage() {
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return null
 
-    const [dashboard, emailSettings, upcomingEvents] = await Promise.all([
+    const [dashboard, emailSettings, upcomingEvents, checklist, athleteJourneys] = await Promise.all([
         getCoachDashboardData(coachId, user.id),
         getCoachEmailSettingsPublic(coachId).catch(() => null),
         getUpcomingCheckins(coachId, 7),
+        getCoachChecklist(coachId).catch(() => null),
+        getAthleteJourneys(coachId).catch(() => []),
     ])
 
     const todayFormatted = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
@@ -105,7 +111,11 @@ export default async function CoachDashboardPage() {
             <DashboardFreshness />
 
             <div className="space-y-6 px-4 pt-5 lg:px-8">
-                {showEmailSetupBanner && (
+                {checklist?.visible && <OnboardingChecklistCard coachId={coachId} checklist={checklist} />}
+
+                {athleteJourneys.length > 0 && <AthleteJourneyCard coachId={coachId} rows={athleteJourneys} />}
+
+                {showEmailSetupBanner && !checklist?.visible && (
                     <Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-start gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">

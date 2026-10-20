@@ -3,6 +3,7 @@ import { LogOut, UserRoundX } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { AuthShell, AuthStatus, SUPPORT_EMAIL } from '@/components/auth/AuthShell'
+import { getSignupIntent } from '@/lib/onboarding/coach-workspace'
 
 export default async function NoAccessPage() {
     const supabase = await createClient()
@@ -10,6 +11,11 @@ export default async function NoAccessPage() {
 
     if (!user) {
         redirect('/login')
+    }
+
+    // Coach recién registrado: su espacio se crea en la bienvenida
+    if (getSignupIntent(user)) {
+        redirect('/welcome')
     }
 
     return (

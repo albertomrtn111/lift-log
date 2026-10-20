@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { registerCardioTools } from './cardio.ts'
+import { outputSchemas } from './output-schemas.ts'
 
 const client = '11111111-1111-4111-8111-111111111111'
 const coach = '22222222-2222-4222-8222-222222222222'
@@ -36,9 +37,15 @@ function fixture() {
   registerCardioTools({ registerTool(name: string, config: any, run: any) { registered.set(name, { config, run }) } }, db, {
     resolveCoach: async (_db: any, id?: string) => { if (id && id !== coach) throw new Error('Espacio no autorizado'); return { coachId: coach } },
     requireClient: async (_db: any, space: string, id: string) => { if (space !== coach || id !== client) throw new Error('Cliente no autorizado') },
-    jsonResult: (data: any) => ({ data }), toolError: (error: string) => ({ error }), audit() {}, annotations: { readOnlyHint: true },
+    jsonResult: (data: any) => ({ data }), toolError: (error: string) => ({ error }), audit() {},
   })
-  return { state, async run(name: string, value: any) { const tool = registered.get(name); return await tool.run(tool.config.inputSchema.parse(value)) } }
+  return { state, async run(name: string, value: any) {
+    const tool = registered.get(name)
+    const result = await tool.run(tool.config.inputSchema.parse(value))
+    // Lo que se devuelve con éxito debe cumplir el outputSchema que el SDK valida.
+    if (result.data) outputSchemas[name].parse(JSON.parse(JSON.stringify(result.data)))
+    return result
+  } }
 }
 
 Deno.test('creation requires an explicit planning mode and quick does not create blocks', async () => {

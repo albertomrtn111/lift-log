@@ -28,13 +28,17 @@ export async function sendOnboardingAction(
     // 2) Fetch client (must belong to this coach)
     const { data: client, error: clientErr } = await supabase
         .from('clients')
-        .select('id, email, full_name')
+        .select('id, email, full_name, is_sample')
         .eq('id', clientId)
         .eq('coach_id', validatedCoachId)
         .single()
 
     if (clientErr || !client) {
         return { success: false, error: 'Cliente no encontrado' }
+    }
+
+    if (client.is_sample) {
+        return { success: false, error: 'Es tu atleta de ejemplo: a ella no se le envía nada.' }
     }
 
     // ✅ NEW: require email to send

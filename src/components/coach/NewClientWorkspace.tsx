@@ -18,6 +18,7 @@ import { MetricDefinition } from '@/types/metrics'
 import { FormTemplate } from '@/types/forms'
 import type { ReviewTemplate } from '@/data/review-templates'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SampleAthleteBanner } from '@/components/coach/onboarding/SampleAthleteBanner'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -63,9 +64,9 @@ const WORKSPACE_TABS = [
     { value: 'resumen', label: 'Resumen', icon: LayoutDashboard, gated: false },
     { value: 'nextia', label: 'Chat NextIA', icon: Bot, gated: false },
     { value: 'progreso', label: 'Progreso', icon: TrendingUp, gated: true },
-    { value: 'plan', label: 'Plan', icon: CalendarDays, gated: true },
+    { value: 'plan', label: 'Plan', icon: CalendarDays, gated: false },
     { value: 'checkins', label: 'Revisiones', icon: FileText, gated: true },
-    { value: 'events', label: 'Eventos', icon: Flag, gated: true },
+    { value: 'events', label: 'Eventos', icon: Flag, gated: false },
 ] as const
 
 interface NewClientWorkspaceProps {
@@ -182,7 +183,8 @@ export function NewClientWorkspace({
 
     const handleClientChange = navigateToClient
 
-    const isPendingSignup = selectedClient ? !selectedClient.auth_user_id : false
+    // La atleta de ejemplo no tiene cuenta, pero se puede explorar entera
+    const isPendingSignup = selectedClient ? !selectedClient.auth_user_id && !selectedClient.is_sample : false
 
     // Mejora 10: Prev/next navigation
     const activeClients = useMemo(() =>
@@ -292,6 +294,13 @@ export function NewClientWorkspace({
                                 Cargando cliente...
                             </div>
                         </div>
+                    )}
+                    {selectedClient.is_sample && (
+                        <SampleAthleteBanner
+                            coachId={coachId}
+                            clientId={selectedClient.id}
+                            clientName={selectedClient.full_name || 'Lucía'}
+                        />
                     )}
                     <WorkspaceHeader
                         client={selectedClient}
@@ -411,30 +420,22 @@ export function NewClientWorkspace({
                             </TabsContent>
 
                             <TabsContent value="plan" className="mt-0 min-w-0">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <PlanTab
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        activeProgram={activeProgram}
-                                        programs={programs}
-                                        onRefresh={handleRefresh}
-                                    />
-                                )}
+                                <PlanTab
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    activeProgram={activeProgram}
+                                    programs={programs}
+                                    onRefresh={handleRefresh}
+                                />
                             </TabsContent>
 
                             <TabsContent value="events" className="mt-0 min-w-0">
-                                {isPendingSignup ? (
-                                    <BlockedTabContent />
-                                ) : (
-                                    <EventsTab
-                                        coachId={coachId}
-                                        clientId={selectedClient.id}
-                                        events={events}
-                                        onRefresh={handleRefresh}
-                                    />
-                                )}
+                                <EventsTab
+                                    coachId={coachId}
+                                    clientId={selectedClient.id}
+                                    events={events}
+                                    onRefresh={handleRefresh}
+                                />
                             </TabsContent>
 
                             <TabsContent value="checkins" className="mt-0 min-w-0">
@@ -448,6 +449,7 @@ export function NewClientWorkspace({
                                         onRefresh={handleRefresh}
                                         metricDefinitions={metricDefinitions}
                                         formTemplates={formTemplates}
+                                        isSampleClient={Boolean(selectedClient.is_sample)}
                                     />
                                 )}
                             </TabsContent>

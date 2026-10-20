@@ -50,6 +50,7 @@ import type { DayType, DietPlan, DietPlanWithStructure } from '@/data/nutrition/
 import { DietOptionsWizard } from './DietOptionsWizard'
 import { OptionMacroView, mealTargetLabel } from './diet-editor/OptionMacroView'
 import { DietCsvImportWizard } from './DietCsvImportWizard'
+import { usePlanStartIntent } from '@/components/coach/onboarding/plan-start'
 import { DietPlansHistory } from './DietPlansHistory'
 import { AINutritionDialog } from './AINutritionDialog'
 
@@ -91,6 +92,7 @@ export function DietPlanPanel({ coachId, clientId }: DietPlanPanelProps) {
     const [wizardOpen, setWizardOpen] = useState(false)
     const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
     const [csvImportOpen, setCsvImportOpen] = useState(false)
+    usePlanStartIntent('csv', () => setCsvImportOpen(true))
     const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
     const [planToArchive, setPlanToArchive] = useState<DietPlan | null>(null)
 

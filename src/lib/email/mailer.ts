@@ -6,7 +6,7 @@
  *   SMTP_PORT      p.ej. 465 (SSL) o 587 (STARTTLS)
  *   SMTP_USER      usuario/cuenta
  *   SMTP_PASS      contraseña (en Gmail: contraseña de aplicación)
- *   SMTP_FROM      remitente, p.ej. "NextTrain <no-reply@ascenttech.cloud>"
+ *   SMTP_FROM      remitente, p.ej. "NexTrain <no-reply@ascenttech.cloud>"
  *
  * Si SMTP no está configurado, las funciones devuelven { ok: false } sin
  * lanzar — igual de non-blocking que era la llamada a n8n.
@@ -94,11 +94,22 @@ async function send(options: Mail.Options, coachId?: string): Promise<EmailResul
     }
 }
 
+/** Escapa texto que va dentro del HTML del email (nombres, plantillas, etc.). */
+export function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
 // ---------------------------------------------------------------------------
 // Layout base
 // ---------------------------------------------------------------------------
 
-function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: string): string {
+function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: string): string {
+    const ctaUrl = rawCtaUrl ? escapeHtml(rawCtaUrl) : undefined
     const button = ctaLabel && ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px;">
              <tr><td style="border-radius:8px;background:#111827;">
@@ -122,7 +133,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: str
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="max-width:560px;background:#ffffff;border-radius:12px;padding:36px 32px;text-align:left;">
         <tr><td>
-          <h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${title}</h1>
+          <h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${escapeHtml(title)}</h1>
           <div style="font-size:15px;line-height:1.6;color:#374151;">
             ${bodyHtml}
           </div>
@@ -130,7 +141,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, ctaUrl?: str
         </td></tr>
       </table>
       <p style="font-size:11px;color:#9ca3af;margin-top:16px;">
-        Este email se ha enviado automáticamente desde NextTrain.
+        Este email se ha enviado automáticamente desde NexTrain.
       </p>
     </td></tr>
   </table>
@@ -150,9 +161,10 @@ export async function sendReviewEmailSmtp(params: {
     periodEnd?: string | null
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
-    const reviewName = params.reviewTemplateName?.trim() || 'Revisión'
-    const subject = `📋 Tu ${reviewName.toLowerCase()} está lista — completa tu check-in`
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
+    const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
+    const reviewName = escapeHtml(rawReviewName)
+    const subject = `📋 Tu ${rawReviewName.toLowerCase()} está lista — completa tu check-in`
 
     const body = `
         <p>Hola <strong>${name}</strong>,</p>
@@ -165,7 +177,7 @@ export async function sendReviewEmailSmtp(params: {
         {
             to: params.to,
             subject,
-            html: layout(`${reviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
         },
         params.coachId
     )
@@ -177,7 +189,7 @@ export async function sendOnboardingEmailSmtp(params: {
     formUrl: string
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const body = `
         <p>Hola <strong>${name}</strong>, ¡bienvenido/a! 🎉</p>
         <p>Para empezar a trabajar juntos, tu entrenador necesita conocerte mejor.
@@ -201,12 +213,12 @@ export async function sendInviteEmailSmtp(params: {
     appUrl: string
     coachId?: string
 }): Promise<EmailResult> {
-    const name = params.clientName?.trim() || 'atleta'
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const passwordBlock = params.tempPassword
         ? `<p>Tu contraseña temporal es:</p>
            <p style="font-size:18px;font-weight:700;letter-spacing:1px;background:#f3f4f6;
                      padding:10px 16px;border-radius:8px;display:inline-block;">
-             ${params.tempPassword}
+             ${escapeHtml(params.tempPassword)}
            </p>
            <p>Al entrar por primera vez podrás cambiarla.</p>`
         : `<p>Regístrate con este mismo email para que tu cuenta quede vinculada con tu entrenador.</p>`
@@ -243,4 +255,71 @@ export async function sendTestEmail(params: { to: string; coachId: string }): Pr
         },
         params.coachId
     )
+}
+
+// ---------------------------------------------------------------------------
+// Invitación del onboarding guiado
+// ---------------------------------------------------------------------------
+
+/** Escapa texto que va dentro del HTML del email de invitación */
+function escapeInviteText(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+/**
+ * Email "Álex te ha invitado a entrenar en NexTrain". Un solo botón con el
+ * enlace de acceso; si el coach puso contraseña inicial, se muestra y el
+ * botón lleva al login.
+ */
+export interface AthleteInviteEmailParams {
+    to: string
+    athleteName?: string | null
+    coachName: string
+    businessName?: string | null
+    accessUrl: string
+    tempPassword?: string | null
+    coachId?: string
+}
+
+export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { subject: string; html: string } {
+    const athleteFirstName = escapeInviteText(params.athleteName?.trim().split(/\s+/)[0] || 'atleta')
+    const coach = escapeInviteText(params.coachName.trim())
+    const business = params.businessName?.trim() && params.businessName.trim() !== params.coachName.trim()
+        ? ` (${escapeInviteText(params.businessName.trim())})`
+        : ''
+
+    const accessBlock = params.tempPassword
+        ? `<p>Tu contraseña temporal es:</p>
+           <p style="font-size:18px;font-weight:700;letter-spacing:1px;background:#f3f4f6;
+                     padding:10px 16px;border-radius:8px;display:inline-block;">
+             ${escapeInviteText(params.tempPassword)}
+           </p>
+           <p>Entra con tu email y esta contraseña; luego podrás cambiarla.</p>`
+        : `<p>Solo tienes que crear tu contraseña. En unos minutos tendrás todo listo.</p>`
+
+    const body = `
+        <p>Hola, <strong>${athleteFirstName}</strong>:</p>
+        <p>${coach}${business} te ha dado de alta en NexTrain, la app donde verás tu plan,
+        registrarás tus entrenamientos y hablarás con ${coach}.</p>
+        ${accessBlock}
+        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:14px;">
+          📱 <strong>Ábrelo en el móvil donde vas a usar la app.</strong>
+          Si lo abres en otro dispositivo o navegador, el enlace puede no funcionar.
+        </p>
+        <p style="font-size:13px;color:#6b7280;">Si el enlace ha caducado, pide a ${coach} que te reenvíe la invitación.</p>`
+
+    return {
+        subject: `${params.coachName.trim()} te ha invitado a entrenar en NexTrain`,
+        html: layout('Tu acceso a NexTrain', body, params.tempPassword ? 'Entrar en NexTrain' : 'Crear mi acceso', params.accessUrl),
+    }
+}
+
+export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): Promise<EmailResult> {
+    const { subject, html } = buildAthleteInviteEmail(params)
+    return send({ to: params.to, subject, html }, params.coachId)
 }

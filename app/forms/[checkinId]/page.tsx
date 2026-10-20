@@ -168,6 +168,14 @@ export default async function FormPage({ params }: PageProps) {
     const type = formTemplate?.type ?? 'checkin'
     const schema: FormField[] = formTemplate?.schema ?? []
 
+    // Pendiente con borrador autoguardado: se retoma donde se dejó
+    const rawPayload = (checkin.raw_payload as Record<string, unknown> | null) ?? {}
+    const isPending = checkin.status === 'pending'
+    const draft = isPending && rawPayload._draft && typeof rawPayload._draft === 'object'
+        ? rawPayload._draft as Record<string, unknown>
+        : null
+    const initialValues = draft ?? (isPending ? {} : rawPayload)
+
     return (
         <div className="min-h-screen bg-background">
             <div className="container max-w-2xl py-8 px-4">
@@ -179,9 +187,10 @@ export default async function FormPage({ params }: PageProps) {
                     coachId={linkedCheckin.coach_id}
                     clientId={linkedCheckin.client_id}
                     metrics={filteredMetrics}
-                    initialValues={(checkin.raw_payload as Record<string, unknown>) ?? {}}
+                    initialValues={initialValues}
                     photoConfig={photoConfig}
-                    submissionMode={checkin.status === 'pending' ? 'submit' : 'update'}
+                    submissionMode={isPending ? 'submit' : 'update'}
+                    autosave={isPending}
                 />
             </div>
         </div>

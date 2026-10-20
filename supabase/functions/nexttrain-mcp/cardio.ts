@@ -1,11 +1,16 @@
 import { z } from 'npm:zod@4.3.6'
 import { cardioPlanInputFromSession, mergeCardioPlanEdit, normalizeCardioPlan } from './cardio-plan.js'
 import { cardioActivityType } from '../../../src/lib/cardio/structure.js'
+import {
+  createToolRunner,
+  defaultHelpers,
+  idempotentWriteAnnotations,
+  isoDate as date,
+  readOnlyAnnotations as annotations,
+  type ToolHelpers,
+  writeAnnotations as write,
+} from './shared.ts'
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
-  const parsed = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
-}, 'Fecha inválida; usa YYYY-MM-DD')
 const scope = { client_id: z.string().uuid(), coach_id: z.string().uuid().optional() }
 const mode = z.enum(['quick', 'structured']).describe('Elegir explícitamente: quick guarda solo texto; structured guarda bloques ejecutables.')
 const block = z.strictObject({
@@ -34,7 +39,6 @@ const plan = {
   coach_notes: z.string().trim().max(3000).optional(), blocks: z.array(block).max(30).optional(),
 }
 const fields = 'id, client_id, coach_id, scheduled_date, name, activity_type, training_type, description, target_distance_km, target_duration_min, target_pace, structure, planned_structure, coach_notes, notes, is_completed, actual_distance_km, actual_duration_min, created_at, updated_at'
-const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
 
 function activityFor(normalized: any, requested?: string) {
   return cardioActivityType(normalized.structure.trainingType, requested)
@@ -47,19 +51,14 @@ function normalizedResult(value: any) {
     structure: value.structure, planned_structure: value.planned_structure }
 }
 
-export function registerCardioTools(server: any, db: any, helpers: any) {
-  const { resolveCoach, requireClient, jsonResult, toolError, audit, annotations } = helpers
-  async function scoped(tool: string, input: any, action: (coach: string) => Promise<unknown>) {
-    try {
-      const { coachId } = await resolveCoach(db, input.coach_id)
-      await requireClient(db, coachId, input.client_id)
-      const result = await action(coachId)
-      audit(tool, { coach_id: coachId, client_id: input.client_id, record_id: input.session_id ?? null, status: 'ok' })
-      return jsonResult(result)
-    } catch (error) {
-      audit(tool, { client_id: input.client_id, status: 'error' })
-      return toolError(error instanceof Error ? error.message : 'No se ha podido gestionar la sesión de cardio.')
-    }
+export function registerCardioTools(server: any, db: any, helpers: ToolHelpers = defaultHelpers) {
+  const run = createToolRunner(db, helpers)
+  function scoped(tool: string, input: any, action: (coach: string) => Promise<unknown>) {
+    return run(tool, { coachId: input.coach_id, clientId: input.client_id, fallbackError: 'No se ha podido gestionar la sesión de cardio.' },
+      ({ coachId, log }) => {
+        log.record_id = input.session_id ?? null
+        return action(coachId)
+      })
   }
   async function read(coachId: string, input: any) {
     const { data, error } = await db.from('cardio_sessions').select(fields)
@@ -110,7 +109,7 @@ export function registerCardioTools(server: any, db: any, helpers: any) {
     inputSchema: z.strictObject({ ...scope, ...plan, planning_mode: mode.optional(),
       session_id: z.string().uuid(), expected_updated_at: z.string().datetime({ offset: true }).nullable(),
       name: z.string().trim().min(1).max(160).optional(), scheduled_date: date.optional(),
-    }), annotations: { ...write, idempotentHint: true },
+    }), annotations: idempotentWriteAnnotations,
   }, (input: any) => scoped('update_cardio_session', input, async coachId => {
     const current = await read(coachId, input)
     if (current.updated_at !== input.expected_updated_at && Date.parse(current.updated_at) !== Date.parse(input.expected_updated_at)) throw new Error('La sesión cambió; vuelve a leer get_cardio_session.')

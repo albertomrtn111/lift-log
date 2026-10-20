@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,526 +21,380 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Loader2, Send, Save, Copy, Check, Eye, EyeOff, Sparkles } from 'lucide-react'
-import { createClientAction } from './actions'
-import { sendInviteAction } from './invite-actions'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Check, ChevronDown, ClipboardList, Copy, Loader2, Plus, RefreshCw, Send, Sparkles } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { FormTemplate } from '@/types/forms'
 import { toLocalDateStr } from '@/lib/date-utils'
+import { cn } from '@/lib/utils'
+import type { InviteTemplateOptions } from '@/lib/onboarding/default-templates'
+import { getInviteTemplateOptionsAction, inviteAthleteAction } from './invite-athlete-actions'
 
 interface AddClientButtonProps {
     coachId: string
-    formTemplates: FormTemplate[]
+    /** Se mantiene por compatibilidad; las opciones se cargan al abrir */
+    formTemplates?: FormTemplate[]
+    /** Abre el formulario al entrar (p. ej. desde "Primeros pasos") */
+    defaultOpen?: boolean
+    /** Opciones ya cargadas en el servidor (si no, se piden al abrir) */
+    initialOptions?: InviteTemplateOptions
 }
 
-const NONE_TEMPLATE_VALUE = '__none__'
+const NONE = '__none__'
 
-function getActiveTemplatesByType(formTemplates: FormTemplate[], type: 'checkin' | 'onboarding') {
-    return formTemplates
-        .filter((template) => template.type === type && template.is_active)
-        .sort((a, b) => a.title.localeCompare(b.title))
-}
+const FREQUENCIES = [
+    { days: 7, label: 'Cada semana' },
+    { days: 14, label: 'Cada 2 semanas' },
+    { days: 30, label: 'Cada mes' },
+]
 
-export function AddClientButton({ coachId, formTemplates }: AddClientButtonProps) {
-    const [open, setOpen] = useState(false)
+const emptyForm = () => ({
+    fullName: '',
+    email: '',
+    onboardingTemplateId: NONE,
+    reviewTemplateId: NONE,
+    reviewFrequencyDays: 7,
+    phone: '',
+    startDate: toLocalDateStr(new Date()),
+    paymentAmount: '',
+    paymentDay: '',
+    password: '',
+})
+
+export function AddClientButton({ coachId, defaultOpen = false, initialOptions }: AddClientButtonProps) {
+    const [open, setOpen] = useState(defaultOpen)
     const [isPending, startTransition] = useTransition()
     const [error, setError] = useState<string | null>(null)
+    const [form, setForm] = useState(() => ({
+        ...emptyForm(),
+        onboardingTemplateId: initialOptions?.defaultOnboardingId ?? NONE,
+        reviewTemplateId: initialOptions?.defaultReviewId ?? NONE,
+    }))
+    const [moreOpen, setMoreOpen] = useState(false)
+    const [options, setOptions] = useState<InviteTemplateOptions | null>(initialOptions ?? null)
+    const [optionsError, setOptionsError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
-    const [showPassword, setShowPassword] = useState(false)
     const router = useRouter()
     const { toast } = useToast()
 
-    const [formData, setFormData] = useState({
-        full_name: '',
-        email: '',
-        phone: '',
-        start_date: toLocalDateStr(new Date()),
-        checkin_frequency_days: 14,
-        password: '',
-        confirmPassword: '',
-        payment_amount: '',
-        payment_day: '',
-        payment_notes: '',
-        checkin_template_id: NONE_TEMPLATE_VALUE,
-        onboarding_template_id: NONE_TEMPLATE_VALUE,
-    })
+    const update = (patch: Partial<ReturnType<typeof emptyForm>>) => setForm(current => ({ ...current, ...patch }))
 
-    const activeCheckinTemplates = getActiveTemplatesByType(formTemplates, 'checkin')
-    const activeOnboardingTemplates = getActiveTemplatesByType(formTemplates, 'onboarding')
-
-    const resetForm = () => {
-        setFormData({
-            full_name: '',
-            email: '',
-            phone: '',
-            start_date: toLocalDateStr(new Date()),
-            checkin_frequency_days: 14,
-            password: '',
-            confirmPassword: '',
-            payment_amount: '',
-            payment_day: '',
-            payment_notes: '',
-            checkin_template_id: NONE_TEMPLATE_VALUE,
-            onboarding_template_id: NONE_TEMPLATE_VALUE,
+    // Al abrir, cargamos (y si hace falta creamos) los formularios por defecto
+    useEffect(() => {
+        if (!open || options) return
+        let cancelled = false
+        getInviteTemplateOptionsAction(coachId).then(result => {
+            if (cancelled) return
+            if (!result.success) {
+                setOptionsError(result.error)
+                return
+            }
+            setOptions(result.options)
+            const review = result.options.reviews.find(option => option.id === result.options.defaultReviewId)
+            setForm(current => ({
+                ...current,
+                onboardingTemplateId: result.options.defaultOnboardingId ?? NONE,
+                reviewTemplateId: result.options.defaultReviewId ?? NONE,
+                reviewFrequencyDays: review?.frequencyDays ?? 7,
+            }))
         })
+        return () => { cancelled = true }
+    }, [open, options, coachId])
+
+    const reset = () => {
+        setForm(() => ({
+            ...emptyForm(),
+            onboardingTemplateId: options?.defaultOnboardingId ?? NONE,
+            reviewTemplateId: options?.defaultReviewId ?? NONE,
+        }))
         setError(null)
+        setMoreOpen(false)
         setCopied(false)
-        setShowPassword(false)
     }
 
-    const validatePassword = (): string | null => {
-        if (!formData.password) return null // password is optional
-        if (formData.password.length < 8) {
-            return 'La contraseña debe tener al menos 8 caracteres'
+    const handleOpenChange = (next: boolean) => {
+        setOpen(next)
+        if (!next) {
+            reset()
+            // Quitamos ?invite=1 para que no se reabra al recargar
+            const url = new URL(window.location.href)
+            if (url.searchParams.has('invite')) {
+                url.searchParams.delete('invite')
+                router.replace(`${url.pathname}${url.search}`)
+            }
         }
-        if (formData.password !== formData.confirmPassword) {
-            return 'Las contraseñas no coinciden'
-        }
-        return null
     }
 
-    /** Genera una contraseña segura y rellena ambos campos a la vez. */
     const handleGeneratePassword = () => {
         const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
         const bytes = new Uint32Array(14)
         crypto.getRandomValues(bytes)
-        const generated = Array.from(bytes, (n) => alphabet[n % alphabet.length]).join('')
-
-        setFormData(prev => ({ ...prev, password: generated, confirmPassword: generated }))
-        setShowPassword(true)
-        setError(null)
+        update({ password: Array.from(bytes, n => alphabet[n % alphabet.length]).join('') })
+        setCopied(false)
     }
 
     const handleCopyPassword = async () => {
-        if (!formData.password) return
         try {
-            await navigator.clipboard.writeText(formData.password)
+            await navigator.clipboard.writeText(form.password)
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
         } catch {
-            toast({
-                title: 'Error',
-                description: 'No se pudo copiar la contraseña',
-                variant: 'destructive',
-            })
+            toast({ title: 'No se pudo copiar la contraseña', variant: 'destructive' })
         }
     }
 
-    const handleSubmit = (sendInvite: boolean) => {
+    const handleSubmit = (event: React.FormEvent) => {
+        event.preventDefault()
         setError(null)
-
-        // Validate password
-        const pwError = validatePassword()
-        if (pwError) {
-            setError(pwError)
+        if (form.password && form.password.length < 8) {
+            setMoreOpen(true)
+            setError('La contraseña inicial debe tener al menos 8 caracteres.')
             return
         }
 
         startTransition(async () => {
-            // 1. Create client (with password if provided)
-            const result = await createClientAction({
-                coach_id: coachId,
-                full_name: formData.full_name,
-                email: formData.email,
-                phone: formData.phone || undefined,
-                start_date: formData.start_date,
-                checkin_frequency_days: formData.checkin_frequency_days,
-                password: formData.password || undefined,
-                payment_amount: formData.payment_amount ? parseFloat(formData.payment_amount) : undefined,
-                payment_day: formData.payment_day ? parseInt(formData.payment_day) : undefined,
-                payment_notes: formData.payment_notes || undefined,
-                checkin_template_id: formData.checkin_template_id !== NONE_TEMPLATE_VALUE ? formData.checkin_template_id : undefined,
-                onboarding_template_id: formData.onboarding_template_id !== NONE_TEMPLATE_VALUE ? formData.onboarding_template_id : undefined,
+            const result = await inviteAthleteAction({
+                coachId,
+                fullName: form.fullName,
+                email: form.email,
+                onboardingTemplateId: form.onboardingTemplateId === NONE ? null : form.onboardingTemplateId,
+                reviewTemplateId: form.reviewTemplateId === NONE ? null : form.reviewTemplateId,
+                reviewFrequencyDays: form.reviewFrequencyDays,
+                phone: form.phone || undefined,
+                startDate: form.startDate || undefined,
+                paymentAmount: form.paymentAmount ? Number(form.paymentAmount.replace(',', '.')) : undefined,
+                paymentDay: form.paymentDay ? Number(form.paymentDay) : undefined,
+                password: form.password || undefined,
             })
 
-            if (!result.success || !result.client) {
-                console.error('Error creating client:', {
-                    error: result.error,
-                    details: result.details,
-                })
-                const errorMessage = result.details
-                    ? `${result.error}\n${result.details}`
-                    : result.error || 'Error al crear el cliente'
-                setError(errorMessage)
+            if (!result.success) {
+                setError(result.error || 'No se pudo invitar al atleta.')
                 return
             }
 
-            const warnings = [(result as any).billingWarning, (result as any).authWarning].filter(Boolean)
-            if (warnings.length > 0) {
-                toast({
-                    title: 'Cliente creado con advertencia',
-                    description: warnings.join(' '),
-                    variant: 'destructive',
-                })
-            }
-
-            // 2. If password was set, show success with copy hint
-            if (formData.password) {
-                toast({
-                    title: 'Cliente creado con contraseña ✓',
-                    description: `${result.client.full_name} puede iniciar sesión con email + contraseña`,
-                })
-            } else if (sendInvite) {
-                // 3. Send invite if requested (only when no password)
-                const inviteResult = await sendInviteAction(result.client.id, coachId)
-
-                if (inviteResult.success) {
-                    toast({
-                        title: 'Invitación enviada ✓',
-                        description: `Invitación enviada a ${result.client.email}`,
-                    })
-                } else {
-                    toast({
-                        title: 'Cliente creado, pero la invitación falló',
-                        description: inviteResult.error || 'No se pudo enviar la invitación',
-                        variant: 'destructive',
-                    })
-                }
+            const firstName = form.fullName.trim().split(/\s+/)[0]
+            if (result.warnings?.length) {
+                toast({ title: `${firstName} está dado de alta, con avisos`, description: result.warnings.join(' '), variant: 'destructive' })
             } else {
                 toast({
-                    title: 'Cliente creado',
-                    description: `${result.client.full_name} guardado sin invitación`,
+                    title: 'Invitación enviada',
+                    description: form.password
+                        ? `${firstName} ya puede entrar con su email y la contraseña inicial.`
+                        : `${firstName} recibirá un email para crear su acceso. Puedes seguir sus pasos en tu panel.`,
                 })
             }
-
-            setOpen(false)
-            resetForm()
+            handleOpenChange(false)
             router.refresh()
         })
     }
 
-    const hasPassword = formData.password.length > 0
+    const selectedReview = options?.reviews.find(option => option.id === form.reviewTemplateId)
 
     return (
-        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <Button className="h-10 shrink-0 gap-2 px-3 sm:px-4" aria-label="Añadir cliente">
+                <Button className="h-10 shrink-0 gap-2 px-3 sm:px-4" aria-label="Invitar atleta">
                     <Plus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Añadir cliente</span>
-                    <span className="sm:hidden">Nuevo</span>
+                    <span className="hidden sm:inline">Invitar atleta</span>
+                    <span className="sm:hidden">Invitar</span>
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[480px]">
                 <DialogHeader>
-                    <DialogTitle>Nuevo cliente</DialogTitle>
+                    <DialogTitle>Invitar atleta</DialogTitle>
                     <DialogDescription>
-                        Crea un cliente y opcionalmente asígnale una contraseña inicial.
+                        Le llegará un email para crear su acceso desde el móvil.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={(e) => { e.preventDefault(); handleSubmit(!hasPassword) }} className="space-y-4 py-4">
-                    {/* ---- Basic info ---- */}
-                    <div className="space-y-2">
-                        <Label htmlFor="full_name">Nombre completo *</Label>
-                        <Input
-                            id="full_name"
-                            value={formData.full_name}
-                            onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                            placeholder="Juan Pérez"
-                            required
-                            disabled={isPending}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="email">Email *</Label>
-                        <Input
-                            id="email"
-                            type="email"
-                            value={formData.email}
-                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            placeholder="juan@ejemplo.com"
-                            required
-                            disabled={isPending}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="phone">Teléfono</Label>
-                        <Input
-                            id="phone"
-                            type="tel"
-                            value={formData.phone}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                            placeholder="+34 600 000 000"
-                            disabled={isPending}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="start_date">Fecha inicio</Label>
+                            <Label htmlFor="invite-name">Nombre</Label>
                             <Input
-                                id="start_date"
-                                type="date"
-                                value={formData.start_date}
-                                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                                id="invite-name"
+                                value={form.fullName}
+                                onChange={(e) => update({ fullName: e.target.value })}
+                                placeholder="Ej.: Marta García"
+                                autoComplete="off"
                                 required
+                                autoFocus
                                 disabled={isPending}
                             />
                         </div>
-
                         <div className="space-y-2">
-                            <Label htmlFor="frequency">Revisión (días)</Label>
+                            <Label htmlFor="invite-email">Email</Label>
                             <Input
-                                id="frequency"
-                                type="number"
-                                min={7}
-                                max={30}
-                                value={formData.checkin_frequency_days}
-                                onChange={(e) => setFormData({ ...formData, checkin_frequency_days: parseInt(e.target.value) || 14 })}
+                                id="invite-email"
+                                type="email"
+                                inputMode="email"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                value={form.email}
+                                onChange={(e) => update({ email: e.target.value })}
+                                placeholder="marta@email.com"
+                                autoComplete="off"
                                 required
                                 disabled={isPending}
                             />
                         </div>
                     </div>
 
-                    <div className="border-t pt-4 mt-4 space-y-3">
-                        <div>
-                            <Label className="text-sm font-medium">Formularios asignados</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Elige qué onboarding y qué revisión tendrá este cliente desde el primer momento.
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="checkin_template_id">Revisión</Label>
-                                <Select
-                                    value={formData.checkin_template_id}
-                                    onValueChange={(value) => setFormData({ ...formData, checkin_template_id: value })}
-                                    disabled={isPending}
-                                >
-                                    <SelectTrigger id="checkin_template_id">
-                                        <SelectValue placeholder="Selecciona una revisión" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
-                                        {activeCheckinTemplates.map((template) => (
-                                            <SelectItem key={template.id} value={template.id}>
-                                                {template.title}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="onboarding_template_id">Onboarding</Label>
-                                <Select
-                                    value={formData.onboarding_template_id}
-                                    onValueChange={(value) => setFormData({ ...formData, onboarding_template_id: value })}
-                                    disabled={isPending}
-                                >
-                                    <SelectTrigger id="onboarding_template_id">
-                                        <SelectValue placeholder="Selecciona un onboarding" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={NONE_TEMPLATE_VALUE}>Sin asignar</SelectItem>
-                                        {activeOnboardingTemplates.map((template) => (
-                                            <SelectItem key={template.id} value={template.id}>
-                                                {template.title}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                    </div>
+                    {/* Lo que recibirá */}
+                    <section aria-labelledby="invite-receives" className="rounded-xl border bg-muted/30 p-3.5">
+                        <h3 id="invite-receives" className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            Lo que recibirá
+                        </h3>
 
-                    {/* ---- Payment info ---- */}
-                    <div className="border-t pt-4 mt-4 space-y-3">
-                        <div>
-                            <Label className="text-sm font-medium">💳 Información de pago</Label>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Opcional — para tu control interno
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="payment_amount">Cuota mensual (€)</Label>
-                                <Input
-                                    id="payment_amount"
-                                    type="number"
-                                    min={0}
-                                    step={0.01}
-                                    value={formData.payment_amount}
-                                    onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
-                                    placeholder="150.00"
-                                    disabled={isPending}
-                                />
+                        {!options && !optionsError && (
+                            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Preparando sus formularios…
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="payment_day">Día de cobro</Label>
-                                <Input
-                                    id="payment_day"
-                                    type="number"
-                                    min={1}
-                                    max={31}
-                                    value={formData.payment_day}
-                                    onChange={(e) => setFormData({ ...formData, payment_day: e.target.value })}
-                                    placeholder="1"
-                                    disabled={isPending}
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="payment_notes">Notas de pago</Label>
-                            <Input
-                                id="payment_notes"
-                                value={formData.payment_notes}
-                                onChange={(e) => setFormData({ ...formData, payment_notes: e.target.value })}
-                                placeholder="Bizum, transferencia, efectivo..."
-                                disabled={isPending}
-                            />
-                        </div>
-                    </div>
+                        )}
+                        {optionsError && <p className="text-sm text-destructive">{optionsError}</p>}
 
-                    {/* ---- Password section ---- */}
-                    <div className="border-t pt-4 mt-4 space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <Label className="text-sm font-medium">Contraseña inicial</Label>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                    Opcional. Si la estableces, el cliente podrá iniciar sesión directamente sin invitación.
-                                </p>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleGeneratePassword}
-                                disabled={isPending}
-                                className="shrink-0 gap-1.5"
-                            >
-                                <Sparkles className="h-3.5 w-3.5" />
-                                Generar
-                            </Button>
-                        </div>
+                        {options && (
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="invite-onboarding" className="text-xs text-muted-foreground">Formulario de onboarding · lo rellena al entrar</Label>
+                                    <Select value={form.onboardingTemplateId} onValueChange={(value) => update({ onboardingTemplateId: value })} disabled={isPending}>
+                                        <SelectTrigger id="invite-onboarding" className="bg-background">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {options.onboarding.map(option => (
+                                                <SelectItem key={option.id} value={option.id}>{option.title}</SelectItem>
+                                            ))}
+                                            <SelectItem value={NONE}>Sin onboarding</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                        {/*
-                          Ambos campos van SIEMPRE montados y sin semántica de
-                          registro: si el de confirmación aparecía al escribir, el
-                          navegador re-evaluaba el formulario y disparaba su
-                          "contraseña segura", sobrescribiendo lo tecleado.
-                        */}
-                        <div className="space-y-2">
-                            <div className="relative">
-                                <Input
-                                    id="client-initial-password"
-                                    name="client-initial-password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder="Mín. 8 caracteres"
-                                    minLength={8}
-                                    disabled={isPending}
-                                    className="pr-20"
-                                    autoComplete="new-password"
-                                    data-form-type="other"
-                                    data-1p-ignore
-                                    data-lpignore="true"
-                                    data-bwignore
-                                />
-                                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
-                                    {formData.password && (
-                                        <button
-                                            type="button"
-                                            onClick={handleCopyPassword}
-                                            className="p-1.5 rounded-md hover:bg-muted transition-colors"
-                                            title="Copiar contraseña"
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="invite-review" className="text-xs text-muted-foreground">Revisión periódica</Label>
+                                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                                        <Select
+                                            value={form.reviewTemplateId}
+                                            onValueChange={(value) => {
+                                                const review = options.reviews.find(option => option.id === value)
+                                                update({ reviewTemplateId: value, ...(review ? { reviewFrequencyDays: review.frequencyDays } : {}) })
+                                            }}
+                                            disabled={isPending}
                                         >
-                                            {copied ? (
-                                                <Check className="h-3.5 w-3.5 text-green-500" />
-                                            ) : (
-                                                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                                            )}
-                                        </button>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="p-1.5 rounded-md hover:bg-muted transition-colors"
-                                        title={showPassword ? 'Ocultar' : 'Mostrar'}
-                                    >
-                                        {showPassword ? (
-                                            <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                                        ) : (
-                                            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                                        )}
-                                    </button>
+                                            <SelectTrigger id="invite-review" className="bg-background">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {options.reviews.map(option => (
+                                                    <SelectItem key={option.id} value={option.id}>{option.title}</SelectItem>
+                                                ))}
+                                                <SelectItem value={NONE}>Sin revisión</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Select
+                                            value={String(form.reviewFrequencyDays)}
+                                            onValueChange={(value) => update({ reviewFrequencyDays: Number(value) })}
+                                            disabled={isPending || !selectedReview}
+                                        >
+                                            <SelectTrigger className="w-full bg-background sm:w-[150px]" aria-label="Frecuencia de la revisión">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FREQUENCIES.map(option => (
+                                                    <SelectItem key={option.days} value={String(option.days)}>{option.label}</SelectItem>
+                                                ))}
+                                                {!FREQUENCIES.some(option => option.days === form.reviewFrequencyDays) && (
+                                                    <SelectItem value={String(form.reviewFrequencyDays)}>Cada {form.reviewFrequencyDays} días</SelectItem>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Más opciones */}
+                    <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
+                        <CollapsibleTrigger asChild>
+                            <button type="button" className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+                                Más opciones
+                                <span className="flex items-center gap-1 text-xs font-normal">
+                                    Teléfono, fecha de inicio, cuota
+                                    <ChevronDown className={cn('h-4 w-4 transition-transform', moreOpen && 'rotate-180')} />
+                                </span>
+                            </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="space-y-4 pt-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="invite-phone">Teléfono</Label>
+                                    <Input id="invite-phone" type="tel" value={form.phone} onChange={(e) => update({ phone: e.target.value })} placeholder="+34 600 000 000" disabled={isPending} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="invite-start">Fecha de inicio</Label>
+                                    <Input id="invite-start" type="date" value={form.startDate} onChange={(e) => update({ startDate: e.target.value })} disabled={isPending} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="invite-fee">Cuota mensual (€)</Label>
+                                    <Input id="invite-fee" inputMode="decimal" value={form.paymentAmount} onChange={(e) => update({ paymentAmount: e.target.value })} placeholder="Ej.: 80" disabled={isPending} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="invite-fee-day">Día de cobro</Label>
+                                    <Input id="invite-fee-day" type="number" min={1} max={31} value={form.paymentDay} onChange={(e) => update({ paymentDay: e.target.value })} placeholder="1–31" disabled={isPending} />
                                 </div>
                             </div>
 
-                            <Input
-                                id="client-initial-password-confirm"
-                                name="client-initial-password-confirm"
-                                type={showPassword ? 'text' : 'password'}
-                                value={formData.confirmPassword}
-                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                placeholder="Repetir contraseña"
-                                disabled={isPending || !formData.password}
-                                autoComplete="new-password"
-                                data-form-type="other"
-                                data-1p-ignore
-                                data-lpignore="true"
-                                data-bwignore
-                            />
-
-                            {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                                <p className="text-xs text-destructive">Las contraseñas no coinciden.</p>
-                            )}
-                        </div>
-                    </div>
+                            <div className="space-y-2 border-t pt-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <Label htmlFor="invite-password">Contraseña inicial</Label>
+                                    <Button type="button" variant="ghost" size="sm" onClick={handleGeneratePassword} disabled={isPending} className="h-7 gap-1.5 text-xs">
+                                        {form.password ? <RefreshCw className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                        Generar
+                                    </Button>
+                                </div>
+                                <div className="relative">
+                                    <Input
+                                        id="invite-password"
+                                        name="invite-initial-password"
+                                        type="text"
+                                        value={form.password}
+                                        onChange={(e) => update({ password: e.target.value })}
+                                        placeholder="Opcional · mínimo 8 caracteres"
+                                        disabled={isPending}
+                                        className="pr-10 font-mono"
+                                        autoComplete="off"
+                                        data-form-type="other"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-bwignore
+                                    />
+                                    {form.password && (
+                                        <button type="button" onClick={handleCopyPassword} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 hover:bg-muted" title="Copiar contraseña">
+                                            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Solo si prefieres darle tú la contraseña. Si la dejas vacía, la crea él con el enlace del email.
+                                </p>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
 
                     {error && (
-                        <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md whitespace-pre-wrap">
+                        <div role="alert" className="whitespace-pre-wrap rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                             {error}
                         </div>
                     )}
 
-                    <DialogFooter className="flex flex-col sm:flex-row gap-2">
-                        {hasPassword ? (
-                            /* When password is set: single "Create with password" button */
-                            <Button type="submit" disabled={isPending} className="w-full gap-2">
-                                {isPending ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Creando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Save className="h-4 w-4" />
-                                        Crear con contraseña
-                                    </>
-                                )}
-                            </Button>
-                        ) : (
-                            /* When no password: Save / Save + Invite buttons */
-                            <>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => handleSubmit(false)}
-                                    disabled={isPending}
-                                    className="gap-2"
-                                >
-                                    <Save className="h-4 w-4" />
-                                    Guardar sin invitación
-                                </Button>
-                                <Button type="submit" disabled={isPending} className="gap-2">
-                                    {isPending ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Creando...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Send className="h-4 w-4" />
-                                            Guardar e invitar
-                                        </>
-                                    )}
-                                </Button>
-                            </>
-                        )}
+                    <DialogFooter>
+                        <Button type="submit" disabled={isPending || !options} className="w-full gap-2 sm:w-auto">
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                            Enviar invitación
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

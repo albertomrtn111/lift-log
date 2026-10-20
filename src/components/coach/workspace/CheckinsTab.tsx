@@ -41,6 +41,7 @@ interface CheckinsTabProps {
     onRefresh: () => void
     metricDefinitions: MetricDefinition[]
     formTemplates: FormTemplate[]
+    isSampleClient?: boolean
 }
 
 function getReviewStatusMeta(checkin: CheckinWithReview) {
@@ -103,7 +104,7 @@ const CHECKINS_SECTIONS: { value: CheckinsSection; label: string }[] = [
     { value: 'medidas', label: 'Medidas' },
 ]
 
-export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates }: CheckinsTabProps) {
+export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefinitions, formTemplates, isSampleClient = false }: CheckinsTabProps) {
     const [section, setSection] = useState<CheckinsSection>('listado')
     const [selectedCheckin, setSelectedCheckin] = useState<CheckinWithReview | null>(null)
     const liveSelectedCheckin = selectedCheckin
@@ -192,14 +193,38 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                     clientId={clientId}
                     checkin={reviewDialogCheckin}
                     onCompleted={onRefresh}
+                    isSampleClient={isSampleClient}
                 />
             </>
         )
     }
 
+    // Atleta de ejemplo: guiamos al coach hasta su revisión de esta semana
+    const samplePendingCheckin = isSampleClient
+        ? checkins.find(checkin => checkin.submitted_at && checkin.review && checkin.review.status !== 'approved') ?? null
+        : null
+
     return (
         <div className="space-y-4">
             {sectionSwitcher}
+            {samplePendingCheckin && (
+                <Card className="flex flex-col gap-3 border-primary/30 bg-primary/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Sparkles className="h-4 w-4" />
+                        </span>
+                        <div className="text-sm">
+                            <p className="font-semibold">La IA ya ha analizado la revisión de esta semana</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Ábrela, mira el análisis y pulsa «Aprobar y enviar» para ver lo que recibe el atleta.
+                            </p>
+                        </div>
+                    </div>
+                    <Button size="sm" className="shrink-0 self-start sm:self-auto" onClick={() => setSelectedCheckin(samplePendingCheckin)}>
+                        Abrir revisión
+                    </Button>
+                </Card>
+            )}
             <Card className="flex-1">
                 <div className="p-4 border-b flex items-center justify-between">
                     <h3 className="font-semibold flex items-center gap-2">
@@ -230,6 +255,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                 clientId={clientId}
                 checkin={reviewDialogCheckin}
                 onCompleted={onRefresh}
+                isSampleClient={isSampleClient}
             />
         </div>
     )

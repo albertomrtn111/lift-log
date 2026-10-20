@@ -141,8 +141,11 @@ export function ClientSelector({ clients, selectedClientId, onClientChange, isSw
                     </div>
                     {!inactive && <UrgencyDot client={client} />}
                     <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{displayName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                        <p className="text-sm font-medium truncate">
+                            {displayName}
+                            {client.is_sample && <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-amber-700 dark:text-amber-400">Ejemplo</span>}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{client.is_sample ? 'Atleta de ejemplo' : client.email}</p>
                     </div>
                 </div>
                 <Check

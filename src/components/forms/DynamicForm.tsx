@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { saveFormDraftAction } from '@/data/form-draft'
+import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { FormField, FormFieldType } from '@/types/forms'
 import { MetricDefinition } from '@/types/metrics'
@@ -57,6 +59,8 @@ interface DynamicFormProps {
     submissionMode?: 'submit' | 'update'
     redirectOnOnboarding?: boolean
     onSubmitted?: (result: { isOnboarding: boolean }) => void
+    /** Guarda un borrador mientras el atleta escribe (formularios pendientes) */
+    autosave?: boolean
     /**
      * Configuración de fotos según la plantilla de revisión.
      * Si no se pasa, se usa la lógica legacy: bloque visible si el schema incluye `photo_upload`.
@@ -82,6 +86,7 @@ export function DynamicForm({
     redirectOnOnboarding = true,
     onSubmitted,
     photoConfig,
+    autosave = false,
 }: DynamicFormProps) {
     const router = useRouter()
     const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {})
@@ -91,6 +96,23 @@ export function DynamicForm({
     const [submitError, setSubmitError] = useState<string | null>(null)
     const [isOnboarding, setIsOnboarding] = useState(false)
     const [photoCount, setPhotoCount] = useState(0)
+    const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+    const firstRender = useRef(true)
+
+    // Autoguardado: 1,2 s después de dejar de escribir
+    useEffect(() => {
+        if (!autosave || submitted) return
+        if (firstRender.current) {
+            firstRender.current = false
+            return
+        }
+        setDraftStatus('saving')
+        const timer = setTimeout(async () => {
+            const result = await saveFormDraftAction(checkinId, values).catch(() => ({ success: false }))
+            setDraftStatus(result.success ? 'saved' : 'error')
+        }, 1200)
+        return () => clearTimeout(timer)
+    }, [autosave, submitted, checkinId, values])
 
     const setValue = useCallback((fieldId: string, value: unknown) => {
         setValues(prev => ({ ...prev, [fieldId]: value }))
@@ -275,8 +297,15 @@ export function DynamicForm({
                 <p className="text-sm text-muted-foreground">
                     {submissionMode === 'update'
                         ? 'Revisa tus respuestas y guarda los cambios cuando termines.'
-                        : 'Completa todos los campos obligatorios y envía tus respuestas.'}
+                        : autosave
+                            ? 'Se guarda solo: puedes dejarlo a medias y seguir luego.'
+                            : 'Completa todos los campos obligatorios y envía tus respuestas.'}
                 </p>
+                {autosave && draftStatus !== 'idle' && (
+                    <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+                        {draftStatus === 'saving' ? 'Guardando…' : draftStatus === 'saved' ? 'Guardado' : 'No se pudo guardar el borrador; tus respuestas siguen aquí.'}
+                    </p>
+                )}
             </div>
 
             <div className="space-y-4">
@@ -311,15 +340,19 @@ export function DynamicForm({
                         </div>
                         {schema
                             .filter((field) => field.type !== 'photo_upload')
-                            .map((field) => (
-                                <FieldRenderer
-                                    key={field.id}
-                                    field={field}
-                                    value={values[field.id]}
-                                    error={errors[field.id]}
-                                    onChange={(val) => setValue(field.id, val)}
-                                    onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
-                                />
+                            .map((field, index) => (
+                                <div key={field.id} className="space-y-4">
+                                    {field.section && (
+                                        <h3 className={cn('text-base font-semibold', index > 0 && 'border-t pt-5')}>{field.section}</h3>
+                                    )}
+                                    <FieldRenderer
+                                        field={field}
+                                        value={values[field.id]}
+                                        error={errors[field.id]}
+                                        onChange={(val) => setValue(field.id, val)}
+                                        onToggleMulti={(opt) => toggleMultiChoice(field.id, opt)}
+                                    />
+                                </div>
                             ))}
                     </div>
                 )}

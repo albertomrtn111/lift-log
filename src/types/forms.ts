@@ -23,6 +23,7 @@ export interface FormField {
     isFixed?: boolean       // locked fields cannot be deleted or moved
     multiple?: boolean      // photo_upload: allow multiple files
     maxItems?: number       // photo_upload: max number of files
+    section?: string        // abre una sección del formulario (título visible para el atleta)
 }
 
 export interface FormTemplate {

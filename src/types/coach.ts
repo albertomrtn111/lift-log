@@ -36,6 +36,8 @@ export interface Client {
     payment_amount?: number | null
     payment_day?: number | null
     payment_notes?: string | null
+    /** Atleta de ejemplo (Lucía): no se cobra ni recibe nada */
+    is_sample?: boolean
 }
 
 export interface ClientWithMeta extends Client {

@@ -605,6 +605,7 @@ export function ResumenTab({
                         latestCheckin={latestCheckin}
                         clientId={clientId}
                         onRefresh={onRefresh}
+                        isSampleClient={Boolean(client.is_sample)}
                     />
                 )}
             </section>
@@ -740,11 +741,13 @@ function FollowUpActionBanner({
     latestCheckin,
     clientId,
     onRefresh,
+    isSampleClient,
 }: {
     coachId: string
     latestCheckin: CheckinWithReview | null
     clientId: string
     onRefresh: () => void
+    isSampleClient: boolean
 }) {
     const [isPending, startTransition] = useTransition()
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -817,6 +820,7 @@ function FollowUpActionBanner({
                 clientId={clientId}
                 checkin={hasReviewableCheckin ? latestCheckin : null}
                 onCompleted={onRefresh}
+                isSampleClient={isSampleClient}
             />
         </>
     )

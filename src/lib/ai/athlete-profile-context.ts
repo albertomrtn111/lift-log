@@ -3,6 +3,7 @@ import 'server-only'
 import { getAthleteAIProfile } from '@/data/athlete-ai-profile'
 import { getAthleteCurrentGoal } from '@/data/athlete-current-goal'
 import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
+import { getOnboardingAnswersContext } from './onboarding-answers-context'
 import type { AthleteAIProfile, AthleteAIProfileOutput, AthleteProfileAnswers } from '@/types/athlete-profile'
 
 type AthleteProfileContextInput = Pick<
@@ -59,9 +60,10 @@ export function formatAthleteProfileContext(
 
 export async function getAthleteProfileContextForCoach(coachId: string | null, clientId: string) {
     if (!coachId) return formatAthleteProfileContext(null)
-    const [profile, currentGoal] = await Promise.all([
+    const [profile, currentGoal, onboardingAnswers] = await Promise.all([
         getAthleteAIProfile(coachId, clientId),
         getAthleteCurrentGoal(coachId, clientId),
+        getOnboardingAnswersContext(coachId, clientId).catch(() => ''),
     ])
     const goalContext = currentGoal
         ? [
@@ -71,5 +73,7 @@ export async function getAthleteProfileContextForCoach(coachId: string | null, c
             currentGoal.notes ? `Notas: ${currentGoal.notes}` : '',
         ].filter(Boolean).join(' | ')
         : ''
-    return [goalContext, formatAthleteProfileContext(profile)].filter(Boolean).join('\n')
+    // Sin perfil generado, las respuestas del onboarding son lo más fiable que hay
+    const profileContext = formatAthleteProfileContext(profile, onboardingAnswers ? '' : undefined)
+    return [goalContext, profileContext, onboardingAnswers].filter(Boolean).join('\n')
 }

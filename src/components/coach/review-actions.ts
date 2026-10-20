@@ -7,6 +7,7 @@ import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
 import { toLocalDateStr } from '@/lib/date-utils'
 import { sendReviewCreatedNotification } from '@/lib/notifications/client'
+import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
 import {
     listSchedulesForClient,
     type ClientReviewScheduleWithTemplate,
@@ -40,12 +41,13 @@ export async function sendReviewAction(
     // 2) Fetch client
     const { data: client, error: clientErr } = await supabase
         .from('clients')
-        .select('id, email, full_name, next_checkin_date, checkin_frequency_days')
+        .select('id, email, full_name, next_checkin_date, checkin_frequency_days, is_sample')
         .eq('id', clientId)
         .eq('coach_id', validatedCoachId)
         .single()
 
     if (clientErr || !client) return { success: false, error: 'Cliente no encontrado' }
+    if (client.is_sample) return { success: false, error: 'Es tu atleta de ejemplo: a ella no se le envía nada.' }
     if (!client.email) return { success: false, error: 'El cliente no tiene email configurado' }
 
     // 3) Resolver schedule + plantilla
@@ -180,18 +182,21 @@ export async function sendReviewAction(
             .eq('id', chosenSchedule.id)
     }
 
-    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking
-    const emailResult = await sendReviewEmailSmtp({
-        to: client.email,
-        clientName: client.full_name ?? undefined,
-        formUrl,
-        reviewTemplateName: chosenSchedule?.review_template?.name,
-        periodEnd: scheduledDate,
-        coachId: validatedCoachId,
-    })
+    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking.
+    //    Respeta la preferencia "Revisiones" del cliente igual que push y buzón.
+    if (await isClientNotificationChannelEnabled(client.id, 'reviews')) {
+        const emailResult = await sendReviewEmailSmtp({
+            to: client.email,
+            clientName: client.full_name ?? undefined,
+            formUrl,
+            reviewTemplateName: chosenSchedule?.review_template?.name,
+            periodEnd: scheduledDate,
+            coachId: validatedCoachId,
+        })
 
-    if (!emailResult.ok) {
-        console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
+        if (!emailResult.ok) {
+            console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
+        }
     }
 
     try {

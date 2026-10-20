@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { registerNutritionTools } from './nutrition.ts'
+import { outputSchemas } from './output-schemas.ts'
 
 const clientId = '11111111-1111-4111-8111-111111111111'
 const coachId = '22222222-2222-4222-8222-222222222222'
@@ -49,11 +50,13 @@ function fixture() {
       if (coach !== coachId || client !== clientId) throw new Error('Cliente no autorizado')
     },
     jsonResult: (data: any) => ({ data }), toolError: (message: string) => ({ error: message }), audit() {},
-    annotations: { readOnlyHint: true },
   })
   async function run(name: string, input: any) {
     const tool = tools.get(name)
-    return await tool.run(tool.config.inputSchema.parse(input))
+    const result = await tool.run(tool.config.inputSchema.parse(input))
+    // Lo que se devuelve con éxito debe cumplir el outputSchema que el SDK valida.
+    if (result.data) outputSchemas[name].parse(JSON.parse(JSON.stringify(result.data)))
+    return result
   }
   return { run, calls, tables, tools }
 }

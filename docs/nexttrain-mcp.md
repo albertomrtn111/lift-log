@@ -11,13 +11,13 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 ## Herramientas
 
 - `who_am_i`: comprueba los espacios de entrenador disponibles.
-- `list_clients`: lista clientes y señales de seguimiento.
+- `list_clients`: lista clientes y señales de seguimiento, paginado con `offset`, `has_more` y `next_offset`.
 - `get_client_overview`: resume check-ins, tendencias, alertas, eventos y programas.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
-- `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas.
+- `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
-- `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas.
+- `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas. Por defecto agrupa las series por sesión y ejercicio (`format: "flat"` mantiene una fila por serie).
 - `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión.
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
@@ -34,8 +34,17 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `preview_cardio_session`: comprueba el modo, bloques, recuperaciones y totales sin guardar.
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
-- `create_strength_program`: crea un programa de fuerza completo; por defecto queda en borrador.
+- `list_exercise_catalog`: busca en la biblioteca común de ejercicios de fuerza por nombre, grupo o nombre alternativo.
+- `create_strength_program`: crea un programa de fuerza completo en una sola transacción, solo con ejercicios de la biblioteca; por defecto queda en borrador.
+- `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
+- `update_strength_program_days`: reemplaza los días y ejercicios de un programa conservando los identificadores y los resultados.
+- `save_review_draft`: guarda en borrador el resumen interno y el mensaje para el cliente de la revisión de un check-in.
 - `create_coach_task`: añade una tarea de seguimiento.
+- `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
+- `create_client_event` / `update_client_event`: crea y edita carreras, pruebas y otros eventos del cliente.
+- `get_coach_inbox`: check-ins por revisar, actividades de Strava sin enlazar y tareas pendientes de todos los clientes en una sola llamada.
+
+Prompts: `revision_semanal`, `preparar_bloque_siguiente` y `bandeja_del_dia`.
 
 ## Seguridad
 
@@ -55,7 +64,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `execution_status` distingue `confirmed` (serie marcada completada), `logged` (registro explícito con fecha de realización o confirmación) y `recorded_unverified` (valor editado sin confirmar). Las series prescritas que no se editaron no aparecen en `results`. Una sesión marcada completa no confirma automáticamente sus series. `data_quality` cuenta por separado series confirmadas, valores no confirmados y sesiones completas sin series confirmadas.
 - `exercise_id` identifica el ejercicio dentro del programa. `comparison_exercise_id` usa el identificador del catálogo cuando existe para comparar programas; si falta, solo es estable dentro del programa (`comparison_scope`).
 - El progreso de programas separa semana natural actual, semanas naturales completas, semanas con una sesión marcada completa y semanas con series confirmadas (estas últimas solo en el detalle del bloque; `null` en la lista). `estimated_end_date` se calcula a partir del inicio y duración si no se guardó `effective_to`; `end_date_source` indica el origen.
-- `get_program_history` acepta `as_of_date` para evaluar el progreso en una fecha concreta; si se omite, usa la fecha UTC actual.
+- `get_program_history` acepta `as_of_date` para evaluar el progreso en una fecha concreta; si se omite, usa el día actual en la zona horaria del espacio de trabajo.
 - Las sesiones previstas por la plantilla actual son una estimación; las sesiones pasadas sin confirmación no se presentan como omisiones verificadas. No existe estado de «omitida» ni semanas de descarga estructuradas: esos campos son `null`. Los cambios de bloque se infieren por el inicio del siguiente programa y los bloques de descarga solo se sugieren por su nombre.
 - La recuperación diaria disponible contiene sueño, pasos y notas. Energía, estrés, hambre, rendimiento y molestias proceden de check-ins.
 - Los eventos no tienen distancia estructurada; solo se extrae si aparece una cantidad explícita en su texto.
@@ -182,6 +191,208 @@ La dieta por opciones y el plan de macros son registros independientes: `daily_t
 La función `save_nexttrain_nutrition_plan` guarda cabecera y estructura en una transacción, con `SECURITY INVOKER`, RLS y comprobación explícita de membresía owner/coach y pertenencia del cliente. `anon` no tiene permiso de ejecución. Un error revierte también cualquier archivo/cierre de planes anteriores. Las macros de alimentos se vuelven a calcular desde el catálogo en la base de datos.
 
 Verificación: `node --test scripts/mcp-nutrition.test.mjs scripts/diet-macros.test.mjs`, `deno check supabase/functions/nexttrain-mcp/index.ts`, `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts`. La prueba SQL `supabase/tests/mcp_nutrition_atomic_save.sql` utiliza un cliente temporal con rol `authenticated` y termina con `ROLLBACK` explícito.
+
+## Fuerza y cartera (MCP 0.6.1)
+
+- `create_strength_program` llama a `create_nexttrain_strength_program`, que crea programa, días y ejercicios en una transacción con `SECURITY INVOKER`, RLS y comprobación de membresía y cliente. Cualquier error revierte todo; ya no se intenta borrar a posteriori. También crea las columnas por defecto de la app (`training_columns`). Con `status="active"` archiva antes el programa activo anterior del cliente, igual que la app y como exige el índice `unique_active_program_per_client`, y devuelve `archived_program_ids`; un programa activo no puede empezar en el futuro.
+- `list_clients` obtiene el último check-in enviado de cada cliente con `nexttrain_latest_checkins` (`DISTINCT ON`), en lugar de un límite global que podía marcar como `sin_checkin` a clientes con check-ins antiguos. Si la consulta falla, la herramienta devuelve error en vez de omitir los check-ins.
+- La migración añade el índice `idx_checkins_coach_client_submitted_at` para esa consulta.
+- Todas las fechas de entrada se validan como fechas reales (`2026-02-31` se rechaza).
+
+Despliegue: aplicar la migración `20261015140000_mcp_strength_program_atomic_save.sql` antes de desplegar la función. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (8 verificaciones; termina con `ROLLBACK`).
+
+## Respuestas compactas y código común (MCP 0.7.0)
+
+- Todas las herramientas devuelven el JSON en una sola línea, sin sangría, para gastar menos tokens. El contenido y los nombres de campo no cambian.
+- `list_clients` acepta `offset` (por defecto 0) y devuelve `has_more` y `next_offset`, como el resto de listas. El orden es `full_name` y después `id`, para que las páginas no se solapen con nombres repetidos. Los últimos check-ins se consultan solo para los clientes de la página.
+- `shared.ts` reúne lo que antes estaba copiado en `index.ts`, `history.ts`, `nutrition.ts` y `cardio.ts`: validación de fechas, `day`/`addDays`, `rows`, `allRows`, `inBatches`, `jsonResult`, `toolError`, `audit`, `resolveCoach`, `requireClient` y las anotaciones de lectura y escritura.
+- `createToolRunner` es el envoltorio común de las herramientas con espacio de entrenador: resuelve el `coach_id`, comprueba el cliente si se indica, registra la auditoría (`record_id` o `result_count` cuando aplica) y convierte los errores en `toolError` con el mismo mensaje que antes. Las validaciones previas, como el orden de fechas en `set_athlete_goal` o `list_client_schedule`, siguen respondiendo antes de consultar la base de datos y sin auditoría.
+- Los módulos de historial, nutrición y cardio aceptan sustitutos de `resolveCoach`, `requireClient`, `jsonResult`, `toolError` y `audit` para las pruebas; por defecto usan los de `shared.ts`.
+- Nutrición mantiene sus mensajes de error y su paginación de 500 filas (hasta 10 500 por consulta).
+- Una fecha con formato incorrecto muestra ahora en todas las herramientas el mismo aviso: «Usa el formato YYYY-MM-DD».
+
+Verificación: `node --test scripts/mcp-strength-progress.test.mjs scripts/mcp-nutrition.test.mjs scripts/mcp-cardio-plan.test.mjs`, `deno check supabase/functions/nexttrain-mcp/index.ts`, `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts supabase/functions/nexttrain-mcp/cardio.test.ts`. No requiere migraciones.
+
+## Planificación real y zona horaria (MCP 0.8.0)
+
+### Fuerza en `list_client_schedule`
+
+La fuerza sigue la misma lógica que el calendario de la app (`getWeeklySchedule` en la planificación del coach y `getClientWeeklySchedule` en la del atleta):
+
+- Cada fila de `scheduled_strength_sessions` del cliente aparece en su `scheduled_date`, con su `is_completed`. La app guarda ahí la finalización: al marcar la sesión o al registrar un ejercicio (`markStrengthSessionCompleted` / `autoMarkStrengthDayComplete`). Mover una sesión en el calendario cambia la fecha de esa fila; mover un día de plantilla crea la fila.
+- Cuentan también las filas de programas archivados, igual que en la app. `program_status` indica el estado del programa.
+- El programa activo (el más reciente con días de la semana asignados) completa los días que no tienen fila: `weeks` semanas (4 si falta) desde el lunes de la semana de `effective_from`, por `default_weekday`. Igual que en la app, no se usa `effective_to` y la primera semana incluye los días anteriores al inicio dentro de esa semana.
+- Un día de plantilla se oculta cuando, en la misma semana de lunes a domingo, existe una fila del mismo día del programa. Por eso una sesión reprogramada solo aparece en su fecha nueva. Para aplicar esta regla se leen siempre las semanas completas que cubren el rango, aunque este empiece o acabe a mitad de semana.
+
+Campos nuevos en los elementos `kind: "strength"` (se mantienen `date`, `program_id`, `program_name`, `week`, `day_id`, `day_name` y `exercises`):
+
+- `source`: `scheduled_session` (fila guardada) o `program_template` (día previsto por la plantilla, sin fila).
+- `session_id`: ID de la fila, o `null` en los días de plantilla.
+- `is_completed`: `true` solo si la fila está marcada como completada. Los días de plantilla siempre son `false`; que no esté marcada no demuestra que se omitiera.
+- `rescheduled` y `original_date`: si la fila cae en otra fecha que el mismo día de la plantilla en esa semana, `rescheduled=true` y `original_date` es la fecha de la plantilla. La base de datos no guarda la fecha original: se deduce de la plantilla de la semana, como hace la app al mostrar «Ajustada». Si una sesión se mueve a otra semana, la app y el MCP la comparan con la plantilla de la semana de destino, y en la semana de origen vuelve a aparecer el día de plantilla.
+- `extra_session`: `true` si la fila no sustituye a ningún día de la plantilla en esa semana (sesión añadida, duplicada o de otro programa). En la app se muestra como «Manual».
+- `program_status`: estado del programa de la fila.
+- `week` de una fila se calcula con el programa de esa fila y es `null` fuera de sus semanas. Los ejercicios se ordenan por `order_index`.
+
+Todas las consultas filtran por `coach_id` y `client_id` además de RLS. Los programas de las filas que no son el activo se leen con el mismo filtro.
+
+### «Hoy» en la zona del espacio de trabajo
+
+- `resolveCoach` lee `coaches.timezone` en la misma consulta de la membresía (`coaches(timezone)`), sin consultas extra. Si falta o no es una zona IANA válida, se usa `Europe/Madrid`, como en la app (`src/data/billing.ts`).
+- `createToolRunner` calcula una vez por petición `timeZone` y `today` con `todayIn(timeZone)` (`Intl.DateTimeFormat('en-CA', { timeZone })`) y los pasa a cada herramienta.
+- Usan ese día: `checkin_atrasado` en `list_clients` y en `get_client_overview`, `days_until_end` y `deadline_status` del objetivo, la ventana de cardio y los próximos eventos del resumen, los rangos por defecto del historial (`get_body_history`, `get_recovery_history`, `list_client_events`, `get_strength_results`, `get_cardio_results`), `as_of_date` por defecto en `get_program_history` y `on_date` por defecto en `get_current_nutrition`.
+- `list_clients` y `get_client_overview` devuelven `today` para que se vea qué día se usó.
+- No cambian: las fechas que ya son días (`scheduled_date`, `event_date`…), ni las marcas de tiempo `updated_at`. Las fechas de envío de check-ins (`submitted_at`) y sus filtros por rango siguen en UTC.
+- Las funciones SQL `create_nexttrain_strength_program` y `save_nexttrain_nutrition_plan` usan también el día del espacio desde la migración `20261016180000` (ver ««Hoy» en SQL»).
+
+### Código y pruebas
+
+- `list_clients` pasa a `clients.ts` y `list_client_schedule` a `schedule.ts`. Aceptan los sustitutos de pruebas de `ToolHelpers`, que ahora incluye `now` opcional para fijar el reloj.
+- `buildStrengthSchedule` es la función pura que resuelve la fuerza; `clientAttentionFlags` calcula las señales de cada cliente.
+
+Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` (incluye `schedule.test.ts` y `timezone.test.ts`) y `node --test scripts/mcp-*.test.mjs`. No requiere migraciones.
+
+## Respuestas estructuradas y resultados agrupados (MCP 0.9.0)
+
+### JSON compacto
+
+Las respuestas ya se devolvían en una sola línea desde la 0.7.0 (`jsonResult` en `shared.ts`); no ha hecho falta cambiarlo.
+
+### `structuredContent` y `outputSchema` (MCP 2025-06-18)
+
+- Cada respuesta correcta incluye `structuredContent` con los mismos datos que el texto JSON. El texto se mantiene, como recomienda la especificación, para los clientes que no leen `structuredContent`. Ambos se generan a partir de la misma serialización, así que coinciden exactamente.
+- Todas las herramientas declaran `outputSchema` (`output-schemas.ts`). Se añade en `index.ts` con `withOutputSchemas(new McpServer(...))`, sin tocar cada registro. Un esquema explícito en el registro tiene prioridad.
+- El SDK valida `structuredContent` contra el esquema y, si no encaja, convierte la respuesta en error. Por eso los esquemas solo fijan las claves de primer nivel y sus tipos, y los objetos anidados admiten campos extra (`z.looseObject`). Los errores (`isError`) no se validan.
+- Contrapartida: un cliente que entregue al modelo tanto el texto como `structuredContent` enviaría los datos dos veces. Los clientes habituales usan uno u otro.
+
+### Resultados de fuerza agrupados
+
+`get_strength_results` y el detalle de `get_program_history` (con `program_id`) aceptan `format`:
+
+- `grouped` (por defecto): `workouts`, con una entrada por sesión (`program_id`, `program_name`, `day_id`, `day_name`, `week_index`, `scheduled_date`, `scheduled_date_source`, `session_id`, `session_completed`). Cada sesión tiene `exercises` (`exercise_id`, `exercise`, `catalog_exercise_id`, `comparison_exercise_id`, `comparison_scope`) y cada ejercicio tiene `sets` con lo propio de la serie (`id`, `source`, `execution_status`, `set_number`, `weight_kg`, `reps`, `rir`, `rpe`, `completed`, `performed_at`, `recorded_at`, `notes`, `note_source`). En las series se omiten los campos nulos y `set_index`. `result_count` cuenta las series de la página.
+- `flat`: `results`, una fila por serie con todos los campos, como hasta la 0.8.0.
+- **Cambio de formato:** por defecto ya no se devuelve `results`, sino `workouts`. Para el formato anterior hay que enviar `format: "flat"`.
+- La paginación (`limit`/`offset`, `result_limit`/`result_offset`) sigue contando series. Una sesión partida entre dos páginas aparece en ambas con sus series de cada página.
+- En una página típica de 200 series (10 sesiones × 5 ejercicios × 4 series), el JSON agrupado ocupa un 34 % del plano (prueba en `strength-results.test.ts`).
+
+Verificación: `npx -y deno@2.1.4 check --node-modules-dir=none supabase/functions/nexttrain-mcp/index.ts`, `npx -y deno@2.1.4 test --node-modules-dir=none --allow-env --allow-read supabase/functions/nexttrain-mcp/` y `node --test scripts/mcp-*.test.mjs`. `sdk.test.ts` usa el SDK real (`createMcpHandler`) para comprobar que `tools/list` publica los esquemas y que `tools/call` devuelve `structuredContent`. Las pruebas de cardio, nutrición, planificación, clientes e historial validan sus respuestas contra los esquemas. No requiere migraciones.
+
+## Agenda, eventos, bandeja y prompts (MCP 0.10.0)
+
+### Tareas del entrenador
+
+- `list_coach_tasks`: filtra por `status` (`pending` por defecto, `completed` o `all`), `client_id` y fechas. Paginada con `has_more` y `next_offset`. Devuelve `client_name`, `overdue` (pendiente con fecha anterior a hoy, en la zona del espacio) y `updated_at`.
+- `update_coach_task`: edita título, descripción, fecha (también para aplazar), prioridad y cliente (`null` lo desvincula). `status: "completed"` rellena `completed_at`, igual que la app; `status: "pending"` la reabre y lo vacía.
+- Mismo mecanismo de concurrencia que cardio y nutrición: hay que enviar `expected_updated_at` (el `updated_at` leído) y la escritura se filtra por ese valor. Si la tarea cambió entretanto, no se guarda nada.
+- No se borran tareas desde el MCP.
+
+### Eventos del cliente
+
+- `create_client_event`: mismos valores que la app. `event_type` puede ser `race` (por defecto), `test`, `camp` u `other`; `status`, `planned` (por defecto), `completed` o `cancelled`; `priority`, `a`, `b` (por defecto) o `c`. Los textos vacíos se guardan como `null`.
+- `update_client_event`: edición parcial con `expected_updated_at`. `list_client_events` devuelve ahora `updated_at`. Para anular un evento se usa `status: "cancelled"`; el MCP no borra eventos.
+
+### Bandeja del entrenador
+
+`get_coach_inbox` reúne, solo de clientes activos (como el panel de la app):
+
+- `checkins_to_review`: check-ins enviados que siguen en `reviewed` (la app los pasa a `archived` al aprobar), sin revisión aprobada, del más antiguo al más reciente. Incluye señales breves, `review_status`, `ai_status` y `has_draft_message`.
+- `unlinked_strava_activities`: actividades no borradas sin `cardio_session_id` ni `matched_planned_session_id` de los últimos `strava_days` días (21 por defecto, como la app). `feedback_status=pending` indica que el atleta aún no las ha revisado.
+- `pending_tasks`: tareas pendientes de hoy o vencidas, con `overdue`. Incluye las tareas sin cliente.
+- Cada sección devuelve como mucho `limit` elementos (30 por defecto) y `has_more`. Son cuatro consultas en total y una más para los nombres, independientemente del número de clientes.
+
+### Prompts MCP
+
+Guían al modelo sobre qué herramientas usar y en qué orden; no modifican datos por sí mismos y piden confirmación antes de guardar.
+
+- `revision_semanal` (`cliente`, `checkin_id` opcional): check-in, resumen del cliente, peso, recuperación, fuerza, cardio, planificación y nutrición. Termina con un resumen interno y un borrador de mensaje para el cliente.
+- `preparar_bloque_siguiente` (`cliente`, `semanas` opcional): historial de programas, resultados agrupados, objetivo, eventos y check-ins recientes. Propone el bloque y lo crea en borrador tras la confirmación.
+- `bandeja_del_dia`: `get_coach_inbox` ordenado por prioridad.
+- `cliente` admite nombre o ID; si es un nombre, se busca con `list_clients`.
+
+Verificación: `agenda.test.ts` (tareas, eventos, bandeja y prompts) y `sdk.test.ts` (`prompts/list` y `prompts/get` con el SDK real), además del resto de pruebas de Deno y node. No requiere migraciones: las tablas `coach_tasks` y `client_events` ya permiten a los miembros activos del espacio leer y escribir (`sql/create_coach_tasks.sql`, `sql/create_client_events.sql`).
+
+## Revisiones en borrador y estado de los programas (MCP 0.11.0)
+
+Migración `20261016120000_mcp_review_draft_and_program_update.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140407`).
+
+### `save_review_draft`
+
+- Guarda `summary` (resumen interno) y `message_to_client` (borrador del mensaje) de la revisión de un check-in enviado. Si no existe revisión, la crea en borrador con `ai_status='pending'`, igual que la app al recibir el formulario.
+- Solo trabaja con revisiones en `draft`. Aprobar, enviar al cliente, notificar y archivar el check-in siguen siendo exclusivos de la app. Una revisión aprobada se rechaza.
+- Concurrencia: no hay `updated_at` fiable en `reviews`, así que hay que enviar `expected_summary` y `expected_message_to_client` con los valores actuales devueltos por `get_checkins` (`null` si no hay revisión). Si alguno no coincide, no se guarda nada.
+- Omitir un campo lo conserva; `null` o texto vacío lo vacía. Cada texto admite hasta 10 000 caracteres.
+- Permisos: `save_nexttrain_review_draft` es `SECURITY INVOKER` con `search_path` vacío. RLS se aplica con la política `reviews_rw_member` (`is_coach_member`: miembro activo owner/coach). Además comprueba con `auth.uid()` la membresía, que el cliente pertenece al espacio y que el check-in es de ese cliente y está enviado. Solo modifica esas dos columnas. `anon` no tiene permiso de ejecución.
+
+### `update_strength_program`
+
+- Cambia `name`, `weeks`, `effective_from` y `status` (`draft`, `active`, `archived`) con `expected_updated_at`. `get_program_history` devuelve ahora `updated_at` de cada programa.
+- Activar archiva antes el programa activo del cliente en la misma transacción, como la creación. Si no se indica fecha, el programa empieza hoy (en la zona del espacio), como `activateTrainingProgramAction`. Un programa activo no puede empezar en el futuro.
+- Cambiar la fecha de inicio o las semanas recalcula `effective_to` y borra las sesiones programadas **no completadas** de ese programa, como hace la app al regenerar el calendario (`generateProgramSchedule`). La plantilla las sustituye en el calendario. La respuesta devuelve `removed_scheduled_sessions`. Las sesiones completadas se conservan.
+- `update_nexttrain_strength_program` es `SECURITY INVOKER`, con RLS y comprobación de membresía y cliente.
+- No edita días ni ejercicios: para eso está `update_strength_program_days`.
+
+### Prompts
+
+`revision_semanal` termina guardando el texto confirmado con `save_review_draft`. `preparar_bloque_siguiente` usa `update_strength_program` para activar o archivar.
+
+Verificación:
+- `coach-writes.test.ts`: parámetros, versiones, errores propios y ocultos, y «hoy» en la zona del espacio.
+- `supabase/tests/mcp_review_draft_and_program_update.sql`: 9 verificaciones; termina con `ROLLBACK`.
+- La prueba SQL pasa en producción (9/9, con las políticas RLS reales; los datos de prueba se descartan con `ROLLBACK`) y en PGlite.
+
+## Edición de días y ejercicios (MCP 0.12.0)
+
+Migración `20261016150000_mcp_strength_program_days_update.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140504`). Producción tiene la biblioteca de ejercicios, así que la edición la exige (`catalog_enforced: true`).
+
+`update_strength_program_days` llama a `update_nexttrain_strength_program_days` (`SECURITY INVOKER`, RLS y comprobación de membresía y cliente). Reemplaza la estructura completa en una transacción:
+
+- Leer antes `get_program_history` con `program_id`. Devuelve los días con sus ejercicios e IDs y el `updated_at` del programa, que se envía en `expected_updated_at`.
+- `days` es la estructura entera, de 1 a 7 días con 1 a 30 ejercicios cada uno. El orden del array define `order_index`.
+- Un día o ejercicio **con `id`** se actualiza y conserva su identificador, así que sus series, registros, celdas y sesiones siguen enlazados. Un ejercicio puede cambiar de día enviándolo con su `id` dentro de otro día; sus celdas de prescripción lo acompañan.
+- **Sin `id`** se crea.
+- Los días y ejercicios que **no se envían se eliminan**, con sus series de prescripción y celdas, como `deleteExerciseAction`.
+- En un ejercicio existente, omitir `sets`, `reps`, `rir`, `rest_seconds` o `notes` conserva el valor y `null` lo vacía. Cambiar `name` o `catalog_exercise_id` lo convierte en otro ejercicio.
+- Nunca se pierden resultados. No se guarda nada si se quita:
+  - un ejercicio con una serie completada, una serie editada con valores o un registro en `training_exercise_logs`;
+  - un día con sesiones completadas o con registros que apunten a él.
+  - El error dice cuáles son.
+- Cambiar el día de la semana de un día existente borra sus sesiones programadas no completadas, que quedaban en el día anterior; la plantilla las sustituye. Quitar un día borra también las suyas. La respuesta devuelve `removed_scheduled_sessions`, `removed_day_count` y `removed_exercise_count`.
+- **Biblioteca de ejercicios:** si la base tiene `public.resolve_catalog_exercise` (migración de la rama `feature/mcp-exercise-catalog`), los ejercicios nuevos o con nombre o `catalog_exercise_id` cambiado deben estar en la biblioteca. Se guardan con el nombre, el enlace y el grupo muscular del catálogo, igual que al crear con esa rama, y si alguno falta el error los lista.
+- Sin esa función se aceptan nombres libres y `muscle_group` (por defecto `otros`). Los ejercicios que no cambian no se vuelven a resolver, para no bloquear programas anteriores a la biblioteca. `catalog_enforced` indica qué modo se usó.
+
+Verificación:
+- `coach-writes.test.ts`: estructura enviada, validaciones y errores.
+- `supabase/tests/mcp_strength_program_days_update.sql`: 8 verificaciones, válida con y sin biblioteca; termina con `ROLLBACK`.
+- La prueba SQL pasa en producción en modo biblioteca (8/8) y en PGlite en los dos modos.
+
+## «Hoy» en SQL (migración 20261016180000)
+
+Migración `20261016180000_mcp_coach_today_in_sql.sql`: aplicada en producción el 16/10/2026 (registrada como `20261016140526`), después de la de la biblioteca. No hace falta redesplegar la función por ella.
+
+- `public.nexttrain_coach_today(coach_id)` devuelve el día actual en `coaches.timezone`. Sin zona o con una zona desconocida usa `Europe/Madrid`, igual que la app y `todayIn` en el MCP. Es `SECURITY INVOKER`, sin permiso para `anon`.
+- `create_nexttrain_strength_program` y `save_nexttrain_nutrition_plan` lo usan en lugar de `current_date` (UTC):
+  - para rechazar un programa o una dieta activos con inicio futuro;
+  - para la fecha de cierre (`effective_to`) de la dieta activa que se archiva al activar otra.
+  - Antes, entre las 00:00 y las 02:00 en España, se rechazaba una fecha de inicio de hoy.
+- La migración **parchea la definición instalada** (`pg_get_functiondef` + `replace`), igual que `20261012143804_mcp_nutrition_macro_concurrency_fix.sql`, en lugar de copiar las funciones enteras:
+  - Sirve con la versión de `create_nexttrain_strength_program` de esta rama y con la de la biblioteca de ejercicios (`20261016090000`, rama `feature/mcp-exercise-catalog`) si ya está aplicada.
+  - Falla sin cambiar nada si el texto esperado no aparece exactamente una vez, y es idempotente.
+  - **Si la migración de la biblioteca se aplica después de esta**, vuelve a escribir `current_date` en `create_nexttrain_strength_program`. En ese caso hay que repetir esta migración, que solo parchea lo que falte, o que esa rama use `nexttrain_coach_today`.
+- `update_nexttrain_strength_program` ya recibía el día del espacio desde el MCP (`today`), y `update_nexttrain_strength_program_days` y `save_nexttrain_review_draft` no dependen de la fecha.
+
+Verificación: `supabase/tests/mcp_coach_today_in_sql.sql` (6 verificaciones, con y sin biblioteca; termina con `ROLLBACK`). Usa un espacio en `Pacific/Kiritimati` (UTC+14) para crear un programa activo que empieza «hoy» cuando en UTC aún es el día anterior. Se ha ejecutado en PGlite (Postgres 16) con un esquema mínimo, con las migraciones de nutrición, de la #12 y, en un segundo modo, la de la biblioteca. Sin el parche, la prueba falla. En producción pasa 6/6; se ejecutó con UTC en día 16 y Kiritimati en día 17.
+
+## Biblioteca de ejercicios (MCP 0.13.0)
+
+- `create_strength_program` solo admite ejercicios de `exercise_catalog`. `create_nexttrain_strength_program` resuelve cada uno por `catalog_exercise_id`, por nombre exacto (sin distinguir mayúsculas, tildes ni espacios) o por un alias histórico de `exercise_catalog_aliases`, y guarda el nombre, el `catalog_exercise_id` y el grupo muscular del catálogo. Si alguno no existe no se crea nada y el error lista los nombres pendientes.
+- El campo `muscle_group` ya no forma parte de la entrada: lo define el ejercicio de la biblioteca.
+- `list_exercise_catalog` devuelve `id`, `name` y `primary_group`, con filtros `search` (nombre, grupo o alias) y `primary_group`.
+- La migración añade `exercise_name_key`, `catalog_group_muscle_group` y `resolve_catalog_exercise` (`SECURITY INVOKER`, solo `authenticated`).
+
+- `update_strength_program_days` usa la misma resolución: con la biblioteca instalada, los ejercicios nuevos o cambiados deben estar en ella y su `muscle_group` se ignora.
+- `preparar_bloque_siguiente` pide buscar los ejercicios con `list_exercise_catalog` antes de crear el bloque.
+
+Migraciones: `20261015140000_mcp_strength_program_atomic_save.sql` y `20261016090000_mcp_strength_program_exercise_catalog.sql`, aplicadas en producción como `20261015210310` y `20261015210318`. La de «hoy» en SQL (`20261016180000`) se aplicó después y ya parchea la versión con biblioteca. Verificación: `supabase/tests/mcp_strength_program_atomic_save.sql` (11 verificaciones; termina con `ROLLBACK`), que pasa en producción.
 
 ## Ajustes requeridos en Supabase
 

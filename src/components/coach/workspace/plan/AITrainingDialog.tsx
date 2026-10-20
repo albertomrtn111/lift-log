@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -56,12 +56,18 @@ interface ExistingProgram {
     exercises: ExistingExercise[]
 }
 
+/** Petición por defecto del primer plan: la IA tira de su onboarding */
+const FIRST_PLAN_PROMPT = 'Primer programa de fuerza para este atleta a partir de sus respuestas del onboarding: objetivo, experiencia, días y tiempo disponibles, material y lesiones.'
+
 interface AITrainingDialogProps {
     clientId: string
     trigger?: React.ReactNode
     existingProgram?: ExistingProgram | null
     /** Called when user confirms — receives a StrengthStructure ready to import into the wizard */
     onConfirm: (structure: StrengthStructure, programName: string, weeks: number, mode: Mode) => void
+    /** Abre el diálogo sin pulsar el botón (primer plan desde "Primeros pasos") */
+    autoOpen?: boolean
+    onAutoOpened?: () => void
 }
 
 // ============================================================================
@@ -253,7 +259,7 @@ const MODIFY_EXAMPLES = [
 // Main component
 // ============================================================================
 
-export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm }: AITrainingDialogProps) {
+export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm, autoOpen = false, onAutoOpened }: AITrainingDialogProps) {
     const hasExisting = !!existingProgram && existingProgram.exercises.length > 0
 
     const [open, setOpen] = useState(false)
@@ -290,6 +296,14 @@ export function AITrainingDialog({ clientId, trigger, existingProgram, onConfirm
         setMode(hasExisting ? 'modify' : 'generate')
         setOpen(true)
     }
+
+    useEffect(() => {
+        if (!autoOpen) return
+        setMode(hasExisting ? 'modify' : 'generate')
+        setPrompt(FIRST_PLAN_PROMPT)
+        setOpen(true)
+        onAutoOpened?.()
+    }, [autoOpen, hasExisting, onAutoOpened])
 
     async function handleGenerate() {
         if (!prompt.trim()) return
