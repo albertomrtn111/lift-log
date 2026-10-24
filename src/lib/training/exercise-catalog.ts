@@ -22,7 +22,7 @@ const GROUP_TO_MUSCLE: Record<string, MuscleGroup> = {
     Tríceps: 'tríceps',
 }
 
-// Grupos del catálogo común (exercise_catalog.primary_group).
+// Grupos del catálogo común (exercise_catalog.primary_group). Misma lista y orden que la tabla muscle_groups.
 export const CATALOG_GROUPS = [
     'Pecho',
     'Espalda',
