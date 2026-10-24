@@ -74,8 +74,8 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
         requestAnimationFrame(resizeTextarea)
     }
 
-    const handleSend = async () => {
-        const content = input.trim()
+    const handleSend = async (text?: string) => {
+        const content = (text ?? input).trim()
         if (!content || isPending) return
 
         const optimisticMessage: NextIAChatMessage = {
@@ -186,10 +186,8 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                                 <button
                                     key={suggestion}
                                     type="button"
-                                    onClick={() => {
-                                        setInput(suggestion)
-                                        requestAnimationFrame(resizeTextarea)
-                                    }}
+                                    onClick={() => handleSend(suggestion)}
+                                    disabled={isPending}
                                     className="w-full rounded-lg border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
                                 >
                                     {suggestion}
@@ -263,7 +261,7 @@ export function NextIAChatPanel({ coachId, clientId, clientName, standalone = fa
                     />
                     <Button
                         size="icon"
-                        onClick={handleSend}
+                        onClick={() => handleSend()}
                         disabled={!input.trim() || isPending || loading}
                         className="h-10 w-10 shrink-0 rounded-xl"
                     >
