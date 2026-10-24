@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { cardioDiscipline, formatSpeed, speedFromPaceSeconds, speedKmh } from '@/lib/cardio/discipline'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -73,40 +74,14 @@ interface CardioProgressViewProps {
 // Discipline normalization
 // ---------------------------------------------------------------------------
 
-const DISCIPLINE_MAP: Record<string, DisciplineFilter> = {
-    // Running
-    rodaje: 'running',
-    series: 'running',
-    tempo: 'running',
-    fartlek: 'running',
-    progressive: 'running',
-    progresivo: 'running',
-    run: 'running',
-    running: 'running',
-    carrera: 'running',
-    // Bicicleta
-    bike: 'bicicleta',
-    bici: 'bicicleta',
-    bicicleta: 'bicicleta',
-    cycling: 'bicicleta',
-    ciclismo: 'bicicleta',
-    // Natación
-    swim: 'natacion',
-    swimming: 'natacion',
-    natacion: 'natacion',
-    natación: 'natacion',
-    // Híbrido
-    hybrid: 'hibrido',
-    hibrido: 'hibrido',
-    híbrido: 'hibrido',
-    hyrox: 'hibrido',
-    mixed: 'hibrido',
+// Busca la disciplina en todos los campos (tipo de entreno, tipo de actividad o
+// tipo de Strava como «Ride»): con coincidencia exacta las bicis salían como Running.
+function getDiscipline(trainingType: string | null, activityType?: string | null): Exclude<DisciplineFilter, 'all'> {
+    return cardioDiscipline(trainingType, activityType)
 }
 
-function getDiscipline(trainingType: string | null): Exclude<DisciplineFilter, 'all'> {
-    if (!trainingType) return 'running'
-    const key = trainingType.toLowerCase().trim()
-    return (DISCIPLINE_MAP[key] as Exclude<DisciplineFilter, 'all'>) ?? 'running'
+function isBikeSession(session: { trainingType: string | null; activityType?: string | null }) {
+    return getDiscipline(session.trainingType, session.activityType) === 'bicicleta'
 }
 
 const DISCIPLINE_META: Record<Exclude<DisciplineFilter, 'all'>, {
@@ -189,6 +164,12 @@ function formatPaceSeconds(seconds: number | null) {
     const minutes = Math.floor(seconds / 60)
     const secs = Math.round(seconds % 60).toString().padStart(2, '0')
     return `${minutes}:${secs}/km`
+}
+
+/** En bici, velocidad (km/h); en el resto, ritmo por kilómetro */
+function formatIntensity(secondsPerKm: number | null, bike: boolean) {
+    if (!bike) return formatPaceSeconds(secondsPerKm)
+    return formatSpeed(speedFromPaceSeconds(secondsPerKm)) ?? '—'
 }
 
 /** Duración como reloj: mm:ss, o h:mm:ss cuando pasa de la hora. */
@@ -449,8 +430,8 @@ function SessionMetricCard({
     )
 }
 
-function DisciplineBadge({ trainingType }: { trainingType: string | null }) {
-    const discipline = getDiscipline(trainingType)
+function DisciplineBadge({ trainingType, activityType }: { trainingType: string | null; activityType?: string | null }) {
+    const discipline = getDiscipline(trainingType, activityType)
     const meta = DISCIPLINE_META[discipline]
     const Icon = meta.icon
     return (
@@ -467,8 +448,14 @@ function WeeklyAnalysisSummary({ weeks, sessions }: { weeks: CardioWeekData[]; s
     const diffKm = actualKm - plannedKm
     const avgRpe = averageNumber(sessions.map((session) => session.rpe))
     const avgHr = averageNumber(sessions.map((session) => session.avgHeartRate))
-    const totalSeconds = sessions.reduce((sum, session) => sum + ((session.actualDurationMin ?? 0) * 60), 0)
-    const totalDistance = sessions.reduce((sum, session) => sum + (session.actualDistanceKm ?? 0), 0)
+    // Mezclar bici y carrera en un mismo ritmo no significa nada: ritmo con lo que
+    // no es bici y, si solo hay bici, velocidad media
+    const bikeSessions = sessions.filter(isBikeSession)
+    const paceSessions = sessions.filter((session) => !isBikeSession(session))
+    const intensitySessions = paceSessions.length > 0 ? paceSessions : bikeSessions
+    const showSpeed = paceSessions.length === 0 && bikeSessions.length > 0
+    const totalSeconds = intensitySessions.reduce((sum, session) => sum + ((session.actualDurationMin ?? 0) * 60), 0)
+    const totalDistance = intensitySessions.reduce((sum, session) => sum + (session.actualDistanceKm ?? 0), 0)
     const avgPace = totalDistance > 0 && totalSeconds > 0 ? totalSeconds / totalDistance : null
     const reviewCount = sessions.filter((session) =>
         session.feedbackNotes
@@ -501,7 +488,7 @@ function WeeklyAnalysisSummary({ weeks, sessions }: { weeks: CardioWeekData[]; s
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
                         <SessionMetricCard label="RPE medio" value={avgRpe !== null ? `${avgRpe.toFixed(1)}/10` : '—'} />
                         <SessionMetricCard label="FC media" value={avgHr !== null ? `${Math.round(avgHr)} ppm` : '—'} />
-                        <SessionMetricCard label="Ritmo medio" value={formatPaceSeconds(avgPace)} />
+                        <SessionMetricCard label={showSpeed ? 'Velocidad media' : 'Ritmo medio'} value={formatIntensity(avgPace, showSpeed)} />
                         <SessionMetricCard label="Por revisar" value={String(reviewCount)} />
                     </div>
                 </div>
@@ -511,6 +498,7 @@ function WeeklyAnalysisSummary({ weeks, sessions }: { weeks: CardioWeekData[]; s
 }
 
 function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
+    const bike = isBikeSession(session)
     const segments = session.analysisSegments || []
     if (segments.length === 0) {
         return (
@@ -541,8 +529,8 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
                                 <p className="font-medium tabular-nums text-foreground">{formatClockTime(segment.actualDurationSec)}</p>
                             </div>
                             <div>
-                                <p className="text-xs uppercase tracking-wider text-muted-foreground">Ritmo</p>
-                                <p className="font-medium tabular-nums text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</p>
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground">{bike ? 'Velocidad' : 'Ritmo'}</p>
+                                <p className="font-medium tabular-nums text-foreground">{formatIntensity(segment.avgPaceSecondsPerKm, bike)}</p>
                             </div>
                             <div>
                                 <p className="text-xs uppercase tracking-wider text-muted-foreground">FC media</p>
@@ -560,7 +548,7 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
                             <th className="px-4 py-3 text-left font-medium">Bloque</th>
                             <th className="px-4 py-3 text-right font-medium">Distancia</th>
                             <th className="px-4 py-3 text-right font-medium">Tiempo</th>
-                            <th className="px-4 py-3 text-right font-medium">Ritmo</th>
+                            <th className="px-4 py-3 text-right font-medium">{bike ? 'Velocidad' : 'Ritmo'}</th>
                             <th className="px-4 py-3 text-right font-medium">FC media</th>
                             <th className="px-4 py-3 text-right font-medium">FC máx</th>
                         </tr>
@@ -571,7 +559,7 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
                                 <td className="px-4 py-3 font-medium text-foreground">{segment.label}</td>
                                 <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatMeters(segment.actualDistanceMeters)}</td>
                                 <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatClockTime(segment.actualDurationSec)}</td>
-                                <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatPaceSeconds(segment.avgPaceSecondsPerKm)}</td>
+                                <td className="px-4 py-3 text-right tabular-nums text-foreground">{formatIntensity(segment.avgPaceSecondsPerKm, bike)}</td>
                                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{segment.avgHeartRate !== null ? `${segment.avgHeartRate} ppm` : '—'}</td>
                                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{segment.maxHeartRate !== null ? `${segment.maxHeartRate} ppm` : '—'}</td>
                             </tr>
@@ -586,6 +574,8 @@ function SegmentExecutionView({ session }: { session: CardioSessionProgress }) {
 /** Ritmos fuera de esta horquilla son ruido de GPS o paradas, no entreno real. */
 const PACE_MIN_SEC = 120  // 2:00/km
 const PACE_MAX_SEC = 900  // 15:00/km
+// En bici 2:00/km son solo 30 km/h: el límite rápido sube a 90 km/h
+const BIKE_PACE_MIN_SEC = 40
 
 function percentileOf(sortedValues: number[], p: number) {
     if (sortedValues.length === 0) return null
@@ -634,6 +624,8 @@ function rollingMean(values: (number | null)[], window: number): (number | null)
 }
 
 function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
+    const bike = isBikeSession(session)
+    const paceMinSec = bike ? BIKE_PACE_MIN_SEC : PACE_MIN_SEC
     const points = session.chartPoints || []
 
     // Una parada (semáforo, foto) deja la velocidad casi a 0 y dispara el ritmo
@@ -643,7 +635,7 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
         let discarded = 0
         const cleaned = points.map((point) => {
             const pace = point.paceSecondsPerKm
-            const isValid = pace !== null && pace >= PACE_MIN_SEC && pace <= PACE_MAX_SEC
+            const isValid = pace !== null && pace >= paceMinSec && pace <= PACE_MAX_SEC
             if (pace !== null && !isValid) discarded += 1
             return { ...point, paceSecondsPerKm: isValid ? pace : null }
         })
@@ -697,7 +689,7 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
                 <div className="mb-3 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                         <TrendingUp className="h-4 w-4 text-primary" />
-                        <h5 className="font-medium text-foreground">Ritmo</h5>
+                        <h5 className="font-medium text-foreground">{bike ? 'Velocidad' : 'Ritmo'}</h5>
                         <span className="text-[10px] text-muted-foreground">más arriba = más rápido</span>
                     </div>
                     <span
@@ -722,7 +714,7 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
                                 y se lee al revés de lo que espera cualquiera. */}
                             <YAxis
                                 tick={{ fontSize: 11 }}
-                                tickFormatter={(value) => formatPaceSeconds(Number(value)).replace('/km', '')}
+                                tickFormatter={(value) => bike ? formatIntensity(Number(value), true).replace(' km/h', '') : formatPaceSeconds(Number(value)).replace('/km', '')}
                                 axisLine={false}
                                 tickLine={false}
                                 width={52}
@@ -731,7 +723,7 @@ function ExecutionCharts({ session }: { session: CardioSessionProgress }) {
                                 allowDataOverflow
                             />
                             <Tooltip
-                                formatter={(value) => [formatPaceSeconds(Number(value)), 'Ritmo']}
+                                formatter={(value) => [formatIntensity(Number(value), bike), bike ? 'Velocidad' : 'Ritmo']}
                                 labelFormatter={(value) => `${value} ${xLabel}`}
                             />
                             <Area
@@ -789,7 +781,7 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
     const progressPct = displayMetric.progressPct
     const overTarget = progressPct !== null && progressPct > 100
     const subtypeLabel = getTrainingTypeLabel(session.trainingType)
-    const discipline = getDiscipline(session.trainingType)
+    const discipline = getDiscipline(session.trainingType, session.activityType)
     const disciplineMeta = DISCIPLINE_META[discipline]
 
     // Límites de zona según la disciplina. La bici NO cae a los límites de
@@ -830,7 +822,7 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div className="min-w-0 space-y-3">
                             <div className="flex flex-wrap items-center gap-2">
-                                <DisciplineBadge trainingType={session.trainingType} />
+                                <DisciplineBadge trainingType={session.trainingType} activityType={session.activityType} />
                                 <Badge variant="outline" className={statusMeta.className}>
                                     <StatusIcon className="mr-1 h-3.5 w-3.5" />
                                     {statusMeta.label}
@@ -948,7 +940,11 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                     ) : null}
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <SessionMetricCard label="Ritmo" value={session.actualAvgPace || '—'} hint={avgPaceSeconds ? `${formatPaceSeconds(avgPaceSeconds)}` : null} />
+                        {isBikeSession(session) ? (
+                            <SessionMetricCard label="Velocidad" value={formatSpeed(speedKmh(session.actualDistanceKm, session.actualDurationMin)) ?? '—'} />
+                        ) : (
+                            <SessionMetricCard label="Ritmo" value={session.actualAvgPace || '—'} hint={avgPaceSeconds ? `${formatPaceSeconds(avgPaceSeconds)}` : null} />
+                        )}
                         <SessionMetricCard label="RPE" value={session.rpe !== null ? `${session.rpe}/10` : '—'} />
                         <SessionMetricCard label="Pulso" value={session.avgHeartRate !== null ? `${session.avgHeartRate} ppm` : '—'} hint={session.maxHeartRate !== null ? `Max ${session.maxHeartRate} ppm` : null} />
                         <SessionMetricCard label="Tiempo" value={session.actualDurationMin !== null ? formatHours(session.actualDurationMin) : '—'} hint={session.durationDeltaMin !== null ? `${session.durationDeltaMin > 0 ? '+' : ''}${session.durationDeltaMin.toFixed(0)} min vs plan` : null} />
@@ -1090,7 +1086,7 @@ function ZoneDistributionCard({
         let pendingBikeMinutes = 0
 
         for (const session of sessions) {
-            const discipline = getDiscipline(session.trainingType)
+            const discipline = getDiscipline(session.trainingType, session.activityType)
             // Sin límites propios de bici no se mezcla con los de carrera:
             // falsearía el reparto semanal. Se cuentan aparte para avisar.
             const bounds = discipline === 'bicicleta'
@@ -1243,7 +1239,7 @@ export function CardioProgressView({ data, thresholds }: CardioProgressViewProps
             hibrido: 0,
         }
         for (const s of data.sessions) {
-            const d = getDiscipline(s.trainingType)
+            const d = getDiscipline(s.trainingType, s.activityType)
             counts[d] += 1
         }
         return counts
@@ -1253,7 +1249,7 @@ export function CardioProgressView({ data, thresholds }: CardioProgressViewProps
     const filteredSessions = useMemo(() =>
         disciplineFilter === 'all'
             ? data.sessions
-            : data.sessions.filter(s => getDiscipline(s.trainingType) === disciplineFilter),
+            : data.sessions.filter(s => getDiscipline(s.trainingType, s.activityType) === disciplineFilter),
         [data.sessions, disciplineFilter]
     )
 

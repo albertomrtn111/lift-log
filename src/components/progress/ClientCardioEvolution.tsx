@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { cardioDiscipline } from '@/lib/cardio/discipline'
 import type {
     ClientCardioProgressData,
     ClientCardioSessionProgress,
@@ -21,32 +22,6 @@ import type {
 
 type ClientDisciplineFilter = 'all' | 'running' | 'natacion' | 'bicicleta'
 type NormalizedDiscipline = ClientDisciplineFilter | 'hibrido'
-
-const DISCIPLINE_MAP: Record<string, NormalizedDiscipline> = {
-    rodaje: 'running',
-    series: 'running',
-    tempo: 'running',
-    fartlek: 'running',
-    progressive: 'running',
-    progresivo: 'running',
-    run: 'running',
-    running: 'running',
-    carrera: 'running',
-    bike: 'bicicleta',
-    bici: 'bicicleta',
-    bicicleta: 'bicicleta',
-    cycling: 'bicicleta',
-    ciclismo: 'bicicleta',
-    swim: 'natacion',
-    swimming: 'natacion',
-    natacion: 'natacion',
-    natación: 'natacion',
-    hybrid: 'hibrido',
-    hibrido: 'hibrido',
-    híbrido: 'hibrido',
-    hyrox: 'hibrido',
-    mixed: 'hibrido',
-}
 
 const FILTER_OPTIONS: {
     value: ClientDisciplineFilter
@@ -67,10 +42,10 @@ const FILTER_LABELS: Record<ClientDisciplineFilter, string> = {
     bicicleta: 'bici',
 }
 
-function getDiscipline(trainingType: string | null): NormalizedDiscipline {
-    if (!trainingType) return 'running'
-    const key = trainingType.toLowerCase().trim()
-    return DISCIPLINE_MAP[key] ?? 'running'
+// Busca la disciplina en todos los campos: las bicis de Strava guardan «Ride» y
+// con coincidencia exacta salían como Running.
+function getDiscipline(trainingType: string | null, activityType?: string | null): NormalizedDiscipline {
+    return cardioDiscipline(trainingType, activityType)
 }
 
 function formatHours(min: number) {
@@ -158,7 +133,7 @@ export function ClientCardioEvolution({ data }: { data: ClientCardioProgressData
         }
 
         for (const session of data.sessions) {
-            const discipline = getDiscipline(session.trainingType)
+            const discipline = getDiscipline(session.trainingType, session.activityType)
             if (discipline === 'running' || discipline === 'natacion' || discipline === 'bicicleta') {
                 counts[discipline] += 1
             }
@@ -169,7 +144,7 @@ export function ClientCardioEvolution({ data }: { data: ClientCardioProgressData
 
     const filteredSessions = useMemo(() => {
         if (filter === 'all') return data.sessions
-        return data.sessions.filter((session) => getDiscipline(session.trainingType) === filter)
+        return data.sessions.filter((session) => getDiscipline(session.trainingType, session.activityType) === filter)
     }, [data.sessions, filter])
 
     const weeks = useMemo(() => {

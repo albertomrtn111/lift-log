@@ -9,6 +9,7 @@ import { sendStravaActivityImportedNotification } from '@/lib/notifications/clie
 import { calculateStravaLapMetrics } from '@/lib/strava/lap-metrics'
 import { buildStravaCardioPrivacyReset } from '@/lib/strava/cardio-cleanup'
 import { mapStravaSportToDiscipline, shouldImportStravaActivity } from '@/lib/strava/sport-mapping'
+import { cardioDiscipline, formatCardioIntensity, usesSpeed } from '@/lib/cardio/discipline'
 import {
     hasRequiredStravaActivityScope,
     STRAVA_ACTIVITY_PERMISSION_ERROR,
@@ -806,9 +807,14 @@ export async function getPendingStravaActivities(context: AuthenticatedClientCon
 
 async function completeCardioSessionForActivity(activity: any) {
     const supabase = createAdminClient()
-    const pace = formatPace(activity.average_pace_seconds_per_km ? Number(activity.average_pace_seconds_per_km) : null)
     const actualDistanceKm = activity.distance_meters ? roundToDecimals(Number(activity.distance_meters) / 1000) : null
     const actualDurationMin = activity.moving_time_seconds ? roundToDecimals(Number(activity.moving_time_seconds) / 60) : null
+    // En bici se guarda la velocidad (23,4 km/h): un ritmo por km (2:34/km) no tiene sentido
+    const discipline = cardioDiscipline(activity.sport_type, activity.activity_type, mapStravaSportToDiscipline(activity.raw_payload || activity))
+    const paceSeconds = activity.average_pace_seconds_per_km ? Number(activity.average_pace_seconds_per_km) : null
+    const pace = usesSpeed(discipline)
+        ? formatCardioIntensity({ discipline, distanceKm: actualDistanceKm, durationMin: actualDurationMin, paceSecondsPerKm: paceSeconds })
+        : formatPace(paceSeconds)
     const scheduledDate = getStoredActivityLocalDate(activity)
     const payload = {
         actual_distance_km: actualDistanceKm,

@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from '@/components/ui/textarea'
 import { notifyStravaActivityCompleted, STRAVA_PENDING_UPDATED_EVENT } from '@/lib/strava/events'
 import { RPE_LABELS, dayLabel, groupByDay, inboxRange, inboxTotals } from '@/lib/strava/pending-inbox'
+import { formatCardioIntensity } from '@/lib/cardio/discipline'
 
 interface PlannedSessionOption {
     id: string
@@ -453,7 +454,9 @@ function ActivityDetail({
     const stats = [
         { label: 'Distancia', value: formatDistance(activity.distance_meters) },
         { label: 'Tiempo', value: formatDuration(activity.moving_time_seconds) },
-        { label: 'Ritmo', value: formatPace(activity.average_pace_seconds_per_km) },
+        sport.isRide
+            ? { label: 'Velocidad', value: formatCardioIntensity({ discipline: 'bicicleta', distanceKm: activity.distance_meters ? Number(activity.distance_meters) / 1000 : null, durationMin: activity.moving_time_seconds ? Number(activity.moving_time_seconds) / 60 : null, paceSecondsPerKm: activity.average_pace_seconds_per_km }) }
+            : { label: 'Ritmo', value: formatPace(activity.average_pace_seconds_per_km) },
         { label: 'FC media', value: activity.average_heartrate ? `${Math.round(Number(activity.average_heartrate))} ppm` : null },
     ].filter(stat => stat.value)
 

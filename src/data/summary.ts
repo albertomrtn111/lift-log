@@ -34,6 +34,8 @@ export interface ClientCardioSessionProgress {
     scheduledDate: string
     title: string
     trainingType: string | null
+    /** Disciplina guardada (Running, Bicicleta…) aunque trainingType sea un subtipo */
+    activityType: string | null
     targetDistanceKm: number | null
     targetDurationMin: number | null
     actualDistanceKm: number | null
@@ -411,6 +413,7 @@ export async function getClientCardioProgress(range: MetricsRange): Promise<Clie
             scheduledDate,
             title: session.name || session.structure?.trainingType || session.training_type || session.activity_type || 'Cardio',
             trainingType: session.structure?.trainingType || session.training_type || session.activity_type || null,
+            activityType: session.activity_type || null,
             targetDistanceKm,
             targetDurationMin,
             actualDistanceKm,
