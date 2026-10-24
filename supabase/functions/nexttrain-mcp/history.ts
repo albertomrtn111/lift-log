@@ -393,7 +393,7 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
 
   server.registerTool('get_cardio_results', {
     title: 'Cardio realizado y respuesta al estímulo',
-    description: 'Distancia, tiempo, ritmo, FC, RPE, desnivel, laps y comentarios. Incluye actividades de Strava no vinculadas a una sesión para evitar huecos.',
+    description: 'Distancia, tiempo, FC, RPE, desnivel, laps y comentarios de cada sesión de cardio, con su disciplina (running, bicicleta, natacion o hibrido). La intensidad es pace (ritmo por km) salvo en bicicleta, donde viene speed_kmh y pace es null. Incluye actividades de Strava no vinculadas a una sesión para evitar huecos.',
     inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, ...historyDates, limit: z.number().int().min(1).max(60).default(20), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
   }, async ({ client_id, coach_id, from_date, to_date, limit, offset }: any) => scoped('get_cardio_results', client_id, coach_id, async (coachId, today) => {
@@ -414,10 +414,15 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
       if (activity.cardio_session_id) stravaBySession.set(activity.cardio_session_id, activity)
       if (activity.matched_planned_session_id) stravaBySession.set(activity.matched_planned_session_id, activity)
     }
+    const stravaByProviderId = new Map<string, Row>()
+    for (const activity of strava) {
+      // La primera coincidencia gana, como hacía la búsqueda lineal anterior
+      if (activity.provider_activity_id && !stravaByProviderId.has(activity.provider_activity_id)) stravaByProviderId.set(activity.provider_activity_id, activity)
+    }
     const linkedStravaIds = new Set<string>()
     const activities: Row[] = cardio.map((session) => {
       const linked = stravaById.get(session.strava_activity_id) ?? stravaBySession.get(session.id) ??
-        strava.find((activity) => activity.provider_activity_id && activity.provider_activity_id === session.provider_activity_id)
+        (session.provider_activity_id ? stravaByProviderId.get(session.provider_activity_id) : undefined)
       if (linked) linkedStravaIds.add(linked.id)
       const distanceKm = num(session.actual_distance_km) ?? (num(linked?.distance_meters) === null ? null : rounded(Number(linked?.distance_meters) / 1000, 3))
       const durationMin = num(session.actual_duration_min) ?? (num(linked?.moving_time_seconds) === null ? null : rounded(Number(linked?.moving_time_seconds) / 60, 1))
@@ -432,7 +437,7 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
         avg_heart_rate: num(session.avg_heart_rate) ?? num(linked?.average_heartrate),
         max_heart_rate: num(session.max_heart_rate) ?? num(linked?.max_heartrate),
         rpe: num(session.rpe) ?? num(linked?.rpe), elevation_gain_m: num(linked?.total_elevation_gain) ?? num(session.source_elevation),
-        laps: lapSummary(lapData), splits_km: lapSummary(linked?.splits_metric),
+        laps: lapData, splits_km: linked?.splits_metric,
         comments: session.feedback_notes ?? linked?.athlete_notes ?? null, planned_intervals: session.planned_structure,
       }
     })
@@ -448,12 +453,15 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
           num(activity.moving_time_seconds) === null ? null : Number(activity.moving_time_seconds) / 60, null, num(activity.average_pace_seconds_per_km)),
         avg_heart_rate: num(activity.average_heartrate),
         max_heart_rate: num(activity.max_heartrate), rpe: num(activity.rpe), elevation_gain_m: num(activity.total_elevation_gain),
-        laps: lapSummary(activity.laps), splits_km: lapSummary(activity.splits_metric), comments: activity.athlete_notes,
+        laps: activity.laps, splits_km: activity.splits_metric, comments: activity.athlete_notes,
       })
     }
     activities.sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    // Laps y parciales se resumen solo para la página que se devuelve, no para los 90 días
+    const page = activities.slice(offset, offset + limit)
+      .map((activity) => ({ ...activity, laps: lapSummary(activity.laps), splits_km: lapSummary(activity.splits_km) }))
     return {
-      client_id, ...range, activities: activities.slice(offset, offset + limit),
+      client_id, ...range, activities: page,
       has_more: activities.length > offset + limit, next_offset: activities.length > offset + limit ? offset + limit : null,
       note: 'Las vueltas y parciales solo aparecen cuando el proveedor los entrega; las sesiones enlazadas con Strava se muestran una sola vez.',
     }
