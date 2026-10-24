@@ -37,6 +37,7 @@ import {
     Archive,
     Loader2 as Loader2Icon,
     Copy,
+    CalendarRange,
 } from 'lucide-react'
 import { activateTrainingProgramAction, archiveTrainingProgramAction, copyTrainingProgramToTemplateAction } from './actions'
 import { createTrainingProgramClient } from './clientActions'
@@ -50,6 +51,7 @@ import { PlanningTab } from './PlanningTab'
 import { DietTab } from '../tabs/DietTab'
 import type { StrengthStructure } from '@/types/templates'
 import { SupplementsPanel } from './plan/SupplementsPanel'
+import { SeasonTab } from './plan/season/SeasonTab'
 import { ProgramOverview, type ProgramDetail } from './plan/ProgramOverview'
 import { getAITrainingWizardConfig } from '@/lib/training/ai-training-flow'
 import { FirstPlanChooser } from '@/components/coach/onboarding/FirstPlanChooser'
@@ -80,13 +82,15 @@ interface PlanTabProps {
     onRefresh: () => void
 }
 
-type PlanSubTab = 'schedule' | 'training' | 'diet' | 'supplements'
+type PlanSubTab = 'season' | 'schedule' | 'training' | 'diet' | 'supplements'
 
+// Orden macro → micro: la temporada es la capa de arriba de la planificación
 const PLAN_SUB_TABS = [
-    { value: 'schedule', label: 'Planificación', shortLabel: 'Planificación', icon: CalendarDays },
+    { value: 'season', label: 'Temporada', shortLabel: 'Temporada', icon: CalendarRange },
+    { value: 'schedule', label: 'Planificación', shortLabel: 'Planif.', icon: CalendarDays },
     { value: 'training', label: 'Fuerza', shortLabel: 'Fuerza', icon: Dumbbell },
     { value: 'diet', label: 'Nutrición', shortLabel: 'Nutrición', icon: Utensils },
-    { value: 'supplements', label: 'Suplementación', shortLabel: 'Suplementos', icon: FlaskConical },
+    { value: 'supplements', label: 'Suplementación', shortLabel: 'Suplem.', icon: FlaskConical },
 ] as const
 
 function normalizePlanSubTab(value: string | null): PlanSubTab {
@@ -117,7 +121,18 @@ export function PlanTab({
         setActiveSubTab(nextSubTab)
         params.set('tab', 'plan')
         params.set('plan', nextSubTab)
+        params.delete('week')
         router.replace(`/coach/clients?${params.toString()}`)
+    }
+
+    // Desde la temporada: abrir Planificación en una semana concreta
+    const openPlanningWeek = (weekStart: string) => {
+        const params = new URLSearchParams(searchParams.toString())
+        setActiveSubTab('schedule')
+        params.set('tab', 'plan')
+        params.set('plan', 'schedule')
+        params.set('week', weekStart)
+        router.replace(`/coach/clients?${params.toString()}`, { scroll: false })
     }
 
     // Paso 4 de "Primeros pasos": elegir cómo empezar el primer plan
@@ -145,7 +160,7 @@ export function PlanTab({
             <div
                 role="tablist"
                 aria-label="Secciones del plan"
-                className="mb-4 grid grid-cols-4 gap-1 rounded-full bg-muted p-1 sm:inline-grid sm:w-auto sm:min-w-[34rem]"
+                className="mb-4 flex gap-1 rounded-full bg-muted p-1 sm:inline-grid sm:w-auto sm:min-w-[42rem] sm:grid-cols-5"
             >
                 {PLAN_SUB_TABS.map(tab => {
                     const Icon = tab.icon
@@ -158,7 +173,7 @@ export function PlanTab({
                             aria-selected={isActive}
                             onClick={() => handleSubTabChange(tab.value)}
                             className={cn(
-                                'flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-full px-1 text-[11px] font-semibold tracking-tight transition-all min-[400px]:text-xs sm:px-2 sm:text-sm sm:tracking-normal',
+                                'flex h-9 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-full px-1 text-[11px] font-semibold tracking-tight transition-all min-[400px]:text-xs sm:px-2 sm:text-sm sm:tracking-normal',
                                 isActive ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                             )}
                         >
@@ -170,11 +185,16 @@ export function PlanTab({
                 })}
             </div>
 
+            <TabsContent value="season" className="mt-0">
+                <SeasonTab clientId={clientId} coachId={coachId} onOpenWeek={openPlanningWeek} />
+            </TabsContent>
+
             <TabsContent value="schedule" className="mt-0">
                 <PlanningTab
                     clientId={clientId}
                     coachId={coachId}
                     onEditProgram={() => handleSubTabChange('training')}
+                    onOpenSeason={() => handleSubTabChange('season')}
                 />
             </TabsContent>
 

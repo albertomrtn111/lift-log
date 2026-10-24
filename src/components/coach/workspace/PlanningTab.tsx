@@ -37,6 +37,10 @@ import {
 } from '@/components/ui/tooltip'
 import { buildPlanningCardioSummary } from '@/lib/cardio/planning-card-summary'
 import { cardioSessionMetrics } from '@/lib/cardio/structure'
+import { useSearchParams } from 'next/navigation'
+import { getSeasonWeekSummary } from '@/app/(coach)/coach/workspace/season-actions'
+import type { SeasonWeekSummary } from '@/types/season'
+import { SeasonWeekLoad } from './plan/season/SeasonWeekLoad'
 
 // ---------------------------------------------------------------------------
 // Metrics helpers
@@ -250,12 +254,18 @@ interface PlanningTabProps {
     clientId: string
     coachId: string
     onEditProgram?: (programId: string) => void
+    onOpenSeason?: () => void
 }
 
-export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabProps) {
+export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: PlanningTabProps) {
     const { toast } = useToast()
+    const searchParams = useSearchParams()
+    const requestedWeek = searchParams.get('week')
     const fetchRequestId = useRef(0)
-    const [currentDate, setCurrentDate] = useState(new Date())
+    const [currentDate, setCurrentDate] = useState(() =>
+        requestedWeek && /^\d{4}-\d{2}-\d{2}$/.test(requestedWeek) ? parseLocalDate(requestedWeek) : new Date()
+    )
+    const [seasonSummary, setSeasonSummary] = useState<SeasonWeekSummary | null>(null)
     const [loading, setLoading] = useState(true)
     const [schedule, setSchedule] = useState<UnifiedCalendarItem[]>([])
     const [planningSnapshot, setPlanningSnapshot] = useState<PlanningSnapshot | null>(null)
@@ -293,6 +303,13 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } })
     )
 
+    // Semana pedida desde la temporada (?week=YYYY-MM-DD)
+    useEffect(() => {
+        if (!requestedWeek || !/^\d{4}-\d{2}-\d{2}$/.test(requestedWeek)) return
+        setViewMode('week')
+        setCurrentDate(parseLocalDate(requestedWeek))
+    }, [requestedWeek])
+
     // Fetch
     useEffect(() => {
         fetchSchedule()
@@ -304,8 +321,14 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
         try {
             const fetchStart = viewMode === 'week' ? startDate : monthStart
             const fetchEnd = viewMode === 'week' ? endDate : monthEnd
-            const result = await getWeeklySchedule(clientId, fetchStart, fetchEnd, currentDate)
+            const [result, seasonResult] = await Promise.all([
+                getWeeklySchedule(clientId, fetchStart, fetchEnd, currentDate),
+                viewMode === 'week'
+                    ? getSeasonWeekSummary(clientId, coachId, toLocalDateStr(startDate)).catch(() => null)
+                    : Promise.resolve(null),
+            ])
             if (requestId !== fetchRequestId.current) return
+            setSeasonSummary(seasonResult?.success ? seasonResult.data : null)
             if (result.success && result.data) {
                 setPlanningSnapshot(result.data)
                 setSchedule(result.data.items)
@@ -634,6 +657,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram }: PlanningTabPro
                         </div>
                     </div>
                 </div>
+
+                {/* Objetivo de temporada frente a lo programado */}
+                {!loading && viewMode === 'week' && seasonSummary && (
+                    <SeasonWeekLoad summary={seasonSummary} onOpenSeason={onOpenSeason} />
+                )}
 
                 {/* Metrics */}
                 {!loading && (
