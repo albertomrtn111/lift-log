@@ -19,7 +19,7 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
 - `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas. Por defecto agrupa las series por sesión y ejercicio (`format: "flat"` mantiene una fila por serie).
 - `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión.
-- `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas.
+- `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas. Cada actividad trae `discipline` (`running`, `bicicleta`, `natacion` o `hibrido`); en bicicleta la intensidad es `speed_kmh` y `pace` es `null`.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
 - `get_diet_plan`: detalle completo de una dieta por ID, también archivada o borrador; devuelve `updated_at` para editar.
 - `get_nutrition_history`: histórico paginado de planes de macros y cabeceras de dietas.
@@ -401,3 +401,17 @@ Migraciones: `20261015140000_mcp_strength_program_atomic_save.sql` y `2026101609
 3. Activar dynamic client registration.
 4. Mantener Site URL en `https://nexttrain.ascenttech.cloud`.
 5. Desplegar `nexttrain-mcp` con la verificación JWT del gateway desactivada. La función valida OAuth dentro de `withSupabase({ auth: 'user' })`; esto permite que el descubrimiento OAuth sin sesión responda correctamente.
+
+## Disciplina y velocidad en cardio (0.14.0)
+
+- `get_cardio_results` añade `discipline` a cada actividad usando `src/lib/cardio/discipline.js`, el mismo módulo que la web: busca bici, natación o híbrido en `activity_type`, `training_type` y el tipo de Strava («Ride», «MountainBikeRide», «VirtualRide»…). Antes una salida en bici podía leerse como carrera con un ritmo de «2:34/km».
+- En bicicleta devuelve `speed_kmh` (calculada con distancia y tiempo, o con el ritmo de Strava si faltan) y deja `pace` y `pace_seconds_per_km` a `null`, aunque la sesión tuviera guardado un ritmo antiguo.
+- Optimización: el enlace sesión–Strava por `provider_activity_id` usa un mapa en vez de una búsqueda lineal, y las vueltas y parciales se resumen solo para la página devuelta.
+- Pruebas: `deno test supabase/functions/nexttrain-mcp/cardio-results.test.ts` y `node --test scripts/cardio-discipline.test.mjs`. No requiere migraciones.
+
+## Despliegue
+
+`scripts/deploy-mcp.sh` despliega la función desde `origin/main` sin cambios locales en la función ni en `src/lib`, después de `deno check` y de todos los tests (Deno y Node). Requiere una sesión de la CLI (`npx -y supabase@latest login`). Mantiene `--no-verify-jwt` porque la función valida el token OAuth por sí misma. Las migraciones se aplican aparte y siempre antes de desplegar la función que las usa.
+
+Deno debe ejecutarse con `--node-modules-dir=none`: sin esa opción detecta el `package.json` de la web y busca las dependencias `npm:` en `node_modules`.
+
