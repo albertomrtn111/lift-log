@@ -8,6 +8,7 @@ import { callGemini } from '@/lib/ai/gemini'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { getAthleteProfileContextForCoach } from '@/lib/ai/athlete-profile-context'
 import { getWeeklySchedule } from './planning-actions'
+import { cardioActivityType } from '@/lib/cardio/structure'
 import {
     addDateDays, blockRequestSchema, blockSessionSchema, blockWeekSessionsSchema, buildBlockWeeks,
     getSessionVolume, validateBlockWeek,
@@ -187,6 +188,8 @@ export async function applyPlanningBlockAction(input: { clientId: string; coachI
             return detail.sessions.map(session => ({
                 id: session.id, client_id: input.clientId, coach_id: coachId,
                 scheduled_date: session.date, name: session.title, description: session.details,
+                // Sin esto la columna toma su valor por defecto («Running») y la bici o la natación salen como carrera
+                activity_type: cardioActivityType(session.trainingType), training_type: session.trainingType,
                 notes: [`${outline.request.title} · Semana ${detail.index} · ${week.objective}`, session.notes].filter(Boolean).join('\n'),
                 structure: { mode: 'free_text', trainingType: session.trainingType, description: session.details, blocks: [],
                     aiPlan: { id: outline.id, title: outline.request.title, eventDate: outline.request.eventDate, start: outline.weeks[0].start, weeks: outline.weeks.length, weekIndex: detail.index, phase: week.phase, targetVolume: week.targetVolume, unit: outline.request.unit, purpose: session.purpose } },
