@@ -1,4 +1,5 @@
 import { z } from 'npm:zod@4.3.6'
+import { cardioDiscipline, speedKmh, speedFromPaceSeconds, usesSpeed } from '../../../src/lib/cardio/discipline.js'
 import { findStrengthSession, groupStrengthResults, programProgress, programTransitions, setEvidence } from './strength-progress.js'
 import {
   addDays,
@@ -14,6 +15,18 @@ import {
   rows,
   type ToolHelpers,
 } from './shared.ts'
+
+/**
+ * Disciplina y su métrica: en bici velocidad (km/h) y sin ritmo por km, que
+ * llevaba a leer una salida en bici como carrera (p. ej. «2:34/km»).
+ */
+function intensity(discipline: string, distanceKm: number | null, durationMin: number | null, pace: string | null, paceSeconds: number | null) {
+  if (usesSpeed(discipline)) {
+    const speed = speedKmh(distanceKm, durationMin) ?? speedFromPaceSeconds(paceSeconds)
+    return { discipline, speed_kmh: speed === null ? null : rounded(speed, 1), pace: null, pace_seconds_per_km: null }
+  }
+  return { discipline, pace: pace ?? null, pace_seconds_per_km: paceSeconds }
+}
 
 type Server = any
 
@@ -413,8 +426,9 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
         source: session.source_provider ?? (linked ? 'strava' : 'nexttrain'), id: session.id, strava_activity_id: linked?.id ?? session.strava_activity_id,
         date: session.performed_date ?? linked?.start_date ?? session.scheduled_date, scheduled_date: session.scheduled_date,
         name: session.name, activity_type: session.activity_type, training_type: session.training_type,
-        distance_km: distanceKm, duration_min: durationMin, pace: session.actual_avg_pace,
-        pace_seconds_per_km: num(linked?.average_pace_seconds_per_km),
+        ...intensity(cardioDiscipline(session.activity_type, session.training_type, linked?.sport_type), distanceKm, durationMin,
+          session.actual_avg_pace, num(linked?.average_pace_seconds_per_km)),
+        distance_km: distanceKm, duration_min: durationMin,
         avg_heart_rate: num(session.avg_heart_rate) ?? num(linked?.average_heartrate),
         max_heart_rate: num(session.max_heart_rate) ?? num(linked?.max_heartrate),
         rpe: num(session.rpe) ?? num(linked?.rpe), elevation_gain_m: num(linked?.total_elevation_gain) ?? num(session.source_elevation),
@@ -430,7 +444,9 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
         distance_km: num(activity.distance_meters) === null ? null : rounded(Number(activity.distance_meters) / 1000, 3),
         duration_min: num(activity.moving_time_seconds) === null ? null : rounded(Number(activity.moving_time_seconds) / 60, 1),
         elapsed_time_min: num(activity.elapsed_time_seconds) === null ? null : rounded(Number(activity.elapsed_time_seconds) / 60, 1),
-        pace_seconds_per_km: num(activity.average_pace_seconds_per_km), avg_heart_rate: num(activity.average_heartrate),
+        ...intensity(cardioDiscipline(activity.sport_type), num(activity.distance_meters) === null ? null : Number(activity.distance_meters) / 1000,
+          num(activity.moving_time_seconds) === null ? null : Number(activity.moving_time_seconds) / 60, null, num(activity.average_pace_seconds_per_km)),
+        avg_heart_rate: num(activity.average_heartrate),
         max_heart_rate: num(activity.max_heartrate), rpe: num(activity.rpe), elevation_gain_m: num(activity.total_elevation_gain),
         laps: lapSummary(activity.laps), splits_km: lapSummary(activity.splits_metric), comments: activity.athlete_notes,
       })

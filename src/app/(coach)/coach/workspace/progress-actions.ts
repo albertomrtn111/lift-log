@@ -417,6 +417,8 @@ export interface CardioSessionProgress {
     scheduledDate: string
     title: string
     trainingType: string | null
+    /** Disciplina guardada (Running, Bicicleta…), aunque trainingType sea un subtipo */
+    activityType: string | null
     description: string | null
     coachNotes: string | null
     feedbackNotes: string | null
@@ -698,6 +700,7 @@ export async function getCardioProgressData(
                 scheduledDate: s.scheduled_date,
                 title: s.name || s.structure?.trainingType || s.training_type || s.activity_type || 'Cardio',
                 trainingType: s.structure?.trainingType || s.training_type || s.activity_type || null,
+                activityType: s.activity_type || null,
                 description: s.description || null,
                 coachNotes: s.coach_notes || s.notes || null,
                 feedbackNotes: s.feedback_notes || null,

@@ -4,6 +4,7 @@ import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
 import { resolveHrBounds, type CustomZones, type HrZoneMethod } from '@/lib/training/zones'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { cardioDiscipline, formatSpeed, speedKmh, usesSpeed } from '@/lib/cardio/discipline'
 import {
     buildEventTiming,
     formatContextSections,
@@ -252,6 +253,16 @@ function getCardioTitle(session: any) {
     return session.name || session.structure?.trainingType || session.training_type || session.activity_type || 'Cardio'
 }
 
+// En bici, velocidad (km/h): un ritmo por km haría pensar a la IA que es carrera
+function cardioIntensityText(session: any) {
+    const discipline = cardioDiscipline(session.structure?.trainingType, session.training_type, session.activity_type)
+    if (usesSpeed(discipline)) {
+        const speed = formatSpeed(speedKmh(session.actual_distance_km, session.actual_duration_min))
+        return speed ? `velocidad media ${speed}` : ''
+    }
+    return session.actual_avg_pace ? `ritmo medio ${session.actual_avg_pace}` : ''
+}
+
 function formatCardio(cardioSessions: any[]) {
     return formatList(cardioSessions.map(session => {
         const planned = [
@@ -262,7 +273,7 @@ function formatCardio(cardioSessions: any[]) {
         const actual = [
             session.actual_distance_km != null ? `${session.actual_distance_km} km hechos` : '',
             session.actual_duration_min != null ? `${session.actual_duration_min} min hechos` : '',
-            session.actual_avg_pace ? `ritmo medio ${session.actual_avg_pace}` : '',
+            cardioIntensityText(session),
             session.avg_heart_rate != null ? `FC media ${session.avg_heart_rate}` : '',
             session.max_heart_rate != null ? `FC max ${session.max_heart_rate}` : '',
             session.rpe != null ? `RPE ${session.rpe}` : '',

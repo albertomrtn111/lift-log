@@ -7,6 +7,8 @@ import {
   getSessionStatus,
   getSessionVisual,
 } from './plan-visuals'
+import { resolveCardioDisplayKind } from '@/lib/cardio/display-kind'
+import { formatSpeed, speedKmh } from '@/lib/cardio/discipline'
 
 interface PlanningDayCardProps {
   item: CalendarItem
@@ -32,7 +34,10 @@ export function PlanningDayCard({ item, today, onClick }: PlanningDayCardProps) 
   // Con la sesión hecha se enseña lo realizado; si no, el objetivo
   const distance = isCompleted ? (item.actualDistanceKm ?? item.targetDistanceKm) : item.targetDistanceKm
   const duration = isCompleted ? (item.actualDurationMin ?? item.targetDurationMin) : item.targetDurationMin
-  const pace = isCompleted ? (item.actualAvgPace ?? item.targetPace) : item.targetPace
+  // En bici, lo realizado se enseña como velocidad (23,4 km/h), no como ritmo por km
+  const isBike = item.kind === 'cardio' && resolveCardioDisplayKind(item.activityType, item.trainingType) === 'bike'
+  const actualIntensity = isBike ? (formatSpeed(speedKmh(distance, duration)) ?? item.actualAvgPace) : item.actualAvgPace
+  const pace = isCompleted ? (actualIntensity ?? item.targetPace) : item.targetPace
   const hasMetrics = item.kind === 'cardio' && Boolean(distance || duration || pace)
   const fallbackLine = item.kind === 'strength' ? item.subtitle : (!hasMetrics ? item.subtitle : undefined)
 
