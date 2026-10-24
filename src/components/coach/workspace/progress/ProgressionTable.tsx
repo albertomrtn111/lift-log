@@ -21,29 +21,16 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { ProgressDay, ProgressExercise, ProgressExerciseSet } from '@/app/(coach)/coach/workspace/training-progress-actions'
+import {
+    TREND_THRESHOLD,
+    getBestE1RM,
+    getBlockDeltaPct,
+    summarizeBlockProgress,
+} from '@/lib/training/progress-summary'
 
 // ============================================================================
 // PROGRESIÓN — helpers de 1RM estimado
 // ============================================================================
-
-/**
- * 1RM estimado (Epley). Compara mejor que "peso del top set" porque captura
- * el trade-off peso/reps: 100kg×5 > 102.5kg×1.
- */
-function epley1RM(set: ProgressExerciseSet): number | null {
-    if (set.weightKg == null) return null
-    if (set.reps == null || set.reps <= 0) return set.weightKg
-    return set.weightKg * (1 + set.reps / 30)
-}
-
-function getBestE1RM(sets: ProgressExerciseSet[]): number | null {
-    let best: number | null = null
-    for (const set of sets) {
-        const value = epley1RM(set)
-        if (value != null && (best == null || value > best)) best = value
-    }
-    return best
-}
 
 /** Get the "top set" = the set with the highest weight (or highest reps if same weight) */
 function getTopSet(sets: ProgressExerciseSet[]): ProgressExerciseSet | null {
@@ -59,9 +46,6 @@ function getTopSet(sets: ProgressExerciseSet[]): ProgressExerciseSet | null {
 
 type Trend = 'up' | 'down' | 'neutral'
 
-// Umbral del 1% para no marcar como cambio el ruido de redondeos
-const TREND_THRESHOLD = 0.01
-
 function getWeekDeltaPct(current: ProgressExerciseSet[], prev: ProgressExerciseSet[]): number | null {
     const curr = getBestE1RM(current)
     const previous = getBestE1RM(prev)
@@ -74,21 +58,6 @@ function deltaToTrend(delta: number | null): Trend {
     if (delta > TREND_THRESHOLD) return 'up'
     if (delta < -TREND_THRESHOLD) return 'down'
     return 'neutral'
-}
-
-/** Δ del bloque: e1RM de la primera semana registrada vs la última */
-function getBlockDeltaPct(exercise: ProgressExercise): number | null {
-    const weeksWithData = Object.keys(exercise.setsByWeek)
-        .map(Number)
-        .filter(w => (exercise.setsByWeek[w] ?? []).length > 0)
-        .sort((a, b) => a - b)
-
-    if (weeksWithData.length < 2) return null
-
-    const first = getBestE1RM(exercise.setsByWeek[weeksWithData[0]])
-    const last = getBestE1RM(exercise.setsByWeek[weeksWithData[weeksWithData.length - 1]])
-    if (first == null || last == null || first === 0) return null
-    return (last - first) / first
 }
 
 function formatDeltaPct(delta: number): string {
@@ -126,31 +95,7 @@ export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
     const hiddenWeeks = maxWeek - visibleWeeks
 
     // Resumen ejecutivo del bloque
-    const summary = useMemo(() => {
-        const allExercises = days.flatMap(day => day.exercises)
-        const deltas = allExercises
-            .map(exercise => ({ exercise, delta: getBlockDeltaPct(exercise) }))
-            .filter((entry): entry is { exercise: ProgressExercise; delta: number } => entry.delta != null)
-
-        const improving = deltas.filter(d => d.delta > TREND_THRESHOLD).length
-        const declining = deltas.filter(d => d.delta < -TREND_THRESHOLD).length
-        const stable = deltas.length - improving - declining
-
-        const best = deltas.length > 0
-            ? deltas.reduce((a, b) => (b.delta > a.delta ? b : a))
-            : null
-
-        const weeksTracked = new Set<number>()
-        for (const day of days) {
-            for (const exercise of day.exercises) {
-                for (const key of Object.keys(exercise.setsByWeek)) {
-                    if ((exercise.setsByWeek[Number(key)] ?? []).length > 0) weeksTracked.add(Number(key))
-                }
-            }
-        }
-
-        return { improving, declining, stable, comparable: deltas.length, best, weeksTracked: weeksTracked.size }
-    }, [days])
+    const summary = useMemo(() => summarizeBlockProgress(days), [days])
 
     // All days collapsed state: default all expanded
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -201,12 +146,13 @@ export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
                         {summary.best ? (
                             <p className="mt-1 truncate text-sm font-semibold">
                                 {summary.best.exercise.name}
-                                <span className={cn(
-                                    'ml-2 tabular-nums',
-                                    summary.best.delta > 0 ? 'text-green-600' : 'text-muted-foreground'
-                                )}>
+                                <span className="ml-2 tabular-nums text-green-600">
                                     {formatDeltaPct(summary.best.delta)} e1RM
                                 </span>
+                            </p>
+                        ) : summary.comparable > 0 ? (
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Ningún ejercicio mejora su e1RM en el bloque.
                             </p>
                         ) : (
                             <p className="mt-1 text-sm text-muted-foreground">
