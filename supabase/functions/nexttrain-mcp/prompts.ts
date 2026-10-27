@@ -55,6 +55,19 @@ export const promptTexts = {
     '',
     'No completes tareas ni cambies datos sin mi confirmación.',
   ].join('\n'),
+
+  seasonPlan: (client: string, weeks?: string) => [
+    `Planifica la temporada de un cliente de NexTrain. ${findClient(client)}`,
+    '',
+    'Pasos:',
+    '1. get_season_plan: temporada activa (si la hay), historial de temporadas y próximos eventos.',
+    '2. get_athlete_goal y list_client_events: objetivo, competición principal y fecha.',
+    '3. get_cardio_results y get_strength_results de las últimas 8-12 semanas para conocer el volumen real por disciplina; get_checkins recientes para molestias y disponibilidad.',
+    '',
+    `Propón una temporada${weeks ? ` de ${weeks} semanas` : ''} que empiece en lunes y termine en la competición objetivo: fases (base, construccion, especifico, taper, competicion, transicion), volumen semanal por disciplina con una progresión realista desde el volumen actual, semanas de descarga cada 3-4 semanas y semanas de test o competición donde toque.`,
+    'Muéstramela antes con create_season_plan y dry_run true (o update_season_weeks con dry_run si ya existe) y explica la progresión en una tabla por semana.',
+    'Espera mi confirmación para guardarla. Si ya hay una temporada activa, pregúntame si la archivo (replace_active) o si ajusto la existente con update_season_plan y update_season_weeks.',
+  ].join('\n'),
 }
 
 export function registerPrompts(server: Server) {
@@ -80,6 +93,18 @@ export function registerPrompts(server: Server) {
   }, ({ cliente, semanas }: { cliente: string; semanas?: string }) => ({
     description: `Siguiente bloque de fuerza de ${cliente}`,
     ...userMessage(promptTexts.nextBlock(cliente, semanas)),
+  }))
+
+  server.registerPrompt('planificar_temporada', {
+    title: 'Planificar la temporada',
+    description: 'Analiza objetivo, eventos y volumen real del cliente y propone fases y objetivos de volumen semanales por disciplina.',
+    argsSchema: z.object({
+      cliente: clientArg,
+      semanas: z.string().trim().regex(/^\d{1,2}$/, 'Número de semanas').optional().describe('Duración deseada en semanas.'),
+    }),
+  }, ({ cliente, semanas }: { cliente: string; semanas?: string }) => ({
+    description: `Temporada de ${cliente}`,
+    ...userMessage(promptTexts.seasonPlan(cliente, semanas)),
   }))
 
   server.registerPrompt('bandeja_del_dia', {

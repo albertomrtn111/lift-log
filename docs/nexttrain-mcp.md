@@ -43,8 +43,12 @@ Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login 
 - `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
 - `create_client_event` / `update_client_event`: crea y edita carreras, pruebas y otros eventos del cliente.
 - `get_coach_inbox`: check-ins por revisar, actividades de Strava sin enlazar y tareas pendientes de todos los clientes en una sola llamada.
+- `get_season_plan`: temporada del cliente con fases, tipo de semana y, por semana y disciplina, objetivo, programado y realizado.
+- `create_season_plan`: crea una temporada completa (volumen base, progresión por semana y fases) en una sola transacción; admite `dry_run`.
+- `update_season_plan`: cambia nombre, notas, evento objetivo, estado, disciplinas, duración o fases.
+- `update_season_weeks`: cambia objetivos, tipo y notas de varias semanas a la vez.
 
-Prompts: `revision_semanal`, `preparar_bloque_siguiente` y `bandeja_del_dia`.
+Prompts: `revision_semanal`, `preparar_bloque_siguiente`, `planificar_temporada` y `bandeja_del_dia`.
 
 ## Seguridad
 
@@ -408,6 +412,20 @@ Migraciones: `20261015140000_mcp_strength_program_atomic_save.sql` y `2026101609
 - En bicicleta devuelve `speed_kmh` (calculada con distancia y tiempo, o con el ritmo de Strava si faltan) y deja `pace` y `pace_seconds_per_km` a `null`, aunque la sesión tuviera guardado un ritmo antiguo.
 - Optimización: el enlace sesión–Strava por `provider_activity_id` usa un mapa en vez de una búsqueda lineal, y las vueltas y parciales se resumen solo para la página devuelta.
 - Pruebas: `deno test supabase/functions/nexttrain-mcp/cardio-results.test.ts` y `node --test scripts/cardio-discipline.test.mjs`. No requiere migraciones.
+
+## Plan de temporada (MCP 0.15.0)
+
+El MCP lee y escribe la misma temporada que la pestaña Temporada de la app (`season_plans`, `season_weeks`, `season_week_targets`, `season_phases`).
+
+- **Magnitudes:** la fuerza se mide en sesiones; el resto en minutos (`primary_unit` `time`) o km (`distance`). Los objetivos se envían como números en esa magnitud: `{ run: 180, strength: 2 }`. En las ediciones, omitir una disciplina la conserva y `null` borra su objetivo.
+- **`get_season_plan`:** por defecto, la temporada activa (o `season_id`, también archivadas y borradores). Programado y realizado se calculan con `src/lib/season/volume.js` y `buildStrengthSchedule`, igual que la web: las importaciones de Strava sin plan no cuentan como programadas, una actividad de Strava enlazada a una sesión hecha no se suma dos veces y las actividades borradas se ignoran. Devuelve totales por disciplina (`target_total`, `target_to_date`, `planned_total`, `done_to_date`), la semana actual y las fases con `from_week`/`to_week`. Sin temporada activa, `season` es `null` y se devuelven el historial y los próximos eventos. `include_volume: false` devuelve solo objetivos.
+- **`create_season_plan`:** semanas desde un lunes (si no lo es, el error indica el lunes de esa semana), volumen base para todas, `week_changes` por número de semana o lunes (progresión, descarga, test, competición, notas) y `phases` por rango de semanas. Las fases no pueden solaparse ni salirse de la temporada. Por defecto queda activa; si ya hay una activa falla salvo `replace_active`, que la archiva en la misma transacción. `status: draft` la guarda sin mostrarla en la app.
+- **`update_season_plan`:** `expected_updated_at` obligatorio. Quitar una disciplina borra sus objetivos; alargar añade semanas de carga al final; acortar borra las últimas semanas con sus objetivos y exige reenviar `phases` si alguna fase queda fuera. `phases` sustituye todas las fases (`[]` las quita). Activar una temporada con otra activa exige `replace_active`.
+- **`update_season_weeks`:** cambios de varias semanas en una sola transacción, con `expected_updated_at`.
+- **`dry_run`:** las tres escrituras lo admiten. `create_season_plan` devuelve la temporada completa con la misma forma que `get_season_plan`; `update_season_weeks`, las semanas cambiadas antes y después; `update_season_plan`, los cambios y sus efectos (semanas y objetivos que se borrarían, nueva fecha final).
+- **Prompt `planificar_temporada`:** reúne objetivo, eventos y volumen real de las últimas semanas, propone fases y progresión, la enseña con `dry_run` y espera la confirmación.
+
+Migración `20261027100000_mcp_season_plan.sql`: `create_nexttrain_season_plan` y `update_nexttrain_season_plan` (`SECURITY INVOKER`, RLS del coach, bloqueo por cliente, concurrencia optimista) y funciones auxiliares. Verificación: `supabase/tests/mcp_season_plan.sql` (10 verificaciones; termina con `ROLLBACK`). Pruebas: `deno test supabase/functions/nexttrain-mcp/season.test.ts`. La web solo edita la temporada activa y no escribe fases; las fases que cree el MCP aparecen junto a cada semana en Temporada y en la carga semanal de Planificación.
 
 ## Despliegue
 
