@@ -219,7 +219,7 @@ export function NewClientWorkspace({
             <Lock className="h-12 w-12 text-amber-500/50 mx-auto mb-4" />
             <h3 className="font-semibold text-lg mb-2">Función bloqueada</h3>
             <p className="text-muted-foreground max-w-md mx-auto">
-                Este cliente aún no se ha registrado. Las funciones de planificación se desbloquearán cuando cree su cuenta a través del enlace de invitación.
+                Este cliente aún no se ha registrado. Esta sección se activará cuando cree su cuenta con el enlace de invitación.
             </p>
         </Card>
     )
