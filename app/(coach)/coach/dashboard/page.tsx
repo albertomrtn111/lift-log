@@ -212,9 +212,10 @@ export default async function CoachDashboardPage() {
                     </div>
                 </Card>
 
-                {/* Cuerpo: trabajo a la izquierda, contexto a la derecha */}
-                <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
-                    <div className="min-w-0 space-y-6">
+                {/* Cuerpo: trabajo a la izquierda, contexto a la derecha.
+                    Fila 1: bandeja + atención a la misma altura que la agenda */}
+                <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+                    <div className="flex min-w-0 flex-col gap-6">
                         <Card id="bandeja" className="scroll-mt-24 overflow-hidden">
                             <div className="flex items-center justify-between border-b p-4">
                                 <div className="flex items-center gap-2">
@@ -233,22 +234,47 @@ export default async function CoachDashboardPage() {
                             <NotificationsList notifications={dashboard.notifications} coachId={coachId} />
                         </Card>
 
-                        <Card id="atencion" className="scroll-mt-24 overflow-hidden">
-                            <div className="flex items-center justify-between border-b p-4">
-                                <div className="flex items-center gap-2">
-                                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                                    <h2 className="font-semibold">Atletas que necesitan atención</h2>
-                                    {dashboard.attentionClients.length > 0 && (
-                                        <Badge variant="destructive">{dashboard.attentionClients.length}</Badge>
-                                    )}
+                        {/* En xl la lista no estira la fila: rellena el hueco hasta el final de la agenda y hace scroll */}
+                        <Card id="atencion" className="relative scroll-mt-24 overflow-hidden xl:min-h-[18rem] xl:flex-1">
+                            <div className="flex flex-col xl:absolute xl:inset-0">
+                                <div className="flex shrink-0 items-center justify-between border-b p-4">
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="h-5 w-5 text-destructive" />
+                                        <h2 className="font-semibold">Atletas que necesitan atención</h2>
+                                        {dashboard.attentionClients.length > 0 && (
+                                            <Badge variant="destructive">{dashboard.attentionClients.length}</Badge>
+                                        )}
+                                    </div>
+                                    <p className="hidden text-xs text-muted-foreground sm:block">
+                                        Atraso · adherencia baja · sin programa
+                                    </p>
                                 </div>
-                                <p className="hidden text-xs text-muted-foreground sm:block">
-                                    Atraso · adherencia baja · sin programa
-                                </p>
+                                <div className="min-h-0 flex-1 overflow-y-auto">
+                                    <AttentionClientList clients={dashboard.attentionClients} />
+                                </div>
                             </div>
-                            <AttentionClientList clients={dashboard.attentionClients} />
                         </Card>
+                    </div>
 
+                    <Card id="agenda" className="flex scroll-mt-24 flex-col overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <div className="flex items-center gap-2">
+                                <CalendarDays className="h-5 w-5 text-primary" />
+                                <h2 className="font-semibold">Agenda · 7 días</h2>
+                            </div>
+                            {upcoming7d > 0 && (
+                                <Badge variant="secondary" className="border-0 bg-muted/70">
+                                    {upcoming7d}
+                                </Badge>
+                            )}
+                        </div>
+                        <WeekAgenda events={upcomingEvents} />
+                    </Card>
+                </div>
+
+                {/* Fila 2: historial a la izquierda, actividad a la derecha */}
+                <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
+                    <div className="min-w-0">
                         <Card id="ultimas-revisiones" className="scroll-mt-24 overflow-hidden">
                             <div className="flex items-center justify-between border-b p-4">
                                 <div className="flex items-center gap-2">
@@ -281,22 +307,7 @@ export default async function CoachDashboardPage() {
                         </Card>
                     </div>
 
-                    <div className="min-w-0 space-y-6">
-                        <Card id="agenda" className="scroll-mt-24 overflow-hidden">
-                            <div className="flex items-center justify-between border-b p-4">
-                                <div className="flex items-center gap-2">
-                                    <CalendarDays className="h-5 w-5 text-primary" />
-                                    <h2 className="font-semibold">Agenda · 7 días</h2>
-                                </div>
-                                {upcoming7d > 0 && (
-                                    <Badge variant="secondary" className="border-0 bg-muted/70">
-                                        {upcoming7d}
-                                    </Badge>
-                                )}
-                            </div>
-                            <WeekAgenda events={upcomingEvents} />
-                        </Card>
-
+                    <div className="min-w-0">
                         <Card className="overflow-hidden">
                             <div className="flex items-center justify-between border-b p-4">
                                 <div className="flex items-center gap-2">
