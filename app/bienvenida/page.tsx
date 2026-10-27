@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAthleteWelcomeData } from '@/lib/onboarding/athlete-welcome-data'
+import { linkPendingClientForUser } from '@/lib/onboarding/link-client-account'
 import { AthleteWelcome } from './AthleteWelcome'
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,8 @@ export default async function BienvenidaPage({ searchParams }: { searchParams: P
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login?redirect=/bienvenida')
 
+    // Quien ya tenía cuenta llega aquí con el enlace mágico de la invitación
+    await linkPendingClientForUser(user)
     const data = await getAthleteWelcomeData(user.id)
     if (!data || !data.guided) redirect('/planning')
     if (data.steps.complete && !data.needsPassword) redirect('/planning')

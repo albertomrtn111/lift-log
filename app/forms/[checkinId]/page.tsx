@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { linkPendingClientForUser } from '@/lib/onboarding/link-client-account'
 import { DynamicForm } from '@/components/forms/DynamicForm'
 import { Card } from '@/components/ui/card'
 import { AlertCircle, Lock } from 'lucide-react'
@@ -74,7 +75,8 @@ export default async function FormPage({ params }: PageProps) {
         />
     }
 
-    // 3. Verify ownership
+    // 3. Verify ownership (antes, enlaza la ficha si el atleta ya tenía cuenta)
+    await linkPendingClientForUser(user)
     const { data: client } = await admin
         .from('clients')
         .select('auth_user_id, user_id')
