@@ -36,8 +36,9 @@ import {
     MoreHorizontal,
     Copy,
     ClipboardPaste,
+    Footprints,
 } from 'lucide-react'
-import { format, subDays } from 'date-fns'
+import { format, parseISO, subDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import type { MacroPlan } from '@/types/training'
@@ -306,34 +307,62 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
 
     return (
         <div className="space-y-4">
-            {/* Tipo de día */}
-            {macroPlan.day_type_config && (
-                <div className="grid grid-cols-2 rounded-full bg-muted p-1" role="tablist" aria-label="Tipo de día">
-                    {([
-                        { value: 'training', label: 'Día de entreno', icon: Dumbbell },
-                        { value: 'rest', label: 'Día de descanso', icon: Bed },
-                    ] as const).map(option => {
-                        const Icon = option.icon
-                        const isActive = dayType === option.value
-                        return (
-                            <button
-                                key={option.value}
-                                type="button"
-                                role="tab"
-                                aria-selected={isActive}
-                                onClick={() => handleDayTypeChange(option.value)}
-                                className={cn(
-                                    'flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all',
-                                    isActive ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                                )}
-                            >
-                                <Icon className="h-3.5 w-3.5" />
-                                {option.label}
-                            </button>
-                        )
-                    })}
+            {/* Plan activo: objetivos de entreno y descanso (y selector del tipo de día) */}
+            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tu plan de macros</p>
+                    <p className="text-[11px] text-muted-foreground">
+                        Activo desde {format(parseISO(macroPlan.effectiveFrom), 'd MMM', { locale: es })}
+                    </p>
                 </div>
-            )}
+
+                {macroPlan.day_type_config ? (
+                    <>
+                        <div className="mt-3 grid grid-cols-2 gap-2" role="tablist" aria-label="Tipo de día">
+                            {([
+                                { value: 'training', label: 'Entreno', icon: Dumbbell },
+                                { value: 'rest', label: 'Descanso', icon: Bed },
+                            ] as const).map(option => {
+                                const Icon = option.icon
+                                const isActive = dayType === option.value
+                                const t = macroPlan.day_type_config![option.value]
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={isActive}
+                                        onClick={() => handleDayTypeChange(option.value)}
+                                        className={cn(
+                                            'rounded-xl border p-3 text-left transition-all',
+                                            isActive
+                                                ? 'border-primary/60 bg-primary/5 shadow-sm'
+                                                : 'border-border/70 hover:border-primary/40'
+                                        )}
+                                    >
+                                        <span className={cn('flex items-center gap-1.5 text-xs font-semibold', isActive ? 'text-primary' : 'text-muted-foreground')}>
+                                            <Icon className="h-3.5 w-3.5" />
+                                            {option.label}
+                                            {isActive && <Check className="ml-auto h-3.5 w-3.5" />}
+                                        </span>
+                                        <PlanTargets kcal={t.kcal} protein={t.protein_g} carbs={t.carbs_g} fat={t.fat_g} />
+                                    </button>
+                                )
+                            })}
+                        </div>
+                        <p className="mt-2 text-[11px] text-muted-foreground">Marca qué tipo de día es hoy para ajustar tus objetivos.</p>
+                    </>
+                ) : (
+                    <PlanTargets kcal={macroPlan.kcal} protein={macroPlan.protein} carbs={macroPlan.carbs} fat={macroPlan.fat} />
+                )}
+
+                {!!macroPlan.stepsGoal && (
+                    <p className="mt-3 flex items-center gap-1.5 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                        <Footprints className="h-3.5 w-3.5 text-primary" />
+                        <span className="font-semibold tabular-nums text-foreground">{macroPlan.stepsGoal.toLocaleString('es-ES')}</span> pasos al día
+                    </p>
+                )}
+            </section>
 
             {/* Resumen del día */}
             <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
@@ -461,6 +490,21 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
 // ----------------------------------------------------------------------------
 // Subcomponents
 // ----------------------------------------------------------------------------
+function PlanTargets({ kcal, protein, carbs, fat }: { kcal: number; protein: number; carbs: number; fat: number }) {
+    return (
+        <span className="mt-1.5 block">
+            <span className="block text-lg font-bold leading-tight tabular-nums text-foreground">
+                {Math.round(kcal).toLocaleString('es-ES')}<span className="text-xs font-normal text-muted-foreground"> kcal</span>
+            </span>
+            <span className="mt-0.5 block text-[11px] tabular-nums text-muted-foreground">
+                <span className="text-rose-600 dark:text-rose-400">P {Math.round(protein)}</span>
+                {' · '}<span className="text-amber-600 dark:text-amber-400">C {Math.round(carbs)}</span>
+                {' · '}<span className="text-sky-600 dark:text-sky-400">G {Math.round(fat)}</span>
+            </span>
+        </span>
+    )
+}
+
 function MacroColumn({
     label,
     consumed,
