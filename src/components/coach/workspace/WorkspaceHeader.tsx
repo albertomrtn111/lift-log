@@ -68,7 +68,8 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
     const { displayName, initials } = getClientDisplayIdentity(client)
     const { toast } = useToast()
 
-    const isPendingSignup = !client.auth_user_id
+    // La atleta de ejemplo no tiene cuenta ni se le invita
+    const isPendingSignup = !client.auth_user_id && !client.is_sample
 
     if (process.env.NODE_ENV === 'development' && !client.status) {
         console.warn(`[WorkspaceHeader] Client "${client.full_name}" (${client.id}) has NULL/undefined status`)
@@ -192,7 +193,7 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                             <div>
                                 <p className="font-medium text-amber-500">Este cliente aún no se ha registrado</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Envía una invitación y espera a que cree su cuenta. Las funciones de planificación estarán deshabilitadas hasta entonces.
+                                    Ya puedes preparar su objetivo, sus datos, el plan y los eventos. Revisiones y Progreso se activarán cuando cree su cuenta con la invitación.
                                 </p>
                             </div>
                         </div>
