@@ -196,7 +196,7 @@ Deno.test('get_coach_inbox gathers checkins to review, unlinked Strava activitie
 Deno.test('prompts guide the model through the tools without writing data', () => {
   const prompts = new Map<string, any>()
   registerPrompts({ registerPrompt: (name: string, config: any, build: any) => prompts.set(name, { config, build }) })
-  assert.deepEqual([...prompts.keys()], ['revision_semanal', 'preparar_bloque_siguiente', 'bandeja_del_dia'])
+  assert.deepEqual([...prompts.keys()], ['revision_semanal', 'preparar_bloque_siguiente', 'planificar_temporada', 'bandeja_del_dia'])
 
   const review = prompts.get('revision_semanal')
   const reviewText = review.build(review.config.argsSchema.parse({ cliente: 'Ana' })).messages[0].content.text
@@ -210,6 +210,12 @@ Deno.test('prompts guide the model through the tools without writing data', () =
   assert.match(blockText, /status draft/)
   assert.match(blockText, /list_exercise_catalog/)
   assert.throws(() => block.config.argsSchema.parse({ cliente: 'Ana', semanas: 'seis' }))
+
+  const season = prompts.get('planificar_temporada')
+  const seasonText = season.build(season.config.argsSchema.parse({ cliente: 'Ana', semanas: '20' })).messages[0].content.text
+  for (const tool of ['get_season_plan', 'create_season_plan', 'dry_run', 'get_cardio_results', 'replace_active']) assert.match(seasonText, new RegExp(tool))
+  assert.match(seasonText, /20 semanas/)
+  assert.match(seasonText, /Espera mi confirmación/)
 
   const inbox = prompts.get('bandeja_del_dia')
   assert.match(inbox.build({}).messages[0].content.text, /get_coach_inbox/)

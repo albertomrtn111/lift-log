@@ -109,6 +109,25 @@ export const outputSchemas: Record<string, z.ZodType> = {
   schedule_cardio_session: z.looseObject({ created: z.boolean(), session: record, normalized: record }),
   get_cardio_session: z.looseObject({ session: record, editable_plan: record, legacy_recovery_types_missing: z.boolean(), expected_updated_at: maybe(z.string()), note: text }),
   update_cardio_session: z.looseObject({ updated: z.boolean(), session: record, editable_plan: record, normalized: record.nullable() }),
+
+  // Sin temporada activa, season es null y solo llegan el historial y los eventos.
+  get_season_plan: z.looseObject({
+    client_id: z.string(), today: day, season: record.nullable(), seasons: records, upcoming_events: records,
+    measures: maybe(record), phases: maybe(records), weeks: maybe(records), totals: maybe(record), note: text,
+  }),
+  // Con dry_run devuelve la vista de la temporada (saved false); al guardar, el resumen.
+  create_season_plan: z.looseObject({
+    ...createdOrUpdated, saved: maybe(z.boolean()), season: record, weeks: maybe(records), phases: maybe(records),
+    totals: maybe(record), warnings: maybe(z.array(z.string())), archived_season_ids: maybe(z.array(z.string())), note: text,
+  }),
+  update_season_plan: z.looseObject({
+    ...createdOrUpdated, saved: maybe(z.boolean()), season: maybe(record), changes: maybe(record), effects: maybe(record),
+    archived_season_ids: maybe(z.array(z.string())),
+  }),
+  update_season_weeks: z.looseObject({
+    ...createdOrUpdated, saved: maybe(z.boolean()), season: maybe(record), before: maybe(records), after: maybe(records),
+    changed_weeks: maybe(z.array(z.number().int())), note: text,
+  }),
 }
 
 type ToolServer = { registerTool: (name: string, config: any, handler: any) => unknown }
