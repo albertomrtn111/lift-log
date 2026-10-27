@@ -337,7 +337,8 @@ export function NewClientWorkspace({
                         </div>
 
                         <div className="hidden lg:block">
-                            <TabsList className="workspace-tabs-list max-w-full gap-3">
+                            {/* Sin justify-center ni scroll: si no caben en una fila pasan a la siguiente y siempre se ven todas */}
+                            <TabsList className="workspace-tabs-list h-auto max-w-full flex-wrap justify-start gap-1">
                                 {WORKSPACE_TABS.map(tab => {
                                     const Icon = tab.icon
                                     const disabled = tab.gated && isPendingSignup
@@ -346,9 +347,9 @@ export function NewClientWorkspace({
                                             key={tab.value}
                                             value={tab.value}
                                             disabled={disabled}
-                                            className="workspace-tab-trigger min-w-[8.75rem] shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
+                                            className="workspace-tab-trigger min-w-fit grow shrink-0 sm:min-w-fit sm:px-3 xl:px-5 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
-                                            <Icon className="h-4 w-4" />
+                                            <Icon className="h-4 w-4 max-xl:hidden" />
                                             <span>{tab.label}</span>
                                             {disabled && <Lock className="ml-1 h-3 w-3" />}
                                         </TabsTrigger>
