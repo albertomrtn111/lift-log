@@ -122,7 +122,11 @@ export function CardioSessionDetail({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-dvh w-full flex-col overflow-hidden p-0 sm:max-w-lg">
+      {/* Sin autofoco: Radix enfocaría el primer campo del registro y en el móvil abriría el teclado al ver la sesión */}
+      <SheetContent
+        className="flex h-dvh w-full flex-col overflow-hidden p-0 sm:max-w-lg"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <SheetHeader className="shrink-0 border-b px-5 pb-4 pl-5 pr-16 pt-[calc(env(safe-area-inset-top,0px)+1rem)] text-left">
           <SheetTitle className="truncate text-xl">{item.title}</SheetTitle>
         </SheetHeader>
