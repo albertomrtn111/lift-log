@@ -55,8 +55,8 @@ export function WeekAgenda({ events }: WeekAgendaProps) {
     }
 
     return (
-        <div>
-            <div className="divide-y">
+        <div className="flex flex-1 flex-col">
+            <div className="flex-1 divide-y">
                 {[...byDate.entries()].map(([date, dayEvents]) => {
                     const isTodayGroup = isToday(toDateAtNoon(date))
                     return (
