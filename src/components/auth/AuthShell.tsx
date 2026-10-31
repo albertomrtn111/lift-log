@@ -1,6 +1,6 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { LogoMark } from '@/components/brand/LogoMark'
 import { BrandPanel } from './BrandPanel'
 
 export const SUPPORT_EMAIL = 'hola@nexttrain.app'
@@ -8,9 +8,7 @@ export const SUPPORT_EMAIL = 'hola@nexttrain.app'
 export function AuthLogo({ className }: { className?: string }) {
     return (
         <Link href="/login" className={cn('flex items-center gap-2.5', className)} aria-label="NexTrain">
-            <span className="relative h-9 w-9 overflow-hidden rounded-[10px] bg-white shadow-sm ring-1 ring-black/10">
-                <Image src="/Logo_nexttrain.png" alt="" fill sizes="36px" className="object-cover" priority />
-            </span>
+            <LogoMark className="h-7" />
             <span className="text-[17px] font-bold tracking-tight">NexTrain</span>
         </Link>
     )

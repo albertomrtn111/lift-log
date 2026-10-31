@@ -1,6 +1,6 @@
-import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { Bot, CalendarDays, CheckCircle2, Dumbbell, ShieldCheck, Users } from 'lucide-react'
+import { LogoAppIcon } from '@/components/brand/LogoMark'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -71,9 +71,7 @@ export default async function OAuthConsentPage({
             <Card className="w-full max-w-xl overflow-hidden">
                 <CardHeader className="space-y-5 border-b border-border/70 bg-muted/20 p-5 sm:p-7">
                     <div className="flex min-w-0 items-center gap-3">
-                        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5">
-                            <Image src="/Logo_nexttrain.png" alt="NexTrain" fill sizes="48px" className="object-cover" priority />
-                        </div>
+                        <LogoAppIcon className="h-12 w-12 shrink-0 shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
                         <div className="min-w-0">
                             <p className="text-sm font-medium text-primary">Conectar con NexTrain</p>
                             <CardTitle className="break-words text-xl leading-tight sm:text-2xl">{clientName} solicita acceso</CardTitle>
