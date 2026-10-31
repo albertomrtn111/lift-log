@@ -64,6 +64,7 @@ import {
     buildPastedNutritionEntries,
     doesEntryBelongToMeal,
 } from '@/lib/nutrition/meals'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
 
 interface MacrosTrackerProps {
     macroPlan: MacroPlan | null
@@ -290,13 +291,11 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
 
     if (!macroPlan) {
         return (
-            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                    <Utensils className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-semibold">Sin objetivos de macros</p>
-                <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">Tu coach configurará tus objetivos pronto.</p>
-            </div>
+            <ClientEmptyState
+                icon={Utensils}
+                title="Sin objetivos de macros"
+                description="Tu coach configurará tus objetivos pronto."
+            />
         )
     }
 

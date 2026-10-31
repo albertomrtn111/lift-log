@@ -7,6 +7,7 @@ import { Check, ChevronDown, Clock, FlaskConical, Loader2, Pill, X } from 'lucid
 import { toast } from 'sonner'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { cn } from '@/lib/utils'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
 
 export interface ClientSupplement {
     id: string
@@ -205,13 +206,11 @@ export function SupplementsTracker({ supplements, date, onDateChange }: Suppleme
 
     if (supplements.length === 0) {
         return (
-            <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                    <FlaskConical className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-semibold">Sin suplementación</p>
-                <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">Tu coach añadirá aquí tu pauta de suplementos.</p>
-            </div>
+            <ClientEmptyState
+                icon={FlaskConical}
+                title="Sin suplementación"
+                description="Tu coach añadirá aquí tu pauta de suplementos."
+            />
         )
     }
 

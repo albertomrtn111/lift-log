@@ -10,13 +10,13 @@ export default function RoutineLoading() {
                         <Skeleton className="h-7 w-48" />
                     </div>
                     <div className="mt-3 flex items-center gap-3">
-                        <Skeleton className="h-10 w-44 rounded-full" />
+                        <Skeleton className="h-11 w-44 rounded-full" />
                         <Skeleton className="h-1.5 flex-1 rounded-full" />
                     </div>
                 </div>
-                <div className="flex gap-2 overflow-hidden px-4 pb-3">
+                <div className="flex gap-2 overflow-hidden px-4 pb-3 pt-1">
                     {[...Array(4)].map((_, i) => (
-                        <Skeleton key={i} className="h-8 w-24 shrink-0 rounded-full" />
+                        <Skeleton key={i} className="h-9 w-24 shrink-0 rounded-full" />
                     ))}
                 </div>
             </header>

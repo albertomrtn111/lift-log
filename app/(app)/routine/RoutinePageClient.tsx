@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale'
 import { Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet } from '@/data/exercise-sets'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
 
 interface RoutinePageClientProps {
     clientId: string
@@ -241,15 +242,12 @@ export default function RoutinePageClient({
                         </div>
                     </>
                 ) : (
-                    <div className="mx-4 flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
-                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                            <Dumbbell className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <p className="text-sm font-semibold">Sin ejercicios</p>
-                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
-                            Tu coach aún no ha añadido ejercicios a este día.
-                        </p>
-                    </div>
+                    <ClientEmptyState
+                        icon={Dumbbell}
+                        title="Sin ejercicios"
+                        description="Tu coach aún no ha añadido ejercicios a este día."
+                        className="mx-4"
+                    />
                 )}
             </div>
         </div>

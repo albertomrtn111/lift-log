@@ -11,7 +11,9 @@ import { MacrosTracker } from '@/components/nutrition/MacrosTracker'
 import { DietOptionsPlan } from '@/components/nutrition/DietOptionsPlan'
 import { DayNavigator } from '@/components/nutrition/DayNavigator'
 import { SupplementsTracker, type ClientSupplement } from '@/components/nutrition/SupplementsTracker'
-import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { ClientTabSwitcher, useTabSwipeLink } from '@/components/ui/client-tab-switcher'
+import { SwipeTabPanels } from '@/components/ui/swipe-tab-panels'
 
 interface DietPlanMealItem {
     quantity: string
@@ -56,6 +58,8 @@ const DIET_TAB_OPTIONS: Array<{ value: DietTab; label: string }> = [
     { value: 'supplements', label: 'Suplementos' },
 ]
 
+const DIET_TABS = DIET_TAB_OPTIONS.map(option => option.value)
+
 function isDietTab(value: string | null): value is DietTab {
     return value === 'macros' || value === 'meals' || value === 'supplements'
 }
@@ -82,6 +86,7 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
     const [activeTab, setActiveTab] = useState<DietTab>(initialTab)
     // Un único día para Macros y Suplementos: cambiar de pestaña no lo pierde
     const [date, setDate] = useState<Date>(() => parseDateParam(searchParams.get('date')) ?? new Date())
+    const swipeLink = useTabSwipeLink()
 
     return (
         <div className="app-mobile-page min-h-screen pb-4">
@@ -95,9 +100,12 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
                     </div>
                     <ClientTabSwitcher
                         className="mt-3"
+                        aria-label="Secciones de la dieta"
+                        idBase="diet"
                         value={activeTab}
                         options={DIET_TAB_OPTIONS}
                         onValueChange={setActiveTab}
+                        swipeLink={swipeLink}
                     />
                     {activeTab !== 'meals' && (
                         <DayNavigator className="mt-2" date={date} onChange={setDate} />
@@ -105,33 +113,27 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
                 </div>
             </header>
 
-            <div className="animate-fade-in px-4 pt-4" key={activeTab}>
-                {activeTab === 'macros' && (
-                    <MacrosTracker macroPlan={macroPlan} date={date} />
-                )}
-
-                {activeTab === 'meals' && (
-                    hasStructuredMeals && dietPlan ? (
-                        <DietOptionsPlan planId={dietPlan.id} planName={dietPlan.name} meals={dietMeals} />
-                    ) : hasLegacyMeals && dietPlan ? (
-                        <LegacyDietPlan plan={dietPlan} />
-                    ) : (
-                        <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
-                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                                <Utensils className="h-6 w-6 text-muted-foreground" />
-                            </div>
-                            <p className="text-sm font-semibold">Sin plan de comidas</p>
-                            <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
-                                Tu coach aún no ha configurado un plan de comidas para ti.
-                            </p>
-                        </div>
+            <SwipeTabPanels
+                idBase="diet"
+                values={DIET_TABS}
+                value={activeTab}
+                onValueChange={setActiveTab}
+                swipeLink={swipeLink}
+                panelClassName="px-4 pt-4"
+                renderPanel={tab => {
+                    if (tab === 'macros') return <MacrosTracker macroPlan={macroPlan} date={date} />
+                    if (tab === 'supplements') return <SupplementsTracker supplements={supplements} date={date} onDateChange={setDate} />
+                    if (hasStructuredMeals && dietPlan) return <DietOptionsPlan planId={dietPlan.id} planName={dietPlan.name} meals={dietMeals} />
+                    if (hasLegacyMeals && dietPlan) return <LegacyDietPlan plan={dietPlan} />
+                    return (
+                        <ClientEmptyState
+                            icon={Utensils}
+                            title="Sin plan de comidas"
+                            description="Tu coach aún no ha configurado un plan de comidas para ti."
+                        />
                     )
-                )}
-
-                {activeTab === 'supplements' && (
-                    <SupplementsTracker supplements={supplements} date={date} onDateChange={setDate} />
-                )}
-            </div>
+                }}
+            />
         </div>
     )
 }

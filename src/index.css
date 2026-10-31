@@ -316,6 +316,124 @@
     @apply bg-primary/10 text-primary hover:text-primary dark:bg-primary/15;
   }
 
+  /* Subnavegación del atleta (ClientTabSwitcher / ClientChipTabs). Curva de
+     muelle tipo iOS; --segment-index puede ser fraccional mientras se arrastra. */
+  .client-segmented {
+    @apply relative h-11 rounded-full bg-muted p-1;
+    --segment-index: 0;
+  }
+
+  .client-segmented-indicator {
+    @apply pointer-events-none absolute bottom-1 left-1 top-1 rounded-full bg-card;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 3px 10px -4px rgba(15, 23, 42, 0.18);
+    transform: translateX(calc(var(--segment-index) * 100%));
+  }
+
+  .dark .client-segmented-indicator {
+    background-color: hsl(223 20% 25%);
+    box-shadow: 0 1px 2px rgba(2, 6, 23, 0.5), inset 0 1px 0 hsl(0 0% 100% / 0.05);
+  }
+
+  .client-segmented[data-ready] .client-segmented-indicator {
+    transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .client-segmented[data-dragging] .client-segmented-indicator {
+    transition: none;
+  }
+
+  .client-segment {
+    @apply relative z-10 flex h-9 min-w-0 items-center justify-center rounded-full px-3 text-[13px] font-semibold text-muted-foreground;
+    @apply transition-colors duration-200 hover:text-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    /* Zona táctil de 44px aunque la píldora mida 36px */
+    @apply after:absolute after:-inset-y-1 after:inset-x-0;
+  }
+
+  .client-segment-active {
+    @apply text-foreground;
+  }
+
+  .client-chip-list {
+    @apply relative flex w-max gap-2 py-1;
+  }
+
+  .client-chip-indicator {
+    @apply pointer-events-none absolute left-0 top-1 h-9 rounded-full shadow-sm;
+  }
+
+  .client-chip-list[data-ready] .client-chip-indicator {
+    transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1), width 380ms cubic-bezier(0.32, 0.72, 0, 1), background-color 200ms ease;
+  }
+
+  .client-chip {
+    @apply relative z-10 flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold text-muted-foreground;
+    @apply ring-1 ring-inset ring-border transition-[color,box-shadow] duration-200 hover:text-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply after:absolute after:-inset-y-1 after:inset-x-0;
+  }
+
+  .client-chip-active {
+    @apply text-primary-foreground ring-transparent hover:text-primary-foreground;
+  }
+
+  /* Paneles de sub-pestañas que siguen al dedo (SwipeTabPanels) */
+  .client-swipe-track {
+    will-change: transform;
+  }
+
+  .client-swipe-track[data-settling] {
+    transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* Al cambiar de sub-pestaña con un toque, el panel entra desde su lado */
+  .client-panel-enter-right {
+    animation: client-panel-in-right 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+
+  .client-panel-enter-left {
+    animation: client-panel-in-left 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+
+  @keyframes client-panel-in-right {
+    from { opacity: 0; transform: translateX(1.5rem); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes client-panel-in-left {
+    from { opacity: 0; transform: translateX(-1.5rem); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* Entrada suave de cada pantalla del atleta (solo opacidad: un transform
+     convertiría el contenedor en referencia de los elementos `fixed`) */
+  .client-page-enter {
+    animation: client-page-enter 260ms ease-out both;
+  }
+
+  @keyframes client-page-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* `html` sube la especificidad para ganar también a las utilidades */
+  @media (prefers-reduced-motion: reduce) {
+    html .client-segmented[data-ready] .client-segmented-indicator,
+    html .client-chip-list[data-ready] .client-chip-indicator,
+    html .client-swipe-track[data-settling],
+    html .client-tab,
+    html .client-header-button {
+      transition: none;
+    }
+
+    html .client-page-enter,
+    html .client-panel-enter-right,
+    html .client-panel-enter-left,
+    html .animate-fade-in {
+      animation: none;
+    }
+  }
+
   /* Botón circular de la cabecera del atleta (perfil, avisos...) */
   .client-header-button {
     @apply relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-foreground;

@@ -12,7 +12,7 @@ import {
     YAxis,
 } from 'recharts'
 import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { ClientChipTabs } from '@/components/ui/client-tab-switcher'
 import { cardioDiscipline } from '@/lib/cardio/discipline'
 import type {
     ClientCardioProgressData,
@@ -27,12 +27,13 @@ const FILTER_OPTIONS: {
     value: ClientDisciplineFilter
     label: string
     icon: React.ElementType
-    activeClass: string
+    tone: string
+    toneText?: string
 }[] = [
-    { value: 'all', label: 'Todos', icon: Activity, activeClass: 'bg-foreground text-background border-foreground' },
-    { value: 'running', label: 'Running', icon: RouteIcon, activeClass: 'bg-teal-600 text-white border-teal-600' },
-    { value: 'natacion', label: 'Natación', icon: Waves, activeClass: 'bg-blue-600 text-white border-blue-600' },
-    { value: 'bicicleta', label: 'Bici', icon: Bike, activeClass: 'bg-amber-600 text-white border-amber-600' },
+    { value: 'all', label: 'Todos', icon: Activity, tone: 'bg-foreground', toneText: 'text-background' },
+    { value: 'running', label: 'Running', icon: RouteIcon, tone: 'bg-teal-600' },
+    { value: 'natacion', label: 'Natación', icon: Waves, tone: 'bg-blue-600' },
+    { value: 'bicicleta', label: 'Bici', icon: Bike, tone: 'bg-amber-600' },
 ]
 
 const FILTER_LABELS: Record<ClientDisciplineFilter, string> = {
@@ -176,37 +177,14 @@ export function ClientCardioEvolution({ data }: { data: ClientCardioProgressData
 
     return (
         <section className="space-y-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                {FILTER_OPTIONS.map((option) => {
-                    const Icon = option.icon
-                    const isActive = filter === option.value
-
-                    return (
-                        <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setFilter(option.value)}
-                            className={cn(
-                                'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors',
-                                isActive
-                                    ? option.activeClass
-                                    : 'border-border bg-background text-muted-foreground hover:text-foreground'
-                            )}
-                        >
-                            <Icon className="h-3.5 w-3.5" />
-                            {option.label}
-                            {sessionCounts[option.value] > 0 && (
-                                <span className={cn(
-                                    'rounded-full px-1.5 py-0.5 text-[10px] tabular-nums',
-                                    isActive ? 'bg-white/20 text-current' : 'bg-muted text-muted-foreground'
-                                )}>
-                                    {sessionCounts[option.value]}
-                                </span>
-                            )}
-                        </button>
-                    )
-                })}
-            </div>
+            <ClientChipTabs
+                aria-label="Disciplina"
+                className="-mx-4"
+                listClassName="px-4"
+                value={filter}
+                onValueChange={setFilter}
+                options={FILTER_OPTIONS.map(option => ({ ...option, count: sessionCounts[option.value] }))}
+            />
 
             <Card className="overflow-hidden p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">

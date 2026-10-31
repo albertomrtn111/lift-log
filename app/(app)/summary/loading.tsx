@@ -1,29 +1,19 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { ClientHeaderSkeleton } from '@/components/ui/client-header-skeleton'
 
 export default function SummaryLoading() {
     return (
         <div className="app-mobile-page min-h-screen">
-            {/* Header skeleton */}
-            <header className="app-mobile-header bg-background border-b border-border">
-                <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 pr-24">
-                        <Skeleton className="w-10 h-10 rounded-xl" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-5 w-24" />
-                            <Skeleton className="h-4 w-32" />
-                        </div>
-                    </div>
+            <ClientHeaderSkeleton segmented />
+            <div className="space-y-3 px-4 pt-4">
+                <Skeleton className="h-36 rounded-2xl" />
+                <Skeleton className="h-11 w-full rounded-full" />
+                <div className="grid grid-cols-2 gap-3">
+                    {[...Array(4)].map((_, i) => (
+                        <Skeleton key={i} className="h-24 rounded-2xl" />
+                    ))}
                 </div>
-            </header>
-            {/* KPI cards skeleton */}
-            <div className="p-4 grid grid-cols-2 gap-3">
-                {[...Array(4)].map((_, i) => (
-                    <Skeleton key={i} className="h-24 rounded-xl" />
-                ))}
-            </div>
-            {/* Chart skeleton */}
-            <div className="px-4">
-                <Skeleton className="h-56 rounded-xl" />
+                <Skeleton className="h-56 rounded-2xl" />
             </div>
         </div>
     )
