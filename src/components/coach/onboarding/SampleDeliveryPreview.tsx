@@ -1,8 +1,8 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight, Bell, ShieldCheck } from 'lucide-react'
+import { LogoAppIcon } from '@/components/brand/LogoMark'
 import { Button } from '@/components/ui/button'
 import {
     Dialog,
@@ -49,9 +49,7 @@ export function SampleDeliveryPreview({ open, onOpenChange, feedback }: {
                     {feedback && (
                         <div className="mt-4 rounded-2xl bg-white/90 p-3 text-slate-900 shadow-lg backdrop-blur" role="img" aria-label={`Aviso: ${PUSH_TITLE}`}>
                             <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                <span className="relative h-4 w-4 overflow-hidden rounded bg-white ring-1 ring-black/10">
-                                    <Image src="/Logo_nexttrain.png" alt="" fill sizes="16px" className="object-cover" />
-                                </span>
+                                <LogoAppIcon className="h-4 w-4" />
                                 <span className="font-semibold uppercase tracking-wide">NexTrain</span>
                                 <span className="ml-auto">ahora</span>
                             </div>

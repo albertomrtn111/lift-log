@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -20,6 +19,7 @@ import {
     LineChart,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
+import { LogoMark } from '@/components/brand/LogoMark'
 import { Button } from '@/components/ui/button'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import {
@@ -162,16 +162,7 @@ export function CoachSidebar() {
                 <div className="flex h-full flex-col">
                     {/* Logo */}
                     <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
-                        <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 dark:bg-white">
-                            <Image
-                                src="/Logo_nexttrain.png"
-                                alt="NexTrain"
-                                fill
-                                sizes="36px"
-                                className="object-cover"
-                                priority
-                            />
-                        </div>
+                        <LogoMark className="h-8 text-foreground" />
                         <div className="min-w-0 leading-none">
                             <h1 className="text-[1.0625rem] font-bold tracking-tight text-foreground">NexTrain</h1>
                             <p className="mt-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground/90">
