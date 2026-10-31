@@ -492,10 +492,10 @@ export function ClientChat() {
 // Piezas
 // ---------------------------------------------------------------------------
 
-/** Ocupa exactamente el alto visible entre la parte superior y la barra inferior */
+/** Ocupa exactamente el alto visible entre la parte superior y la barra de pestañas flotante */
 function ChatShell({ header, children }: { header: React.ReactNode; children: React.ReactNode }) {
     return (
-        <div className="app-mobile-page flex h-[calc(100dvh-var(--app-bottom-nav-height)-var(--safe-area-bottom))] flex-col overflow-hidden">
+        <div className="app-mobile-page flex h-[calc(100dvh-var(--client-tab-bar-space))] flex-col overflow-hidden">
             {header}
             {children}
         </div>

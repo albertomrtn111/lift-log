@@ -64,40 +64,34 @@ export function BottomNav() {
   }
 
   return (
-    <nav
-      className="app-mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-card/95 shadow-[0_-16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl"
-    >
-      <div className="flex items-center justify-around px-2 py-1.5">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/routine' && pathname?.startsWith(item.href))
+    <nav aria-label="Navegación principal" className="client-glass client-tab-bar">
+      {navItems.map((item) => {
+        const isActive = pathname === item.href ||
+          (item.href !== '/routine' && pathname?.startsWith(item.href))
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              // Prefetch de las 5 pestañas principales: la navegación entre
-              // tabs pasa de "fetch completo al pulsar" a casi instantánea.
-              prefetch={true}
-              onClick={(e) => handleNavClick(e, item.href)}
-              className={cn(
-                'client-bottom-nav-item flex-1 max-w-[80px]',
-                isActive && 'client-bottom-nav-item-active'
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            // Prefetch de las 5 pestañas principales: la navegación entre
+            // tabs pasa de "fetch completo al pulsar" a casi instantánea.
+            prefetch={true}
+            onClick={(e) => handleNavClick(e, item.href)}
+            aria-current={isActive ? 'page' : undefined}
+            className={cn('client-tab', isActive && 'client-tab-active')}
+          >
+            <span className="relative flex h-6 w-6 items-center justify-center">
+              <item.icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.25 : 1.9} />
+              {item.href === '/chat' && unreadCount > 0 && (
+                <span className="pointer-events-none absolute -right-2 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-destructive-foreground ring-2 ring-card">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
               )}
-            >
-              <div className={cn('client-nav-icon-shell', isActive && 'client-nav-icon-shell-active')}>
-                <item.icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.45 : 2.1} />
-                {item.href === '/chat' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none pointer-events-none">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] font-semibold leading-none">{item.label}</span>
-            </Link>
-          )
-        })}
-      </div>
+            </span>
+            <span className="max-w-full truncate text-[10.5px] font-semibold leading-none tracking-tight">{item.label}</span>
+          </Link>
+        )
+      })}
     </nav>
   )
 }
