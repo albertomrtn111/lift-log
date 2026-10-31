@@ -17,6 +17,7 @@ import {
     Receipt,
     MessageCircle,
     MoreHorizontal,
+    LineChart,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -66,6 +67,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
             { href: '/coach/templates', icon: FileText, label: 'Plantillas' },
             { href: '/coach/metrics', icon: BarChart2, label: 'Métricas' },
             { href: '/coach/forms', icon: ClipboardList, label: 'Formularios' },
+            { href: '/coach/analytics', icon: LineChart, label: 'Analítica' },
         ]
     }
 ]
