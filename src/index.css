@@ -279,21 +279,48 @@
     @apply text-primary bg-primary/10;
   }
 
-  .client-bottom-nav-item {
-    @apply flex flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-1.5 text-muted-foreground transition-colors;
-    @apply hover:text-primary;
+  /* Superficie flotante translúcida (barra de pestañas y botones de cabecera
+     del atleta): cristal claro en modo claro, oscuro en modo oscuro. */
+  .client-glass {
+    background-color: hsl(var(--card) / 0.82);
+    border: 1px solid hsl(var(--border) / 0.75);
+    box-shadow: 0 12px 32px -16px rgba(15, 23, 42, 0.28), 0 2px 6px -2px rgba(15, 23, 42, 0.08);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
   }
 
-  .client-bottom-nav-item-active {
-    @apply bg-transparent text-primary;
+  .dark .client-glass {
+    background-color: hsl(223 30% 14% / 0.76);
+    border-color: hsl(0 0% 100% / 0.08);
+    box-shadow: 0 16px 40px -16px rgba(2, 6, 23, 0.9), inset 0 1px 0 hsl(0 0% 100% / 0.04);
   }
 
-  .client-nav-icon-shell {
-    @apply relative flex h-7 w-7 items-center justify-center rounded-full transition-colors;
+  /* Barra de pestañas flotante del atleta */
+  .client-tab-bar {
+    @apply fixed z-50 grid grid-cols-5 gap-0.5 rounded-full p-1.5;
+    left: calc(var(--safe-area-left) + 0.75rem);
+    right: calc(var(--safe-area-right) + 0.75rem);
+    bottom: var(--client-tab-bar-gap);
+    height: var(--client-tab-bar-height);
+    max-width: 30rem;
+    margin-inline: auto;
   }
 
-  .client-nav-icon-shell-active {
-    color: hsl(var(--primary));
+  .client-tab {
+    @apply relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-full text-muted-foreground;
+    @apply transition-[color,background-color,transform] duration-200 active:scale-95;
+    @apply hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .client-tab-active {
+    @apply bg-primary/10 text-primary hover:text-primary dark:bg-primary/15;
+  }
+
+  /* Botón circular de la cabecera del atleta (perfil, avisos...) */
+  .client-header-button {
+    @apply relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-foreground;
+    @apply transition-[color,background-color,transform] duration-200 active:scale-95;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
   /* Progress bar */
@@ -355,6 +382,12 @@
   }
 
   .app-mobile-shell {
+    /* Barra de pestañas flotante: alto, separación del borde inferior (se
+       apoya en la zona del indicador de inicio de iOS) y espacio total que
+       el contenido debe dejarle libre. */
+    --client-tab-bar-height: 4rem;
+    --client-tab-bar-gap: max(0.75rem, calc(var(--safe-area-bottom) - 0.5rem));
+    --client-tab-bar-space: calc(var(--client-tab-bar-height) + var(--client-tab-bar-gap) + 0.75rem);
     min-height: 100vh;
     min-height: 100dvh;
     padding-left: var(--safe-area-left);
@@ -364,7 +397,7 @@
   .app-mobile-main {
     min-height: 100vh;
     min-height: 100dvh;
-    padding-bottom: calc(var(--app-bottom-nav-height) + var(--safe-area-bottom));
+    padding-bottom: var(--client-tab-bar-space);
   }
 
   .app-mobile-page {
@@ -376,12 +409,5 @@
     top: 0;
     z-index: 40;
     padding-top: var(--safe-area-top);
-  }
-
-  .app-mobile-bottom-nav {
-    min-height: var(--app-bottom-nav-height);
-    padding-bottom: var(--safe-area-bottom);
-    padding-left: var(--safe-area-left);
-    padding-right: var(--safe-area-right);
   }
 }

@@ -37,15 +37,11 @@ export function NotificationsButton() {
                 type="button"
                 onClick={() => setOpen(true)}
                 aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
-                className={cn(
-                    'relative flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors',
-                    'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    open && 'bg-muted'
-                )}
+                className={cn('client-glass client-header-button', open && 'text-primary')}
             >
-                <Bell className="h-[18px] w-[18px]" />
+                <Bell className="h-5 w-5" strokeWidth={1.9} />
                 {unreadCount > 0 && (
-                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-none text-destructive-foreground ring-2 ring-background">
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-destructive-foreground ring-2 ring-background">
                         {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}

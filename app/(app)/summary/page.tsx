@@ -467,7 +467,7 @@ export default function SummaryPage() {
             </Tabs>
 
             {activeTab === 'resumen' && (
-                <div className="fixed bottom-[calc(var(--safe-area-bottom,0px)+68px)] left-4 right-4 z-40">
+                <div className="fixed bottom-[var(--client-tab-bar-space)] left-4 right-4 z-40">
                     <Button
                         size="lg"
                         className="w-full shadow-lg shadow-primary/30 gap-2"
