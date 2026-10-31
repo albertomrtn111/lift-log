@@ -21,19 +21,19 @@ export function DayNavigator({ date, onChange, className }: { date: Date; onChan
     const canGoForward = !isToday(date) && date < startOfDay(new Date())
 
     return (
-        <div className={cn('flex items-center justify-between rounded-full bg-muted/60 p-1', className)}>
+        <div className={cn('flex h-11 items-center justify-between rounded-full bg-muted/60 p-1', className)}>
             <button
                 type="button"
                 onClick={() => onChange(addDays(date, -1))}
                 aria-label="Día anterior"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors after:absolute after:-inset-1 hover:bg-background hover:text-foreground active:bg-background"
             >
                 <ChevronLeft className="h-4 w-4" />
             </button>
 
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                    <button type="button" className="min-w-0 rounded-full px-3 py-1 text-sm transition-colors hover:bg-background">
+                    <button type="button" className="h-9 min-w-0 rounded-full px-3 text-sm transition-colors hover:bg-background">
                         <span className="font-semibold">{dayLabel(date)}</span>
                         <span className="text-muted-foreground"> · {format(date, "EEE d MMM", { locale: es })}</span>
                     </button>
@@ -59,7 +59,7 @@ export function DayNavigator({ date, onChange, className }: { date: Date; onChan
                 onClick={() => canGoForward && onChange(addDays(date, 1))}
                 disabled={!canGoForward}
                 aria-label="Día siguiente"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+                className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors after:absolute after:-inset-1 hover:bg-background hover:text-foreground active:bg-background disabled:opacity-30 disabled:hover:bg-transparent"
             >
                 <ChevronRight className="h-4 w-4" />
             </button>

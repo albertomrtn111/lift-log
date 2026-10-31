@@ -16,7 +16,9 @@ import { parseDateStr, toLocalDateStr } from '@/components/planning/plan-visuals
 import { addDays, addMonths, addWeeks, endOfMonth, endOfWeek, format, isSameMonth, isSameWeek, startOfMonth, startOfWeek, subMonths, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { STRAVA_ACTIVITY_COMPLETED_EVENT, type StravaActivityCompletedDetail } from '@/lib/strava/events'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
 
 interface PlanningPageClientProps {
     initialItems: CalendarItem[]
@@ -32,6 +34,8 @@ const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
 ]
 
 const SWIPE_MIN_DISTANCE = 60
+// Franja de los bordes reservada al gesto de volver/avanzar de iOS
+const SWIPE_EDGE_GUARD = 24
 
 function capitalize(value: string) {
     return value.charAt(0).toUpperCase() + value.slice(1)
@@ -184,6 +188,10 @@ export default function PlanningPageClient({
 
     const handleTouchStart = (event: React.TouchEvent) => {
         const touch = event.touches[0]
+        if (touch.clientX < SWIPE_EDGE_GUARD || touch.clientX > window.innerWidth - SWIPE_EDGE_GUARD) {
+            touchStart.current = null
+            return
+        }
         touchStart.current = { x: touch.clientX, y: touch.clientY }
     }
 
@@ -319,30 +327,16 @@ export default function PlanningPageClient({
                         {isPending && <Loader2 className="mb-1.5 h-4 w-4 animate-spin text-muted-foreground" aria-label="Cargando" />}
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2">
+                    <div className="mt-3 flex items-center gap-1.5">
                         {/* Semana / Mes */}
-                        <div className="inline-flex shrink-0 rounded-full bg-muted p-1" role="tablist" aria-label="Vista">
-                            {VIEW_OPTIONS.map(option => {
-                                const isActive = viewMode === option.value
-                                return (
-                                    <button
-                                        key={option.value}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={isActive}
-                                        onClick={() => handleViewChange(option.value)}
-                                        className={cn(
-                                            'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all',
-                                            isActive
-                                                ? 'bg-background text-foreground shadow-sm'
-                                                : 'text-muted-foreground hover:text-foreground'
-                                        )}
-                                    >
-                                        {option.label}
-                                    </button>
-                                )
-                            })}
-                        </div>
+                        <ClientTabSwitcher
+                            fit="content"
+                            className="shrink-0"
+                            aria-label="Vista"
+                            value={viewMode}
+                            options={VIEW_OPTIONS}
+                            onValueChange={handleViewChange}
+                        />
 
                         {/* Navegación de rango */}
                         <div className="ml-auto flex min-w-0 items-center">
@@ -350,7 +344,7 @@ export default function PlanningPageClient({
                                 type="button"
                                 onClick={handlePrevious}
                                 aria-label={viewMode === 'week' ? 'Semana anterior' : 'Mes anterior'}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
                             >
                                 <ChevronLeft className="h-5 w-5" />
                             </button>
@@ -358,7 +352,7 @@ export default function PlanningPageClient({
                                 type="button"
                                 onClick={handleToday}
                                 disabled={isCurrentRange}
-                                className="min-w-0 truncate px-1 text-sm font-semibold tabular-nums text-foreground disabled:cursor-default"
+                                className="h-11 min-w-0 truncate px-0.5 text-[13px] font-semibold tabular-nums text-foreground disabled:cursor-default"
                                 title={isCurrentRange ? undefined : 'Volver a hoy'}
                             >
                                 {rangeLabel}
@@ -367,7 +361,7 @@ export default function PlanningPageClient({
                                 type="button"
                                 onClick={handleNext}
                                 aria-label={viewMode === 'week' ? 'Semana siguiente' : 'Mes siguiente'}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                className="flex h-11 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
                             >
                                 <ChevronRight className="h-5 w-5" />
                             </button>
@@ -426,15 +420,11 @@ export default function PlanningPageClient({
                         {weekDays.map(dateStr => renderDay(dateStr, { showHeading: true }))}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-10 text-center">
-                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                            <CalendarX2 className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <p className="text-sm font-semibold">Semana sin sesiones</p>
-                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
-                            Tu coach aún no ha planificado entrenamientos para estos días.
-                        </p>
-                    </div>
+                    <ClientEmptyState
+                        icon={CalendarX2}
+                        title="Semana sin sesiones"
+                        description="Tu coach aún no ha planificado entrenamientos para estos días."
+                    />
                 )}
             </div>
 

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { ClientChipTabs, ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import type { ClientDietItem, ClientDietMeal, ClientDietOption } from '@/data/diet'
 import { addNutritionLogEntriesBatch, deleteNutritionLogEntry } from '@/data/nutrition/log'
 import type { MealType, NutritionLogEntryInput } from '@/data/nutrition/tracking-types'
@@ -221,21 +222,13 @@ export function DietOptionsPlan({ planId, planName, meals }: DietOptionsPlanProp
             </section>
 
             {dayTypes.length > 1 && (
-                <div className="inline-flex rounded-full bg-muted p-1">
-                    {dayTypes.map(type => (
-                        <button
-                            key={type}
-                            type="button"
-                            onClick={() => setDayType(type)}
-                            className={cn(
-                                'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all',
-                                dayType === type ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
-                            )}
-                        >
-                            Día {DAY_TYPE_LABEL[type] ?? type}
-                        </button>
-                    ))}
-                </div>
+                <ClientTabSwitcher
+                    fit="content"
+                    aria-label="Tipo de día"
+                    value={dayType}
+                    onValueChange={setDayType}
+                    options={dayTypes.map(type => ({ value: type, label: `Día ${DAY_TYPE_LABEL[type] ?? type}` }))}
+                />
             )}
 
             {visibleMeals.map(meal => (
@@ -328,32 +321,21 @@ function MealCard({ meal, choice, onChoice, onLog, logging, logged }: MealCardPr
 
             {/* Opciones */}
             {meal.options.length > 1 && (
-                <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 scrollbar-hide" role="tablist" aria-label={`Opciones de ${meal.name}`}>
-                    {meal.options.map(item => {
-                        const isActive = item.id === option.id
+                <ClientChipTabs
+                    aria-label={`Opciones de ${meal.name}`}
+                    className="pb-2"
+                    listClassName="px-4"
+                    value={option.id}
+                    onValueChange={selectOption}
+                    options={meal.options.map(item => {
                         const optionKcal = sumMacros(chosenItems(item, undefined)).kcal
-                        return (
-                            <button
-                                key={item.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={isActive}
-                                onClick={() => selectOption(item.id)}
-                                className={cn(
-                                    'flex shrink-0 flex-col items-start rounded-xl border px-3 py-1.5 text-left transition-colors',
-                                    isActive ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border/70 bg-background text-foreground hover:bg-muted/60'
-                                )}
-                            >
-                                <span className="max-w-[9rem] truncate text-xs font-semibold">{item.name}</span>
-                                {optionKcal > 0 && (
-                                    <span className={cn('text-[10px] tabular-nums', isActive ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
-                                        {Math.round(optionKcal)} kcal
-                                    </span>
-                                )}
-                            </button>
-                        )
+                        return {
+                            value: item.id,
+                            label: item.name,
+                            detail: optionKcal > 0 ? `${Math.round(optionKcal)} kcal` : undefined,
+                        }
                     })}
-                </div>
+                />
             )}
 
             {/* Alimentos de la opción elegida */}

@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
 import {
     AlertCircle,
     HeartPulse,
@@ -32,7 +31,8 @@ import { ClientCardioEvolution } from '@/components/progress/ClientCardioEvoluti
 import { ClientReviewsTab } from '@/components/progress/ClientReviewsTab'
 import { ClientGalleryTab } from '@/components/progress/ClientGalleryTab'
 import { cn } from '@/lib/utils'
-import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import { ClientTabSwitcher, useTabSwipeLink } from '@/components/ui/client-tab-switcher'
+import { SwipeTabPanels } from '@/components/ui/swipe-tab-panels'
 
 type ProgressTab = 'resumen' | 'revisiones' | 'galeria'
 
@@ -41,6 +41,8 @@ const PROGRESS_TAB_OPTIONS: Array<{ value: ProgressTab; label: string }> = [
     { value: 'revisiones', label: 'Revisiones' },
     { value: 'galeria', label: 'Galería' },
 ]
+
+const PROGRESS_TABS = PROGRESS_TAB_OPTIONS.map(option => option.value)
 
 function normalizeTab(tab: string | null): ProgressTab {
     return tab === 'revisiones' || tab === 'galeria' ? tab : 'resumen'
@@ -183,19 +185,12 @@ function SummaryOverview({
                 )}
             </Card>
 
-            <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-none">
-                {ranges.map((r) => (
-                    <Button
-                        key={r.value}
-                        variant={range === r.value ? 'default' : 'outline'}
-                        size="sm"
-                        className="h-7 text-xs rounded-full px-3"
-                        onClick={() => setRange(r.value)}
-                    >
-                        {r.label}
-                    </Button>
-                ))}
-            </div>
+            <ClientTabSwitcher
+                aria-label="Periodo"
+                value={range}
+                options={ranges.map(r => ({ value: r.value, label: r.label }))}
+                onValueChange={setRange}
+            />
 
             <div className="grid grid-cols-2 gap-3">
                 <Card className="p-4">
@@ -370,6 +365,7 @@ export default function SummaryPage() {
     const [registrarOpen, setRegistrarOpen] = useState(false)
     const [registrarDate, setRegistrarDate] = useState<Date | null>(null)
     const [refreshKey, setRefreshKey] = useState(0)
+    const swipeLink = useTabSwipeLink()
 
     const loadData = useCallback(async () => {
         setLoading(true)
@@ -432,39 +428,45 @@ export default function SummaryPage() {
                     </div>
                     <ClientTabSwitcher
                         className="mt-3"
+                        aria-label="Secciones de progreso"
+                        idBase="progress"
                         value={activeTab}
                         options={PROGRESS_TAB_OPTIONS}
                         onValueChange={handleTabChange}
+                        swipeLink={swipeLink}
                     />
                 </div>
             </header>
 
-            <Tabs value={activeTab} onValueChange={handleTabChange}>
-                <TabsContent value="resumen" className="mt-4 px-4">
-                    <SummaryOverview
-                        range={range}
-                        setRange={setRange}
-                        program={program}
-                        weightData={weightData}
-                        adherenceData={adherenceData}
-                        cardioData={cardioData}
-                        dailyMetrics={dailyMetrics}
-                        loading={loading}
-                        onOpenDay={(date) => {
-                            setRegistrarDate(new Date(`${date}T12:00:00`))
-                            setRegistrarOpen(true)
-                        }}
-                    />
-                </TabsContent>
-
-                <TabsContent value="revisiones" className="mt-4 px-4">
-                    <ClientReviewsTab initialCheckinId={checkinId} />
-                </TabsContent>
-
-                <TabsContent value="galeria" className="mt-4 px-4">
-                    <ClientGalleryTab />
-                </TabsContent>
-            </Tabs>
+            <SwipeTabPanels
+                idBase="progress"
+                values={PROGRESS_TABS}
+                value={activeTab}
+                onValueChange={handleTabChange}
+                swipeLink={swipeLink}
+                panelClassName="px-4 pt-4"
+                renderPanel={tab => {
+                    // La key reabre la revisión pedida aunque el panel ya estuviera montado
+                    if (tab === 'revisiones') return <ClientReviewsTab key={checkinId ?? 'list'} initialCheckinId={checkinId} />
+                    if (tab === 'galeria') return <ClientGalleryTab />
+                    return (
+                        <SummaryOverview
+                            range={range}
+                            setRange={setRange}
+                            program={program}
+                            weightData={weightData}
+                            adherenceData={adherenceData}
+                            cardioData={cardioData}
+                            dailyMetrics={dailyMetrics}
+                            loading={loading}
+                            onOpenDay={(date) => {
+                                setRegistrarDate(new Date(`${date}T12:00:00`))
+                                setRegistrarOpen(true)
+                            }}
+                        />
+                    )
+                }}
+            />
 
             {activeTab === 'resumen' && (
                 <div className="fixed bottom-[var(--client-tab-bar-space)] left-4 right-4 z-40">

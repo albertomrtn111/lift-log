@@ -16,13 +16,13 @@ export function WeekSelector({ totalWeeks, selectedWeek, onSelectWeek, className
 
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <div className="inline-flex shrink-0 items-center rounded-full bg-muted p-1">
+      <div className="inline-flex h-11 shrink-0 items-center rounded-full bg-muted p-1">
         <button
           type="button"
           onClick={() => canPrev && onSelectWeek(selectedWeek - 1)}
           disabled={!canPrev}
           aria-label="Semana anterior"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full after:absolute after:-inset-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -35,7 +35,7 @@ export function WeekSelector({ totalWeeks, selectedWeek, onSelectWeek, className
           onClick={() => canNext && onSelectWeek(selectedWeek + 1)}
           disabled={!canNext}
           aria-label="Semana siguiente"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full after:absolute after:-inset-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

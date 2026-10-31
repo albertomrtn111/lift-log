@@ -3,6 +3,7 @@ import { getClientId, getActiveClientProgram } from '@/data/client-schedule'
 import { resolveRoutineInitialSelection } from '@/lib/training/routine-defaults'
 import RoutinePageClient from './RoutinePageClient'
 import { Dumbbell } from 'lucide-react'
+import { ClientEmptyState } from '@/components/ui/client-empty-state'
 
 export default async function RoutinePage(
     props: {
@@ -45,15 +46,11 @@ export default async function RoutinePage(
                     </div>
                 </header>
                 <div className="px-4 pt-6">
-                    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/80 px-6 py-12 text-center">
-                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                            <Dumbbell className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <p className="text-sm font-semibold">Sin programa de fuerza</p>
-                        <p className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
-                            Tu coach aún no te ha asignado un programa. Aparecerá aquí en cuanto lo haga.
-                        </p>
-                    </div>
+                    <ClientEmptyState
+                        icon={Dumbbell}
+                        title="Sin programa de fuerza"
+                        description="Tu coach aún no te ha asignado un programa. Aparecerá aquí en cuanto lo haga."
+                    />
                 </div>
             </div>
         )
