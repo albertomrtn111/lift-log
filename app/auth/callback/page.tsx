@@ -15,8 +15,8 @@ import { safeRedirectPath } from '@/lib/auth/auth-errors'
  * Supabase invite links return tokens in the URL #hash fragment,
  * which is only accessible client-side. This page handles:
  *
- * 1. ?code=...          → PKCE flow (exchangeCodeForSession)
- * 2. #access_token=...  → Implicit flow (setSession) — used by invites
+ * 1. ?code=...          → PKCE flow (exchangeCodeForSession) — signup
+ * 2. #access_token=...  → Implicit flow (setSession) — invites and password reset
  * 3. #error=...         → Show error UI
  *
  * After establishing a session, redirects to ?next= (default: /)
@@ -47,6 +47,16 @@ function AuthCallbackInner() {
                 // --- Case 1: PKCE code in query params ---
                 const code = searchParams.get('code')
                 if (code) {
+                    // Si este navegador guarda el verificador PKCE, el SDK canjea el
+                    // código él solo al arrancar y lo quita de la URL; canjearlo otra
+                    // vez fallaría aunque la sesión ya esté creada.
+                    const { error: initError } = await supabase.auth.initialize()
+                    if (!initError && !new URL(window.location.href).searchParams.has('code')) {
+                        console.log('[auth/callback] PKCE code exchanged on init, redirecting to', next)
+                        router.replace(next)
+                        return
+                    }
+
                     console.log('[auth/callback] Exchanging PKCE code...')
                     const { error } = await supabase.auth.exchangeCodeForSession(code)
                     if (error) {
@@ -141,7 +151,7 @@ function AuthCallbackInner() {
                     }
                 >
                     <p>{error}</p>
-                    <p className="text-sm">Pide uno nuevo con tu email y ábrelo en este mismo dispositivo. Si te invitó tu entrenador, también puedes pedirle que te reenvíe la invitación.</p>
+                    <p className="text-sm">Pide uno nuevo con tu email. Si te invitó tu entrenador, también puedes pedirle que te reenvíe la invitación.</p>
                 </AuthStatus>
             </AuthShell>
         )

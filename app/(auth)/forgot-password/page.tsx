@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ArrowLeft, Loader2, MailCheck } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { createEmailLinkClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AuthHeading, AuthShell, AuthStatus } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, AuthInput } from '@/components/auth/AuthFields'
@@ -24,7 +24,7 @@ function ForgotPasswordForm() {
         setError(null)
         setLoading(true)
         try {
-            const supabase = createClient()
+            const supabase = createEmailLinkClient()
             const next = encodeURIComponent('/set-password?mode=reset')
             const { error } = await supabase.auth.resetPasswordForEmail(target, {
                 redirectTo: `${window.location.origin}/auth/callback?next=${next}`,
@@ -63,7 +63,7 @@ function ForgotPasswordForm() {
                 <p>
                     Si hay una cuenta con <span className="font-semibold text-foreground">{sentTo}</span>, te llegará un enlace para crear una contraseña nueva. Caduca en una hora.
                 </p>
-                <p className="text-sm">Ábrelo en este mismo dispositivo y navegador. Si no lo ves, mira en spam o promociones.</p>
+                <p className="text-sm">Si no lo ves, mira en spam o promociones.</p>
                 {error && <AuthAlert tone="error">{error}</AuthAlert>}
             </AuthStatus>
         )
