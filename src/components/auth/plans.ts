@@ -72,7 +72,7 @@ export const CONCIERGE = {
     features: ['Migración desde Trainerize, Everfit o Excel', 'Configuración contigo, mano a mano', 'Canal directo con el equipo'],
 }
 
-export const SALES_EMAIL = 'hola@nexttrain.app'
+export const SALES_EMAIL = 'ventas@ascentechlabs.com'
 
 export function findTier(id: string | null): Tier | null {
     return TIERS.find(tier => tier.id === id) ?? null

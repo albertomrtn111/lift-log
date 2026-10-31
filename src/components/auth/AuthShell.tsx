@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { LogoMark } from '@/components/brand/LogoMark'
 import { BrandPanel } from './BrandPanel'
 
-export const SUPPORT_EMAIL = 'hola@nexttrain.app'
+export const SUPPORT_EMAIL = 'soporte@ascentechlabs.com'
 
 export function AuthLogo({ className }: { className?: string }) {
     return (
