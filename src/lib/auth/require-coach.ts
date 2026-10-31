@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { subscriptionAccess } from '@/lib/subscription/access.js'
 
 /**
  * Result from requireActiveCoachId.
@@ -23,6 +24,8 @@ export interface CoachAuthResult {
  *    (single-coach convenience).
  * 4. Throws if no valid membership exists — never creates coaches or
  *    deduces from role='owner'.
+ * 5. Throws if the workspace has no active subscription or trial
+ *    (the coach can only open /coach/subscription to pay).
  *
  * Usage:
  * ```ts
@@ -75,6 +78,16 @@ export async function requireActiveCoachId(
         }
 
         coachId = memberships[0].coach_id
+    }
+
+    // Prueba terminada o suscripción cancelada: nada de acciones de coach
+    const { data: subscription } = await supabase
+        .from('coach_subscriptions')
+        .select('status, trial_ends_at, stripe_subscription_id')
+        .eq('coach_id', coachId)
+        .maybeSingle()
+    if (!subscriptionAccess(subscription).allowed) {
+        throw new Error('Tu prueba gratis ha terminado. Elige un plan en Suscripción para seguir usando NexTrain.')
     }
 
     return { supabase, coachId, userId: user.id }

@@ -132,11 +132,26 @@ export async function inBatches(db: Db, table: string, select: string, field: st
   return result
 }
 
+/**
+ * ¿El espacio tiene suscripción activa o prueba en curso? Misma regla que
+ * subscriptionAccess() en src/lib/subscription/access.js (la app web).
+ */
+export function subscriptionAllows(
+  sub: { status?: string; trial_ends_at?: string | null; stripe_subscription_id?: string | null } | null | undefined,
+  now = new Date(),
+) {
+  if (!sub?.status) return false
+  if (['comped', 'active', 'past_due'].includes(sub.status)) return true
+  if (sub.status !== 'trialing') return false
+  if (sub.stripe_subscription_id) return true
+  return Boolean(sub.trial_ends_at) && new Date(sub.trial_ends_at as string).getTime() > now.getTime()
+}
+
 export async function resolveCoach(db: Db, requestedCoachId?: string) {
   let query = db
     .from('coach_memberships')
-    // La zona del espacio viene en la misma consulta para no añadir una por herramienta.
-    .select('coach_id, role, status, created_at, coaches(timezone)')
+    // La zona y la suscripción del espacio vienen en la misma consulta para no añadir una por herramienta.
+    .select('coach_id, role, status, created_at, coaches(timezone, coach_subscriptions(status, trial_ends_at, stripe_subscription_id))')
     .eq('status', 'active')
     .in('role', ['owner', 'coach'])
     .order('created_at', { ascending: true })
@@ -151,6 +166,10 @@ export async function resolveCoach(db: Db, requestedCoachId?: string) {
   }
 
   const coach = Array.isArray(data[0].coaches) ? data[0].coaches[0] : data[0].coaches
+  const subscription = Array.isArray(coach?.coach_subscriptions) ? coach.coach_subscriptions[0] : coach?.coach_subscriptions
+  if (!subscriptionAllows(subscription)) {
+    throw new Error('La prueba gratis de este espacio ha terminado. Elige un plan en NexTrain (menú Suscripción) para seguir usándolo.')
+  }
   return { coachId: data[0].coach_id as string, role: data[0].role as string, timeZone: resolveTimeZone(coach?.timezone) }
 }
 

@@ -1,5 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Client, ClientWithMeta } from '@/types/coach'
+import { isAthleteLimitError } from '@/lib/subscription/access.js'
+
+/** Error del límite de atletas del plan (trigger de clients) con la salida */
+function athleteLimitMessage(message: string) {
+    return `${message} Puedes cambiar de plan en Suscripción.`
+}
 
 export type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -181,6 +187,10 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
         console.log('------------------------------------')
     }
 
+    if (isAthleteLimitError(error)) {
+        return { success: false, error: athleteLimitMessage(error!.message) }
+    }
+
     if (error) {
         console.error('Supabase error creating client:', error)
         return {
@@ -292,6 +302,10 @@ export async function setClientStatus(
         .from('clients')
         .update({ status, deactivated_at, updated_at: new Date().toISOString() })
         .eq('id', clientId)
+
+    if (isAthleteLimitError(error)) {
+        return { success: false, error: athleteLimitMessage(error!.message) }
+    }
 
     if (error) {
         console.error('Error updating client status:', error)

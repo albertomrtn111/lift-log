@@ -9,6 +9,7 @@ import { AuthAlert, AuthField, AuthInput } from '@/components/auth/AuthFields'
 import { DISCIPLINES, EXPECTED_ATHLETES, type DisciplineId, type ExpectedAthletesId } from '@/lib/onboarding/coach-options'
 import { cn } from '@/lib/utils'
 import { completeWelcomeAction } from './actions'
+import { TRIAL_DAYS } from '@/lib/subscription/access.js'
 
 export function WelcomeForm({ firstName, initialBusinessName, initialDisciplines, initialExpectedAthletes }: {
     firstName: string | null
@@ -55,7 +56,7 @@ export function WelcomeForm({ firstName, initialBusinessName, initialDisciplines
                     </span>
                 }
                 title="Tu espacio está listo"
-                description={`${firstName ? `${firstName}, t` : 'T'}res preguntas y entras a tu panel.`}
+                description={`${firstName ? `${firstName}, t` : 'T'}ienes ${TRIAL_DAYS} días gratis con todo Pro. Tres preguntas y entras a tu panel.`}
             />
 
             <form onSubmit={handleSubmit} className="space-y-6">

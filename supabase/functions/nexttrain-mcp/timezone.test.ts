@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { clientAttentionFlags, registerClientTools } from './clients.ts'
 import { outputSchemas } from './output-schemas.ts'
-import { createToolRunner, DEFAULT_TIME_ZONE, resolveCoach, resolveTimeZone, todayIn } from './shared.ts'
+import { createToolRunner, DEFAULT_TIME_ZONE, resolveCoach, resolveTimeZone, subscriptionAllows, todayIn } from './shared.ts'
 
 const coach = '22222222-2222-4222-8222-222222222222'
 const client = '11111111-1111-4111-8111-111111111111'
@@ -39,14 +39,26 @@ function membershipDb(coaches: unknown) {
 }
 
 Deno.test('resolveCoach reads the workspace time zone in the membership query', async () => {
-  const withZone = membershipDb({ timezone: 'Atlantic/Canary' })
+  const active = { status: 'active' }
+  const withZone = membershipDb({ timezone: 'Atlantic/Canary', coach_subscriptions: active })
   assert.deepEqual(await resolveCoach(withZone.db), { coachId: coach, role: 'owner', timeZone: 'Atlantic/Canary' })
   // Una sola consulta: la zona viene embebida, sin otra petición a coaches.
   assert.deepEqual(withZone.calls.filter((call) => call[0] === 'from'), [['from', 'coach_memberships']])
-  assert.match(withZone.calls.find((call) => call[0] === 'select')[1], /coaches\(timezone\)/)
+  assert.match(withZone.calls.find((call) => call[0] === 'select')[1], /coaches\(timezone, coach_subscriptions\(/)
 
-  assert.equal((await resolveCoach(membershipDb(null).db)).timeZone, 'Europe/Madrid')
-  assert.equal((await resolveCoach(membershipDb({ timezone: null }).db)).timeZone, 'Europe/Madrid')
+  assert.equal((await resolveCoach(membershipDb({ timezone: null, coach_subscriptions: [active] }).db)).timeZone, 'Europe/Madrid')
+})
+
+Deno.test('resolveCoach blocks workspaces whose trial or subscription has ended', async () => {
+  const ended = membershipDb({ timezone: null, coach_subscriptions: { status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z', stripe_subscription_id: null } })
+  await assert.rejects(() => resolveCoach(ended.db), /prueba gratis/)
+  await assert.rejects(() => resolveCoach(membershipDb(null).db), /prueba gratis/)
+
+  const now = new Date('2026-11-01T00:00:00Z')
+  assert.equal(subscriptionAllows({ status: 'trialing', trial_ends_at: '2026-11-20T00:00:00Z' }, now), true)
+  assert.equal(subscriptionAllows({ status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z', stripe_subscription_id: 'sub_1' }, now), true)
+  assert.equal(subscriptionAllows({ status: 'comped' }, now), true)
+  assert.equal(subscriptionAllows({ status: 'canceled' }, now), false)
 })
 
 Deno.test('the tool runner resolves the zone once and passes today in that zone', async () => {
