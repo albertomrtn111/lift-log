@@ -10,7 +10,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
 import { schedulerTimezone, todayInTimezone } from '@/lib/reviews/scheduler'
-import { getReviewEmailPlan, sendReviewReminderNotification } from '@/lib/notifications/client'
+import { canEmailReviews, reviewCreatedKey, sendReviewReminderNotification } from '@/lib/notifications/client'
 import { claimDelivery, setDeliveryEmailStatus } from '@/lib/notifications/delivery-log'
 import { sendReviewReminderEmailSmtp } from '@/lib/email/mailer'
 import { buildReviewReminderCopy, planReviewReminder, reviewReminderKey } from '@/lib/reviews/reminder-plan'
@@ -32,6 +32,22 @@ export interface ReminderSummary {
     sent: number
     skipped: number
     errors: number
+}
+
+/** Lote de claves por consulta: con muchas, la URL de PostgREST se hace demasiado larga. */
+const KEY_BATCH = 60
+
+async function selectDeliveriesByKey(admin: ReturnType<typeof createAdminClient>, keys: string[]) {
+    const data: Array<{ dedupe_key: string; created_at: string; email_status: string | null }> = []
+    for (let i = 0; i < keys.length; i += KEY_BATCH) {
+        const { data: batch, error } = await admin
+            .from('notification_deliveries')
+            .select('dedupe_key, created_at, email_status')
+            .in('dedupe_key', keys.slice(i, i + KEY_BATCH))
+        if (error) return { data: null, error }
+        data.push(...((batch ?? []) as typeof data))
+    }
+    return { data, error: null }
 }
 
 function dayInTimezone(iso: string, tz: string) {
@@ -60,7 +76,7 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
     const clientIds = [...new Set(pending.map(row => row.client_id))]
     const scheduleIds = [...new Set(pending.map(row => row.review_schedule_id).filter((id): id is string => Boolean(id)))]
     const templateIds = [...new Set(pending.map(row => row.review_template_id).filter((id): id is string => Boolean(id)))]
-    const keys = pending.flatMap(row => [reviewReminderKey(row.id, 1), reviewReminderKey(row.id, 2)])
+    const keys = pending.flatMap(row => [reviewReminderKey(row.id, 1), reviewReminderKey(row.id, 2), reviewCreatedKey(row.id)])
 
     const [clientsRes, schedulesRes, templatesRes, sentRes] = await Promise.all([
         admin.from('clients').select('id, status, email, full_name, is_sample').in('id', clientIds),
@@ -70,7 +86,7 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
         templateIds.length
             ? admin.from('review_templates').select('id, name').in('id', templateIds)
             : Promise.resolve({ data: [], error: null }),
-        admin.from('notification_deliveries').select('dedupe_key, created_at').in('dedupe_key', keys),
+        selectDeliveriesByKey(admin, keys),
     ])
     if (clientsRes.error) throw new Error(`Clientes: ${clientsRes.error.message}`)
     // Sin registro de entregas no hay candado: mejor no recordar que repetir.
@@ -79,7 +95,10 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
     const clients = new Map((clientsRes.data ?? []).map(c => [c.id as string, c]))
     const schedules = new Map(((schedulesRes.data ?? []) as Array<{ id: string; next_due_date: string | null; is_active: boolean }>).map(s => [s.id, s]))
     const templates = new Map(((templatesRes.data ?? []) as Array<{ id: string; name: string | null }>).map(t => [t.id, t.name]))
-    const sentByKey = new Map(((sentRes.data ?? []) as Array<{ dedupe_key: string; created_at: string }>).map(r => [r.dedupe_key, r.created_at]))
+    const deliveries = (sentRes.data ?? []) as Array<{ dedupe_key: string; created_at: string; email_status: string | null }>
+    const sentByKey = new Map(deliveries.map(r => [r.dedupe_key, r.created_at]))
+    // Revisiones cuyo email se aplazó porque el push llegó: el primer recordatorio lo envía.
+    const emailDeferred = new Set(deliveries.filter(r => r.dedupe_key.startsWith('review-created:') && r.email_status === 'skipped').map(r => r.dedupe_key))
 
     for (const checkin of pending) {
         const client = clients.get(checkin.client_id)
@@ -129,10 +148,9 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
             summary.sent += 1
 
             // Email: siempre con el último recordatorio; con el primero, solo si
-            // la revisión nueva no fue por email (le llegó por push).
-            const emailPlan = client.email ? await getReviewEmailPlan(checkin.client_id) : null
-            const sendEmail = Boolean(emailPlan?.canEmail && (plan.final || emailPlan.hasReviewPush))
-            if (sendEmail && client.email) {
+            // el de la revisión nueva se aplazó (le llegó por push).
+            const wantsEmail = plan.final || emailDeferred.has(reviewCreatedKey(checkin.id))
+            if (wantsEmail && client.email && await canEmailReviews(checkin.client_id)) {
                 const email = await sendReviewReminderEmailSmtp({
                     to: client.email,
                     clientName: client.full_name ?? undefined,

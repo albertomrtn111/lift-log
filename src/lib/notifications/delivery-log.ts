@@ -106,3 +106,14 @@ export async function setDeliveryEmailStatus(id: string | 'untracked', emailStat
         console.warn('[notifications] Error anotando el email de la entrega:', error)
     }
 }
+
+/** Anota cómo fue el email de una entrega registrada con esa clave. */
+export async function setDeliveryEmailStatusByKey(dedupeKey: string, emailStatus: 'sent' | 'failed' | 'skipped') {
+    try {
+        const admin = createAdminClient()
+        const { error } = await admin.from('notification_deliveries').update({ email_status: emailStatus }).eq('dedupe_key', dedupeKey)
+        if (error) console.warn('[notifications] No se pudo anotar el email de la entrega:', error.message)
+    } catch (error) {
+        console.warn('[notifications] Error anotando el email de la entrega:', error)
+    }
+}

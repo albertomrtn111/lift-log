@@ -8,7 +8,7 @@ import {
     type ClientNotificationChannel,
 } from '@/lib/notifications/preferences'
 import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
-import { claimDelivery, completeDelivery, logDelivery, type DeliveryRecord } from '@/lib/notifications/delivery-log'
+import { claimDelivery, completeDelivery, logDelivery, setDeliveryEmailStatusByKey, type DeliveryRecord } from '@/lib/notifications/delivery-log'
 import { getClientDeliverySettings } from '@/lib/notifications/delivery-settings'
 import { quietHoursEnd } from '@/lib/notifications/quiet-hours'
 
@@ -178,6 +178,8 @@ async function notifyClient(
         dedupeUnreadWithinHours?: number
         /** Fila ya reservada en el registro (recordatorios): se completa en vez de crear otra. */
         deliveryId?: string | 'untracked'
+        /** Clave del registro para encontrar luego esta entrega (p. ej. la revisión nueva). */
+        deliveryKey?: string
         /** Agrupa con el aviso sin leer del mismo tipo y destino (mensajes). */
         groupUnread?: boolean
         /** false = solo buzón, sin push. */
@@ -187,7 +189,7 @@ async function notifyClient(
     } = {}
 ): Promise<ClientNotificationResult> {
     const record = (entry: Omit<DeliveryRecord, 'audience' | 'clientId' | 'kind'>) => {
-        const full: DeliveryRecord = { audience: 'client', clientId, kind, ...entry }
+        const full: DeliveryRecord = { audience: 'client', clientId, kind, dedupeKey: options.deliveryKey ?? null, ...entry }
         return options.deliveryId ? completeDelivery(options.deliveryId, full) : logDelivery(full)
     }
     const skip = (reason: 'client_inactive' | 'channel_disabled' | 'duplicate'): ClientNotificationResult => {
@@ -274,23 +276,40 @@ async function notifyClient(
     }
 }
 
+/** Clave del registro de la revisión nueva: guarda si salió por email o no. */
+export function reviewCreatedKey(checkinId: string) {
+    return `review-created:${checkinId}`
+}
+
+/** El atleta no ha desactivado «Revisiones por email». */
+export async function canEmailReviews(clientId: string): Promise<boolean> {
+    const delivery = await getClientDeliverySettings(clientId)
+    return delivery.reviews_email_enabled
+}
+
 /**
- * Cómo le llegan las revisiones por email a un atleta:
- * - `canEmail`: no ha desactivado «Revisiones por email».
- * - `hasReviewPush`: tiene el push de revisiones activo en algún dispositivo.
- * La revisión nueva solo va por email si no hay push; si lo hay, el email
- * llega con el primer recordatorio, cuando ya lleva un día sin responder.
+ * Email de la revisión nueva, decidido con lo que pasó de verdad con el push:
+ * si llegó a algún dispositivo, el email espera al primer recordatorio (que
+ * lo envía si aquí quedó «skipped»); si no llegó, sale ya. Nunca lanza.
  */
-export async function getReviewEmailPlan(clientId: string): Promise<{ canEmail: boolean; hasReviewPush: boolean }> {
-    const admin = createAdminClient()
-    const [preferences, delivery, devices] = await Promise.all([
-        getClientNotificationPreferences(clientId),
-        getClientDeliverySettings(clientId),
-        admin.from('push_subscriptions').select('id', { count: 'exact', head: true }).eq('client_id', clientId),
-    ])
-    return {
-        canEmail: delivery.reviews_email_enabled,
-        hasReviewPush: isChannelEnabled(preferences, 'reviews') && (devices.count ?? 0) > 0,
+export async function decideReviewCreatedEmail(input: {
+    clientId: string
+    checkinId: string
+    pushDelivered: number
+    send: () => Promise<{ ok: boolean }>
+}): Promise<'sent' | 'failed' | 'deferred' | 'disabled'> {
+    try {
+        if (!(await canEmailReviews(input.clientId))) return 'disabled'
+        if (input.pushDelivered > 0) {
+            await setDeliveryEmailStatusByKey(reviewCreatedKey(input.checkinId), 'skipped')
+            return 'deferred'
+        }
+        const result = await input.send()
+        await setDeliveryEmailStatusByKey(reviewCreatedKey(input.checkinId), result.ok ? 'sent' : 'failed')
+        return result.ok ? 'sent' : 'failed'
+    } catch (error) {
+        console.warn('[notifications] Email de revisión nueva no enviado:', error)
+        return 'failed'
     }
 }
 
@@ -353,8 +372,8 @@ export async function sendReviewCreatedNotification(
     clientId: string,
     checkinId: string,
     reviewTemplateName?: string,
-) {
-    await notifyClient(clientId, 'review_created', {
+): Promise<ClientNotificationResult> {
+    return notifyClient(clientId, 'review_created', {
         title: reviewTemplateName
             ? `Nueva revisión: ${reviewTemplateName}`
             : 'Nueva revisión disponible',
@@ -362,7 +381,7 @@ export async function sendReviewCreatedNotification(
         url: athleteReviewUrl(checkinId),
         tag: `review-created-${checkinId}`,
         type: 'check_in',
-    }, 'reviews')
+    }, 'reviews', { deliveryKey: reviewCreatedKey(checkinId) })
 }
 
 /** Recordatorio de revisión sin responder (lo envía el cron diario). */
