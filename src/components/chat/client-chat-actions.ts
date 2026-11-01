@@ -217,7 +217,7 @@ export async function sendClientChatMessageAction(
             body: preview,
             url: `/coach/messages?client=${context.clientId}`,
             tag: `coach-message-${context.clientId}`,
-        })
+        }, 'message')
     } catch (notifyError) {
         console.warn('[client-chat] Push al coach falló (non-blocking):', notifyError)
     }

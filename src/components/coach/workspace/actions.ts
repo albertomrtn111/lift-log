@@ -1251,14 +1251,14 @@ export async function completeReviewAction(input: {
                 }
             }
 
-            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage, input.checkinId)
             await markSampleExplored()
             revalidateReviewSurfaces()
             return { success: true, sentToClient: true, isSample, offerAiProfile: await shouldOfferAiProfile() }
         }
 
         if (!isAlreadyApproved && !isSample) {
-            await sendReviewApprovedNotification(input.clientId)
+            await sendReviewApprovedNotification(input.clientId, input.checkinId)
         }
         await markSampleExplored()
         revalidateReviewSurfaces()

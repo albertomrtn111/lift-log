@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { blockedPermissionHelp, describePushTest, sendTestPush } from '@/lib/notifications/device'
 import {
     getCoachNotificationPreferencesAction,
     updateCoachNotificationPreferencesAction,
@@ -54,6 +55,7 @@ export function NotificationSettingsPanel() {
     const [preferences, setPreferences] = useState<CoachPreferencesState>(DEFAULT_PREFERENCES)
     const [loadingPreferences, setLoadingPreferences] = useState(true)
     const [isSaving, startSaving] = useTransition()
+    const [testing, setTesting] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -97,6 +99,14 @@ export function NotificationSettingsPanel() {
         }
     }
 
+    const handleTest = async () => {
+        setTesting(true)
+        const result = describePushTest(await sendTestPush('coach'))
+        setTesting(false)
+        if (result.ok) toast.success(result.message)
+        else toast.error(result.message)
+    }
+
     const deviceActive = isSubscribed && isServerSynced
 
     return (
@@ -120,31 +130,38 @@ export function NotificationSettingsPanel() {
                                 )}
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Recibe en el móvil o el navegador los recordatorios de tareas,
-                                los avisos de revisiones y los mensajes de tus atletas.
+                                Recibe en el móvil o el navegador los mensajes de tus atletas,
+                                las revisiones que te responden y los recordatorios de tareas.
                             </p>
                             {permissionState === 'denied' && (
                                 <p className="mt-1 text-xs text-destructive">
-                                    El navegador tiene el permiso bloqueado: actívalo desde los ajustes del navegador y vuelve a intentarlo.
+                                    El permiso está bloqueado. {blockedPermissionHelp()}
                                 </p>
                             )}
                         </div>
                     </div>
-                    <Button
-                        onClick={handleToggleDevice}
-                        disabled={pushLoading || permissionState === 'unsupported'}
-                        variant={deviceActive ? 'outline' : 'default'}
-                        className="shrink-0 self-start sm:self-center"
-                    >
-                        {pushLoading ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : deviceActive ? (
-                            <BellOff className="mr-2 h-4 w-4" />
-                        ) : (
-                            <BellRing className="mr-2 h-4 w-4" />
+                    <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-center">
+                        {deviceActive && (
+                            <Button onClick={handleTest} disabled={testing} variant="outline">
+                                {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Enviarme una prueba
+                            </Button>
                         )}
-                        {deviceActive ? 'Desactivar aquí' : 'Activar notificaciones'}
-                    </Button>
+                        <Button
+                            onClick={handleToggleDevice}
+                            disabled={pushLoading || permissionState === 'unsupported'}
+                            variant={deviceActive ? 'outline' : 'default'}
+                        >
+                            {pushLoading ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : deviceActive ? (
+                                <BellOff className="mr-2 h-4 w-4" />
+                            ) : (
+                                <BellRing className="mr-2 h-4 w-4" />
+                            )}
+                            {deviceActive ? 'Desactivar aquí' : 'Activar notificaciones'}
+                        </Button>
+                    </div>
                 </div>
             </Card>
 
@@ -187,7 +204,7 @@ export function NotificationSettingsPanel() {
                                     <div>
                                         <p className="text-sm font-medium">Revisiones</p>
                                         <p className="text-xs text-muted-foreground">
-                                            Aviso la víspera y cuando se envían a tus atletas.
+                                            Cuando un atleta responde su revisión o su formulario inicial, y la víspera de las que salen.
                                         </p>
                                     </div>
                                 </div>

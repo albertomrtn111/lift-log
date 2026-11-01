@@ -29,6 +29,7 @@ import { APP_MODE_COOKIE, type AppMode } from '@/lib/mode-utils'
 import type { UserRole } from '@/types/coach'
 import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
 import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
+import { PushDeviceRow } from '@/components/push/PushDeviceRow'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
 import {
     getNotificationPreferencesAction,
@@ -279,8 +280,9 @@ export default function ProfilePage() {
 
                 <SettingsGroup
                     title="Notificaciones"
-                    footer="Los avisos llegan como notificaciones push al móvil si las tienes activadas."
+                    footer="Los avisos que apagues aquí tampoco aparecerán en la campana."
                 >
+                    <PushDeviceRow />
                     <NotificationPreferenceRow
                         icon={MessageCircle}
                         iconTone="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"

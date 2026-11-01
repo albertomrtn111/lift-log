@@ -26,6 +26,8 @@ export interface PushPayload {
     url?: string
     tag?: string
     icon?: string
+    /** Número para el icono de la app (avisos sin leer). */
+    badge?: number
 }
 
 export interface PushSendResult {
@@ -38,6 +40,7 @@ export interface PushSendResult {
         | 'unexpected'
     subscriptionCount?: number
     deliveredCount?: number
+    failedCount?: number
     prunedCount?: number
 }
 
@@ -162,11 +165,13 @@ async function sendPushToSubscribers(
                 reason: 'disabled',
                 subscriptionCount: 0,
                 deliveredCount: 0,
+                failedCount: 0,
                 prunedCount: 0,
             }
         }
 
         let deliveredCount = 0
+        let failedCount = 0
         let prunedCount = 0
 
         const notifications = (subscriptions as PushSubscriptionRow[]).map(async (subscription) => {
@@ -183,6 +188,7 @@ async function sendPushToSubscribers(
                 )
                 deliveredCount += 1
             } catch (error: any) {
+                failedCount += 1
                 console.error(
                     `[push] Error enviando notificación a ${subscription.id} (status ${error?.statusCode ?? 'n/a'}):`,
                     error?.message || error
@@ -207,6 +213,7 @@ async function sendPushToSubscribers(
             ok: true,
             subscriptionCount: subscriptions.length,
             deliveredCount,
+            failedCount,
             prunedCount,
         }
     } catch (error) {

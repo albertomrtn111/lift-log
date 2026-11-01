@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Apple, Bell, BellOff, CheckCheck, ChevronRight, Dumbbell, Megaphone, MessageCircle, Pill } from 'lucide-react'
 import { differenceInCalendarDays, format, formatDistanceToNowStrict } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -10,6 +10,7 @@ import { useClientNotifications } from '@/hooks/useClientNotifications'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import type { ClientNotification, NotificationType } from '@/data/notifications'
+import { notificationMatchesLocation } from '@/lib/notifications/auto-read'
 
 const TYPE_META: Record<NotificationType, { icon: React.ElementType; tone: string; label: string }> = {
     general:       { icon: Megaphone,     tone: 'bg-primary/10 text-primary',                                   label: 'Aviso' },
@@ -26,13 +27,16 @@ export function NotificationsButton() {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [filter, setFilter] = useState<Filter>('all')
-    const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useClientNotifications()
+    const { notifications, unreadCount, loading, markAsRead, markManyAsRead, markAllAsRead } = useClientNotifications()
 
     const visible = filter === 'unread' ? notifications.filter(n => !n.is_read) : notifications
     const groups = useMemo(() => groupByAge(visible), [visible])
 
     return (
         <>
+            <Suspense fallback={null}>
+                <MarkReadOnVisit notifications={notifications} onRead={markManyAsRead} />
+            </Suspense>
             <button
                 type="button"
                 onClick={() => setOpen(true)}
@@ -121,6 +125,28 @@ export function NotificationsButton() {
             </Sheet>
         </>
     )
+}
+
+/** Si el atleta ya está en la pantalla a la que lleva un aviso, ese aviso queda leído. */
+function MarkReadOnVisit({
+    notifications,
+    onRead,
+}: {
+    notifications: ClientNotification[]
+    onRead: (ids: string[]) => void
+}) {
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const search = searchParams.toString()
+
+    useEffect(() => {
+        const seen = notifications
+            .filter(n => !n.is_read && notificationMatchesLocation(n.url, pathname, search))
+            .map(n => n.id)
+        if (seen.length > 0) onRead(seen)
+    }, [notifications, pathname, search, onRead])
+
+    return null
 }
 
 function NotificationItem({
