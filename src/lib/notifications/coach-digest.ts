@@ -59,10 +59,12 @@ export async function gatherCoachDigestData(coachId: string, today: string, tz: 
             .order('created_at', { ascending: false }),
         admin.from('training_programs').select('client_id, name, effective_from, effective_to, total_weeks')
             .eq('coach_id', coachId).eq('status', 'active').in('client_id', clientIds),
+        // Sin filtrar por fecha de fin: hay que saber cuál es el plan vigente de
+        // cada atleta (un plan sin fin que sustituye a otro no caduca).
         admin.from('macro_plans').select('client_id, effective_from, effective_to, created_at')
-            .eq('coach_id', coachId).in('client_id', clientIds).not('effective_to', 'is', null),
+            .eq('coach_id', coachId).in('client_id', clientIds),
         admin.from('diet_plans').select('client_id, name, effective_from, effective_to, status')
-            .eq('coach_id', coachId).eq('status', 'active').in('client_id', clientIds).not('effective_to', 'is', null),
+            .eq('coach_id', coachId).eq('status', 'active').in('client_id', clientIds),
         admin.from('athlete_current_goals').select('client_id, title, target_date')
             .eq('coach_id', coachId).in('client_id', clientIds).not('target_date', 'is', null),
         admin.from('coach_tasks').select('title, client_id, task_date')

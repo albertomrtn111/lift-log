@@ -34,6 +34,22 @@ export interface ReminderSummary {
     errors: number
 }
 
+/** Lote de claves por consulta: con muchas, la URL de PostgREST se hace demasiado larga. */
+const KEY_BATCH = 60
+
+async function selectDeliveriesByKey(admin: ReturnType<typeof createAdminClient>, keys: string[]) {
+    const data: Array<{ dedupe_key: string; created_at: string }> = []
+    for (let i = 0; i < keys.length; i += KEY_BATCH) {
+        const { data: batch, error } = await admin
+            .from('notification_deliveries')
+            .select('dedupe_key, created_at')
+            .in('dedupe_key', keys.slice(i, i + KEY_BATCH))
+        if (error) return { data: null, error }
+        data.push(...((batch ?? []) as typeof data))
+    }
+    return { data, error: null }
+}
+
 function dayInTimezone(iso: string, tz: string) {
     return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
         .format(new Date(iso))
@@ -70,7 +86,7 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
         templateIds.length
             ? admin.from('review_templates').select('id, name').in('id', templateIds)
             : Promise.resolve({ data: [], error: null }),
-        admin.from('notification_deliveries').select('dedupe_key, created_at').in('dedupe_key', keys),
+        selectDeliveriesByKey(admin, keys),
     ])
     if (clientsRes.error) throw new Error(`Clientes: ${clientsRes.error.message}`)
     // Sin registro de entregas no hay candado: mejor no recordar que repetir.
