@@ -13,6 +13,7 @@ import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble'
 import { ChatComposer, type ChatComposerHandle } from '@/components/chat/ChatComposer'
 import { deliveryOf, formatDaySeparator, formatReadAt, groupByDay, initialsOf, sameGroup } from '@/components/chat/chat-utils'
 import type { Message, MessageAttachment } from '@/types/messages'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import {
     getMessagesAction,
     markMessagesReadAction,
@@ -24,6 +25,8 @@ interface ConversationPanelProps {
     clientId: string
     clientName: string
     clientEmail?: string
+    /** Foto de perfil del atleta; sin ella se ven sus iniciales */
+    avatarUrl?: string | null
     isBlocked?: boolean
     /** Volver a la bandeja (solo móvil) */
     onBack?: () => void
@@ -49,6 +52,7 @@ export function ConversationPanel({
     clientId,
     clientName,
     clientEmail,
+    avatarUrl,
     isBlocked = false,
     onBack,
     onUnreadChange,
@@ -290,9 +294,12 @@ export function ConversationPanel({
 
     const initials = initialsOf(clientName, 'A')
     const athleteAvatar = (
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary ring-1 ring-border/60">
-            {initials}
-        </span>
+        <AthleteAvatar
+            initials={initials}
+            avatarUrl={avatarUrl}
+            className="h-7 w-7 ring-1 ring-border/60"
+            fallbackClassName="bg-primary/10 text-[10px] font-bold text-primary"
+        />
     )
 
     return (
@@ -308,9 +315,12 @@ export function ConversationPanel({
                         <ChevronLeft className="h-5 w-5" />
                     </button>
                 )}
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary ring-1 ring-border/60">
-                    {initials}
-                </span>
+                <AthleteAvatar
+                    initials={initials}
+                    avatarUrl={avatarUrl}
+                    className="h-10 w-10 ring-1 ring-border/60"
+                    fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                />
                 <div className="min-w-0 flex-1">
                     <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">{clientName}</h2>
                     {clientEmail ? <p className="truncate text-xs text-muted-foreground">{clientEmail}</p> : null}

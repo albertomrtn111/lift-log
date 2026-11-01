@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
 import type { Message } from '@/types/messages'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import { ConversationPanel } from './ConversationPanel'
 
 export interface CoachConversation {
@@ -19,6 +20,7 @@ export interface CoachConversation {
     clientEmail: string
     status: string | null
     authUserId: string | null
+    avatarUrl: string | null
     unreadCount: number
     lastMessage: Message | null
 }
@@ -237,8 +239,13 @@ export function MessagesPageClient({
                                                             isActive && 'bg-primary/[0.07] lg:shadow-[inset_3px_0_0_hsl(var(--primary))]'
                                                         )}
                                                     >
-                                                        <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                                                            {initialsOf(conversation.clientName, 'A')}
+                                                        <span className="relative shrink-0">
+                                                            <AthleteAvatar
+                                                                initials={initialsOf(conversation.clientName, 'A')}
+                                                                avatarUrl={conversation.avatarUrl}
+                                                                className="h-11 w-11"
+                                                                fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                                                            />
                                                             {conversation.status === 'active' && (
                                                                 <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
                                                             )}
@@ -281,6 +288,7 @@ export function MessagesPageClient({
                                     clientId={selectedConversation.clientId}
                                     clientName={selectedConversation.clientName}
                                     clientEmail={selectedConversation.clientEmail}
+                                    avatarUrl={selectedConversation.avatarUrl}
                                     isBlocked={!selectedConversation.authUserId}
                                     onBack={handleBackToInbox}
                                     onUnreadChange={handleUnreadChange}

@@ -84,6 +84,7 @@ async function getCoachConversations(
         clientEmail: client.email,
         status: client.status,
         authUserId: client.auth_user_id,
+        avatarUrl: client.avatar_url,
         unreadCount: unreadByClient.get(client.id) ?? 0,
         lastMessage: latestByClient.get(client.id) ?? null,
     }))
