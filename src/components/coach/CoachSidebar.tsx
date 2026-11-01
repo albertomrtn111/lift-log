@@ -34,6 +34,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useCoachContext } from '@/contexts/CoachContext'
 import { COACH_BADGES_CHANGED_EVENT, type CoachBadgesChangedDetail } from '@/lib/coach-badges-events'
+import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 
 interface NavItem {
     href: string
@@ -169,6 +170,7 @@ export function CoachSidebar() {
                                 Coach Portal
                             </p>
                         </div>
+                        <CoachNotificationsBell className="ml-auto" />
                     </div>
 
                     {/* Navigation - Scrollable Area */}

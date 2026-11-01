@@ -28,6 +28,8 @@ export interface PushPayload {
     icon?: string
     /** Número para el icono de la app (avisos sin leer). */
     badge?: number
+    /** false = sustituye al aviso con el mismo tag sin volver a sonar. */
+    renotify?: boolean
 }
 
 export interface PushSendResult {

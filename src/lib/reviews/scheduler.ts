@@ -273,7 +273,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
         }
     }
 
-    // Aviso push al coach: sus revisiones de hoy acaban de salir (non-blocking)
+    // Aviso al coach en la campana (sin push: es algo automático que ya espera)
     for (const [coachId, names] of sentByCoach) {
         const shown = names.slice(0, 3)
         const rest = names.length - shown.length
@@ -284,7 +284,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 body,
                 url: '/coach/calendar',
                 tag: `coach-reviews-sent-${today}`,
-            }, 'reviews_sent')
+            }, { kind: 'reviews_sent', push: false, groupKey: `reviews-sent:${today}` })
         } catch (err) {
             console.warn('[scheduler] Push al coach falló (non-blocking):', err)
         }

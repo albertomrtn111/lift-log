@@ -102,6 +102,39 @@ async function insertInbox(clientId: string, payload: ClientNotificationPayload)
     }
 }
 
+/** Si el aviso anterior del mismo tema fue hace menos de esto, el push no vuelve a sonar. */
+const QUIET_REGROUP_MS = 2 * 60 * 1000
+
+/**
+ * Agrupa con el aviso sin leer del mismo tipo y destino: lo actualiza y lo
+ * sube arriba en vez de crear otro. Devuelve cuándo se creó el anterior, o
+ * null si no había ninguno.
+ */
+async function regroupUnread(clientId: string, payload: ClientNotificationPayload): Promise<{ previousCreatedAt: string } | null> {
+    const admin = createAdminClient()
+    const { data: existing } = await admin
+        .from('client_notifications')
+        .select('id, created_at')
+        .eq('client_id', clientId)
+        .eq('type', payload.type)
+        .eq('url', payload.url)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    if (!existing) return null
+
+    const { error } = await admin
+        .from('client_notifications')
+        .update({ title: payload.title, body: payload.body, created_at: new Date().toISOString() })
+        .eq('id', existing.id)
+    if (error) {
+        console.warn('[notifications] No se pudo agrupar el aviso:', error.message)
+        return null
+    }
+    return { previousCreatedAt: existing.created_at as string }
+}
+
 async function countUnread(clientId: string): Promise<number | undefined> {
     const admin = createAdminClient()
     const { count, error } = await admin
@@ -128,6 +161,8 @@ async function notifyClient(
         dedupeUnreadWithinHours?: number
         /** Fila ya reservada en el registro (recordatorios): se completa en vez de crear otra. */
         deliveryId?: string | 'untracked'
+        /** Agrupa con el aviso sin leer del mismo tipo y destino (mensajes). */
+        groupUnread?: boolean
     } = {}
 ): Promise<ClientNotificationResult> {
     const record = (entry: Omit<DeliveryRecord, 'audience' | 'clientId' | 'kind'>) => {
@@ -154,8 +189,12 @@ async function notifyClient(
             return skip('duplicate')
         }
 
-        const inbox = await insertInbox(clientId, payload)
+        const regrouped = options.groupUnread ? await regroupUnread(clientId, payload) : null
+        const inbox = regrouped ? true : await insertInbox(clientId, payload)
         const badge = inbox ? await countUnread(clientId) : undefined
+        const recentlyAlerted = regrouped
+            ? Date.now() - new Date(regrouped.previousCreatedAt).getTime() < QUIET_REGROUP_MS
+            : false
 
         const push = await sendPushToClient(clientId, {
             title: payload.title,
@@ -163,6 +202,7 @@ async function notifyClient(
             url: payload.url,
             tag: payload.tag,
             badge,
+            renotify: !recentlyAlerted,
         })
         if (!push.ok && push.reason && !PUSH_SILENT_REASONS.has(push.reason)) {
             console.warn('[notifications] Push no enviado:', push)
@@ -186,13 +226,23 @@ export async function sendCoachMessageNotification(clientId: string, message: st
     const trimmed = message.trim()
     if (!trimmed) return
 
+    // Mensajes sin leer del coach: un solo aviso que se actualiza («3 mensajes»).
+    const admin = createAdminClient()
+    const { count } = await admin
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('sender_role', 'coach')
+        .is('read_at', null)
+    const unread = count ?? 1
+
     await notifyClient(clientId, 'message', {
-        title: 'Nuevo mensaje de tu entrenador',
+        title: unread > 1 ? `Tu entrenador te ha enviado ${unread} mensajes` : 'Nuevo mensaje de tu entrenador',
         body: truncate(trimmed),
         url: '/chat',
         tag: 'new-message',
         type: 'message',
-    }, 'messages')
+    }, 'messages', { groupUnread: true })
 }
 
 /** Enlace a una revisión concreta en la app del atleta. */
