@@ -9,7 +9,9 @@ import {
     ClipboardCheck,
     ListTodo,
     Loader2,
+    Mail,
     MessageSquare,
+    Moon,
     Smartphone,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { blockedPermissionHelp, describePushTest, sendTestPush } from '@/lib/notifications/device'
 import {
     getCoachNotificationPreferencesAction,
     updateCoachNotificationPreferencesAction,
@@ -31,6 +34,12 @@ interface CoachPreferencesState {
     messages_enabled: boolean
     day_before_time: string
     same_day_time: string
+    digest_enabled: boolean
+    digest_time: string
+    weekly_digest_enabled: boolean
+    quiet_hours_enabled: boolean
+    quiet_start: string
+    quiet_end: string
 }
 
 const DEFAULT_PREFERENCES: CoachPreferencesState = {
@@ -39,6 +48,12 @@ const DEFAULT_PREFERENCES: CoachPreferencesState = {
     messages_enabled: true,
     day_before_time: '20:00',
     same_day_time: '09:00',
+    digest_enabled: true,
+    digest_time: '08:30',
+    weekly_digest_enabled: true,
+    quiet_hours_enabled: false,
+    quiet_start: '22:00',
+    quiet_end: '08:00',
 }
 
 export function NotificationSettingsPanel() {
@@ -54,6 +69,7 @@ export function NotificationSettingsPanel() {
     const [preferences, setPreferences] = useState<CoachPreferencesState>(DEFAULT_PREFERENCES)
     const [loadingPreferences, setLoadingPreferences] = useState(true)
     const [isSaving, startSaving] = useTransition()
+    const [testing, setTesting] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -97,6 +113,14 @@ export function NotificationSettingsPanel() {
         }
     }
 
+    const handleTest = async () => {
+        setTesting(true)
+        const result = describePushTest(await sendTestPush('coach'))
+        setTesting(false)
+        if (result.ok) toast.success(result.message)
+        else toast.error(result.message)
+    }
+
     const deviceActive = isSubscribed && isServerSynced
 
     return (
@@ -120,31 +144,38 @@ export function NotificationSettingsPanel() {
                                 )}
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Recibe en el móvil o el navegador los recordatorios de tareas,
-                                los avisos de revisiones y los mensajes de tus atletas.
+                                Recibe en el móvil o el navegador los mensajes de tus atletas,
+                                las revisiones que te responden y los recordatorios de tareas.
                             </p>
                             {permissionState === 'denied' && (
                                 <p className="mt-1 text-xs text-destructive">
-                                    El navegador tiene el permiso bloqueado: actívalo desde los ajustes del navegador y vuelve a intentarlo.
+                                    El permiso está bloqueado. {blockedPermissionHelp()}
                                 </p>
                             )}
                         </div>
                     </div>
-                    <Button
-                        onClick={handleToggleDevice}
-                        disabled={pushLoading || permissionState === 'unsupported'}
-                        variant={deviceActive ? 'outline' : 'default'}
-                        className="shrink-0 self-start sm:self-center"
-                    >
-                        {pushLoading ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : deviceActive ? (
-                            <BellOff className="mr-2 h-4 w-4" />
-                        ) : (
-                            <BellRing className="mr-2 h-4 w-4" />
+                    <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-center">
+                        {deviceActive && (
+                            <Button onClick={handleTest} disabled={testing} variant="outline">
+                                {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Enviarme una prueba
+                            </Button>
                         )}
-                        {deviceActive ? 'Desactivar aquí' : 'Activar notificaciones'}
-                    </Button>
+                        <Button
+                            onClick={handleToggleDevice}
+                            disabled={pushLoading || permissionState === 'unsupported'}
+                            variant={deviceActive ? 'outline' : 'default'}
+                        >
+                            {pushLoading ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : deviceActive ? (
+                                <BellOff className="mr-2 h-4 w-4" />
+                            ) : (
+                                <BellRing className="mr-2 h-4 w-4" />
+                            )}
+                            {deviceActive ? 'Desactivar aquí' : 'Activar notificaciones'}
+                        </Button>
+                    </div>
                 </div>
             </Card>
 
@@ -187,7 +218,7 @@ export function NotificationSettingsPanel() {
                                     <div>
                                         <p className="text-sm font-medium">Revisiones</p>
                                         <p className="text-xs text-muted-foreground">
-                                            Aviso la víspera y cuando se envían a tus atletas.
+                                            Cuando un atleta responde su revisión o su formulario inicial.
                                         </p>
                                     </div>
                                 </div>
@@ -215,6 +246,48 @@ export function NotificationSettingsPanel() {
                         </div>
 
                         <div className="rounded-xl border p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <Mail className="h-4 w-4 text-violet-600" />
+                                    <div>
+                                        <p className="text-sm font-medium">Resumen diario por email</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Revisiones por validar, mensajes sin contestar, planes que caducan y tareas del día. Si no hay nada pendiente, no se envía.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Switch
+                                    checked={preferences.digest_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, digest_enabled: v }))}
+                                />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
+                                <div>
+                                    <p className="text-sm font-medium">Resumen semanal</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Los lunes: revisiones respondidas, mensajes, atletas sin respuesta y lo que viene.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={preferences.weekly_digest_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, weekly_digest_enabled: v }))}
+                                />
+                            </div>
+                            {(preferences.digest_enabled || preferences.weekly_digest_enabled) && (
+                                <div className="mt-3 max-w-[12rem]">
+                                    <Label htmlFor="digest-time" className="text-xs">Hora del resumen</Label>
+                                    <Input
+                                        id="digest-time"
+                                        type="time"
+                                        value={preferences.digest_time}
+                                        onChange={(e) => setPreferences(p => ({ ...p, digest_time: e.target.value }))}
+                                        className="mt-1.5"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border p-4">
                             <div className="flex items-center gap-2">
                                 <CalendarClock className="h-4 w-4 text-muted-foreground" />
                                 <p className="text-sm font-medium">Horarios de los recordatorios</p>
@@ -232,7 +305,7 @@ export function NotificationSettingsPanel() {
                                         className="mt-1.5"
                                     />
                                     <p className="mt-1 text-[11px] text-muted-foreground">
-                                        Tareas y revisiones de mañana. Por defecto 20:00.
+                                        Tareas de mañana. Por defecto 20:00.
                                     </p>
                                 </div>
                                 <div>
@@ -251,6 +324,48 @@ export function NotificationSettingsPanel() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className="rounded-xl border p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <Moon className="h-4 w-4 text-indigo-600" />
+                                    <div>
+                                        <p className="text-sm font-medium">Horas de silencio</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Los avisos se guardan en la campana y el push te llega todo junto al terminar.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Switch
+                                    checked={preferences.quiet_hours_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, quiet_hours_enabled: v }))}
+                                />
+                            </div>
+                            {preferences.quiet_hours_enabled && (
+                                <div className="mt-3 grid max-w-sm grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="quiet-start" className="text-xs">Desde</Label>
+                                        <Input
+                                            id="quiet-start"
+                                            type="time"
+                                            value={preferences.quiet_start}
+                                            onChange={(e) => setPreferences(p => ({ ...p, quiet_start: e.target.value }))}
+                                            className="mt-1.5"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="quiet-end" className="text-xs">Hasta</Label>
+                                        <Input
+                                            id="quiet-end"
+                                            type="time"
+                                            value={preferences.quiet_end}
+                                            onChange={(e) => setPreferences(p => ({ ...p, quiet_end: e.target.value }))}
+                                            className="mt-1.5"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex justify-end">

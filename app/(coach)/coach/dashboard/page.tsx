@@ -29,6 +29,7 @@ import { getCoachChecklist } from '@/lib/onboarding/checklist-data'
 import { OnboardingChecklistCard } from '@/components/coach/onboarding/OnboardingChecklistCard'
 import { getAthleteJourneys } from '@/lib/onboarding/athlete-journey-data'
 import { AthleteJourneyCard } from '@/components/coach/onboarding/AthleteJourneyCard'
+import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 
 function getGreeting(): string {
     const hour = new Date().getHours()
@@ -152,6 +153,7 @@ export default async function CoachDashboardPage() {
                                 </p>
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
+                                <CoachNotificationsBell className="lg:hidden" />
                                 <Button variant="outline" size="sm" asChild>
                                     <Link href="/coach/calendar">
                                         <CalendarDays className="mr-1.5 h-4 w-4" />

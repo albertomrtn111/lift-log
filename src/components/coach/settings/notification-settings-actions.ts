@@ -33,7 +33,8 @@ export async function updateCoachNotificationPreferencesAction(
     try {
         const { supabase, coachId } = await requireActiveCoachId()
 
-        if (!TIME_REGEX.test(input.day_before_time) || !TIME_REGEX.test(input.same_day_time)) {
+        const times = [input.day_before_time, input.same_day_time, input.digest_time, input.quiet_start, input.quiet_end]
+        if (!times.every(time => TIME_REGEX.test(time))) {
             return { success: false, error: 'Las horas deben tener formato HH:MM' }
         }
 
@@ -46,6 +47,12 @@ export async function updateCoachNotificationPreferencesAction(
                 messages_enabled: Boolean(input.messages_enabled),
                 day_before_time: input.day_before_time,
                 same_day_time: input.same_day_time,
+                digest_enabled: Boolean(input.digest_enabled),
+                digest_time: input.digest_time,
+                weekly_digest_enabled: Boolean(input.weekly_digest_enabled),
+                quiet_hours_enabled: Boolean(input.quiet_hours_enabled),
+                quiet_start: input.quiet_start,
+                quiet_end: input.quiet_end,
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'coach_id' })
 

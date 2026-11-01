@@ -13,8 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
-import { sendReviewCreatedNotification } from '@/lib/notifications/client'
-import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
+import { decideReviewCreatedEmail, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
 
@@ -228,33 +227,42 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
             }
 
             // --- Notificación push + inbox (non-blocking) -------------------
+            let pushDelivered = 0
             try {
-                await sendReviewCreatedNotification(
+                const notice = await sendReviewCreatedNotification(
                     schedule.client_id,
                     checkinId,
                     schedule.review_template.name
                 )
+                pushDelivered = notice.status === 'sent' ? notice.pushDelivered : 0
             } catch (err) {
                 console.warn('[scheduler] Push/Inbox falló (non-blocking):', err)
             }
 
             // --- Email (non-blocking) ---------------------------------------
+            // Si el push llegó, el email espera al recordatorio del día siguiente.
             let emailDetail = 'sin email (cliente sin dirección)'
-            const reviewEmailsEnabled = schedule.client.email
-                ? await isClientNotificationChannelEnabled(schedule.client_id, 'reviews')
-                : false
-            if (schedule.client.email && !reviewEmailsEnabled) {
-                emailDetail = 'email omitido (el cliente desactivó los avisos de revisiones)'
-            } else if (schedule.client.email) {
-                const emailResult = await sendReviewEmailSmtp({
-                    to: schedule.client.email,
-                    clientName: schedule.client.full_name ?? undefined,
-                    formUrl: getFormUrl(checkinId),
-                    reviewTemplateName: schedule.review_template.name,
-                    periodEnd,
-                    coachId: schedule.coach_id,
+            const clientEmail = schedule.client.email
+            if (clientEmail) {
+                const email = await decideReviewCreatedEmail({
+                    clientId: schedule.client_id,
+                    checkinId,
+                    pushDelivered,
+                    send: () => sendReviewEmailSmtp({
+                        to: clientEmail,
+                        clientName: schedule.client?.full_name ?? undefined,
+                        formUrl: getFormUrl(checkinId),
+                        reviewTemplateName: schedule.review_template?.name,
+                        periodEnd,
+                        coachId: schedule.coach_id,
+                    }),
                 })
-                emailDetail = emailResult.ok ? 'email enviado' : `email falló: ${emailResult.error}`
+                emailDetail = {
+                    sent: 'email enviado',
+                    failed: 'email falló',
+                    deferred: 'email aplazado (le llegó el push; irá con el recordatorio)',
+                    disabled: 'email omitido (el cliente desactivó el email de revisiones)',
+                }[email]
             }
 
             items.push({
@@ -273,7 +281,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
         }
     }
 
-    // Aviso push al coach: sus revisiones de hoy acaban de salir (non-blocking)
+    // Aviso al coach en la campana (sin push: es algo automático que ya espera)
     for (const [coachId, names] of sentByCoach) {
         const shown = names.slice(0, 3)
         const rest = names.length - shown.length
@@ -284,7 +292,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 body,
                 url: '/coach/calendar',
                 tag: `coach-reviews-sent-${today}`,
-            })
+            }, { kind: 'reviews_sent', push: false, groupKey: `reviews-sent:${today}` })
         } catch (err) {
             console.warn('[scheduler] Push al coach falló (non-blocking):', err)
         }

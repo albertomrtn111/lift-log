@@ -9,9 +9,26 @@ import {
     getNotifications,
     getUnreadCount,
     markAsRead,
+    markManyAsRead,
     markAllAsRead,
     type ClientNotification,
 } from '@/data/notifications'
+import { syncAppBadge } from '@/lib/notifications/app-badge'
+import { syncTimezoneAction } from '@/lib/notifications/timezone-actions'
+
+const TIMEZONE_SYNC_KEY = 'nt:timezone-synced'
+
+/** Una vez por sesión: guarda la zona horaria del móvil para los recordatorios. */
+function syncTimezoneOnce() {
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        if (!tz || window.sessionStorage.getItem(TIMEZONE_SYNC_KEY) === tz) return
+        window.sessionStorage.setItem(TIMEZONE_SYNC_KEY, tz)
+        void syncTimezoneAction(tz).catch(() => window.sessionStorage.removeItem(TIMEZONE_SYNC_KEY))
+    } catch {
+        // Sin sessionStorage o sin Intl: se usará la zona del servidor.
+    }
+}
 
 export function useClientNotifications() {
     const [notifications, setNotifications] = useState<ClientNotification[]>([])
@@ -27,6 +44,7 @@ export function useClientNotifications() {
 
     useEffect(() => {
         refresh()
+        syncTimezoneOnce()
     }, [refresh])
 
     // Vuelta a primer plano o reconexión: lo ocurrido mientras tanto no llega por Realtime
@@ -72,6 +90,20 @@ export function useClientNotifications() {
         setUnreadCount(prev => Math.max(0, prev - 1))
     }, [])
 
+    useEffect(() => {
+        if (!loading) syncAppBadge(unreadCount)
+    }, [loading, unreadCount])
+
+    const handleMarkManyAsRead = useCallback(async (ids: string[]) => {
+        if (ids.length === 0) return
+        const idSet = new Set(ids)
+        setNotifications(prev =>
+            prev.map(n => idSet.has(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
+        )
+        setUnreadCount(prev => Math.max(0, prev - ids.length))
+        await markManyAsRead(ids)
+    }, [])
+
     const handleMarkAllAsRead = useCallback(async () => {
         await markAllAsRead()
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
@@ -83,6 +115,7 @@ export function useClientNotifications() {
         unreadCount,
         loading,
         markAsRead: handleMarkAsRead,
+        markManyAsRead: handleMarkManyAsRead,
         markAllAsRead: handleMarkAllAsRead,
         refresh,
     }

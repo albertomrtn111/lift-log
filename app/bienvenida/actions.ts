@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { notifyCoachAthleteJoined } from '@/lib/notifications/coach'
 
 type StepId = 'install' | 'push' | 'watch'
 type Resolution = 'done' | 'skipped'
@@ -20,7 +21,7 @@ export async function setAthleteOnboardingStepAction(step: StepId, resolution: R
     const admin = createAdminClient()
     const { data: client } = await admin
         .from('clients')
-        .select('id, preferences')
+        .select('id, coach_id, preferences')
         .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
@@ -29,6 +30,7 @@ export async function setAthleteOnboardingStepAction(step: StepId, resolution: R
     if (!client) return { success: false }
 
     const preferences = (client.preferences ?? {}) as { onboarding?: Record<string, string> }
+    const isFirstStep = Object.keys(preferences.onboarding ?? {}).length === 0
     const onboarding = { ...(preferences.onboarding ?? {}) }
     // "Hecho" no se rebaja a "omitido" si el atleta vuelve atrás
     if (onboarding[step] !== 'done') onboarding[step] = resolution
@@ -40,6 +42,11 @@ export async function setAthleteOnboardingStepAction(step: StepId, resolution: R
     if (error) {
         console.error('[setAthleteOnboardingStepAction]', error)
         return { success: false }
+    }
+
+    // Primer paso de la bienvenida = primera vez en la app: el coach lo ve en su campana.
+    if (isFirstStep && client.coach_id) {
+        await notifyCoachAthleteJoined({ coachId: client.coach_id, clientId: client.id })
     }
 
     revalidatePath('/bienvenida')

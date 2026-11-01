@@ -1,27 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { schedulerTimezone, todayInTimezone } from '@/lib/reviews/scheduler'
+import { schedulerTimezone } from '@/lib/reviews/scheduler'
+import { getCoachNotificationPreferences, notifyCoach } from '@/lib/notifications/coach'
+import { sendCoachDailyDigest, sendCoachWeeklyDigest } from '@/lib/notifications/coach-digest'
+import { formatNameList } from '@/lib/notifications/coach-copy'
 import {
-    getCoachNotificationPreferences,
-    type CoachNotificationChannel,
-} from '@/lib/notifications/coach'
-import { sendPushToCoach } from '@/lib/push'
+    processNotificationOutbox,
+    releaseHeldPushes,
+    sendStravaFeedbackReminders,
+    sendWeekSummaries,
+    sendWorkoutReminders,
+} from '@/lib/notifications/scheduled-jobs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
- * Recordatorios push para el coach — disparado por pg_cron cada 15 minutos.
+ * Avisos programados del coach — disparado por pg_cron cada 15 minutos.
  *
- * Envía, según las preferencias de cada coach (coach_notification_preferences):
- *  - Tareas de HOY a la hora `same_day_time` (por defecto 09:00).
- *  - Tareas de MAÑANA a la hora `day_before_time` (por defecto 20:00).
- *  - Revisiones que saltan MAÑANA a la hora `day_before_time`.
- *  (Las revisiones del mismo día se notifican desde el scheduler al enviarse.)
+ * Según las preferencias de cada coach (coach_notification_preferences) y en
+ * su zona horaria (coaches.timezone, por defecto la del planificador):
+ *  - Resumen diario por email + campana a la hora `digest_time` (08:30).
+ *  - Tareas de HOY a la hora `same_day_time` (09:00): campana + push.
+ *  - Tareas de MAÑANA a la hora `day_before_time` (20:00): campana + push.
+ *  (Las revisiones que salen hoy van en el resumen; las respondidas avisan al momento.)
+ *
+ * Y, para todos (lib/notifications/scheduled-jobs):
+ *  - Suelta en un solo push lo retenido durante las horas de silencio.
+ *  - Recordatorio de RPE de Strava a las 20:00 de cada atleta.
+ *  - Avisos de cambios de plan hechos por la IA (cola del MCP).
+ *  - Entreno del día y resumen de la semana del atleta.
+ *  - Resumen semanal del coach, los lunes a la hora del resumen diario.
  *
  * Dedupe: coach_reminder_log con unique(coach_id, kind, remind_date).
  * Seguridad: Authorization: Bearer <CRON_SECRET>. Fail-closed.
- * Ejecución manual (ignora la ventana horaria): ?force=1
+ * Ejecución manual (ignora la ventana horaria de los avisos del coach, no la
+ * de los del atleta): ?force=1
  */
 
 function getSecret(): string | null {
@@ -37,16 +51,31 @@ function isAuthorized(request: NextRequest): boolean {
     return request.headers.get('authorization') === `Bearer ${secret}`
 }
 
-function minutesNowInTimezone(tz: string): number {
-    const parts = new Intl.DateTimeFormat('en-GB', {
+function nowInTimezone(tz: string): { today: string; minutes: number } {
+    const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false,
+        hourCycle: 'h23',
     }).formatToParts(new Date())
-    const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0) % 24
-    const minute = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
-    return hour * 60 + minute
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? '0'
+    return {
+        today: `${get('year')}-${get('month')}-${get('day')}`,
+        minutes: (Number(get('hour')) % 24) * 60 + Number(get('minute')),
+    }
+}
+
+function isValidTimezone(tz: string | null | undefined): tz is string {
+    if (!tz) return false
+    try {
+        new Intl.DateTimeFormat('en-GB', { timeZone: tz })
+        return true
+    } catch {
+        return false
+    }
 }
 
 function parseTimeToMinutes(time: string): number {
@@ -60,19 +89,17 @@ function inWindow(nowMinutes: number, targetTime: string): boolean {
     return nowMinutes >= target && nowMinutes < target + 15
 }
 
+function isMonday(dateStr: string): boolean {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1
+}
+
 function addDaysToDateStr(dateStr: string, days: number): string {
-    const date = new Date(`${dateStr}T12:00:00`)
-    date.setDate(date.getDate() + days)
-    return date.toISOString().slice(0, 10)
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
-function formatNames(names: string[], max = 3): string {
-    const shown = names.slice(0, max)
-    const rest = names.length - shown.length
-    return rest > 0 ? `${shown.join(', ')} y ${rest} más` : shown.join(', ')
-}
-
-type ReminderKind = 'tasks_same_day' | 'tasks_day_before' | 'reviews_day_before'
+type ReminderKind = 'tasks_same_day' | 'tasks_day_before' | 'daily_digest' | 'weekly_digest'
 
 async function claimReminder(
     admin: ReturnType<typeof createAdminClient>,
@@ -101,113 +128,126 @@ async function handle(request: NextRequest) {
 
     const force = new URL(request.url).searchParams.get('force') === '1'
     const admin = createAdminClient()
-    const tz = schedulerTimezone()
-    const today = todayInTimezone(tz)
-    const tomorrow = addDaysToDateStr(today, 1)
-    const nowMinutes = minutesNowInTimezone(tz)
 
-    // Solo coaches con algún dispositivo suscrito
-    const { data: subRows, error: subErr } = await admin
-        .from('coach_push_subscriptions')
-        .select('coach_id')
+    const { data: coaches, error: coachesError } = await admin
+        .from('coaches')
+        .select('id, timezone')
 
-    if (subErr) {
-        return NextResponse.json({ ok: false, error: subErr.message }, { status: 500 })
+    if (coachesError) {
+        return NextResponse.json({ ok: false, error: coachesError.message }, { status: 500 })
     }
 
-    const coachIds = [...new Set((subRows ?? []).map(r => r.coach_id as string))]
-    const sent: { coachId: string; kind: string }[] = []
+    const sent: { coachId: string; kind: string; result?: string }[] = []
 
-    for (const coachId of coachIds) {
+    for (const coach of coaches ?? []) {
+        const coachId = coach.id as string
         try {
+            const tz = isValidTimezone(coach.timezone as string | null) ? coach.timezone as string : schedulerTimezone()
+            const { today, minutes } = nowInTimezone(tz)
+            const tomorrow = addDaysToDateStr(today, 1)
             const prefs = await getCoachNotificationPreferences(coachId)
 
-            const jobs: { kind: ReminderKind; channel: CoachNotificationChannel; when: string; run: () => Promise<{ title: string; body: string; url: string } | null> }[] = [
+            const tasksFor = async (date: string) => {
+                const { data } = await admin
+                    .from('coach_tasks')
+                    .select('title')
+                    .eq('coach_id', coachId)
+                    .eq('status', 'pending')
+                    .eq('task_date', date)
+                return (data ?? []).map(t => t.title as string)
+            }
+
+            const jobs: { kind: ReminderKind; enabled: boolean; when: string; remindDate: string; run: () => Promise<string | null> }[] = [
+                {
+                    kind: 'daily_digest',
+                    enabled: prefs.digest_enabled,
+                    when: prefs.digest_time,
+                    remindDate: today,
+                    run: () => sendCoachDailyDigest(coachId, today, tz),
+                },
+                {
+                    kind: 'weekly_digest',
+                    enabled: prefs.weekly_digest_enabled && isMonday(today),
+                    when: prefs.digest_time,
+                    remindDate: today,
+                    run: () => sendCoachWeeklyDigest(coachId, today, tz),
+                },
                 {
                     kind: 'tasks_same_day',
-                    channel: 'tasks',
+                    enabled: prefs.tasks_enabled,
                     when: prefs.same_day_time,
+                    remindDate: today,
                     run: async () => {
-                        const { data } = await admin
-                            .from('coach_tasks')
-                            .select('title')
-                            .eq('coach_id', coachId)
-                            .eq('status', 'pending')
-                            .eq('task_date', today)
-                        if (!data || data.length === 0) return null
-                        return {
-                            title: `Tienes ${data.length} tarea${data.length !== 1 ? 's' : ''} para hoy`,
-                            body: formatNames(data.map(t => t.title as string)),
+                        const titles = await tasksFor(today)
+                        if (titles.length === 0) return null
+                        await notifyCoach(coachId, 'tasks', {
+                            title: `Tienes ${titles.length} tarea${titles.length !== 1 ? 's' : ''} para hoy`,
+                            body: formatNameList(titles),
                             url: '/coach/calendar',
-                        }
+                            tag: `coach-tasks_same_day-${today}`,
+                        }, { kind: 'tasks_same_day', groupKey: `tasks:${today}` })
+                        return 'sent'
                     },
                 },
                 {
                     kind: 'tasks_day_before',
-                    channel: 'tasks',
+                    enabled: prefs.tasks_enabled,
                     when: prefs.day_before_time,
+                    remindDate: tomorrow,
                     run: async () => {
-                        const { data } = await admin
-                            .from('coach_tasks')
-                            .select('title')
-                            .eq('coach_id', coachId)
-                            .eq('status', 'pending')
-                            .eq('task_date', tomorrow)
-                        if (!data || data.length === 0) return null
-                        return {
-                            title: `Mañana: ${data.length} tarea${data.length !== 1 ? 's' : ''} pendiente${data.length !== 1 ? 's' : ''}`,
-                            body: formatNames(data.map(t => t.title as string)),
+                        const titles = await tasksFor(tomorrow)
+                        if (titles.length === 0) return null
+                        await notifyCoach(coachId, 'tasks', {
+                            title: `Mañana: ${titles.length} tarea${titles.length !== 1 ? 's' : ''} pendiente${titles.length !== 1 ? 's' : ''}`,
+                            body: formatNameList(titles),
                             url: '/coach/calendar',
-                        }
-                    },
-                },
-                {
-                    kind: 'reviews_day_before',
-                    channel: 'reviews',
-                    when: prefs.day_before_time,
-                    run: async () => {
-                        const { data } = await admin
-                            .from('client_review_schedules')
-                            .select('id, client:clients!inner(full_name, status)')
-                            .eq('coach_id', coachId)
-                            .eq('is_active', true)
-                            .eq('next_due_date', tomorrow)
-                        const rows = (data ?? []).filter((r: any) => r.client?.status === 'active')
-                        if (rows.length === 0) return null
-                        return {
-                            title: `Mañana saltan ${rows.length} revisión${rows.length !== 1 ? 'es' : ''}`,
-                            body: formatNames(rows.map((r: any) => r.client?.full_name ?? 'Atleta')),
-                            url: '/coach/calendar',
-                        }
+                            tag: `coach-tasks_day_before-${tomorrow}`,
+                        }, { kind: 'tasks_day_before', groupKey: `tasks:${tomorrow}` })
+                        return 'sent'
                     },
                 },
             ]
 
             for (const job of jobs) {
-                const channelEnabled = job.channel === 'tasks' ? prefs.tasks_enabled : prefs.reviews_enabled
-                if (!channelEnabled) continue
-                if (!force && !inWindow(nowMinutes, job.when)) continue
-
-                const remindDate = job.kind === 'tasks_same_day' ? today : tomorrow
-                const payload = await job.run()
-                if (!payload) continue
+                if (!job.enabled) continue
+                if (!force && !inWindow(minutes, job.when)) continue
 
                 // Reclamar antes de enviar: evita duplicados entre ejecuciones
-                const claimed = await claimReminder(admin, coachId, job.kind, remindDate)
+                const claimed = await claimReminder(admin, coachId, job.kind, job.remindDate)
                 if (!claimed) continue
 
-                await sendPushToCoach(coachId, {
-                    ...payload,
-                    tag: `coach-${job.kind}-${remindDate}`,
-                })
-                sent.push({ coachId, kind: job.kind })
+                const result = await job.run()
+                if (result) sent.push({ coachId, kind: job.kind, result })
             }
         } catch (error) {
             console.error('[cron/coach-reminders] Error con coach', coachId, error)
         }
     }
 
-    return NextResponse.json({ ok: true, coaches: coachIds.length, sent })
+    const jobs: Record<string, unknown> = {}
+    try {
+        jobs.heldPushes = await releaseHeldPushes()
+    } catch (error) {
+        jobs.heldPushes = { error: error instanceof Error ? error.message : String(error) }
+    }
+    try {
+        jobs.stravaFeedback = await sendStravaFeedbackReminders()
+    } catch (error) {
+        jobs.stravaFeedback = { error: error instanceof Error ? error.message : String(error) }
+    }
+    for (const [key, job] of [
+        ['planChangesFromAI', () => processNotificationOutbox()],
+        ['workoutToday', () => sendWorkoutReminders()],
+        ['weekSummary', () => sendWeekSummaries()],
+    ] as const) {
+        try {
+            jobs[key] = await job()
+        } catch (error) {
+            jobs[key] = { error: error instanceof Error ? error.message : String(error) }
+        }
+    }
+
+    return NextResponse.json({ ok: true, coaches: coaches?.length ?? 0, sent, ...jobs })
 }
 
 export async function POST(request: NextRequest) {
