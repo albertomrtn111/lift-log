@@ -112,7 +112,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
     const ctaUrl = rawCtaUrl ? escapeHtml(rawCtaUrl) : undefined
     const button = ctaLabel && ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px;">
-             <tr><td style="border-radius:8px;background:#111827;">
+             <tr><td style="border-radius:8px;background:#0058D8;">
                <a href="${ctaUrl}" target="_blank"
                   style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
                  ${ctaLabel}
@@ -121,7 +121,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
            </table>
            <p style="font-size:12px;color:#6b7280;text-align:center;margin:8px 0 0;">
              Si el botón no funciona, copia este enlace:<br/>
-             <a href="${ctaUrl}" style="color:#2563eb;word-break:break-all;">${ctaUrl}</a>
+             <a href="${ctaUrl}" style="color:#0058D8;word-break:break-all;">${ctaUrl}</a>
            </p>`
         : ''
 
@@ -301,7 +301,7 @@ export async function sendCoachDigestEmail(params: {
           ${section.items.map(item => `
             <tr>
               <td style="padding:8px 0;border-top:1px solid #e5e7eb;font-size:14px;">
-                <a href="${escapeHtml(item.url)}" style="color:#111827;font-weight:600;text-decoration:none;">${escapeHtml(item.label)}</a>
+                <a href="${escapeHtml(item.url)}" style="color:#0058D8;font-weight:600;text-decoration:none;">${escapeHtml(item.label)}</a>
                 ${item.detail ? `<div style="color:#6b7280;font-size:13px;margin-top:2px;">${escapeHtml(item.detail)}</div>` : ''}
               </td>
             </tr>`).join('')}
@@ -391,9 +391,9 @@ export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { sub
         <p>${coach}${business} te ha dado de alta en NexTrain, la app donde verás tu plan,
         registrarás tus entrenamientos y hablarás con ${coach}.</p>
         ${accessBlock}
-        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:14px;">
+        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#EAF1FD;color:#003A8F;font-size:14px;">
           📱 <strong>Ábrelo en el móvil donde vas a usar la app.</strong>
-          Si lo abres en otro dispositivo o navegador, el enlace puede no funcionar.
+          Así la sesión quedará iniciada donde vas a entrenar.
         </p>
         <p style="font-size:13px;color:#6b7280;">Si el enlace ha caducado, pide a ${coach} que te reenvíe la invitación.</p>`
 
