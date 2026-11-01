@@ -121,3 +121,12 @@ test('a tab notice is not seen from another tab', () => {
   assert.equal(notificationMatchesLocation(url, '/diet', ''), true)
   assert.equal(notificationMatchesLocation(url, '/diet', 'tab=plan'), false)
 })
+
+test('a coach notice about an athlete is only seen on that athlete', () => {
+  const url = '/coach/clients?client=a1&tab=checkins'
+  assert.equal(notificationMatchesLocation(url, '/coach/clients', 'client=a1&tab=checkins'), true)
+  assert.equal(notificationMatchesLocation(url, '/coach/clients', 'client=b2&tab=checkins'), false)
+  assert.equal(notificationMatchesLocation(url, '/coach/clients', 'client=a1&tab=plan'), false)
+  assert.equal(notificationMatchesLocation('/coach/messages?client=a1', '/coach/messages', ''), false)
+  assert.equal(notificationMatchesLocation('/coach/messages?client=a1', '/coach/messages', 'client=a1'), true)
+})

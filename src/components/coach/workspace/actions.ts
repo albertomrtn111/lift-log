@@ -8,6 +8,7 @@ import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
 import { sendPlanUpdatedNotification, sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
+import { markCoachNotificationsRead } from '@/lib/notifications/coach'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSampleClient } from '@/lib/onboarding/sample-athlete'
 import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
@@ -1212,6 +1213,9 @@ export async function completeReviewAction(input: {
         } else {
             await advanceReviewScheduleForCheckin(admin, validatedCoachId, input.clientId, input.checkinId)
         }
+
+        // Revisión atendida: su aviso en la campana deja de estar pendiente.
+        await markCoachNotificationsRead(validatedCoachId, [`checkin:${input.checkinId}`])
 
         if (input.sendToClient) {
             const { error: messageError } = await admin

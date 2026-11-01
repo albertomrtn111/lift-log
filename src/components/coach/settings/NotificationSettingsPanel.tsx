@@ -9,6 +9,7 @@ import {
     ClipboardCheck,
     ListTodo,
     Loader2,
+    Mail,
     MessageSquare,
     Smartphone,
 } from 'lucide-react'
@@ -32,6 +33,8 @@ interface CoachPreferencesState {
     messages_enabled: boolean
     day_before_time: string
     same_day_time: string
+    digest_enabled: boolean
+    digest_time: string
 }
 
 const DEFAULT_PREFERENCES: CoachPreferencesState = {
@@ -40,6 +43,8 @@ const DEFAULT_PREFERENCES: CoachPreferencesState = {
     messages_enabled: true,
     day_before_time: '20:00',
     same_day_time: '09:00',
+    digest_enabled: true,
+    digest_time: '08:30',
 }
 
 export function NotificationSettingsPanel() {
@@ -204,7 +209,7 @@ export function NotificationSettingsPanel() {
                                     <div>
                                         <p className="text-sm font-medium">Revisiones</p>
                                         <p className="text-xs text-muted-foreground">
-                                            Cuando un atleta responde su revisión o su formulario inicial, y la víspera de las que salen.
+                                            Cuando un atleta responde su revisión o su formulario inicial.
                                         </p>
                                     </div>
                                 </div>
@@ -232,6 +237,36 @@ export function NotificationSettingsPanel() {
                         </div>
 
                         <div className="rounded-xl border p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <Mail className="h-4 w-4 text-violet-600" />
+                                    <div>
+                                        <p className="text-sm font-medium">Resumen diario por email</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Revisiones por validar, mensajes sin contestar, planes que caducan y tareas del día. Si no hay nada pendiente, no se envía.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Switch
+                                    checked={preferences.digest_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, digest_enabled: v }))}
+                                />
+                            </div>
+                            {preferences.digest_enabled && (
+                                <div className="mt-3 max-w-[12rem]">
+                                    <Label htmlFor="digest-time" className="text-xs">Hora del resumen</Label>
+                                    <Input
+                                        id="digest-time"
+                                        type="time"
+                                        value={preferences.digest_time}
+                                        onChange={(e) => setPreferences(p => ({ ...p, digest_time: e.target.value }))}
+                                        className="mt-1.5"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border p-4">
                             <div className="flex items-center gap-2">
                                 <CalendarClock className="h-4 w-4 text-muted-foreground" />
                                 <p className="text-sm font-medium">Horarios de los recordatorios</p>
@@ -249,7 +284,7 @@ export function NotificationSettingsPanel() {
                                         className="mt-1.5"
                                     />
                                     <p className="mt-1 text-[11px] text-muted-foreground">
-                                        Tareas y revisiones de mañana. Por defecto 20:00.
+                                        Tareas de mañana. Por defecto 20:00.
                                     </p>
                                 </div>
                                 <div>

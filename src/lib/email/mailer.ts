@@ -274,6 +274,53 @@ export async function sendInviteEmailSmtp(params: {
     )
 }
 
+export interface CoachDigestEmailSection {
+    title: string
+    items: Array<{ label: string; detail: string; url: string }>
+}
+
+/**
+ * Resumen diario del coach. Sale siempre por el SMTP de la app (no por el
+ * del coach): es un aviso de NexTrain al propio coach.
+ */
+export async function sendCoachDigestEmail(params: {
+    to: string
+    coachName?: string | null
+    dateLabel: string
+    headline: string
+    sections: CoachDigestEmailSection[]
+    dashboardUrl: string
+    settingsUrl: string
+}): Promise<EmailResult> {
+    const name = escapeHtml(params.coachName?.trim().split(/\s+/)[0] || 'coach')
+    const sectionsHtml = params.sections.map(section => `
+        <h2 style="margin:24px 0 8px;font-size:15px;color:#111827;">${escapeHtml(section.title)}</h2>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${section.items.map(item => `
+            <tr>
+              <td style="padding:8px 0;border-top:1px solid #e5e7eb;font-size:14px;">
+                <a href="${escapeHtml(item.url)}" style="color:#111827;font-weight:600;text-decoration:none;">${escapeHtml(item.label)}</a>
+                ${item.detail ? `<div style="color:#6b7280;font-size:13px;margin-top:2px;">${escapeHtml(item.detail)}</div>` : ''}
+              </td>
+            </tr>`).join('')}
+        </table>`).join('')
+
+    const body = `
+        <p>Buenos días, <strong>${name}</strong>. Esto es lo que tienes pendiente hoy:</p>
+        <p style="font-size:14px;color:#6b7280;">${escapeHtml(params.headline)}</p>
+        ${sectionsHtml}
+        <p style="margin-top:24px;font-size:12px;color:#9ca3af;">
+          Puedes cambiar la hora o desactivar este resumen en
+          <a href="${escapeHtml(params.settingsUrl)}" style="color:#6b7280;">Ajustes → Notificaciones</a>.
+        </p>`
+
+    return send({
+        to: params.to,
+        subject: `Tu día en NexTrain · ${params.dateLabel}`,
+        html: layout(`Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
+    })
+}
+
 /** Email de prueba para validar la configuración SMTP del coach */
 export async function sendTestEmail(params: { to: string; coachId: string }): Promise<EmailResult> {
     const body = `

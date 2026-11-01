@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendCoachMessageNotification } from '@/lib/notifications/client'
+import { markCoachNotificationsRead } from '@/lib/notifications/coach'
 import type { Message, MessageAttachment } from '@/types/messages'
 
 export async function getMessagesAction(
@@ -108,6 +109,7 @@ export async function markMessagesReadAction(
         return
     }
 
+    await markCoachNotificationsRead(validatedCoachId, [`message:${clientId}`])
     revalidatePath('/coach/dashboard')
 }
 

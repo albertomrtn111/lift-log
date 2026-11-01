@@ -53,3 +53,25 @@ export function buildOnboardingCompletedCopy(name) {
     body: 'Ya puedes preparar su primer plan.',
   }
 }
+
+/**
+ * Mensajes sin leer de un atleta, en un solo aviso por conversación.
+ * @param {string | null | undefined} name
+ * @param {number} unreadCount
+ * @param {string} preview  el último mensaje (o «Nota de voz», «Imagen»…)
+ */
+export function buildCoachMessageCopy(name, unreadCount, preview) {
+  const who = String(name ?? '').trim() || 'Un atleta'
+  return {
+    title: unreadCount > 1 ? `${who} · ${unreadCount} mensajes nuevos` : `Mensaje de ${who}`,
+    body: preview,
+  }
+}
+
+/** @param {string | null | undefined} name */
+export function buildAthleteJoinedCopy(name) {
+  return {
+    title: `${firstName(name)} ya ha entrado en NexTrain`,
+    body: 'Ha abierto la app por primera vez.',
+  }
+}
