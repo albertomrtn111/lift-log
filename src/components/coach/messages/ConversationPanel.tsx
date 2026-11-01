@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { uploadChatAttachment } from '@/lib/chat-media'
+import { prepareChatFile } from '@/lib/chat-image'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
 import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
@@ -63,6 +64,7 @@ export function ConversationPanel({
     const [hasMore, setHasMore] = useState(false)
     const [sending, setSending] = useState(false)
     const [uploading, setUploading] = useState<string | null>(null)
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null)
     const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
     const [showJump, setShowJump] = useState(false)
     const [newWhileAway, setNewWhileAway] = useState(0)
@@ -279,7 +281,9 @@ export function ConversationPanel({
         if (isBlocked) return
         setUploading(label)
         try {
-            const { attachment, error } = await uploadChatAttachment({ coachId, clientId, file, fileName, mime, duration })
+            const { attachment, error } = await uploadChatAttachment({
+                coachId, clientId, file, fileName, mime, duration, onProgress: setUploadProgress,
+            })
             if (error || !attachment) {
                 toast.error(error || 'No se pudo subir el archivo.')
                 return
@@ -287,6 +291,7 @@ export function ConversationPanel({
             await dispatchMessage({ content: caption, attachment })
         } finally {
             setUploading(null)
+            setUploadProgress(null)
         }
     }
 
@@ -296,7 +301,10 @@ export function ConversationPanel({
             setInput('')
             composerRef.current?.resetHeight()
         }
-        await uploadAndSend(file.name, file, file.name, file.type || 'application/octet-stream', undefined, caption)
+        // Las fotos se reducen y pasan a JPEG antes de subirlas (HEIC incluidas)
+        setUploading(file.name)
+        const prepared = await prepareChatFile(file)
+        await uploadAndSend(file.name, prepared.file, prepared.fileName, prepared.mime, undefined, caption)
     }
 
     const handleStartRecording = async () => {
@@ -461,6 +469,7 @@ export function ConversationPanel({
                     isRecording={recorder.isRecording}
                     recordingSeconds={recorder.elapsedSeconds}
                     uploading={uploading}
+                    uploadProgress={uploadProgress}
                     sending={sending}
                 />
             )}

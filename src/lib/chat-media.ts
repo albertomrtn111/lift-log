@@ -35,6 +35,50 @@ export function formatAudioDuration(seconds: number | null | undefined): string 
 }
 
 /**
+ * Sube el archivo con XMLHttpRequest para poder mostrar el progreso
+ * (supabase-js usa fetch, que no informa de la subida). Misma petición que
+ * storage.upload(): con el token del usuario, así que aplican las mismas políticas.
+ */
+async function uploadWithProgress(
+    path: string,
+    file: Blob,
+    mime: string,
+    onProgress?: (fraction: number) => void,
+): Promise<{ error?: string }> {
+    const supabase = createClient()
+    // getSession renueva el token si ha caducado (app que vuelve de segundo plano)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { error: 'Tu sesión ha caducado. Vuelve a entrar para enviar archivos.' }
+
+    const objectPath = path.split('/').map(encodeURIComponent).join('/')
+    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${objectPath}`
+
+    return new Promise(resolve => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', url)
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+        xhr.setRequestHeader('apikey', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '')
+        xhr.setRequestHeader('Content-Type', mime)
+        xhr.setRequestHeader('Cache-Control', 'max-age=3600')
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) onProgress?.(event.loaded / event.total)
+        }
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                onProgress?.(1)
+                resolve({})
+            } else {
+                console.error('[chat-media] Upload error:', xhr.status, xhr.responseText)
+                resolve({ error: 'No se pudo subir el archivo. Inténtalo de nuevo.' })
+            }
+        }
+        xhr.onerror = () => resolve({ error: 'Sin conexión: no se pudo subir el archivo.' })
+        xhr.send(file)
+    })
+}
+
+/**
  * Sube un adjunto del chat al bucket privado.
  * Ruta: {coachId}/{clientId}/{uuid}-{nombre} — las políticas RLS del bucket
  * validan que quien sube pertenece a esa conversación.
@@ -46,24 +90,17 @@ export async function uploadChatAttachment(params: {
     fileName: string
     mime: string
     duration?: number | null
+    onProgress?: (fraction: number) => void
 }): Promise<{ attachment?: MessageAttachment; error?: string }> {
-    const { coachId, clientId, file, fileName, mime, duration } = params
+    const { coachId, clientId, file, fileName, mime, duration, onProgress } = params
 
     if (file.size > MAX_ATTACHMENT_BYTES) {
         return { error: 'El archivo supera el máximo de 25 MB.' }
     }
 
-    const supabase = createClient()
     const path = `${coachId}/${clientId}/${crypto.randomUUID()}-${sanitizeFileName(fileName)}`
-
-    const { error } = await supabase.storage
-        .from(CHAT_MEDIA_BUCKET)
-        .upload(path, file, { contentType: mime, upsert: false })
-
-    if (error) {
-        console.error('[chat-media] Upload error:', error)
-        return { error: 'No se pudo subir el archivo. Inténtalo de nuevo.' }
-    }
+    const { error } = await uploadWithProgress(path, file, mime, onProgress)
+    if (error) return { error }
 
     return {
         attachment: {

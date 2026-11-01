@@ -17,7 +17,14 @@ function getSupabaseEnv() {
 
 export function createClient() {
     const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv()
-    return createBrowserClient(supabaseUrl, supabaseAnonKey)
+    return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+        realtime: {
+            // Latido de Realtime desde un Web Worker: los navegadores frenan los
+            // temporizadores de las pestañas en segundo plano, el servidor deja de
+            // recibir el latido y cierra la conexión (se pierden mensajes en vivo).
+            worker: typeof window !== 'undefined' && 'Worker' in window,
+        },
+    })
 }
 
 /**
