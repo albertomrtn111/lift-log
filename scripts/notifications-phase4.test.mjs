@@ -11,6 +11,7 @@ import {
   strengthSessionsOn,
 } from '../src/lib/notifications/athlete-plan-copy.js'
 import { buildCoachWeeklyDigest } from '../src/lib/notifications/coach-digest-content.js'
+import { quietHoursEnd } from '../src/lib/notifications/quiet-hours.js'
 
 const program = {
   effective_from: '2026-11-04', // miércoles: el programa empieza el lunes 2
@@ -88,4 +89,12 @@ test('coach weekly digest summarises last week and what is ahead', () => {
   const quiet = buildCoachWeeklyDigest({ reviewsSent: 0, reviewsAnswered: 0, reviewsApproved: 0, athleteMessages: 0, coachMessages: 0, silentAthletes: [], reviewsThisWeek: 0, expiringThisWeek: 0 })
   assert.equal(quiet.headline, '0 revisiones respondidas la semana pasada')
   assert.equal(quiet.sections.length, 2)
+})
+
+test('quiet hours end at the local hour on clock-change nights', () => {
+  const base = { tz: 'Europe/Madrid', enabled: true, start: '22:00', end: '08:00' }
+  // 24 → 25 oct 2026: a las 03:00 los relojes vuelven a las 02:00 (UTC+2 → UTC+1)
+  assert.equal(quietHoursEnd({ ...base, now: new Date('2026-10-24T21:00:00Z') })?.toISOString(), '2026-10-25T07:00:00.000Z')
+  // 28 → 29 mar 2026: a las 02:00 pasan a ser las 03:00 (UTC+1 → UTC+2)
+  assert.equal(quietHoursEnd({ ...base, now: new Date('2026-03-28T22:00:00Z') })?.toISOString(), '2026-03-29T06:00:00.000Z')
 })

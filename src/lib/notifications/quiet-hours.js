@@ -59,7 +59,8 @@ export function quietHoursEnd({ now, tz, enabled, start, end }) {
   const to = minutesOfDay(end)
   if (from === null || to === null || from === to) return null
 
-  const { minutes } = zonedClock(now, isValidTimezone(tz) ? tz : 'Europe/Madrid')
+  const zone = isValidTimezone(tz) ? tz : 'Europe/Madrid'
+  const { minutes } = zonedClock(now, zone)
   let untilEnd = null
   if (from < to) {
     if (minutes >= from && minutes < to) untilEnd = to - minutes
@@ -71,7 +72,12 @@ export function quietHoursEnd({ now, tz, enabled, start, end }) {
   if (untilEnd === null) return null
 
   const startOfMinute = Math.floor(now.getTime() / 60_000) * 60_000
-  return new Date(startOfMinute + untilEnd * 60_000)
+  const candidate = new Date(startOfMinute + untilEnd * 60_000)
+  // Si esa noche cambia la hora, el reloj local no marca `to`: se corrige el desfase.
+  let drift = zonedClock(candidate, zone).minutes - to
+  if (drift > 720) drift -= 1440
+  if (drift < -720) drift += 1440
+  return new Date(candidate.getTime() - drift * 60_000)
 }
 
 const ATHLETE_KIND_LABELS = {

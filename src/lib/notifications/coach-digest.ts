@@ -237,7 +237,7 @@ export async function sendCoachDailyDigest(coachId: string, today: string, tz: s
  * Resumen semanal (lunes, a la hora del resumen diario): cómo fue la semana
  * pasada y qué viene. Email + entrada en la campana, sin push.
  */
-export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: string, now: Date = new Date()): Promise<'sent' | 'failed'> {
+export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: string, now: Date = new Date()): Promise<'sent' | 'failed' | 'empty'> {
     const admin = createAdminClient()
     const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString()
     const twoWeeksAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString()
@@ -251,6 +251,8 @@ export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: 
         .eq('is_sample', false)
     const clients = (clientRows ?? []) as Array<{ id: string; full_name: string | null; created_at: string }>
     const clientIds = clients.map(c => c.id)
+    // Sin atletas activos no hay semana que resumir (cuentas de prueba, coaches nuevos).
+    if (clientIds.length === 0) return 'empty'
 
     const [sent, answered, messages, schedules, recentAnswers, pendingOld] = await Promise.all([
         admin.from('checkins').select('id', { count: 'exact', head: true })
@@ -284,6 +286,10 @@ export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: 
         .map(c => ({ clientId: c.id, name: c.full_name?.trim() || 'Atleta' }))
 
     const daily = await gatherCoachDigestData(coachId, today, tz, now)
+    const expiringThisWeek = daily.expiring.filter(e => e.daysLeft >= 0).length
+    const activity = (sent.count ?? 0) + answeredIds.length + messageRows.length + (schedules.count ?? 0) + expiringThisWeek + silentAthletes.length
+    if (activity === 0) return 'empty'
+
     const weekly = buildCoachWeeklyDigest({
         reviewsSent: sent.count ?? 0,
         reviewsAnswered: answeredIds.length,
@@ -292,7 +298,7 @@ export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: 
         coachMessages: messageRows.filter(m => m.sender_role === 'coach').length,
         silentAthletes,
         reviewsThisWeek: schedules.count ?? 0,
-        expiringThisWeek: daily.expiring.filter(e => e.daysLeft >= 0).length,
+        expiringThisWeek,
     })
 
     const appUrl = getAppUrl()

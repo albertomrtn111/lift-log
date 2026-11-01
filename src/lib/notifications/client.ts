@@ -571,9 +571,10 @@ const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
         tag: 'plan-updated-macros',
         type: 'macro_updated',
     },
+    // Cardio y planificación semanal (también fuerza movida o programada a mano).
     cardio: {
         title: 'Tu planificación se ha actualizado',
-        body: 'Tu entrenador ha cambiado tus sesiones de cardio.',
+        body: 'Tu entrenador ha cambiado las sesiones programadas de tu semana.',
         url: '/planning',
         tag: 'plan-updated-cardio',
         type: 'plan_updated',
