@@ -185,6 +185,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                     client_id: schedule.client_id,
                     type: 'checkin',
                     status: 'pending',
+                    submitted_at: null,
                     period_start: periodStart,
                     period_end: periodEnd,
                     form_template_id: schedule.review_template.form_template_id,

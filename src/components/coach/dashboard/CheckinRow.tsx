@@ -12,23 +12,31 @@ interface CheckinRowProps {
 
 export function CheckinRow({ checkin }: CheckinRowProps) {
     const reviewBadge = () => {
-        if (checkin.checkin_status === 'pending' && !checkin.review_status && !(checkin.needs_review && checkin.review_ai_status === 'completed')) {
-            // pending = el coach aún no la ha cerrado; si el atleta ya respondió toca revisarla
-            return checkin.submitted_at ? (
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400">
-                    Por revisar
+        // submitted_at ya viene limpio: null mientras el atleta no haya respondido
+        if (!checkin.submitted_at) {
+            return checkin.checkin_status === 'pending' ? (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                    Pendiente<span className="hidden sm:inline">&nbsp;de respuesta</span>
                 </Badge>
             ) : (
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                    Sin responder
+                <Badge variant="outline" className="bg-muted/50 text-muted-foreground">
+                    {checkin.checkin_status === 'archived' ? 'Reemplazada' : 'Sin respuesta'}
                 </Badge>
             )
         }
 
-        if (checkin.checkin_status === 'archived' && !checkin.submitted_at) {
+        if (checkin.review_status === 'approved') {
             return (
-                <Badge variant="outline" className="bg-muted/50 text-muted-foreground">
-                    Reemplazada
+                <Badge variant="secondary" className="bg-success/10 text-success border-0">
+                    Aprobado
+                </Badge>
+            )
+        }
+
+        if (checkin.review_status === 'rejected') {
+            return (
+                <Badge variant="secondary" className="bg-destructive/10 text-destructive border-0">
+                    Rechazado
                 </Badge>
             )
         }
@@ -41,29 +49,17 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
             )
         }
 
-        if (!checkin.review_status) {
+        if (checkin.needs_review) {
             return (
-                <Badge variant="outline" className="bg-muted/50">
-                    {checkin.submitted_at ? 'Respondida' : 'Sin respuesta'}
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400">
+                    Por revisar
                 </Badge>
             )
         }
 
-        const statusStyles = {
-            draft: 'bg-warning/10 text-warning border-0',
-            approved: 'bg-success/10 text-success border-0',
-            rejected: 'bg-destructive/10 text-destructive border-0',
-        }
-
-        const statusLabels = {
-            draft: 'Borrador',
-            approved: 'Aprobado',
-            rejected: 'Rechazado',
-        }
-
         return (
-            <Badge variant="secondary" className={statusStyles[checkin.review_status]}>
-                {statusLabels[checkin.review_status]}
+            <Badge variant="outline" className="bg-muted/50">
+                Respondida
             </Badge>
         )
     }
