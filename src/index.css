@@ -25,8 +25,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Primary - Premium cold blue */
-    --primary: 220 91% 56%;
+    /* Primary - Azul de marca (logo #0058D8) */
+    --primary: 215.6 100% 42.4%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary surfaces */
@@ -56,19 +56,19 @@
     /* Borders and inputs */
     --border: 214 25% 87%;
     --input: 214 25% 90%;
-    --ring: 220 91% 56%;
+    --ring: 215.6 100% 42.4%;
 
     --radius: 0.75rem;
 
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 24% 22%;
-    --sidebar-primary: 220 91% 56%;
+    --sidebar-primary: 215.6 100% 42.4%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 214 35% 95%;
     --sidebar-accent-foreground: 222 24% 20%;
     --sidebar-border: 214 24% 91%;
-    --sidebar-ring: 220 91% 56%;
+    --sidebar-ring: 215.6 100% 42.4%;
 
     /* Coach cell styling */
     --coach-cell: 214 20% 95%;
@@ -80,7 +80,7 @@
 
     /* Progress colors */
     --progress-empty: 214 22% 89%;
-    --progress-filled: 220 91% 56%;
+    --progress-filled: 215.6 100% 42.4%;
   }
 
   .dark {
@@ -94,7 +94,7 @@
     --popover: 223 34% 12%;
     --popover-foreground: 214 30% 94%;
 
-    --primary: 215 96% 68%;
+    --primary: 215.6 100% 62%;
     --primary-foreground: 222 47% 8%;
 
     --secondary: 223 24% 16%;
@@ -117,16 +117,16 @@
 
     --border: 222 23% 22%;
     --input: 222 22% 18%;
-    --ring: 215 96% 68%;
+    --ring: 215.6 100% 62%;
 
     --sidebar-background: 223 41% 9%;
     --sidebar-foreground: 215 22% 90%;
-    --sidebar-primary: 215 96% 68%;
+    --sidebar-primary: 215.6 100% 62%;
     --sidebar-primary-foreground: 222 47% 8%;
     --sidebar-accent: 222 27% 14%;
     --sidebar-accent-foreground: 215 24% 90%;
     --sidebar-border: 223 23% 18%;
-    --sidebar-ring: 215 96% 68%;
+    --sidebar-ring: 215.6 100% 62%;
 
     --coach-cell: 222 21% 15%;
     --coach-cell-foreground: 216 16% 70%;
@@ -135,7 +135,7 @@
     --client-cell-border: 215 76% 58%;
 
     --progress-empty: 223 22% 17%;
-    --progress-filled: 215 96% 68%;
+    --progress-filled: 215.6 100% 62%;
   }
 }
 
@@ -150,7 +150,7 @@
     min-height: 100vh;
     min-height: 100dvh;
     background-image:
-      radial-gradient(circle at top, rgba(59, 130, 246, 0.08), transparent 34%),
+      radial-gradient(circle at top, rgba(0, 88, 216, 0.08), transparent 34%),
       linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 22%);
   }
 
@@ -163,7 +163,7 @@
 
   .dark body {
     background-image:
-      radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 30%),
+      radial-gradient(circle at top, rgba(61, 140, 255, 0.18), transparent 30%),
       radial-gradient(circle at 20% 0%, rgba(14, 165, 233, 0.12), transparent 28%),
       linear-gradient(180deg, rgba(8, 15, 34, 0.9), rgba(4, 8, 18, 1));
     background-attachment: fixed;

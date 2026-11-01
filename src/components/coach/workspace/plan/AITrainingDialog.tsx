@@ -114,7 +114,7 @@ function getChangeBadgeColor(change: string): string {
     const lower = change.toLowerCase()
     if (lower.startsWith('añadid') || lower.startsWith('incorporad') || lower.startsWith('agregad')) return 'bg-green-500/10 text-green-400 border-green-500/20'
     if (lower.startsWith('eliminad') || lower.startsWith('quitad') || lower.startsWith('removid')) return 'bg-red-500/10 text-red-400 border-red-500/20'
-    return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+    return 'bg-primary/10 text-primary border-primary/20'
 }
 
 // ============================================================================

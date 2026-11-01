@@ -48,7 +48,7 @@ function AIStatusBadge({ review }: { review: Review | null | undefined }) {
         },
         pending: {
             label: 'Generando',
-            className: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+            className: 'bg-primary/10 text-primary border-primary/20',
             icon: Loader2,
         },
         completed: {
@@ -159,12 +159,12 @@ export function CheckinAIAnalysisSheet({
 
                 <div className="mt-6 space-y-5">
                     {status === 'pending' && (
-                        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-blue-700">
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
                             <div className="flex items-center gap-2 font-medium">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 Generando análisis IA
                             </div>
-                            <p className="mt-2 text-blue-700/90">
+                            <p className="mt-2 text-primary/90">
                                 La revisión ya está guardada. El assistant está preparando el resumen y las propuestas para el coach.
                             </p>
                         </div>

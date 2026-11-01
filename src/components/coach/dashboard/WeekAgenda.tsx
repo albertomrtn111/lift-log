@@ -82,8 +82,8 @@ export function WeekAgenda({ events }: WeekAgendaProps) {
                                         href={`/coach/clients?client=${event.clientId}`}
                                         className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-muted/30"
                                     >
-                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
-                                            <ClipboardCheck className="h-3.5 w-3.5 text-blue-600" />
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                                            <ClipboardCheck className="h-3.5 w-3.5 text-primary" />
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <p className="truncate text-sm font-medium leading-tight">

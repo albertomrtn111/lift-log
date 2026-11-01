@@ -27,7 +27,7 @@ interface DietProgressViewProps {
 
 const statusMeta: Record<DietDayProgress['status'], { label: string; className: string }> = {
     empty: { label: 'Sin registro', className: 'border-border bg-muted/30 text-muted-foreground' },
-    tracked: { label: 'Registrado', className: 'border-blue-500/20 bg-blue-500/10 text-blue-600' },
+    tracked: { label: 'Registrado', className: 'border-primary/20 bg-primary/10 text-primary' },
     under: { label: 'Bajo objetivo', className: 'border-amber-500/20 bg-amber-500/10 text-amber-600' },
     in_range: { label: 'En rango', className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600' },
     over: { label: 'Por encima', className: 'border-rose-500/20 bg-rose-500/10 text-rose-500' },

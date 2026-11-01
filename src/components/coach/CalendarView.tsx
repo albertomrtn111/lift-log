@@ -96,14 +96,14 @@ const STATUS_LABELS: Record<CalendarEventStatus, string> = {
 const STATUS_BADGE_VARIANTS: Record<CalendarEventStatus, string> = {
     completed: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
     pending_review: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
-    scheduled: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+    scheduled: 'bg-primary/10 text-primary border-primary/20',
     missing: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
 }
 
 const STATUS_DOT_COLORS: Record<CalendarEventStatus, string> = {
     completed: 'bg-green-500',
     pending_review: 'bg-amber-500',
-    scheduled: 'bg-blue-500',
+    scheduled: 'bg-primary',
     missing: 'bg-red-500',
 }
 
@@ -188,7 +188,7 @@ function StatusIcon({ status }: { status: CalendarEventStatus }) {
         case 'pending_review':
             return <Clock className="h-4 w-4 text-amber-600 shrink-0" />
         case 'scheduled':
-            return <CalendarDays className="h-4 w-4 text-blue-600 shrink-0" />
+            return <CalendarDays className="h-4 w-4 text-primary shrink-0" />
         case 'missing':
             return <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
     }
