@@ -13,8 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
-import { sendReviewCreatedNotification } from '@/lib/notifications/client'
-import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
+import { getReviewEmailPlan, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
 
@@ -239,12 +238,16 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
             }
 
             // --- Email (non-blocking) ---------------------------------------
+            // Solo si el atleta no recibe el push de revisiones; si lo recibe,
+            // el email llega con el recordatorio del día siguiente.
             let emailDetail = 'sin email (cliente sin dirección)'
-            const reviewEmailsEnabled = schedule.client.email
-                ? await isClientNotificationChannelEnabled(schedule.client_id, 'reviews')
-                : false
-            if (schedule.client.email && !reviewEmailsEnabled) {
-                emailDetail = 'email omitido (el cliente desactivó los avisos de revisiones)'
+            const emailPlan = schedule.client.email
+                ? await getReviewEmailPlan(schedule.client_id)
+                : null
+            if (emailPlan && !emailPlan.canEmail) {
+                emailDetail = 'email omitido (el cliente desactivó el email de revisiones)'
+            } else if (emailPlan?.hasReviewPush) {
+                emailDetail = 'email omitido (le llega por push; el email irá con el recordatorio)'
             } else if (schedule.client.email) {
                 const emailResult = await sendReviewEmailSmtp({
                     to: schedule.client.email,

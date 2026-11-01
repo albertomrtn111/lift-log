@@ -15,6 +15,11 @@ import {
     sanitizeNotificationPreferences,
     writeNotificationPreferencesToClientPreferences,
 } from '@/lib/notifications/preference-values'
+import {
+    getClientDeliverySettings,
+    updateClientDeliverySettings,
+    type ClientDeliverySettings,
+} from '@/lib/notifications/delivery-settings'
 import { revalidatePath } from 'next/cache'
 
 export async function updateProfileNameAction(
@@ -226,4 +231,25 @@ export async function updateNotificationPreferencesAction(
 
     revalidatePath('/profile')
     return { success: true, preferences: sanitizePreferences(data ?? {}) }
+}
+
+export async function getDeliverySettingsAction(): Promise<{ success: boolean; settings?: ClientDeliverySettings; error?: string }> {
+    const context = await getCurrentClientId()
+    if ('error' in context) return { success: false, error: context.error }
+    return { success: true, settings: await getClientDeliverySettings(context.clientId) }
+}
+
+export async function updateDeliverySettingsAction(
+    patch: Partial<ClientDeliverySettings>
+): Promise<{ success: boolean; settings?: ClientDeliverySettings; error?: string }> {
+    const context = await getCurrentClientId()
+    if ('error' in context) return { success: false, error: context.error }
+
+    const { settings, error } = await updateClientDeliverySettings(context.clientId, patch)
+    if (error || !settings) {
+        console.error('[updateDeliverySettingsAction] Error:', error)
+        return { success: false, error: error || 'No se pudieron guardar los ajustes' }
+    }
+    revalidatePath('/profile')
+    return { success: true, settings }
 }

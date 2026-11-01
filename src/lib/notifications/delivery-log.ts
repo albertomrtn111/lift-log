@@ -16,6 +16,8 @@ export interface DeliveryRecord {
     push?: PushSendResult | null
     emailStatus?: 'sent' | 'failed' | 'skipped' | null
     dedupeKey?: string | null
+    /** Push retenido por horas de silencio: cuándo debe salir. */
+    heldUntil?: string | null
 }
 
 /** Error de Postgres por clave única: el candado ya lo tiene otra ejecución. */
@@ -42,6 +44,7 @@ function toRow(record: DeliveryRecord) {
         push_pruned: record.push?.prunedCount ?? 0,
         email_status: record.emailStatus ?? null,
         dedupe_key: record.dedupeKey ?? null,
+        ...(record.heldUntil ? { held_until: record.heldUntil } : {}),
     }
 }
 

@@ -6,8 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
 import { toLocalDateStr } from '@/lib/date-utils'
-import { sendReviewCreatedNotification } from '@/lib/notifications/client'
-import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
+import { getReviewEmailPlan, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import {
     listSchedulesForClient,
     type ClientReviewScheduleWithTemplate,
@@ -183,9 +182,11 @@ export async function sendReviewAction(
             .eq('id', chosenSchedule.id)
     }
 
-    // 8) Email directo desde la app (sustituye al webhook de n8n) — non-blocking.
-    //    Respeta la preferencia "Revisiones" del cliente igual que push y buzón.
-    if (await isClientNotificationChannelEnabled(client.id, 'reviews')) {
+    // 8) Email directo desde la app — non-blocking. Solo si el atleta no
+    //    recibe el push de revisiones; si lo recibe, el email llega con el
+    //    recordatorio del día siguiente (lib/reviews/reminders).
+    const emailPlan = await getReviewEmailPlan(client.id)
+    if (emailPlan.canEmail && !emailPlan.hasReviewPush) {
         const emailResult = await sendReviewEmailSmtp({
             to: client.email,
             clientName: client.full_name ?? undefined,

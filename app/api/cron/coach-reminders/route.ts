@@ -4,6 +4,7 @@ import { schedulerTimezone } from '@/lib/reviews/scheduler'
 import { getCoachNotificationPreferences, notifyCoach } from '@/lib/notifications/coach'
 import { sendCoachDailyDigest } from '@/lib/notifications/coach-digest'
 import { formatNameList } from '@/lib/notifications/coach-copy'
+import { releaseHeldPushes, sendStravaFeedbackReminders } from '@/lib/notifications/scheduled-jobs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -17,6 +18,10 @@ export const maxDuration = 60
  *  - Tareas de HOY a la hora `same_day_time` (09:00): campana + push.
  *  - Tareas de MAÑANA a la hora `day_before_time` (20:00): campana + push.
  *  (Las revisiones que salen hoy van en el resumen; las respondidas avisan al momento.)
+ *
+ * Y, para todos (lib/notifications/scheduled-jobs):
+ *  - Suelta en un solo push lo retenido durante las horas de silencio.
+ *  - Recordatorio de RPE de Strava a las 20:00 de cada atleta.
  *
  * Dedupe: coach_reminder_log con unique(coach_id, kind, remind_date).
  * Seguridad: Authorization: Bearer <CRON_SECRET>. Fail-closed.
@@ -197,7 +202,19 @@ async function handle(request: NextRequest) {
         }
     }
 
-    return NextResponse.json({ ok: true, coaches: coaches?.length ?? 0, sent })
+    const jobs: Record<string, unknown> = {}
+    try {
+        jobs.heldPushes = await releaseHeldPushes()
+    } catch (error) {
+        jobs.heldPushes = { error: error instanceof Error ? error.message : String(error) }
+    }
+    try {
+        jobs.stravaFeedback = await sendStravaFeedbackReminders(new Date(), force)
+    } catch (error) {
+        jobs.stravaFeedback = { error: error instanceof Error ? error.message : String(error) }
+    }
+
+    return NextResponse.json({ ok: true, coaches: coaches?.length ?? 0, sent, ...jobs })
 }
 
 export async function POST(request: NextRequest) {

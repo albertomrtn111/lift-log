@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendPushToClient } from '@/lib/push'
+import { sendPushToClient, type PushPayload } from '@/lib/push'
 import {
     getClientNotificationPreferences,
     isChannelEnabled,
@@ -9,6 +9,11 @@ import {
 } from '@/lib/notifications/preferences'
 import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
 import { completeDelivery, logDelivery, type DeliveryRecord } from '@/lib/notifications/delivery-log'
+import { getClientDeliverySettings } from '@/lib/notifications/delivery-settings'
+import { quietHoursEnd } from '@/lib/notifications/quiet-hours'
+
+/** Zona horaria si el atleta aún no ha abierto la app con la versión que la guarda. */
+const DEFAULT_TIMEZONE = 'Europe/Madrid'
 
 type InboxType = 'general' | 'message' | 'plan_updated' | 'check_in' | 'macro_updated' | 'supplement'
 
@@ -145,10 +150,19 @@ async function countUnread(clientId: string): Promise<number | undefined> {
     return error ? undefined : (count ?? undefined)
 }
 
+/** Canales cuyo aviso sale del coach: apagarlos quita el push, pero el buzón lo guarda. */
+const COACH_DRIVEN_CHANNELS = new Set<ClientNotificationChannel>(['messages', 'reviews', 'plans'])
+/** Avisos que respetan su hora aunque sea de silencio (la eligió el coach a propósito). */
+const QUIET_HOURS_EXEMPT = new Set<ClientNotificationKind>(['supplement'])
+
 /**
  * Punto único de envío al cliente: buzón in-app + push.
  * - No notifica a clientes dados de baja.
- * - Lee las preferencias una sola vez.
+ * - Lee las preferencias una sola vez. Si el atleta apagó un canal del coach
+ *   (mensajes, revisiones, planes), el aviso queda en el buzón sin push; si
+ *   apagó un recordatorio automático (suplementos, actividades), no sale nada.
+ * - En horas de silencio el aviso queda en el buzón y el push se retiene hasta
+ *   que terminen (lo envía, agrupado, el cron de cada 15 minutos).
  * - `dedupeUnreadWithinHours`: si ya hay un aviso igual sin leer reciente, no repite.
  * Nunca lanza; devuelve si el aviso llegó por al menos un canal.
  */
@@ -163,6 +177,10 @@ async function notifyClient(
         deliveryId?: string | 'untracked'
         /** Agrupa con el aviso sin leer del mismo tipo y destino (mensajes). */
         groupUnread?: boolean
+        /** false = solo buzón, sin push. */
+        push?: boolean
+        /** Botones del push (Android) y lo que piden al servidor. */
+        pushActions?: Pick<PushPayload, 'actions' | 'actionRequest'>
     } = {}
 ): Promise<ClientNotificationResult> {
     const record = (entry: Omit<DeliveryRecord, 'audience' | 'clientId' | 'kind'>) => {
@@ -179,8 +197,12 @@ async function notifyClient(
             return skip('client_inactive')
         }
 
-        const preferences = await getClientNotificationPreferences(clientId)
-        if (!isChannelEnabled(preferences, channel)) {
+        const [preferences, delivery] = await Promise.all([
+            getClientNotificationPreferences(clientId),
+            getClientDeliverySettings(clientId),
+        ])
+        const channelEnabled = isChannelEnabled(preferences, channel)
+        if (!channelEnabled && !COACH_DRIVEN_CHANNELS.has(channel)) {
             return skip('channel_disabled')
         }
 
@@ -191,6 +213,32 @@ async function notifyClient(
 
         const regrouped = options.groupUnread ? await regroupUnread(clientId, payload) : null
         const inbox = regrouped ? true : await insertInbox(clientId, payload)
+
+        // Sin push: canal apagado por el atleta o aviso solo de buzón.
+        if (!channelEnabled || options.push === false) {
+            await record({
+                status: inbox ? 'sent' : 'failed',
+                skippedReason: channelEnabled ? 'inbox_only' : 'push_disabled',
+                inbox,
+            })
+            return inbox ? { status: 'sent', inbox, pushDelivered: 0 } : { status: 'failed', inbox: false, pushDelivered: 0 }
+        }
+
+        // Horas de silencio: el push espera a que terminen.
+        const heldUntil = QUIET_HOURS_EXEMPT.has(kind)
+            ? null
+            : quietHoursEnd({
+                now: new Date(),
+                tz: delivery.timezone ?? DEFAULT_TIMEZONE,
+                enabled: delivery.quiet_hours_enabled,
+                start: delivery.quiet_start,
+                end: delivery.quiet_end,
+            })
+        if (heldUntil && inbox) {
+            await record({ status: 'sent', skippedReason: 'quiet_hours', inbox, heldUntil: heldUntil.toISOString() })
+            return { status: 'sent', inbox, pushDelivered: 0 }
+        }
+
         const badge = inbox ? await countUnread(clientId) : undefined
         const recentlyAlerted = regrouped
             ? Date.now() - new Date(regrouped.previousCreatedAt).getTime() < QUIET_REGROUP_MS
@@ -203,6 +251,7 @@ async function notifyClient(
             tag: payload.tag,
             badge,
             renotify: !recentlyAlerted,
+            ...options.pushActions,
         })
         if (!push.ok && push.reason && !PUSH_SILENT_REASONS.has(push.reason)) {
             console.warn('[notifications] Push no enviado:', push)
@@ -219,6 +268,26 @@ async function notifyClient(
     } catch (error) {
         console.warn('[notifications] Error inesperado notificando al cliente:', error)
         return { status: 'failed', inbox: false, pushDelivered: 0 }
+    }
+}
+
+/**
+ * Cómo le llegan las revisiones por email a un atleta:
+ * - `canEmail`: no ha desactivado «Revisiones por email».
+ * - `hasReviewPush`: tiene el push de revisiones activo en algún dispositivo.
+ * La revisión nueva solo va por email si no hay push; si lo hay, el email
+ * llega con el primer recordatorio, cuando ya lleva un día sin responder.
+ */
+export async function getReviewEmailPlan(clientId: string): Promise<{ canEmail: boolean; hasReviewPush: boolean }> {
+    const admin = createAdminClient()
+    const [preferences, delivery, devices] = await Promise.all([
+        getClientNotificationPreferences(clientId),
+        getClientDeliverySettings(clientId),
+        admin.from('push_subscriptions').select('id', { count: 'exact', head: true }).eq('client_id', clientId),
+    ])
+    return {
+        canEmail: delivery.reviews_email_enabled,
+        hasReviewPush: isChannelEnabled(preferences, 'reviews') && (devices.count ?? 0) > 0,
     }
 }
 
@@ -329,6 +398,11 @@ export async function markReviewNotificationsRead(clientId: string, checkinId: s
     }
 }
 
+/**
+ * Recordatorio de suplementación. Un solo aviso por día en el buzón, que se
+ * actualiza con cada toma; en Android, el push lleva un botón «Hecho» que
+ * registra la toma sin abrir la app.
+ */
 export async function sendSupplementReminderNotification(
     clientId: string,
     payload: {
@@ -336,25 +410,73 @@ export async function sendSupplementReminderNotification(
         body: string
         url: string
         tag: string
-    }
+    },
+    slot?: { date: string; time: string }
 ): Promise<ClientNotificationResult> {
-    return notifyClient(clientId, 'supplement', { ...payload, type: 'supplement' }, 'supplements')
+    return notifyClient(clientId, 'supplement', { ...payload, type: 'supplement' }, 'supplements', {
+        groupUnread: true,
+        pushActions: slot
+            ? {
+                actions: [{ action: 'done', title: 'Hecho' }],
+                actionRequest: { url: '/api/supplements/logs/slot', body: { date: slot.date, time: slot.time } },
+            }
+            : undefined,
+    })
 }
 
+/** Cuántas actividades de Strava recientes esperan su RPE/notas. */
+async function countStravaPendingFeedback(clientId: string): Promise<number> {
+    const admin = createAdminClient()
+    const since = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 19)
+    const { count } = await admin
+        .from('strava_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('feedback_status', 'pending')
+        .eq('is_deleted', false)
+        .gte('start_date_local', since)
+    return count ?? 0
+}
+
+/**
+ * Actividad importada de Strava: solo buzón (el atleta la acaba de ver en
+ * Strava) y agrupada en un aviso. El push llega una vez al día si falta el
+ * RPE (sendStravaFeedbackReminder).
+ */
 export async function sendStravaActivityImportedNotification(
     clientId: string,
     activityName: string | null | undefined,
     providerActivityId: string | number
 ) {
     const payload = buildStravaActivityImportedNotification(activityName, providerActivityId)
+    const pending = await countStravaPendingFeedback(clientId)
 
     await notifyClient(clientId, 'strava_activity', {
-        title: payload.title,
-        body: payload.body,
+        title: pending > 1 ? `${pending} actividades importadas` : payload.title,
+        body: pending > 1 ? 'Añade el esfuerzo (RPE) y tus notas desde Progreso.' : payload.body,
         url: payload.url,
-        tag: payload.tag,
+        tag: 'strava-activities',
         type: 'general',
-    }, 'activities')
+    }, 'activities', { groupUnread: true, push: false })
+}
+
+/**
+ * Push diario si hay actividades sin RPE. Devuelve si había algo que recordar.
+ */
+export async function sendStravaFeedbackReminder(clientId: string, deliveryId: string | 'untracked'): Promise<boolean> {
+    const pending = await countStravaPendingFeedback(clientId)
+    if (pending === 0) {
+        await completeDelivery(deliveryId, { audience: 'client', clientId, kind: 'strava_activity', status: 'skipped', skippedReason: 'nothing_pending' })
+        return false
+    }
+    await notifyClient(clientId, 'strava_activity', {
+        title: pending === 1 ? 'Tienes una actividad sin RPE' : `Tienes ${pending} actividades sin RPE`,
+        body: 'Indica cómo te has sentido: tu entrenador lo usa para ajustar tus cargas.',
+        url: '/progress',
+        tag: 'strava-activities',
+        type: 'general',
+    }, 'activities', { groupUnread: true, deliveryId })
+    return true
 }
 
 export type PlanUpdateKind = 'training' | 'diet' | 'macros'

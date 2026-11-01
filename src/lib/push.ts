@@ -30,6 +30,10 @@ export interface PushPayload {
     badge?: number
     /** false = sustituye al aviso con el mismo tag sin volver a sonar. */
     renotify?: boolean
+    /** Botones del aviso (Android y escritorio; iOS no los muestra). */
+    actions?: Array<{ action: string; title: string }>
+    /** Qué pide el botón al servidor, sin abrir la app. */
+    actionRequest?: { url: string; body: Record<string, unknown> }
 }
 
 export interface PushSendResult {

@@ -10,7 +10,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
 import { schedulerTimezone, todayInTimezone } from '@/lib/reviews/scheduler'
-import { sendReviewReminderNotification } from '@/lib/notifications/client'
+import { getReviewEmailPlan, sendReviewReminderNotification } from '@/lib/notifications/client'
 import { claimDelivery, setDeliveryEmailStatus } from '@/lib/notifications/delivery-log'
 import { sendReviewReminderEmailSmtp } from '@/lib/email/mailer'
 import { buildReviewReminderCopy, planReviewReminder, reviewReminderKey } from '@/lib/reviews/reminder-plan'
@@ -128,8 +128,11 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
             }
             summary.sent += 1
 
-            // El último recordatorio también va por email (respeta la preferencia «Revisiones»).
-            if (plan.final && client.email) {
+            // Email: siempre con el último recordatorio; con el primero, solo si
+            // la revisión nueva no fue por email (le llegó por push).
+            const emailPlan = client.email ? await getReviewEmailPlan(checkin.client_id) : null
+            const sendEmail = Boolean(emailPlan?.canEmail && (plan.final || emailPlan.hasReviewPush))
+            if (sendEmail && client.email) {
                 const email = await sendReviewReminderEmailSmtp({
                     to: client.email,
                     clientName: client.full_name ?? undefined,
