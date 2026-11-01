@@ -123,6 +123,7 @@ export async function inviteAthleteAction(input: InviteAthleteInput): Promise<{
             client_id: clientId,
             type: 'onboarding',
             status: 'pending',
+            submitted_at: null,
             form_template_id: input.onboardingTemplateId,
             source: 'coach_portal',
             raw_payload: {},

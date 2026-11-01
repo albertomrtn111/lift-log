@@ -145,6 +145,7 @@ export async function sendReviewAction(
             client_id: clientId,
             type: 'checkin',
             status: 'pending',
+            submitted_at: null,
             period_start: periodStart,
             period_end: scheduledDate,
             form_template_id: formTemplateId,

@@ -215,6 +215,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
         .select('id, client_id')
         .in('client_id', clientIds)
         .eq('type', 'checkin')
+        .not('submitted_at', 'is', null)
         .order('submitted_at', { ascending: false })
 
     const latestCheckinByClient = new Map<string, string>()
@@ -284,6 +285,7 @@ export async function getClientStatus(coachId: string, clientId: string): Promis
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
         .eq('type', 'checkin')
+        .not('submitted_at', 'is', null)
         .order('submitted_at', { ascending: false })
         .limit(1)
         .single()

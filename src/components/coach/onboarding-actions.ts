@@ -81,6 +81,7 @@ export async function sendOnboardingAction(
             client_id: clientId,
             type: 'onboarding',
             status: 'pending',
+            submitted_at: null,
             form_template_id: template.id,
             source: 'coach_portal',
             raw_payload: {},

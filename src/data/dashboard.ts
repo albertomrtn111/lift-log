@@ -1,6 +1,7 @@
 import { startOfDay, startOfWeek } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import type { Client, ClientWithMeta } from '@/types/coach'
+import { getCheckinResponseDate, hasAthleteResponse } from '@/lib/reviews/checkin-response'
 
 export interface DashboardKPIs {
     pendingToday: number
@@ -489,9 +490,11 @@ function buildRecentSentReviews(
     return sentReviews.slice(0, limit).map((checkin) => {
         const client = clientsById.get(checkin.client_id)
         const review = reviewsByCheckinId.get(checkin.id) ?? null
-        const previousReceived = checkin.submitted_at
+        // Las enviadas sin respuesta llevan submitted_at de respaldo (DEFAULT now()).
+        const respondedAt = getCheckinResponseDate(checkin)
+        const previousReceived = respondedAt
             ? (receivedCheckinsByClient.get(checkin.client_id) ?? [])
-                .find((entry) => entry.submitted_at < checkin.submitted_at!)
+                .find((entry) => entry.submitted_at < respondedAt)
             : null
         const currentWeight = getPrimaryWeight(checkin)
         const previousWeight = getPrimaryWeight(previousReceived ?? null)
@@ -501,7 +504,7 @@ function buildRecentSentReviews(
             id: checkin.id,
             client_id: checkin.client_id,
             client_name: client?.full_name || client?.email || 'Cliente',
-            submitted_at: checkin.submitted_at,
+            submitted_at: respondedAt,
             sent_at: checkin.created_at,
             checkin_status: checkin.status,
             weight_kg: checkin.weight_kg,
@@ -695,7 +698,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         }
     }
 
-    const candidateCheckins = (checkinsResult.data ?? []) as CheckinRecord[]
+    const candidateCheckins = ((checkinsResult.data ?? []) as CheckinRecord[]).filter(hasAthleteResponse)
     const sentReviews = (sentReviewsResult.data ?? []) as SentReviewRecord[]
     const checkinIds = Array.from(new Set([...candidateCheckins, ...sentReviews].map((checkin) => checkin.id)))
 
