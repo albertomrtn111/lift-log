@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AlertTriangle, ChevronRight, Dumbbell, FileWarning, Scale, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import type { AttentionClient, AttentionReasonCode } from '@/data/dashboard'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
 import { cn } from '@/lib/utils'
@@ -54,9 +55,12 @@ export function AttentionClientList({ clients }: AttentionClientListProps) {
                             className="flex items-center gap-3 px-4 py-3 text-foreground no-underline transition-colors hover:bg-muted/40"
                         >
                             <span className="relative shrink-0">
-                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                                    {initials}
-                                </span>
+                                <AthleteAvatar
+                                    initials={initials}
+                                    avatarUrl={client.avatar_url}
+                                    className="h-10 w-10"
+                                    fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                                />
                                 <span className={cn(
                                     'absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-card',
                                     isHigh ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-white'

@@ -56,6 +56,8 @@ export interface ClientWithMeta extends Client {
      * `next_checkin_date` cuando el cliente no tiene schedules.
      */
     effectiveNextCheckinDate?: string | null
+    /** Foto de perfil del atleta (`profiles.avatar_url`); null si no tiene */
+    avatar_url?: string | null
 }
 
 export interface Checkin {

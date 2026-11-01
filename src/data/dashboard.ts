@@ -2,6 +2,7 @@ import { startOfDay, startOfWeek } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import type { Client, ClientWithMeta } from '@/types/coach'
 import { getCheckinResponseDate, hasAthleteResponse } from '@/lib/reviews/checkin-response'
+import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 
 export interface DashboardKPIs {
     pendingToday: number
@@ -633,6 +634,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         messagesResult,
         tasksResult,
         schedulesResult,
+        avatarsByClient,
     ] = await Promise.all([
         supabase
             .from('checkins')
@@ -688,6 +690,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .eq('is_active', true)
             .not('next_due_date', 'is', null)
             .order('next_due_date', { ascending: true }),
+        getAthleteAvatarUrls(activeClients),
     ])
 
     // Map: client_id → earliest active next_due_date
@@ -785,6 +788,7 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
 
         return {
             ...clientMeta,
+            avatar_url: avatarsByClient.get(client.id) ?? null,
             attentionReasons,
             primaryReason: attentionReasons[0]?.label ?? '',
             primarySeverity: attentionReasons[0]?.severity ?? 'medium',
