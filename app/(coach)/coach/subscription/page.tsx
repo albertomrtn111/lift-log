@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import { SubscriptionPanel } from '@/components/coach/subscription/SubscriptionPanel'
-import { createClient } from '@/lib/supabase/server'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { getStripe, isStripeConfigured } from '@/lib/subscription/stripe'
 import { getAthleteUsage, getCoachAccess, syncStripeSubscription } from '@/lib/subscription/coach-subscription'
 import { PAID_TIERS } from '@/lib/subscription/access.js'
@@ -13,21 +13,9 @@ export const dynamic = 'force-dynamic'
  * con la prueba terminada (el middleware manda aquí todo lo demás).
  */
 export default async function SubscriptionPage({ searchParams }: { searchParams: { session_id?: string } }) {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
-
-    const { data: memberships } = await supabase
-        .from('coach_memberships')
-        .select('coach_id, role')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
-        .order('created_at', { ascending: true })
-        .limit(1)
-    const membership = memberships?.[0]
-    if (!membership) redirect('/no-access')
-    const coachId = membership.coach_id as string
+    const auth = await requireActiveCoachId(undefined, { allowLocked: true }).catch(() => null)
+    if (!auth) redirect('/no-access')
+    const { coachId, role } = auth
 
     // Vuelta de Stripe Checkout: no esperamos al webhook para mostrar el plan
     const stripe = getStripe()
@@ -67,7 +55,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
                     cancelAtPeriodEnd={subscription?.cancel_at_period_end ?? false}
                     hasStripeSubscription={Boolean(subscription?.stripe_subscription_id)}
                     hasStripeCustomer={Boolean(subscription?.stripe_customer_id)}
-                    isOwner={membership.role === 'owner'}
+                    isOwner={role === 'owner'}
                     paymentsEnabled={isStripeConfigured()}
                     justSubscribed={justSubscribed}
                     athletes={usage}

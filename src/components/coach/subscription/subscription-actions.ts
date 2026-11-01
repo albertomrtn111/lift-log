@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { getAppUrl } from '@/lib/app-url'
 import { getStripe, stripeTaxConfig } from '@/lib/subscription/stripe'
 import { getAthleteUsage, getCoachSubscription, saveStripeCustomerId } from '@/lib/subscription/coach-subscription'
@@ -12,27 +12,11 @@ type ActionResult = { url: string; error?: never } | { url?: never; error: strin
 /** Estados en los que el espacio ya tiene una suscripción viva en Stripe: se gestiona en el Portal */
 const LIVE_STATUSES = ['trialing', 'active', 'past_due', 'unpaid', 'paused']
 
-/**
- * Solo el propietario del espacio paga. No usa requireActiveCoachId porque
- * tiene que funcionar también con la prueba terminada.
- */
+/** Solo el propietario del espacio paga; tiene que poder hacerlo también con la prueba terminada */
 async function requireOwner() {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('No autenticado')
-
-    const { data: memberships } = await supabase
-        .from('coach_memberships')
-        .select('coach_id, role')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
-        .order('created_at', { ascending: true })
-        .limit(1)
-    const membership = memberships?.[0]
-    if (!membership) throw new Error('No tienes un espacio de coach activo.')
-    if (membership.role !== 'owner') throw new Error('Solo el propietario del espacio puede gestionar la suscripción.')
-    return { user, coachId: membership.coach_id as string }
+    const { user, coachId, role } = await requireActiveCoachId(undefined, { allowLocked: true })
+    if (role !== 'owner') throw new Error('Solo el propietario del espacio puede gestionar la suscripción.')
+    return { user, coachId }
 }
 
 export async function startCheckoutAction(tierId: string, cycle: string): Promise<ActionResult> {
@@ -51,6 +35,13 @@ export async function startCheckoutAction(tierId: string, cycle: string): Promis
         // Ya paga (o tiene el pago pendiente): cambiar de plan o tarjeta se hace en el Portal
         if (subscription.stripe_subscription_id && LIVE_STATUSES.includes(subscription.status)) {
             return openPortal(subscription.stripe_customer_id)
+        }
+        // Lo mismo si Stripe ya tiene una viva que el webhook aún no ha copiado (Checkout en otra pestaña)
+        if (subscription.stripe_customer_id) {
+            const { data: existing } = await stripe.subscriptions.list({ customer: subscription.stripe_customer_id, status: 'all', limit: 10 })
+            if (existing.some(item => LIVE_STATUSES.includes(item.status))) {
+                return openPortal(subscription.stripe_customer_id)
+            }
         }
 
         const usage = await getAthleteUsage(coachId)
@@ -77,10 +68,8 @@ export async function startCheckoutAction(tierId: string, cycle: string): Promis
             await saveStripeCustomerId(coachId, customerId)
         }
 
-        // Si se suscribe durante la prueba gratis, no se le cobra hasta que acabe
-        const trialEnd = subscription.status === 'trialing' && !subscription.stripe_subscription_id
-            ? checkoutTrialEnd(subscription.trial_ends_at)
-            : null
+        // Si le quedan días de prueba (aunque una suscripción anterior se cancelara), no se cobra hasta que acabe
+        const trialEnd = checkoutTrialEnd(subscription.trial_ends_at)
         const tax = stripeTaxConfig()
         const appUrl = getAppUrl()
 

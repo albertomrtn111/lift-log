@@ -95,6 +95,17 @@ export async function syncStripeSubscription(stripe: Stripe, subscriptionId: str
         return coachId
     }
 
+    // Dos suscripciones vivas para el mismo espacio (dos Checkout a la vez): se cobra doble
+    const live = ['trialing', 'active', 'past_due', 'unpaid', 'paused']
+    if (
+        current?.stripe_subscription_id
+        && current.stripe_subscription_id !== subscription.id
+        && live.includes(current.status)
+        && live.includes(subscription.status)
+    ) {
+        console.error(`[stripe] El coach ${coachId} tiene dos suscripciones vivas (${current.stripe_subscription_id} y ${subscription.id}): cancela una en Stripe`)
+    }
+
     const item = subscription.items.data[0]
     const parsed = parsePriceLookupKey(item?.price.lookup_key)
     const status = normalizeStripeStatus(subscription.status)

@@ -1,4 +1,6 @@
 import { z } from 'npm:zod@4.3.6'
+// Misma regla de acceso que la app web
+import { subscriptionAccess } from '../../../src/lib/subscription/access.js'
 
 export type Db = any
 export type Row = Record<string, any>
@@ -132,21 +134,6 @@ export async function inBatches(db: Db, table: string, select: string, field: st
   return result
 }
 
-/**
- * ¿El espacio tiene suscripción activa o prueba en curso? Misma regla que
- * subscriptionAccess() en src/lib/subscription/access.js (la app web).
- */
-export function subscriptionAllows(
-  sub: { status?: string; trial_ends_at?: string | null; stripe_subscription_id?: string | null } | null | undefined,
-  now = new Date(),
-) {
-  if (!sub?.status) return false
-  if (['comped', 'active', 'past_due'].includes(sub.status)) return true
-  if (sub.status !== 'trialing') return false
-  if (sub.stripe_subscription_id) return true
-  return Boolean(sub.trial_ends_at) && new Date(sub.trial_ends_at as string).getTime() > now.getTime()
-}
-
 export async function resolveCoach(db: Db, requestedCoachId?: string) {
   let query = db
     .from('coach_memberships')
@@ -167,7 +154,7 @@ export async function resolveCoach(db: Db, requestedCoachId?: string) {
 
   const coach = Array.isArray(data[0].coaches) ? data[0].coaches[0] : data[0].coaches
   const subscription = Array.isArray(coach?.coach_subscriptions) ? coach.coach_subscriptions[0] : coach?.coach_subscriptions
-  if (!subscriptionAllows(subscription)) {
+  if (!subscriptionAccess(subscription ?? null).allowed) {
     throw new Error('La prueba gratis de este espacio ha terminado. Elige un plan en NexTrain (menú Suscripción) para seguir usándolo.')
   }
   return { coachId: data[0].coach_id as string, role: data[0].role as string, timeZone: resolveTimeZone(coach?.timezone) }

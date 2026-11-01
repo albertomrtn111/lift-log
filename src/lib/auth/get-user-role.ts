@@ -47,6 +47,8 @@ export async function getCoachIdForUser(userId: string): Promise<string | null> 
         .eq('user_id', userId)
         .eq('status', 'active')
         .in('role', ['owner', 'coach'])
+        // El más antiguo, como requireActiveCoachId: todas las pantallas miran el mismo espacio
+        .order('created_at', { ascending: true })
         .limit(1)
         .single()
 

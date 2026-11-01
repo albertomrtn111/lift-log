@@ -23,7 +23,8 @@ export const maxDuration = 60
  * Ejecución manual (ignora el filtro de hora): añadir `?force=1`.
  *
  * En la misma pasada diaria salen los avisos por email de la prueba gratis
- * de los coaches (7 días, 48 h y recién terminada).
+ * de los coaches (7 días, 48 h y recién terminada). Solo los avisos, sin
+ * revisiones (para probarlos): `?force=1&only=trial-notices`.
  */
 
 function getSecret(): string | null {
@@ -46,7 +47,9 @@ async function handle(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const force = new URL(request.url).searchParams.get('force') === '1'
+    const params = new URL(request.url).searchParams
+    const force = params.get('force') === '1'
+    const onlyTrialNotices = params.get('only') === 'trial-notices'
     const tz = schedulerTimezone()
     const hourNow = currentHourInTimezone(tz)
 
@@ -67,6 +70,9 @@ async function handle(request: NextRequest) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('[cron/reviews] Error en avisos de prueba:', message)
         trialNotices = { error: message }
+    }
+    if (onlyTrialNotices) {
+        return NextResponse.json({ ok: !('error' in trialNotices), ran: true, trialNotices })
     }
 
     try {

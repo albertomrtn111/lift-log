@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { clientAttentionFlags, registerClientTools } from './clients.ts'
 import { outputSchemas } from './output-schemas.ts'
-import { createToolRunner, DEFAULT_TIME_ZONE, resolveCoach, resolveTimeZone, subscriptionAllows, todayIn } from './shared.ts'
+import { createToolRunner, DEFAULT_TIME_ZONE, resolveCoach, resolveTimeZone, todayIn } from './shared.ts'
 
 const coach = '22222222-2222-4222-8222-222222222222'
 const client = '11111111-1111-4111-8111-111111111111'
@@ -53,12 +53,10 @@ Deno.test('resolveCoach blocks workspaces whose trial or subscription has ended'
   const ended = membershipDb({ timezone: null, coach_subscriptions: { status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z', stripe_subscription_id: null } })
   await assert.rejects(() => resolveCoach(ended.db), /prueba gratis/)
   await assert.rejects(() => resolveCoach(membershipDb(null).db), /prueba gratis/)
+  await assert.rejects(() => resolveCoach(membershipDb({ coach_subscriptions: { status: 'canceled' } }).db), /prueba gratis/)
 
-  const now = new Date('2026-11-01T00:00:00Z')
-  assert.equal(subscriptionAllows({ status: 'trialing', trial_ends_at: '2026-11-20T00:00:00Z' }, now), true)
-  assert.equal(subscriptionAllows({ status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z', stripe_subscription_id: 'sub_1' }, now), true)
-  assert.equal(subscriptionAllows({ status: 'comped' }, now), true)
-  assert.equal(subscriptionAllows({ status: 'canceled' }, now), false)
+  const trial = membershipDb({ timezone: null, coach_subscriptions: [{ status: 'trialing', trial_ends_at: '2999-01-01T00:00:00Z', stripe_subscription_id: null }] })
+  assert.equal((await resolveCoach(trial.db)).coachId, coach)
 })
 
 Deno.test('the tool runner resolves the zone once and passes today in that zone', async () => {

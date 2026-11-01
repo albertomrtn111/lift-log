@@ -328,15 +328,21 @@ export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): 
 // Suscripción del coach a NexTrain (sale siempre por el SMTP de la app)
 // ---------------------------------------------------------------------------
 
-export async function sendTrialNoticeEmail(params: {
+export interface TrialNoticeEmailParams {
     to: string
     copy: { subject: string; title: string; paragraphs: string[]; cta: string }
     ctaUrl: string
-}): Promise<EmailResult> {
+}
+
+export function buildTrialNoticeEmail(params: Omit<TrialNoticeEmailParams, 'to'>): { subject: string; html: string } {
     const body = params.copy.paragraphs.map(text => `<p>${escapeHtml(text)}</p>`).join('\n')
-    return send({
-        to: params.to,
+    return {
         subject: params.copy.subject,
         html: layout(params.copy.title, body, escapeHtml(params.copy.cta), params.ctaUrl),
-    })
+    }
+}
+
+export async function sendTrialNoticeEmail(params: TrialNoticeEmailParams): Promise<EmailResult> {
+    const { subject, html } = buildTrialNoticeEmail(params)
+    return send({ to: params.to, subject, html })
 }

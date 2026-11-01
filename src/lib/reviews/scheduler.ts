@@ -52,6 +52,18 @@ function addDays(dateStr: string, days: number): string {
     return d.toISOString().slice(0, 10)
 }
 
+/** Última fecha de la cadencia que ya ha vencido (≤ hoy). Si la revisión se
+ *  quedó atrás (cron caído, espacio pausado por la suscripción), el periodo del
+ *  check-in es el más reciente y no uno de hace semanas. */
+function latestDueOnOrBefore(dueDate: string, frequencyDays: number, today: string): string {
+    const freq = Math.max(1, frequencyDays)
+    let latest = dueDate
+    while (addDays(latest, freq) <= today) {
+        latest = addDays(latest, freq)
+    }
+    return latest
+}
+
 /** Avanza la fecha de vencimiento manteniendo la cadencia desde la fecha
  *  debida (no desde hoy), saltando ocurrencias ya pasadas. */
 function advanceNextDueDate(dueDate: string, frequencyDays: number, today: string): string {
@@ -183,7 +195,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 .eq('review_schedule_id', schedule.id)
 
             // --- Crear el check-in ------------------------------------------
-            const periodEnd = schedule.next_due_date
+            const periodEnd = latestDueOnOrBefore(schedule.next_due_date, schedule.frequency_days, today)
             const periodStart = addDays(periodEnd, -Math.max(1, schedule.frequency_days))
 
             const { data: newCheckin, error: insertErr } = await admin

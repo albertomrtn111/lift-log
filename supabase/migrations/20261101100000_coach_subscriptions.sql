@@ -37,7 +37,8 @@ create policy coach_subscriptions_select_member
     to authenticated
     using (public.is_coach_member(coach_id));
 
-revoke insert, update, delete on public.coach_subscriptions from anon, authenticated;
+-- Supabase da por defecto todos los privilegios (también TRUNCATE, que ignora RLS)
+revoke all on public.coach_subscriptions from anon, authenticated;
 grant select on public.coach_subscriptions to authenticated;
 
 -- Los espacios que ya existen siguen con acceso, sin prueba ni cobro
