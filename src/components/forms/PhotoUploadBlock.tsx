@@ -197,7 +197,7 @@ export function PhotoUploadBlock({
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Camera className="h-5 w-5 text-blue-400" />
+                    <Camera className="h-5 w-5 text-primary" />
                     <h3 className="font-medium">Fotos de progreso</h3>
                     {required && <span className="text-destructive">*</span>}
                     <Badge variant="outline" className="text-xs">

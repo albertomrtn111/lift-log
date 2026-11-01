@@ -46,7 +46,7 @@ export default async function WelcomePage() {
 
     return (
         <AuthShell
-            panelTitle={<>Tu método, <span className="text-sky-300">a escala</span></>}
+            panelTitle={<>Tu método, <span className="text-brand-soft">a escala</span></>}
             panelText="En unos minutos tendrás a tu primer atleta dentro con su plan."
         >
             <WelcomeForm

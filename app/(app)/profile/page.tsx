@@ -310,7 +310,7 @@ export default function ProfilePage() {
                     />
                     <NotificationPreferenceRow
                         icon={Dumbbell}
-                        iconTone="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        iconTone="bg-primary/10 text-primary"
                         title="Cambios de plan"
                         description="Cuando tu entrenador actualiza tu entrenamiento, dieta o macros"
                         checked={notificationPreferences.plans_enabled}
@@ -342,7 +342,7 @@ export default function ProfilePage() {
                 <SettingsGroup title="Ayuda">
                     <SettingsRow
                         icon={MessagesSquare}
-                        iconTone="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        iconTone="bg-primary/10 text-primary"
                         title="Escribe a tu entrenador"
                         description="Dudas sobre tu plan o sobre la app"
                         href="/chat"
