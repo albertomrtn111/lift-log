@@ -29,9 +29,18 @@ self.addEventListener('push', (event) => {
         },
     }
 
-    event.waitUntil(
-        self.registration.showNotification(data.title || 'NexTrain', options)
-    )
+    // Avisa a las pestañas abiertas: si su Realtime se cortó, se resincronizan
+    // sin esperar a que el usuario refresque.
+    const notifyOpenWindows = clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+            client.postMessage({ type: 'nextrain:push', tag: options.tag })
+        }
+    })
+
+    event.waitUntil(Promise.all([
+        self.registration.showNotification(data.title || 'NexTrain', options),
+        notifyOpenWindows,
+    ]))
 })
 
 self.addEventListener('notificationclick', (event) => {
