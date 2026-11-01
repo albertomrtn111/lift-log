@@ -4,6 +4,8 @@ import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, u
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useCoachContext } from '@/contexts/CoachContext'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import {
     getCoachNotifications,
     getCoachUnreadCount,
@@ -59,29 +61,19 @@ export function CoachNotificationsProvider({ children }: { children: React.React
         if (!coachId) return
         const supabase = createClient()
         const channel = supabase
-            .channel(`coach_notifications_${coachId}`)
+            .channel(uniqueChannelName(`coach-notifications:${coachId}`))
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'coach_notifications', filter: `coach_id=eq.${coachId}` },
                 () => { void refresh() }
             )
-            .subscribe()
+            .subscribe(resyncOnResubscribe(() => { void refresh() }))
         return () => { void supabase.removeChannel(channel) }
     }, [coachId, refresh])
 
-    // Al volver a la pestaña o recuperar la conexión, Realtime puede haberse
-    // perdido eventos: se vuelve a leer la campana.
-    useEffect(() => {
-        const resync = () => {
-            if (document.visibilityState === 'visible') void refresh()
-        }
-        document.addEventListener('visibilitychange', resync)
-        window.addEventListener('online', resync)
-        return () => {
-            document.removeEventListener('visibilitychange', resync)
-            window.removeEventListener('online', resync)
-        }
-    }, [refresh])
+    // Al volver a la pestaña, recuperar la conexión o recibir un push, Realtime
+    // puede haberse perdido eventos: se vuelve a leer la campana.
+    useResyncOnReturn(refresh, Boolean(coachId))
 
     useEffect(() => {
         if (!loading) syncAppBadge(unreadCount)
