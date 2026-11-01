@@ -8,6 +8,8 @@ import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { uploadChatAttachment } from '@/lib/chat-media'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
 import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble'
 import { ChatComposer, type ChatComposerHandle } from '@/components/chat/ChatComposer'
@@ -71,6 +73,8 @@ export function ConversationPanel({
     const nearBottom = useRef(true)
     const knownIds = useRef(new Set<string>())
     const pendingPayloads = useRef(new Map<string, PendingPayload>())
+    const activeClientId = useRef(clientId)
+    activeClientId.current = clientId
 
     const recorder = useVoiceRecorder()
 
@@ -144,12 +148,37 @@ export function ConversationPanel({
         if (container.scrollTop < 80) loadOlder()
     }
 
+    // Recupera lo que Realtime no entregó mientras la pestaña estaba en segundo
+    // plano o sin conexión: mensajes nuevos y read_at de los propios.
+    const resync = useCallback(async () => {
+        const latest = await getMessagesAction(coachId, clientId)
+        // Si entretanto se abrió otra conversación, esta respuesta ya no aplica
+        if (latest.length === 0 || activeClientId.current !== clientId) return
+        const fresh = latest.filter(message => !knownIds.current.has(message.id))
+        const overlaps = fresh.length < latest.length
+        if (fresh.length > 0 && nearBottom.current) scrollIntent.current = { kind: 'bottom', smooth: true }
+        if (!overlaps) setHasMore(latest.length >= PAGE_SIZE)
+        setMessages(prev => overlaps
+            ? mergeUniqueMessages([...prev, ...latest])
+            // Hueco mayor que una página: se sustituye conservando los pendientes de envío
+            : mergeUniqueMessages([...latest, ...prev.filter(message => message.id.startsWith('temp-'))]))
+        onLastMessageChange?.(latest[latest.length - 1])
+
+        if (fresh.some(message => message.sender_role === 'client' && !message.read_at)) {
+            onUnreadChange?.(clientId, 0)
+            await markMessagesReadAction(coachId, clientId)
+            notifyCoachBadgesChanged()
+        }
+    }, [coachId, clientId, onLastMessageChange, onUnreadChange])
+
+    useResyncOnReturn(resync, !loading)
+
     // Tiempo real
     useEffect(() => {
         const supabase = createClient()
 
         const channel = supabase
-            .channel(`coach-messages:${coachId}:${clientId}`)
+            .channel(uniqueChannelName(`coach-messages:${coachId}:${clientId}`))
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
@@ -183,12 +212,12 @@ export function ConversationPanel({
                 if (updated.client_id !== clientId) return
                 setMessages(prev => prev.map(message => message.id === updated.id ? { ...message, read_at: updated.read_at } : message))
             })
-            .subscribe()
+            .subscribe(resyncOnResubscribe(resync))
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [coachId, clientId, onLastMessageChange, onUnreadChange])
+    }, [coachId, clientId, onLastMessageChange, onUnreadChange, resync])
 
     const dispatchMessage = useCallback(async (payload: PendingPayload, reuseId?: string) => {
         const { content, attachment } = payload

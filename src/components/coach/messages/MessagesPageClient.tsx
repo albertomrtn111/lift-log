@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MessageCircle, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,8 @@ import { initialsOf } from '@/components/chat/chat-utils'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import type { Message } from '@/types/messages'
 import { ConversationPanel } from './ConversationPanel'
 
@@ -63,10 +65,19 @@ export function MessagesPageClient({
         return () => desktopQuery.removeEventListener('change', selectFirstConversation)
     }, [conversationState, initialClientId, selectedClientId])
 
+    // Ref y no dependencia: cambiar de conversación no debe cerrar y reabrir el
+    // canal de la bandeja (los mensajes que llegaran entre medias se perderían).
+    const selectedClientIdRef = useRef(selectedClientId)
+    selectedClientIdRef.current = selectedClientId
+
+    // Vuelta a primer plano o reconexión: el servidor recalcula la bandeja
+    const resync = useCallback(() => router.refresh(), [router])
+    useResyncOnReturn(resync)
+
     useEffect(() => {
         const supabase = createClient()
         const channel = supabase
-            .channel(`coach-message-list:${coachId}`)
+            .channel(uniqueChannelName(`coach-message-list:${coachId}`))
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
@@ -75,7 +86,7 @@ export function MessagesPageClient({
             }, (payload) => {
                 const newMessage = payload.new as Message
                 setConversationState(prev => {
-                    const selected = selectedClientId
+                    const selected = selectedClientIdRef.current
                     return sortConversations(prev.map(conversation => {
                         if (conversation.clientId !== newMessage.client_id) return conversation
 
@@ -88,12 +99,12 @@ export function MessagesPageClient({
                     }))
                 })
             })
-            .subscribe()
+            .subscribe(resyncOnResubscribe(resync))
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [coachId, selectedClientId])
+    }, [coachId, resync])
 
     const unreadConversationCount = useMemo(
         () => conversationState.filter(conversation => conversation.unreadCount > 0).length,

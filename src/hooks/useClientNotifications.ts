@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import {
     getCurrentClientId,
     getNotifications,
@@ -45,17 +47,22 @@ export function useClientNotifications() {
         syncTimezoneOnce()
     }, [refresh])
 
+    // Vuelta a primer plano o reconexión: lo ocurrido mientras tanto no llega por Realtime
+    useResyncOnReturn(refresh)
+
     // Realtime: escucha inserts en client_notifications para el cliente actual
     useEffect(() => {
         const supabase = createClient()
         let channel: ReturnType<typeof supabase.channel> | null = null
+        let cancelled = false
 
         ;(async () => {
             const clientId = await getCurrentClientId()
-            if (!clientId) return
+            // Desmontado mientras se resolvía: no abrir un canal que nadie cerrará
+            if (!clientId || cancelled) return
 
             channel = supabase
-                .channel('client_notifications_' + clientId)
+                .channel(uniqueChannelName(`client-notifications:${clientId}`))
                 .on(
                     'postgres_changes',
                     {
@@ -66,10 +73,11 @@ export function useClientNotifications() {
                     },
                     () => { refresh() }
                 )
-                .subscribe()
+                .subscribe(resyncOnResubscribe(refresh))
         })()
 
         return () => {
+            cancelled = true
             if (channel) supabase.removeChannel(channel)
         }
     }, [refresh])

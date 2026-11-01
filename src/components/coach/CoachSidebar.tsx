@@ -34,6 +34,8 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useCoachContext } from '@/contexts/CoachContext'
 import { COACH_BADGES_CHANGED_EVENT, type CoachBadgesChangedDetail } from '@/lib/coach-badges-events'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 
 interface NavItem {
@@ -132,6 +134,39 @@ export function CoachSidebar() {
     // Get user context from cached provider
     const { coach } = useCoachContext()
     const userRole = coach?.role ?? 'coach'
+    const coachId = coach?.coachId ?? null
+
+    // Al volver a la pestaña no se espera al siguiente sondeo de 60 s
+    useResyncOnReturn(fetchBadges)
+
+    // Mensajes de atletas en vivo: el contador de Mensajes se actualiza en
+    // cualquier pantalla del coach, no solo en la bandeja.
+    useEffect(() => {
+        if (!coachId) return
+        const supabase = createClient()
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const refetchSoon = () => {
+            clearTimeout(timer)
+            timer = setTimeout(fetchBadges, 400)
+        }
+
+        const channel = supabase
+            .channel(uniqueChannelName(`coach-badges:${coachId}`))
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages',
+                filter: `coach_id=eq.${coachId}`,
+            }, (payload) => {
+                if ((payload.new as { sender_role?: string }).sender_role === 'client') refetchSoon()
+            })
+            .subscribe(resyncOnResubscribe(fetchBadges))
+
+        return () => {
+            clearTimeout(timer)
+            supabase.removeChannel(channel)
+        }
+    }, [coachId, fetchBadges])
 
     const handleLogout = async () => {
         setLoggingOut(true)

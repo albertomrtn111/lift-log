@@ -73,7 +73,7 @@ export async function sendMessageAction(
 
     if (error) {
         console.error('Error sending message:', error)
-        return { success: false, error: error.message }
+        return { success: false, error: 'No se pudo enviar el mensaje.' }
     }
 
     if (data) {
