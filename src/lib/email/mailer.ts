@@ -183,6 +183,41 @@ export async function sendReviewEmailSmtp(params: {
     )
 }
 
+/** Último recordatorio de una revisión sin responder (el día antes de que se archive). */
+export async function sendReviewReminderEmailSmtp(params: {
+    to: string
+    clientName?: string
+    formUrl: string
+    reviewTemplateName?: string
+    archivesTomorrow: boolean
+    coachId?: string
+}): Promise<EmailResult> {
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
+    const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
+    const reviewName = escapeHtml(rawReviewName)
+    const subject = params.archivesTomorrow
+        ? `⏰ Último día para enviar tu ${rawReviewName.toLowerCase()}`
+        : `⏰ Tu ${rawReviewName.toLowerCase()} sigue pendiente`
+
+    const deadline = params.archivesTomorrow
+        ? '<p>Mañana se archiva y tu entrenador ya no podrá revisarla.</p>'
+        : ''
+    const body = `
+        <p>Hola <strong>${name}</strong>,</p>
+        <p>Tu entrenador sigue esperando tu <strong>${reviewName}</strong> para valorar
+        cómo ha ido el periodo y ajustar tu plan.</p>
+        ${deadline}`
+
+    return send(
+        {
+            to: params.to,
+            subject,
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+        },
+        params.coachId
+    )
+}
+
 export async function sendOnboardingEmailSmtp(params: {
     to: string
     clientName?: string

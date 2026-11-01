@@ -284,7 +284,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 body,
                 url: '/coach/calendar',
                 tag: `coach-reviews-sent-${today}`,
-            })
+            }, 'reviews_sent')
         } catch (err) {
             console.warn('[scheduler] Push al coach falló (non-blocking):', err)
         }

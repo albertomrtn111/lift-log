@@ -8,6 +8,7 @@ import {
     type ClientNotificationChannel,
 } from '@/lib/notifications/preferences'
 import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
+import { completeDelivery, logDelivery, type DeliveryRecord } from '@/lib/notifications/delivery-log'
 
 type InboxType = 'general' | 'message' | 'plan_updated' | 'check_in' | 'macro_updated' | 'supplement'
 
@@ -18,6 +19,17 @@ type ClientNotificationPayload = {
     tag: string
     type: InboxType
 }
+
+/** Qué aviso es, para el registro de entregas (no se muestra al atleta). */
+export type ClientNotificationKind =
+    | 'message'
+    | 'review_created'
+    | 'review_approved'
+    | 'review_feedback'
+    | 'review_reminder'
+    | 'plan_updated'
+    | 'supplement'
+    | 'strava_activity'
 
 export type ClientNotificationResult =
     | { status: 'sent'; inbox: boolean; pushDelivered: number }
@@ -90,6 +102,16 @@ async function insertInbox(clientId: string, payload: ClientNotificationPayload)
     }
 }
 
+async function countUnread(clientId: string): Promise<number | undefined> {
+    const admin = createAdminClient()
+    const { count, error } = await admin
+        .from('client_notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('is_read', false)
+    return error ? undefined : (count ?? undefined)
+}
+
 /**
  * Punto único de envío al cliente: buzón in-app + push.
  * - No notifica a clientes dados de baja.
@@ -99,39 +121,58 @@ async function insertInbox(clientId: string, payload: ClientNotificationPayload)
  */
 async function notifyClient(
     clientId: string,
+    kind: ClientNotificationKind,
     payload: ClientNotificationPayload,
     channel: ClientNotificationChannel,
-    options: { dedupeUnreadWithinHours?: number } = {}
+    options: {
+        dedupeUnreadWithinHours?: number
+        /** Fila ya reservada en el registro (recordatorios): se completa en vez de crear otra. */
+        deliveryId?: string | 'untracked'
+    } = {}
 ): Promise<ClientNotificationResult> {
+    const record = (entry: Omit<DeliveryRecord, 'audience' | 'clientId' | 'kind'>) => {
+        const full: DeliveryRecord = { audience: 'client', clientId, kind, ...entry }
+        return options.deliveryId ? completeDelivery(options.deliveryId, full) : logDelivery(full)
+    }
+    const skip = (reason: 'client_inactive' | 'channel_disabled' | 'duplicate'): ClientNotificationResult => {
+        void record({ status: 'skipped', skippedReason: reason })
+        return { status: 'skipped', reason }
+    }
+
     try {
         if (!(await isClientActive(clientId))) {
-            return { status: 'skipped', reason: 'client_inactive' }
+            return skip('client_inactive')
         }
 
         const preferences = await getClientNotificationPreferences(clientId)
         if (!isChannelEnabled(preferences, channel)) {
-            return { status: 'skipped', reason: 'channel_disabled' }
+            return skip('channel_disabled')
         }
 
         if (options.dedupeUnreadWithinHours
             && await hasRecentUnread(clientId, payload, options.dedupeUnreadWithinHours)) {
-            return { status: 'skipped', reason: 'duplicate' }
+            return skip('duplicate')
         }
 
         const inbox = await insertInbox(clientId, payload)
+        const badge = inbox ? await countUnread(clientId) : undefined
 
         const push = await sendPushToClient(clientId, {
             title: payload.title,
             body: payload.body,
             url: payload.url,
             tag: payload.tag,
+            badge,
         })
         if (!push.ok && push.reason && !PUSH_SILENT_REASONS.has(push.reason)) {
             console.warn('[notifications] Push no enviado:', push)
         }
 
         const pushDelivered = push.deliveredCount ?? 0
-        if (!inbox && pushDelivered === 0) {
+        const failed = !inbox && pushDelivered === 0
+        await record({ status: failed ? 'failed' : 'sent', inbox, push })
+
+        if (failed) {
             return { status: 'failed', inbox: false, pushDelivered: 0 }
         }
         return { status: 'sent', inbox, pushDelivered }
@@ -145,7 +186,7 @@ export async function sendCoachMessageNotification(clientId: string, message: st
     const trimmed = message.trim()
     if (!trimmed) return
 
-    await notifyClient(clientId, {
+    await notifyClient(clientId, 'message', {
         title: 'Nuevo mensaje de tu entrenador',
         body: truncate(trimmed),
         url: '/chat',
@@ -154,24 +195,33 @@ export async function sendCoachMessageNotification(clientId: string, message: st
     }, 'messages')
 }
 
-export async function sendReviewApprovedNotification(clientId: string) {
-    await notifyClient(clientId, {
+/** Enlace a una revisión concreta en la app del atleta. */
+export function athleteReviewUrl(checkinId?: string | null) {
+    return checkinId ? `/summary?tab=revisiones&checkin=${checkinId}` : '/summary?tab=revisiones'
+}
+
+export async function sendReviewApprovedNotification(clientId: string, checkinId?: string | null) {
+    await notifyClient(clientId, 'review_approved', {
         title: 'Tu revisión ya está aprobada',
         body: 'Tu entrenador ha revisado y aprobado tu revisión.',
-        url: '/summary?tab=revisiones',
+        url: athleteReviewUrl(checkinId),
         tag: 'review-approved',
         type: 'check_in',
     }, 'reviews')
 }
 
-export async function sendReviewFeedbackNotification(clientId: string, feedbackMessage: string) {
+export async function sendReviewFeedbackNotification(
+    clientId: string,
+    feedbackMessage: string,
+    checkinId?: string | null,
+) {
     const trimmed = feedbackMessage.trim()
     if (!trimmed) return
 
-    await notifyClient(clientId, {
+    await notifyClient(clientId, 'review_feedback', {
         title: 'Tu entrenador ha revisado tu revisión',
         body: truncate(trimmed),
-        url: '/chat',
+        url: athleteReviewUrl(checkinId),
         tag: 'review-feedback',
         type: 'check_in',
     }, 'reviews')
@@ -182,15 +232,51 @@ export async function sendReviewCreatedNotification(
     checkinId: string,
     reviewTemplateName?: string,
 ) {
-    await notifyClient(clientId, {
+    await notifyClient(clientId, 'review_created', {
         title: reviewTemplateName
             ? `Nueva revisión: ${reviewTemplateName}`
             : 'Nueva revisión disponible',
         body: 'Tu entrenador ha enviado una revisión para completar. Puedes rellenarla desde la app o desde el email.',
-        url: `/summary?tab=revisiones&checkin=${checkinId}`,
+        url: athleteReviewUrl(checkinId),
         tag: `review-created-${checkinId}`,
         type: 'check_in',
     }, 'reviews')
+}
+
+/** Recordatorio de revisión sin responder (lo envía el cron diario). */
+export async function sendReviewReminderNotification(
+    clientId: string,
+    checkinId: string,
+    copy: { title: string; body: string },
+    deliveryId?: string | 'untracked',
+): Promise<ClientNotificationResult> {
+    return notifyClient(clientId, 'review_reminder', {
+        title: copy.title,
+        body: copy.body,
+        url: athleteReviewUrl(checkinId),
+        tag: `review-reminder-${checkinId}`,
+        type: 'check_in',
+    }, 'reviews', { deliveryId })
+}
+
+/**
+ * Marca como leídos los avisos de una revisión que ya no piden nada
+ * (el atleta la ha enviado). Nunca lanza.
+ */
+export async function markReviewNotificationsRead(clientId: string, checkinId: string) {
+    try {
+        const admin = createAdminClient()
+        const { error } = await admin
+            .from('client_notifications')
+            .update({ is_read: true, read_at: new Date().toISOString() })
+            .eq('client_id', clientId)
+            .eq('type', 'check_in')
+            .eq('is_read', false)
+            .like('url', `%checkin=${checkinId}%`)
+        if (error) console.warn('[notifications] No se pudieron cerrar los avisos de la revisión:', error.message)
+    } catch (error) {
+        console.warn('[notifications] Error cerrando avisos de la revisión:', error)
+    }
 }
 
 export async function sendSupplementReminderNotification(
@@ -202,7 +288,7 @@ export async function sendSupplementReminderNotification(
         tag: string
     }
 ): Promise<ClientNotificationResult> {
-    return notifyClient(clientId, { ...payload, type: 'supplement' }, 'supplements')
+    return notifyClient(clientId, 'supplement', { ...payload, type: 'supplement' }, 'supplements')
 }
 
 export async function sendStravaActivityImportedNotification(
@@ -212,7 +298,7 @@ export async function sendStravaActivityImportedNotification(
 ) {
     const payload = buildStravaActivityImportedNotification(activityName, providerActivityId)
 
-    await notifyClient(clientId, {
+    await notifyClient(clientId, 'strava_activity', {
         title: payload.title,
         body: payload.body,
         url: payload.url,
@@ -251,7 +337,7 @@ const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
 const PLAN_UPDATE_DEDUPE_HOURS = 12
 
 export async function sendPlanUpdatedNotification(clientId: string, kind: PlanUpdateKind) {
-    return notifyClient(clientId, PLAN_UPDATE_COPY[kind], 'plans', {
+    return notifyClient(clientId, 'plan_updated', PLAN_UPDATE_COPY[kind], 'plans', {
         dedupeUnreadWithinHours: PLAN_UPDATE_DEDUPE_HOURS,
     })
 }

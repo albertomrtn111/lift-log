@@ -6,6 +6,7 @@ import {
     type CoachNotificationChannel,
 } from '@/lib/notifications/coach'
 import { sendPushToCoach } from '@/lib/push'
+import { logDelivery } from '@/lib/notifications/delivery-log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -196,9 +197,16 @@ async function handle(request: NextRequest) {
                 const claimed = await claimReminder(admin, coachId, job.kind, remindDate)
                 if (!claimed) continue
 
-                await sendPushToCoach(coachId, {
+                const push = await sendPushToCoach(coachId, {
                     ...payload,
                     tag: `coach-${job.kind}-${remindDate}`,
+                })
+                await logDelivery({
+                    audience: 'coach',
+                    coachId,
+                    kind: job.kind,
+                    status: (push.deliveredCount ?? 0) > 0 ? 'sent' : 'failed',
+                    push,
                 })
                 sent.push({ coachId, kind: job.kind })
             }

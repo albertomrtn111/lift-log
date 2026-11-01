@@ -29,8 +29,16 @@ self.addEventListener('push', (event) => {
         },
     }
 
+    // Número de avisos sin leer en el icono de la app (si el sistema lo admite)
+    const badge = typeof data.badge === 'number' && self.navigator && 'setAppBadge' in self.navigator
+        ? self.navigator.setAppBadge(data.badge).catch(() => {})
+        : Promise.resolve()
+
     event.waitUntil(
-        self.registration.showNotification(data.title || 'NexTrain', options)
+        Promise.all([
+            self.registration.showNotification(data.title || 'NexTrain', options),
+            badge,
+        ])
     )
 })
 

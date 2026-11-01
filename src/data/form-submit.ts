@@ -3,8 +3,31 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureReviewForCheckin } from '@/data/workspace'
-import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
+import { generateCheckinAnalysis, type GenerateCheckinAnalysisResult } from '@/lib/ai/analyze-checkin'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
+import { notifyCoachCheckinSubmitted, notifyCoachOnboardingCompleted } from '@/lib/notifications/coach'
+import { markReviewNotificationsRead } from '@/lib/notifications/client'
+
+/** Lo que esperamos al borrador de IA antes de avisar al coach sin él. */
+const AI_DRAFT_WAIT_MS = 90_000
+
+/**
+ * Avisa al coach cuando termine el análisis de IA (para poder decir
+ * «borrador listo») o, como mucho, a los 90 s. Nunca lanza.
+ */
+function notifyCoachAfterAnalysis(
+    analysis: Promise<GenerateCheckinAnalysisResult> | null,
+    input: { coachId: string; clientId: string; checkinId: string }
+) {
+    const aiReady = analysis
+        ? Promise.race([
+            analysis.then(result => result.success).catch(() => false),
+            new Promise<boolean>(resolve => setTimeout(() => resolve(false), AI_DRAFT_WAIT_MS)),
+        ])
+        : Promise.resolve(false)
+
+    void aiReady.then(ready => notifyCoachCheckinSubmitted({ ...input, aiReady: ready }))
+}
 
 interface SubmitFormResult {
     success: boolean
@@ -116,10 +139,16 @@ export async function submitFormAction(
             // Non-blocking: checkin was already saved, log the error
             console.error('[submitFormAction] Client onboarding update error:', clientErr)
         }
+
+        void notifyCoachOnboardingCompleted({ coachId: checkin.coach_id, clientId: client.id })
     }
+
+    // La revisión ya está enviada: sus avisos en el buzón del atleta dejan de estar pendientes.
+    void markReviewNotificationsRead(client.id, checkinId)
 
     // 8. For regular check-ins, ensure a review exists and launch AI analysis asynchronously.
     if (!isOnboarding) {
+        let analysis: Promise<GenerateCheckinAnalysisResult> | null = null
         try {
             const { data: adminCheckin, error: adminCheckinError } = await admin
                 .from('checkins')
@@ -156,13 +185,19 @@ export async function submitFormAction(
                     if (reviewResetError) {
                         console.error('[submitFormAction] Could not reset AI review fields:', reviewResetError)
                     } else {
-                        void generateCheckinAnalysis(checkinId, review.id)
+                        analysis = generateCheckinAnalysis(checkinId, review.id)
                     }
                 }
             }
         } catch (aiBootstrapError) {
             console.error('[submitFormAction] AI bootstrap failed:', aiBootstrapError)
         }
+
+        notifyCoachAfterAnalysis(analysis, {
+            coachId: checkin.coach_id,
+            clientId: client.id,
+            checkinId,
+        })
     }
 
     return { success: true, isOnboarding }
