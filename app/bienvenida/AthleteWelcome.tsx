@@ -104,7 +104,7 @@ export function AthleteWelcome({ data, email, stravaResult }: {
 
     return (
         <AuthShell
-            panelTitle={<>Tu plan, <span className="text-sky-300">en el bolsillo</span></>}
+            panelTitle={<>Tu plan, <span className="text-brand-soft">en el bolsillo</span></>}
             panelText={`${data.coachName} te acompaña desde la app: plan, revisiones y chat.`}
         >
             {showIntro ? (

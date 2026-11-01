@@ -160,7 +160,7 @@ export function CardioSessionDetail({
                   </Badge>
                 )}
                 {item.targetDurationMin && (
-                  <Badge variant="secondary" className="gap-1 text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-0">
+                  <Badge variant="secondary" className="gap-1 text-xs font-medium bg-primary/10 text-primary border-0">
                     <Clock className="h-3 w-3" />
                     {item.targetDurationMin} min
                   </Badge>
@@ -200,10 +200,10 @@ export function CardioSessionDetail({
             {item.coachNotes && (
               <>
                 <div className="border-t border-border/40" />
-                <div className="px-4 py-3 bg-blue-50/50 dark:bg-blue-950/20">
+                <div className="px-4 py-3 bg-primary/5">
                   <div className="flex items-center gap-1.5 mb-1.5">
-                    <MessageSquare className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                    <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
                       Notas del entrenador
                     </span>
                   </div>

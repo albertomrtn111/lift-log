@@ -311,7 +311,7 @@ function CheckinRow({
                 className={cn(
                     'text-xs',
                     aiStatus === 'completed' && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-                    aiStatus === 'pending' && 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                    aiStatus === 'pending' && 'bg-primary/10 text-primary border-primary/20',
                     aiStatus === 'failed' && 'bg-destructive/10 text-destructive border-destructive/20',
                     aiStatus === 'idle' && 'bg-muted/60 text-muted-foreground'
                 )}
@@ -606,7 +606,7 @@ function CheckinDetailPanel({
                                     variant="outline"
                                     className={cn(
                                         aiStatus === 'completed' && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-                                        aiStatus === 'pending' && 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                                        aiStatus === 'pending' && 'bg-primary/10 text-primary border-primary/20',
                                         aiStatus === 'failed' && 'bg-destructive/10 text-destructive border-destructive/20',
                                         aiStatus === 'idle' && 'bg-muted/60 text-muted-foreground'
                                     )}
@@ -650,7 +650,7 @@ function CheckinDetailPanel({
                                         </div>
                                     </>
                                 ) : aiStatus === 'pending' ? (
-                                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                                    <div className="flex items-center gap-2 text-sm text-primary">
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                         Generando análisis IA para esta revisión.
                                     </div>

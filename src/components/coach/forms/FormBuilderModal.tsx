@@ -447,18 +447,18 @@ export function FormBuilderModal({
                             ))}
 
                             {templateType !== 'checkin' && (
-                                <Card className="border border-dashed border-blue-500/30 bg-blue-500/5 p-4">
+                                <Card className="border border-dashed border-primary/30 bg-primary/5 p-4">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
-                                                <Camera className="h-4 w-4 text-blue-400" />
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                                                <Camera className="h-4 w-4 text-primary" />
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-medium">
                                                         {PROGRESS_PHOTOS_FIELD.label}
                                                     </span>
-                                                    <Badge variant="outline" className="border-blue-500/30 px-1.5 text-[10px] text-blue-400">
+                                                    <Badge variant="outline" className="border-primary/30 px-1.5 text-[10px] text-primary">
                                                         <Lock className="mr-0.5 h-2.5 w-2.5" />
                                                         Fijo
                                                     </Badge>

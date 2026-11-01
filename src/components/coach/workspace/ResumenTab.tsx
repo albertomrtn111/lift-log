@@ -1028,7 +1028,7 @@ function ReviewCard({
                             variant="outline"
                             className={cn(
                                 aiStatus === 'completed' && 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-                                aiStatus === 'pending' && 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                                aiStatus === 'pending' && 'bg-primary/10 text-primary border-primary/20',
                                 aiStatus === 'failed' && 'bg-destructive/10 text-destructive border-destructive/20',
                                 aiStatus === 'idle' && 'bg-muted/60 text-muted-foreground'
                             )}
@@ -1044,12 +1044,12 @@ function ReviewCard({
                     </div>
 
                     {aiStatus === 'pending' && (
-                        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
-                            <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                            <div className="flex items-center gap-2 text-sm font-medium text-primary">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                                 El análisis IA se está generando
                             </div>
-                            <p className="mt-2 text-sm text-blue-700/90">
+                            <p className="mt-2 text-sm text-primary/90">
                                 La revisión ya está guardada. En breve tendrás el resumen y las propuestas para el coach.
                             </p>
                         </div>

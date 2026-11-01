@@ -183,7 +183,7 @@ export function NotificationSettingsPanel() {
 
                             <div className="flex items-center justify-between rounded-xl border p-4">
                                 <div className="flex items-center gap-3">
-                                    <ClipboardCheck className="h-4 w-4 text-blue-600" />
+                                    <ClipboardCheck className="h-4 w-4 text-primary" />
                                     <div>
                                         <p className="text-sm font-medium">Revisiones</p>
                                         <p className="text-xs text-muted-foreground">

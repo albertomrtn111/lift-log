@@ -22,6 +22,12 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Azul del logo en tonos fijos, para superficies siempre oscuras (panel de marca del login)
+        brand: {
+          DEFAULT: "#0058D8",
+          light: "#3D8CFF",
+          soft: "#8AB9FF",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
