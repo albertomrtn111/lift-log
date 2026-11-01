@@ -6,16 +6,23 @@ import { useRouter } from 'next/navigation'
 import {
     ArrowRight,
     Bell,
+    CalendarDays,
+    Camera,
+    ChartNoAxesColumnIncreasing,
     Check,
     ClipboardList,
     Download,
+    Dumbbell,
     Loader2,
     MessageCircle,
     MoreVertical,
     PlusSquare,
+    Salad,
     Share,
     Smartphone,
+    UserRound,
     Watch,
+    type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/components/auth/AuthShell'
@@ -23,12 +30,13 @@ import { AuthAlert, AuthField, PasswordInput, PasswordStrength } from '@/compone
 import { createClient } from '@/lib/supabase/client'
 import { authErrorMessage } from '@/lib/auth/auth-errors'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { AvatarPhotoPicker } from '@/components/profile/AvatarPhotoPicker'
 import { cn } from '@/lib/utils'
 import type { AthleteWelcomeData } from '@/lib/onboarding/athlete-welcome-data'
 import { markAthleteSignedUpAction } from '../(auth)/set-password/actions'
 import { setAthleteOnboardingStepAction } from './actions'
 
-type StepId = 'install' | 'push' | 'watch' | 'form'
+type StepId = 'tour' | 'install' | 'push' | 'photo' | 'watch' | 'form'
 
 interface BeforeInstallPromptEvent extends Event {
     prompt: () => Promise<void>
@@ -68,13 +76,13 @@ export function AthleteWelcome({ data, email, stravaResult }: {
 }) {
     const router = useRouter()
     const [needsPassword, setNeedsPassword] = useState(data.needsPassword)
-    const [resolved, setResolved] = useState<Record<StepId, boolean>>(() => ({
-        install: data.steps.steps[0].resolved,
-        push: data.steps.steps[1].resolved,
-        watch: data.steps.steps[2].resolved || stravaResult === 'connected',
-        form: data.steps.steps[3].resolved,
-    }))
-    const nothingStarted = !data.state.install && !data.state.push && !data.state.watch
+    const [resolved, setResolved] = useState<Record<StepId, boolean>>(() => {
+        const initial = Object.fromEntries(data.steps.steps.map(step => [step.id, step.resolved])) as Record<StepId, boolean>
+        if (stravaResult === 'connected') initial.watch = true
+        return initial
+    })
+    const watchResolvedOnLoad = data.steps.steps.find(step => step.id === 'watch')?.resolved ?? false
+    const nothingStarted = !data.state.tour && !data.state.install && !data.state.push && !data.state.photo && !data.state.watch
     const [showIntro, setShowIntro] = useState(needsPassword || (nothingStarted && stravaResult === null))
 
     const steps = data.steps.steps
@@ -85,17 +93,19 @@ export function AthleteWelcome({ data, email, stravaResult }: {
         setResolved(prev => ({ ...prev, [step]: true }))
         void setAthleteOnboardingStepAction(step, resolution)
     }, [])
+    const finishTour = useCallback(() => resolveStep('tour', 'done'), [resolveStep])
     const resolveInstall = useCallback((resolution: 'done' | 'skipped') => resolveStep('install', resolution), [resolveStep])
     const resolvePush = useCallback((resolution: 'done' | 'skipped') => resolveStep('push', resolution), [resolveStep])
+    const resolvePhoto = useCallback((resolution: 'done' | 'skipped') => resolveStep('photo', resolution), [resolveStep])
     const skipWatch = useCallback(() => resolveStep('watch', 'skipped'), [resolveStep])
 
     // Vuelta de Strava: queda conectado y se avanza
     useEffect(() => {
-        if (stravaResult === 'connected' && !data.steps.steps[2].resolved) {
+        if (stravaResult === 'connected' && !watchResolvedOnLoad) {
             void setAthleteOnboardingStepAction('watch', 'done')
         }
         if (stravaResult) router.replace('/bienvenida', { scroll: false })
-    }, [stravaResult, data.steps.steps, router])
+    }, [stravaResult, watchResolvedOnLoad, router])
 
     // Todo hecho: al plan
     useEffect(() => {
@@ -118,8 +128,10 @@ export function AthleteWelcome({ data, email, stravaResult }: {
             ) : current ? (
                 <div>
                     <StepHeader index={currentIndex} total={steps.length} optional={current.optional} />
+                    {current.id === 'tour' && <TourStep coachName={data.coachName} onDone={finishTour} />}
                     {current.id === 'install' && <InstallStep onResolve={resolveInstall} />}
                     {current.id === 'push' && <PushStep coachName={data.coachName} onResolve={resolvePush} />}
+                    {current.id === 'photo' && <PhotoStep data={data} onResolve={resolvePhoto} />}
                     {current.id === 'watch' && <WatchStep stravaError={stravaResult === 'error'} onSkip={skipWatch} />}
                     {current.id === 'form' && <FormStep data={data} />}
                 </div>
@@ -247,7 +259,57 @@ function StepHeader({ index, total, optional }: { index: number; total: number; 
 }
 
 // ---------------------------------------------------------------------------
-// Paso 1 · Instalar la app
+// Paso 1 · Cómo funciona la app
+// ---------------------------------------------------------------------------
+
+/** Las pestañas de la barra inferior, en el mismo orden */
+function tourSections(coachName: string): { icon: LucideIcon; title: string; text: string }[] {
+    return [
+        { icon: Dumbbell, title: 'Fuerza', text: 'Tu rutina con series y pesos. Apunta lo que levantas.' },
+        { icon: Salad, title: 'Dieta', text: 'Tus macros, tus comidas y tus suplementos.' },
+        { icon: CalendarDays, title: 'Plan', text: 'Tu semana día a día: qué toca hoy.' },
+        { icon: ChartNoAxesColumnIncreasing, title: 'Progreso', text: 'Tu evolución, tus revisiones y tus fotos.' },
+        { icon: MessageCircle, title: 'Chat', text: `Escribe a ${coachName} cuando lo necesites.` },
+    ]
+}
+
+function TourStep({ coachName, onDone }: { coachName: string; onDone: () => void }) {
+    return (
+        <div>
+            <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight">Así funciona NexTrain</h1>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+                {coachName} prepara tu plan y lo ves aquí. Tú entrenas, apuntas lo que haces y {coachName} lo revisa.
+            </p>
+
+            <ul className="mt-5 divide-y divide-border/60 rounded-2xl border border-border/70" aria-label="Pestañas de la app">
+                {tourSections(coachName).map(section => (
+                    <li key={section.title} className="flex items-center gap-3 px-3.5 py-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <section.icon className="h-4 w-4" strokeWidth={2} />
+                        </span>
+                        <span className="min-w-0 text-sm leading-snug">
+                            <span className="block font-semibold">{section.title}</span>
+                            <span className="block text-muted-foreground">{section.text}</span>
+                        </span>
+                    </li>
+                ))}
+            </ul>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Arriba a la derecha: notificaciones
+                <Bell className="mx-1 inline-block h-3.5 w-3.5 -translate-y-px" aria-hidden />
+                y perfil<UserRound className="ml-1 inline-block h-3.5 w-3.5 -translate-y-px" aria-hidden />.
+            </p>
+
+            <Button size="lg" className="group mt-6 h-11 w-full rounded-xl text-[15px] font-semibold" onClick={onDone}>
+                Entendido
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Button>
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Paso 2 · Instalar la app
 // ---------------------------------------------------------------------------
 
 function InstallStep({ onResolve }: { onResolve: (resolution: 'done' | 'skipped') => void }) {
@@ -376,7 +438,7 @@ function InstructionRow({ n, icon, children }: { n: number; icon: React.ReactNod
 }
 
 // ---------------------------------------------------------------------------
-// Paso 2 · Avisos
+// Paso 3 · Avisos
 // ---------------------------------------------------------------------------
 
 function PushStep({ coachName, onResolve }: { coachName: string; onResolve: (resolution: 'done' | 'skipped') => void }) {
@@ -460,7 +522,49 @@ function PushStep({ coachName, onResolve }: { coachName: string; onResolve: (res
 }
 
 // ---------------------------------------------------------------------------
-// Paso 3 · Reloj (Strava)
+// Paso 4 · Foto de perfil
+// ---------------------------------------------------------------------------
+
+function PhotoStep({ data, onResolve }: { data: AthleteWelcomeData; onResolve: (resolution: 'done' | 'skipped') => void }) {
+    return (
+        <div>
+            <h1 className="text-[1.6rem] font-bold leading-tight tracking-tight">Ponte una foto de perfil</h1>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+                Con tu foto la cuenta queda completa y se ve mucho más profesional. Hazte una o elígela de la galería.
+            </p>
+            <AvatarPhotoPicker name={data.fullName} initialUrl={data.avatarUrl} className="mt-7">
+                {({ choose, uploading, uploaded }) => (
+                    <div className="mt-7 flex flex-col gap-2.5">
+                        {uploaded ? (
+                            <>
+                                <Button size="lg" className="h-11 rounded-xl text-[15px] font-semibold" onClick={() => onResolve('done')}>
+                                    Continuar
+                                    <ArrowRight className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" className="h-10 rounded-xl" onClick={choose} disabled={uploading}>
+                                    Cambiar foto
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button size="lg" className="h-11 rounded-xl text-[15px] font-semibold" onClick={choose} disabled={uploading}>
+                                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                    {uploading ? 'Subiendo…' : 'Elegir foto'}
+                                </Button>
+                                <Button variant="ghost" className="h-10 rounded-xl" onClick={() => onResolve('skipped')} disabled={uploading}>
+                                    Ahora no
+                                </Button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </AvatarPhotoPicker>
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Paso 5 · Reloj (Strava)
 // ---------------------------------------------------------------------------
 
 function WatchStep({ stravaError, onSkip }: { stravaError: boolean; onSkip: () => void }) {
@@ -503,7 +607,7 @@ function WatchStep({ stravaError, onSkip }: { stravaError: boolean; onSkip: () =
 }
 
 // ---------------------------------------------------------------------------
-// Paso 4 · Formulario del coach
+// Paso 6 · Formulario del coach
 // ---------------------------------------------------------------------------
 
 function FormStep({ data }: { data: AthleteWelcomeData }) {

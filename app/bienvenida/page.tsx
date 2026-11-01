@@ -9,8 +9,9 @@ export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Bienvenida | NexTrain' }
 
 /**
- * Bienvenida del atleta invitado: crear contraseña y cuatro pasos
- * (instalar la app, avisos, reloj y formulario del coach).
+ * Bienvenida del atleta invitado: crear contraseña, cómo funciona la app,
+ * cuatro cosas que configurar (instalar la app, avisos, foto y reloj) y el
+ * formulario del coach.
  */
 export default async function BienvenidaPage({ searchParams }: { searchParams: Promise<{ strava?: string; paso?: string }> }) {
     const supabase = await createClient()
