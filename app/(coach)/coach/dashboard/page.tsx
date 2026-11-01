@@ -8,7 +8,6 @@ import {
     CalendarDays,
     CheckCircle2,
     Clock,
-    FileText,
     Inbox,
     Users,
 } from 'lucide-react'
@@ -22,8 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { NotificationsList } from '@/components/coach/dashboard/NotificationsList'
 import { AttentionClientList } from '@/components/coach/dashboard/AttentionClientList'
-import { CheckinRow } from '@/components/coach/dashboard/CheckinRow'
-import { ActivityFeed } from '@/components/coach/dashboard/ActivityFeed'
+import { RecentReviewsAndActivity } from '@/components/coach/dashboard/RecentReviewsAndActivity'
 import { WeekAgenda } from '@/components/coach/dashboard/WeekAgenda'
 import { DashboardFreshness } from '@/components/coach/dashboard/DashboardFreshness'
 import { cn } from '@/lib/utils'
@@ -273,52 +271,11 @@ export default async function CoachDashboardPage() {
                 </div>
 
                 {/* Fila 2: historial a la izquierda, actividad a la derecha */}
-                <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_1fr]">
-                    <div className="min-w-0">
-                        <Card id="ultimas-revisiones" className="scroll-mt-24 overflow-hidden">
-                            <div className="flex items-center justify-between border-b p-4">
-                                <div className="flex items-center gap-2">
-                                    <FileText className="h-5 w-5 text-primary" />
-                                    <h2 className="font-semibold">Últimas revisiones recibidas</h2>
-                                    {dashboard.kpis.checkinsThisWeek > 0 && (
-                                        <Badge variant="secondary" className="border-0 bg-muted/70">
-                                            {dashboard.kpis.checkinsThisWeek} esta semana
-                                        </Badge>
-                                    )}
-                                </div>
-                            </div>
-                            {dashboard.recentCheckins.length === 0 ? (
-                                <div className="p-8 text-center">
-                                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                                        <FileText className="h-6 w-6 text-muted-foreground" />
-                                    </div>
-                                    <p className="font-medium">Aún no hay revisiones recibidas</p>
-                                    <p className="mt-1 text-sm text-muted-foreground">
-                                        Cuando tus atletas respondan formularios aparecerán aquí con su estado.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-border/60">
-                                    {dashboard.recentCheckins.map((checkin) => (
-                                        <CheckinRow key={checkin.id} checkin={checkin} />
-                                    ))}
-                                </div>
-                            )}
-                        </Card>
-                    </div>
-
-                    <div className="min-w-0">
-                        <Card className="overflow-hidden">
-                            <div className="flex items-center justify-between border-b p-4">
-                                <div className="flex items-center gap-2">
-                                    <Clock className="h-5 w-5 text-primary" />
-                                    <h2 className="font-semibold">Actividad reciente</h2>
-                                </div>
-                            </div>
-                            <ActivityFeed items={dashboard.activity} />
-                        </Card>
-                    </div>
-                </div>
+                <RecentReviewsAndActivity
+                    recentCheckins={dashboard.recentCheckins}
+                    activity={dashboard.activity}
+                    checkinsThisWeek={dashboard.kpis.checkinsThisWeek}
+                />
             </div>
         </div>
     )
