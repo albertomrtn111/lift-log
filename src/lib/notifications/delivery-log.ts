@@ -16,6 +16,8 @@ export interface DeliveryRecord {
     push?: PushSendResult | null
     emailStatus?: 'sent' | 'failed' | 'skipped' | null
     dedupeKey?: string | null
+    /** Push retenido por horas de silencio: cuándo debe salir. */
+    heldUntil?: string | null
 }
 
 /** Error de Postgres por clave única: el candado ya lo tiene otra ejecución. */
@@ -42,6 +44,7 @@ function toRow(record: DeliveryRecord) {
         push_pruned: record.push?.prunedCount ?? 0,
         email_status: record.emailStatus ?? null,
         dedupe_key: record.dedupeKey ?? null,
+        ...(record.heldUntil ? { held_until: record.heldUntil } : {}),
     }
 }
 
@@ -98,6 +101,17 @@ export async function setDeliveryEmailStatus(id: string | 'untracked', emailStat
     try {
         const admin = createAdminClient()
         const { error } = await admin.from('notification_deliveries').update({ email_status: emailStatus }).eq('id', id)
+        if (error) console.warn('[notifications] No se pudo anotar el email de la entrega:', error.message)
+    } catch (error) {
+        console.warn('[notifications] Error anotando el email de la entrega:', error)
+    }
+}
+
+/** Anota cómo fue el email de una entrega registrada con esa clave. */
+export async function setDeliveryEmailStatusByKey(dedupeKey: string, emailStatus: 'sent' | 'failed' | 'skipped') {
+    try {
+        const admin = createAdminClient()
+        const { error } = await admin.from('notification_deliveries').update({ email_status: emailStatus }).eq('dedupe_key', dedupeKey)
         if (error) console.warn('[notifications] No se pudo anotar el email de la entrega:', error.message)
     } catch (error) {
         console.warn('[notifications] Error anotando el email de la entrega:', error)

@@ -12,6 +12,21 @@ import {
     type ClientNotification,
 } from '@/data/notifications'
 import { syncAppBadge } from '@/lib/notifications/app-badge'
+import { syncTimezoneAction } from '@/lib/notifications/timezone-actions'
+
+const TIMEZONE_SYNC_KEY = 'nt:timezone-synced'
+
+/** Una vez por sesión: guarda la zona horaria del móvil para los recordatorios. */
+function syncTimezoneOnce() {
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        if (!tz || window.sessionStorage.getItem(TIMEZONE_SYNC_KEY) === tz) return
+        window.sessionStorage.setItem(TIMEZONE_SYNC_KEY, tz)
+        void syncTimezoneAction(tz).catch(() => window.sessionStorage.removeItem(TIMEZONE_SYNC_KEY))
+    } catch {
+        // Sin sessionStorage o sin Intl: se usará la zona del servidor.
+    }
+}
 
 export function useClientNotifications() {
     const [notifications, setNotifications] = useState<ClientNotification[]>([])
@@ -27,6 +42,7 @@ export function useClientNotifications() {
 
     useEffect(() => {
         refresh()
+        syncTimezoneOnce()
     }, [refresh])
 
     // Realtime: escucha inserts en client_notifications para el cliente actual

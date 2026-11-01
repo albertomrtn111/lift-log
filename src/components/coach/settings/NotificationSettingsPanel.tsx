@@ -11,6 +11,7 @@ import {
     Loader2,
     Mail,
     MessageSquare,
+    Moon,
     Smartphone,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -35,6 +36,9 @@ interface CoachPreferencesState {
     same_day_time: string
     digest_enabled: boolean
     digest_time: string
+    quiet_hours_enabled: boolean
+    quiet_start: string
+    quiet_end: string
 }
 
 const DEFAULT_PREFERENCES: CoachPreferencesState = {
@@ -45,6 +49,9 @@ const DEFAULT_PREFERENCES: CoachPreferencesState = {
     same_day_time: '09:00',
     digest_enabled: true,
     digest_time: '08:30',
+    quiet_hours_enabled: false,
+    quiet_start: '22:00',
+    quiet_end: '08:00',
 }
 
 export function NotificationSettingsPanel() {
@@ -303,6 +310,48 @@ export function NotificationSettingsPanel() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className="rounded-xl border p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <Moon className="h-4 w-4 text-indigo-600" />
+                                    <div>
+                                        <p className="text-sm font-medium">Horas de silencio</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Los avisos se guardan en la campana y el push te llega todo junto al terminar.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Switch
+                                    checked={preferences.quiet_hours_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, quiet_hours_enabled: v }))}
+                                />
+                            </div>
+                            {preferences.quiet_hours_enabled && (
+                                <div className="mt-3 grid max-w-sm grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="quiet-start" className="text-xs">Desde</Label>
+                                        <Input
+                                            id="quiet-start"
+                                            type="time"
+                                            value={preferences.quiet_start}
+                                            onChange={(e) => setPreferences(p => ({ ...p, quiet_start: e.target.value }))}
+                                            className="mt-1.5"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="quiet-end" className="text-xs">Hasta</Label>
+                                        <Input
+                                            id="quiet-end"
+                                            type="time"
+                                            value={preferences.quiet_end}
+                                            onChange={(e) => setPreferences(p => ({ ...p, quiet_end: e.target.value }))}
+                                            className="mt-1.5"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex justify-end">

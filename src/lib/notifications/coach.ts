@@ -3,6 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToCoach, type PushPayload, type PushSendResult } from '@/lib/push'
 import { logDelivery } from '@/lib/notifications/delivery-log'
+import { isValidTimezone, quietHoursEnd } from '@/lib/notifications/quiet-hours'
 import {
     buildAthleteJoinedCopy,
     buildCheckinReceivedCopy,
@@ -26,6 +27,10 @@ export interface CoachNotificationPreferences {
     digest_enabled: boolean
     /** HH:MM — hora local del resumen diario */
     digest_time: string
+    /** Horas de silencio: el push espera a que terminen (desactivadas por defecto) */
+    quiet_hours_enabled: boolean
+    quiet_start: string
+    quiet_end: string
 }
 
 export const DEFAULT_COACH_NOTIFICATION_PREFERENCES: CoachNotificationPreferences = {
@@ -36,6 +41,9 @@ export const DEFAULT_COACH_NOTIFICATION_PREFERENCES: CoachNotificationPreference
     same_day_time: '09:00',
     digest_enabled: true,
     digest_time: '08:30',
+    quiet_hours_enabled: false,
+    quiet_start: '22:00',
+    quiet_end: '08:00',
 }
 
 /** Normaliza un time de Postgres ('20:00:00') a 'HH:MM'. */
@@ -67,7 +75,18 @@ export async function getCoachNotificationPreferences(
         same_day_time: normalizeTime(data.same_day_time, '09:00'),
         digest_enabled: data.digest_enabled ?? true,
         digest_time: normalizeTime(data.digest_time, '08:30'),
+        quiet_hours_enabled: data.quiet_hours_enabled ?? false,
+        quiet_start: normalizeTime(data.quiet_start, '22:00'),
+        quiet_end: normalizeTime(data.quiet_end, '08:00'),
     }
+}
+
+/** Zona horaria del coach (coaches.timezone) o la de Madrid. */
+async function getCoachTimezone(coachId: string): Promise<string> {
+    const admin = createAdminClient()
+    const { data } = await admin.from('coaches').select('timezone').eq('id', coachId).maybeSingle()
+    const tz = data?.timezone as string | null | undefined
+    return isValidTimezone(tz) ? tz! : 'Europe/Madrid'
 }
 
 /** Si el aviso anterior del mismo tema fue hace menos de esto, el push no vuelve a sonar. */
@@ -206,6 +225,29 @@ export async function notifyCoach(
             return Boolean(inbox)
         }
 
+        // Horas de silencio del coach: queda en la campana y el push sale al terminar.
+        const heldUntil = prefs.quiet_hours_enabled && inbox
+            ? quietHoursEnd({
+                now: new Date(),
+                tz: await getCoachTimezone(coachId),
+                enabled: true,
+                start: prefs.quiet_start,
+                end: prefs.quiet_end,
+            })
+            : null
+        if (heldUntil) {
+            await logDelivery({
+                audience: 'coach',
+                coachId,
+                kind,
+                status: 'sent',
+                skippedReason: 'quiet_hours',
+                inbox: true,
+                heldUntil: heldUntil.toISOString(),
+            })
+            return true
+        }
+
         const recentlyAlerted = inbox?.previousUpdatedAt
             ? Date.now() - new Date(inbox.previousUpdatedAt).getTime() < QUIET_REGROUP_MS
             : false
@@ -299,6 +341,13 @@ export async function notifyCoachCheckinSubmitted(input: {
 async function sendGroupedPush(coachId: string, payload: PushPayload, kind: string) {
     const prefs = await getCoachNotificationPreferences(coachId)
     if (!prefs.reviews_enabled) return
+    const heldUntil = prefs.quiet_hours_enabled
+        ? quietHoursEnd({ now: new Date(), tz: await getCoachTimezone(coachId), enabled: true, start: prefs.quiet_start, end: prefs.quiet_end })
+        : null
+    if (heldUntil) {
+        await logDelivery({ audience: 'coach', coachId, kind, status: 'sent', skippedReason: 'quiet_hours', heldUntil: heldUntil.toISOString() })
+        return
+    }
     const result = await sendPushToCoach(coachId, { ...payload, badge: await countUnreadCoachNotifications(coachId) })
     await logDelivery({
         audience: 'coach',

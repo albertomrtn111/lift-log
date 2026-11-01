@@ -37,6 +37,7 @@ import {
     updateNotificationPreferencesAction,
 } from './actions'
 import ProfileLoading from './loading'
+import { DeliverySettingsGroup } from './DeliverySettingsGroup'
 
 type ClientNotificationPreferences = {
     messages_enabled: boolean
@@ -280,7 +281,7 @@ export default function ProfilePage() {
 
                 <SettingsGroup
                     title="Notificaciones"
-                    footer="Los avisos que apagues aquí tampoco aparecerán en la campana."
+                    footer="Elige qué te avisa en el móvil. Mensajes, revisiones y cambios de plan siempre quedan en la campana aunque apagues su aviso."
                 >
                     <PushDeviceRow />
                     <NotificationPreferenceRow
@@ -323,12 +324,14 @@ export default function ProfilePage() {
                         icon={Activity}
                         iconTone="bg-orange-500/10 text-orange-600 dark:text-orange-400"
                         title="Actividades importadas"
-                        description="Cuando llega una actividad nueva desde Strava"
+                        description="Un aviso a las 20:00 si tienes actividades de Strava sin RPE"
                         checked={notificationPreferences.activities_enabled}
                         disabled={loadingNotificationPreferences || savingNotificationKey === 'activities_enabled'}
                         onCheckedChange={(checked) => handleNotificationToggle('activities_enabled', checked)}
                     />
                 </SettingsGroup>
+
+                <DeliverySettingsGroup />
 
                 <SettingsGroup title="Cuenta">
                     <SettingsRow icon={UserRound} title="Datos personales" description="Nombre y email" href="/profile/settings" />
