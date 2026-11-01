@@ -1,8 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireActiveCoachId, type CoachAuthResult } from '@/lib/auth/require-coach'
 import { revalidatePath } from 'next/cache'
 import type { CoachAIProfile } from '@/data/coach-ai-profile'
 
@@ -14,12 +13,12 @@ import type { CoachAIProfile } from '@/data/coach-ai-profile'
 export async function saveOnboardingStep(
     stepData: Partial<Omit<CoachAIProfile, 'id' | 'coach_id' | 'created_at' | 'updated_at'>>
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    let supabase: CoachAuthResult['supabase'], coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     const { error } = await supabase
         .from('coach_ai_profiles')
@@ -42,12 +41,12 @@ export async function saveOnboardingStep(
  * Called from CoachAIOnboarding (client component).
  */
 export async function approveCoachAIProfile(): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    let supabase: CoachAuthResult['supabase'], coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     const adminSupabase = createAdminClient()
     const { error } = await adminSupabase

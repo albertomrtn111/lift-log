@@ -17,6 +17,7 @@ import {
     MessageCircle,
     MoreHorizontal,
     LineChart,
+    CreditCard,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
 import { LogoMark } from '@/components/brand/LogoMark'
@@ -59,6 +60,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
         items: [
             { href: '/coach/members', icon: Users, label: 'Atletas', badgeKey: 'membersPendingSignup' as const },
             { href: '/coach/billing', icon: Receipt, label: 'Facturación' },
+            { href: '/coach/subscription', icon: CreditCard, label: 'Suscripción' },
         ]
     },
     {

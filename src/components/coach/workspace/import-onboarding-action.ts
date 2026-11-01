@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { callGemini } from '@/lib/ai/gemini'
 import { AthleteAIProfileOutputSchema } from '@/lib/ai/generate-athlete-profile'
@@ -117,12 +117,14 @@ export async function importOnboardingToAthleteProfile(
     clientId: string,
     clientName: string
 ): Promise<ImportOnboardingResult> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    // Mismo guard que el resto de acciones de coach (incluye la suscripción: esto gasta IA)
+    let supabase: Awaited<ReturnType<typeof createClient>>
+    let coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     // 1. Find the latest reviewed onboarding checkin for this client
     const admin = createAdminClient()

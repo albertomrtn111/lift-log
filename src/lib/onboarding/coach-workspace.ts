@@ -4,6 +4,7 @@ import type { User } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findTier, isCycle, type Cycle, type TierId } from '@/components/auth/plans'
 import type { DisciplineId, ExpectedAthletesId } from './coach-options'
+import { TRIAL_DAYS } from '@/lib/subscription/access.js'
 
 /** Estado del onboarding guardado en coaches.onboarding_state */
 export interface CoachOnboardingState {
@@ -45,7 +46,8 @@ export function getSignupIntent(user: User): SignupIntent | null {
 }
 
 /**
- * Crea (o recupera) el espacio del coach que acaba de registrarse.
+ * Crea (o recupera) el espacio del coach que acaba de registrarse y arranca
+ * su prueba gratis (Pro durante TRIAL_DAYS días, sin tarjeta).
  * Idempotente: si ya es coach activo devuelve su espacio.
  */
 export async function ensureCoachWorkspace(user: User, intent: SignupIntent): Promise<string> {
@@ -56,6 +58,7 @@ export async function ensureCoachWorkspace(user: User, intent: SignupIntent): Pr
         p_subscription_tier: intent.tier,
         p_billing_cycle: intent.cycle,
         p_max_active_clients: intent.maxActiveClients,
+        p_trial_days: TRIAL_DAYS,
     })
     if (error || typeof data !== 'string') {
         throw new Error(error?.message ?? 'No se pudo crear tu espacio')

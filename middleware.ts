@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isAuthRetryableFetchError, isAuthSessionMissingError } from '@supabase/supabase-js'
+import { anySubscriptionAllows } from '@/lib/subscription/access.js'
 
 export async function middleware(req: NextRequest) {
     // REQUIRED: Handle Debug Escape Hatch first
@@ -203,6 +204,20 @@ export async function middleware(req: NextRequest) {
     if (isClientRoute && !isClient) {
         if (isDev) console.log(`[Middleware] Denied client access (resolved: ${resolvedMode}), redirecting to coach dashboard`)
         return redirectWithSession('/coach/dashboard')
+    }
+
+    // CASE: COACH SIN SUSCRIPCIÓN (prueba terminada o cancelada): solo puede ir a pagar
+    const isSubscriptionPage = pathname === '/coach/subscription'
+    if (isCoachRoute && isCoach && !isSubscriptionPage) {
+        const { data: subscriptions, error: subscriptionError } = await supabase
+            .from('coach_subscriptions')
+            .select('status, trial_ends_at, stripe_subscription_id')
+        if (subscriptionError) {
+            console.warn(`[Middleware] No se pudo leer la suscripción en ${pathname}: ${subscriptionError.message}`)
+        } else if (!anySubscriptionAllows(subscriptions)) {
+            if (isDev) console.log(`[Middleware] Coach ${user.id} without active subscription, redirecting to /coach/subscription`)
+            return redirectWithSession('/coach/subscription')
+        }
     }
 
     // FINAL DECISION LOG

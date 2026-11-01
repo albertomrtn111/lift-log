@@ -46,6 +46,10 @@ Variables opcionales: `NEXTTRAIN_SSH_KEY` (por defecto `/Users/albertomrtn/SERVI
 
 Las migraciones no se deshacen con el rollback: si una migración rompió algo, hay que corregirla con otra migración.
 
+### Stripe (suscripción de los coaches)
+
+Las variables `STRIPE_*` van en el `.env` del servidor; cómo obtenerlas y en qué orden desplegar la migración, el MCP y la web está en `docs/suscripcion-coach.md`.
+
 ## Problemas conocidos
 
 ### Ficheros de root

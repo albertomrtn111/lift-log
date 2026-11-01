@@ -7,6 +7,7 @@ import { sendAthleteInvite } from '@/lib/onboarding/athlete-invite'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
+import { getAthleteUsage } from '@/lib/subscription/coach-subscription'
 import {
     getCoachBillingSettings,
     settleBillingBeforeReactivation,
@@ -43,6 +44,12 @@ export async function reactivateClientAction(clientId: string) {
         ; ({ coachId } = await requireActiveCoachId())
     } catch (e: any) {
         return { success: false, error: 'No autorizado: ' + e.message }
+    }
+
+    // El límite del plan se comprueba antes de tocar Facturación (el trigger lo vuelve a aplicar)
+    const usage = await getAthleteUsage(coachId)
+    if (usage.limit !== null && usage.active >= usage.limit) {
+        return { success: false, error: `Has llegado al límite de ${usage.limit} atletas activos de tu plan. Puedes cambiar de plan en Suscripción.` }
     }
 
     // Antes de cambiar el estado: necesita la fecha de baja para cerrar esos meses

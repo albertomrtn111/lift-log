@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { AuthShell, SignupSteps } from '@/components/auth/AuthShell'
 import { COMPARISON, CONCIERGE, SALES_EMAIL, TIERS, priceOf, type Cycle, type Tier } from '@/components/auth/plans'
 import { cn } from '@/lib/utils'
+import { TRIAL_DAYS } from '@/lib/subscription/access.js'
 
 export default function SignupPlanPage() {
     const router = useRouter()
@@ -31,7 +32,8 @@ export default function SignupPlanPage() {
                     Elige tu plan
                 </h1>
                 <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-muted-foreground">
-                    Según cuántos atletas lleves. Podrás cambiar de plan cuando quieras.
+                    Empiezas con {TRIAL_DAYS} días gratis de todo Pro, sin tarjeta. Al acabar, sigues con el plan que elijas.
+                    Precios sin IVA.
                 </p>
 
                 <div className="mt-8 inline-grid grid-cols-2 rounded-full border border-border/70 bg-muted/60 p-1" role="tablist" aria-label="Periodicidad">
@@ -209,7 +211,7 @@ function TierCard({ tier, level, cycle, onSelect }: { tier: Tier; level: number;
 
                 <div className="mt-6 flex items-baseline gap-1">
                     <span className="text-[2.75rem] font-bold leading-none tracking-tight tabular-nums">{price} €</span>
-                    <span className={cn('text-sm', dark ? 'text-white/50' : 'text-muted-foreground')}>/{cycle === 'monthly' ? 'mes' : 'año'}</span>
+                    <span className={cn('text-sm', dark ? 'text-white/50' : 'text-muted-foreground')}>/{cycle === 'monthly' ? 'mes' : 'año'} + IVA</span>
                 </div>
                 <p className={cn('mt-2 h-4 text-xs', dark ? 'text-white/50' : 'text-muted-foreground')}>
                     {cycle === 'yearly'

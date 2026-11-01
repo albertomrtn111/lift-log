@@ -39,14 +39,24 @@ function membershipDb(coaches: unknown) {
 }
 
 Deno.test('resolveCoach reads the workspace time zone in the membership query', async () => {
-  const withZone = membershipDb({ timezone: 'Atlantic/Canary' })
+  const active = { status: 'active' }
+  const withZone = membershipDb({ timezone: 'Atlantic/Canary', coach_subscriptions: active })
   assert.deepEqual(await resolveCoach(withZone.db), { coachId: coach, role: 'owner', timeZone: 'Atlantic/Canary' })
   // Una sola consulta: la zona viene embebida, sin otra petición a coaches.
   assert.deepEqual(withZone.calls.filter((call) => call[0] === 'from'), [['from', 'coach_memberships']])
-  assert.match(withZone.calls.find((call) => call[0] === 'select')[1], /coaches\(timezone\)/)
+  assert.match(withZone.calls.find((call) => call[0] === 'select')[1], /coaches\(timezone, coach_subscriptions\(/)
 
-  assert.equal((await resolveCoach(membershipDb(null).db)).timeZone, 'Europe/Madrid')
-  assert.equal((await resolveCoach(membershipDb({ timezone: null }).db)).timeZone, 'Europe/Madrid')
+  assert.equal((await resolveCoach(membershipDb({ timezone: null, coach_subscriptions: [active] }).db)).timeZone, 'Europe/Madrid')
+})
+
+Deno.test('resolveCoach blocks workspaces whose trial or subscription has ended', async () => {
+  const ended = membershipDb({ timezone: null, coach_subscriptions: { status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z', stripe_subscription_id: null } })
+  await assert.rejects(() => resolveCoach(ended.db), /prueba gratis/)
+  await assert.rejects(() => resolveCoach(membershipDb(null).db), /prueba gratis/)
+  await assert.rejects(() => resolveCoach(membershipDb({ coach_subscriptions: { status: 'canceled' } }).db), /prueba gratis/)
+
+  const trial = membershipDb({ timezone: null, coach_subscriptions: [{ status: 'trialing', trial_ends_at: '2999-01-01T00:00:00Z', stripe_subscription_id: null }] })
+  assert.equal((await resolveCoach(trial.db)).coachId, coach)
 })
 
 Deno.test('the tool runner resolves the zone once and passes today in that zone', async () => {

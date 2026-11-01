@@ -1,8 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
-import { getCoachIdForUser } from '@/lib/auth/get-user-role'
+import { requireActiveCoachId, type CoachAuthResult } from '@/lib/auth/require-coach'
 import type {
     AthleteAIProfileOutput,
     AthleteProfileAnswers,
@@ -13,12 +12,12 @@ export async function saveAthleteProfileStep(
     clientId: string,
     answers: AthleteProfileAnswers
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    let supabase: CoachAuthResult['supabase'], coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     const { error } = await supabase
         .from('athlete_ai_profiles')
@@ -41,12 +40,12 @@ export async function saveAthleteProfileStep(
 export async function approveAthleteProfile(
     clientId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    let supabase: CoachAuthResult['supabase'], coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     const { error } = await supabase
         .from('athlete_ai_profiles')
@@ -76,12 +75,12 @@ export async function updateGeneratedAthleteProfileSections(
         | 'key_points_and_working_rules'
     >
 ): Promise<{ success: boolean; error?: string }> {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { success: false, error: 'No autenticado' }
-
-    const coachId = await getCoachIdForUser(user.id)
-    if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    let supabase: CoachAuthResult['supabase'], coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Sin acceso de coach' }
+    }
 
     const currentProfile = await getAthleteAIProfile(coachId, clientId)
     if (!currentProfile) return { success: false, error: 'Perfil no encontrado' }

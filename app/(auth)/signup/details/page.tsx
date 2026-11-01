@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { AuthHeading, AuthShell, AuthStatus, SignupSteps } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, AuthInput, PasswordInput, PasswordStrength } from '@/components/auth/AuthFields'
 import { findTier, isCycle, priceOf } from '@/components/auth/plans'
+import { TRIAL_DAYS } from '@/lib/subscription/access.js'
 import { authErrorMessage, classifyAuthError } from '@/lib/auth/auth-errors'
 
 function SignupDetailsInner() {
@@ -98,8 +99,7 @@ function SignupDetailsInner() {
                 }
             >
                 <p>
-                    Te hemos enviado un enlace a <span className="font-semibold text-foreground">{sentTo}</span>. Ábrelo para activar tu cuenta con el plan{' '}
-                    <span className="font-semibold text-foreground">{tier.name}</span>.
+                    Te hemos enviado un enlace a <span className="font-semibold text-foreground">{sentTo}</span>. Ábrelo para activar tu cuenta y empezar tus {TRIAL_DAYS} días gratis.
                 </p>
                 <p className="text-sm">¿No llega? Mira en spam o promociones; puede tardar un par de minutos.</p>
             </AuthStatus>
@@ -109,7 +109,7 @@ function SignupDetailsInner() {
     return (
         <>
             <SignupSteps current={2} className="mb-8" />
-            <AuthHeading title="Crea tu cuenta" description="En un minuto estarás dando de alta a tu primer atleta." />
+            <AuthHeading title="Crea tu cuenta" description={`${TRIAL_DAYS} días gratis con todo Pro, sin tarjeta. En un minuto estarás dando de alta a tu primer atleta.`} />
 
             <div className="mb-6 flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/30 p-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -120,7 +120,7 @@ function SignupDetailsInner() {
                         Plan {tier.name} <span className="font-normal text-muted-foreground">· {cycle === 'monthly' ? 'mensual' : 'anual'}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                        {price} €/{cycle === 'monthly' ? 'mes' : 'año'} · hasta {tier.athletes} atletas
+                        {price} €/{cycle === 'monthly' ? 'mes' : 'año'} + IVA al acabar la prueba · hasta {tier.athletes} atletas
                     </p>
                 </div>
                 <Link href="/signup" className="shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-primary transition-colors hover:bg-primary/10">

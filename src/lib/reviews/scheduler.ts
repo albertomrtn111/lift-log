@@ -17,6 +17,7 @@ import { sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
 import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
+import { getBlockedCoachIds } from '@/lib/subscription/coach-subscription'
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid'
 
@@ -49,6 +50,18 @@ function addDays(dateStr: string, days: number): string {
     const d = new Date(`${dateStr}T12:00:00Z`)
     d.setUTCDate(d.getUTCDate() + days)
     return d.toISOString().slice(0, 10)
+}
+
+/** Última fecha de la cadencia que ya ha vencido (≤ hoy). Si la revisión se
+ *  quedó atrás (cron caído, espacio pausado por la suscripción), el periodo del
+ *  check-in es el más reciente y no uno de hace semanas. */
+function latestDueOnOrBefore(dueDate: string, frequencyDays: number, today: string): string {
+    const freq = Math.max(1, frequencyDays)
+    let latest = dueDate
+    while (addDays(latest, freq) <= today) {
+        latest = addDays(latest, freq)
+    }
+    return latest
 }
 
 /** Avanza la fecha de vencimiento manteniendo la cadencia desde la fecha
@@ -125,6 +138,9 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
     }
 
     const schedules = (data ?? []) as unknown as DueScheduleRow[]
+    // Espacios con la prueba terminada o sin suscripción: se pausan sus revisiones.
+    // No se avanza la fecha, así que al pagar sale una (la pendiente) y sigue la cadencia.
+    const blockedCoaches = await getBlockedCoachIds(schedules.map(schedule => schedule.coach_id))
     const items: DispatchResultItem[] = []
     const sentByCoach = new Map<string, string[]>()
 
@@ -140,6 +156,10 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
             // --- Filtros de elegibilidad -----------------------------------
             if (!schedule.client) {
                 items.push({ ...base, status: 'skipped', detail: 'Cliente no encontrado' })
+                continue
+            }
+            if (blockedCoaches.has(schedule.coach_id)) {
+                items.push({ ...base, status: 'skipped', detail: 'Espacio sin suscripción activa' })
                 continue
             }
             if (schedule.client.status !== 'active') {
@@ -175,7 +195,7 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
                 .eq('review_schedule_id', schedule.id)
 
             // --- Crear el check-in ------------------------------------------
-            const periodEnd = schedule.next_due_date
+            const periodEnd = latestDueOnOrBefore(schedule.next_due_date, schedule.frequency_days, today)
             const periodStart = addDays(periodEnd, -Math.max(1, schedule.frequency_days))
 
             const { data: newCheckin, error: insertErr } = await admin
