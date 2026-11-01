@@ -59,8 +59,8 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
         fetchPhotos().finally(() => setLoading(false))
     }, [fetchPhotos])
 
-    const getPublicUrl = useCallback(
-        (path: string, size: 'preview' | 'original' = 'original'): string =>
+    const getSignedUrl = useCallback(
+        (path: string, size: 'preview' | 'original' = 'original'): Promise<string | null> =>
             getCheckinMediaImageUrl(supabase, path, size),
         [supabase]
     )
@@ -95,18 +95,22 @@ export function CheckinPhotosViewer({ checkinId, coachId }: CheckinPhotosViewerP
     useEffect(() => {
         if (lightboxIndex === null || photos.length < 2) return
         const preload = (idx: number) => {
-            const img = new window.Image()
-            img.src = getPublicUrl(photos[idx].path, 'preview')
+            getSignedUrl(photos[idx].path, 'preview').then((url) => {
+                if (!url) return
+                const img = new window.Image()
+                img.src = url
+            })
         }
         preload((lightboxIndex + 1) % photos.length)
         preload((lightboxIndex - 1 + photos.length) % photos.length)
-    }, [lightboxIndex, photos, getPublicUrl])
+    }, [lightboxIndex, photos, getSignedUrl])
 
     const handleDownload = async (e: React.MouseEvent, path: string) => {
         e.preventDefault()
         e.stopPropagation()
         try {
-            const url = getPublicUrl(path)
+            const url = await getSignedUrl(path)
+            if (!url) throw new Error('No se pudo firmar la URL de la foto')
             const response = await fetch(url)
             const blob = await response.blob()
             const objectUrl = URL.createObjectURL(blob)
