@@ -199,13 +199,14 @@ export async function sendClientChatMessageAction(
         }
     }
 
-    // Aviso al coach: campana + push agrupado por conversación (nunca bloquea el envío)
+    // Aviso al coach: campana + push agrupado por conversación. No se espera:
+    // el atleta ve su mensaje enviado al instante (el aviso nunca lanza errores).
     const previewSource = trimmed
         || (attachment?.type === 'audio' ? '🎤 Nota de voz'
             : attachment?.type === 'image' ? '📷 Imagen'
             : `📎 ${attachment?.name ?? 'Documento'}`)
     const preview = previewSource.length > 100 ? `${previewSource.substring(0, 97)}...` : previewSource
-    await notifyCoachClientMessage({ coachId: context.coachId, clientId: context.clientId, preview })
+    void notifyCoachClientMessage({ coachId: context.coachId, clientId: context.clientId, preview })
 
     return {
         success: true,

@@ -107,7 +107,7 @@ export default async function CoachDashboardPage() {
 
     return (
         <div className="min-h-screen pb-20 lg:pb-8">
-            <DashboardFreshness />
+            <DashboardFreshness coachId={coachId} />
 
             <div className="space-y-6 px-4 pt-5 lg:px-8">
                 {checklist?.visible && <OnboardingChecklistCard coachId={coachId} checklist={checklist} />}
