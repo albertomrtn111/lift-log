@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { COACH_BADGES_CHANGED_EVENT, COACH_DASHBOARD_STALE_KEY } from '@/lib/coach-badges-events'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 
 const REFRESH_THROTTLE_MS = 15_000
+/** Agrupa los avisos que llegan seguidos (p. ej. varios mensajes) en un solo refresco */
+const LIVE_REFRESH_DEBOUNCE_MS = 1_000
 
-export function DashboardFreshness() {
+export function DashboardFreshness({ coachId }: { coachId: string }) {
     const router = useRouter()
     const lastRefreshAtRef = useRef(Date.now())
 
@@ -60,6 +64,36 @@ export function DashboardFreshness() {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
     }, [refreshIfStale, refreshNow])
+
+    // En vivo: todo lo que hace un atleta y le importa al coach (revisión o
+    // formulario enviado, mensaje, atleta nuevo…) deja un aviso en
+    // coach_notifications, así que basta con escuchar esa tabla.
+    useEffect(() => {
+        const supabase = createClient()
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const refreshSoon = () => {
+            clearTimeout(timer)
+            timer = setTimeout(refreshNow, LIVE_REFRESH_DEBOUNCE_MS)
+        }
+
+        const channel = supabase
+            .channel(uniqueChannelName(`coach-dashboard:${coachId}`))
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'coach_notifications',
+                filter: `coach_id=eq.${coachId}`,
+            }, (payload) => {
+                // Marcar avisos como leídos no cambia el dashboard
+                if ((payload.new as { is_read?: boolean } | null)?.is_read === false) refreshSoon()
+            })
+            .subscribe(resyncOnResubscribe(refreshNow))
+
+        return () => {
+            clearTimeout(timer)
+            supabase.removeChannel(channel)
+        }
+    }, [coachId, refreshNow])
 
     return null
 }
