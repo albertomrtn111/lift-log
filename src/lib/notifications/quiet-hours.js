@@ -59,7 +59,8 @@ export function quietHoursEnd({ now, tz, enabled, start, end }) {
   const to = minutesOfDay(end)
   if (from === null || to === null || from === to) return null
 
-  const { minutes } = zonedClock(now, isValidTimezone(tz) ? tz : 'Europe/Madrid')
+  const zone = isValidTimezone(tz) ? tz : 'Europe/Madrid'
+  const { minutes } = zonedClock(now, zone)
   let untilEnd = null
   if (from < to) {
     if (minutes >= from && minutes < to) untilEnd = to - minutes
@@ -71,7 +72,12 @@ export function quietHoursEnd({ now, tz, enabled, start, end }) {
   if (untilEnd === null) return null
 
   const startOfMinute = Math.floor(now.getTime() / 60_000) * 60_000
-  return new Date(startOfMinute + untilEnd * 60_000)
+  const candidate = new Date(startOfMinute + untilEnd * 60_000)
+  // Si esa noche cambia la hora, el reloj local no marca `to`: se corrige el desfase.
+  let drift = zonedClock(candidate, zone).minutes - to
+  if (drift > 720) drift -= 1440
+  if (drift < -720) drift += 1440
+  return new Date(candidate.getTime() - drift * 60_000)
 }
 
 const ATHLETE_KIND_LABELS = {
@@ -129,6 +135,9 @@ export const DEFAULT_CLIENT_DELIVERY_SETTINGS = {
   quiet_start: '22:00',
   quiet_end: '08:00',
   timezone: null,
+  workout_reminder_enabled: false,
+  workout_reminder_time: '08:00',
+  week_summary_enabled: true,
 }
 
 export const DEFAULT_COACH_QUIET_HOURS = {
@@ -145,8 +154,9 @@ function normalizeHour(value, fallback) {
 }
 
 /**
- * Ajustes de entrega del atleta: email de revisiones, horas de silencio y zona
- * horaria. Lo que no sea válido vuelve a su valor por defecto.
+ * Ajustes de entrega del atleta: email de revisiones, horas de silencio, zona
+ * horaria, entreno del día y resumen semanal. Lo que no sea válido vuelve a su
+ * valor por defecto.
  * @param {Record<string, unknown> | null | undefined} input
  */
 export function sanitizeClientDeliverySettings(input) {
@@ -158,6 +168,9 @@ export function sanitizeClientDeliverySettings(input) {
     quiet_start: normalizeHour(source.quiet_start, defaults.quiet_start),
     quiet_end: normalizeHour(source.quiet_end, defaults.quiet_end),
     timezone: isValidTimezone(/** @type {string} */ (source.timezone)) ? /** @type {string} */ (source.timezone) : null,
+    workout_reminder_enabled: typeof source.workout_reminder_enabled === 'boolean' ? source.workout_reminder_enabled : defaults.workout_reminder_enabled,
+    workout_reminder_time: normalizeHour(source.workout_reminder_time, defaults.workout_reminder_time),
+    week_summary_enabled: typeof source.week_summary_enabled === 'boolean' ? source.week_summary_enabled : defaults.week_summary_enabled,
   }
 }
 

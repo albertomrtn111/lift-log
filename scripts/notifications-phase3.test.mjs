@@ -64,10 +64,22 @@ test('delivery settings fall back to safe defaults', () => {
     quiet_start: '22:00',
     quiet_end: '08:00',
     timezone: null,
+    workout_reminder_enabled: false,
+    workout_reminder_time: '08:00',
+    week_summary_enabled: true,
   })
   assert.deepEqual(
     sanitizeClientDeliverySettings({ reviews_email_enabled: false, quiet_start: '23:00:00', quiet_end: 'nope', timezone: 'Atlantic/Canary' }),
-    { reviews_email_enabled: false, quiet_hours_enabled: true, quiet_start: '23:00', quiet_end: '08:00', timezone: 'Atlantic/Canary' },
+    {
+      reviews_email_enabled: false,
+      quiet_hours_enabled: true,
+      quiet_start: '23:00',
+      quiet_end: '08:00',
+      timezone: 'Atlantic/Canary',
+      workout_reminder_enabled: false,
+      workout_reminder_time: '08:00',
+      week_summary_enabled: true,
+    },
   )
   assert.deepEqual(sanitizeCoachQuietHours({ quiet_hours_enabled: true }), { quiet_hours_enabled: true, quiet_start: '22:00', quiet_end: '08:00' })
 })

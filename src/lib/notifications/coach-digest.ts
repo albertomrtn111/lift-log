@@ -7,6 +7,7 @@ import { notifyCoach, coachClientUrl } from '@/lib/notifications/coach'
 import { logDelivery } from '@/lib/notifications/delivery-log'
 import {
     buildCoachDigest,
+    buildCoachWeeklyDigest,
     daysBetweenKeys,
     trainingProgramEndDate,
 } from '@/lib/notifications/coach-digest-content'
@@ -230,4 +231,115 @@ export async function sendCoachDailyDigest(coachId: string, today: string, tz: s
 
     await logDelivery({ audience: 'coach', coachId, kind: 'daily_digest_email', status: emailStatus === 'failed' ? 'failed' : 'sent', emailStatus })
     return emailStatus === 'failed' ? 'failed' : 'sent'
+}
+
+/**
+ * Resumen semanal (lunes, a la hora del resumen diario): cómo fue la semana
+ * pasada y qué viene. Email + entrada en la campana, sin push.
+ */
+export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: string, now: Date = new Date()): Promise<'sent' | 'failed' | 'empty'> {
+    const admin = createAdminClient()
+    const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString()
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 86_400_000).toISOString()
+    const inAWeek = addDaysKey(today, 7)
+
+    const { data: clientRows } = await admin
+        .from('clients')
+        .select('id, full_name, created_at')
+        .eq('coach_id', coachId)
+        .eq('status', 'active')
+        .eq('is_sample', false)
+    const clients = (clientRows ?? []) as Array<{ id: string; full_name: string | null; created_at: string }>
+    const clientIds = clients.map(c => c.id)
+    // Sin atletas activos no hay semana que resumir (cuentas de prueba, coaches nuevos).
+    if (clientIds.length === 0) return 'empty'
+
+    const [sent, answered, messages, schedules, recentAnswers, pendingOld] = await Promise.all([
+        admin.from('checkins').select('id', { count: 'exact', head: true })
+            .eq('coach_id', coachId).eq('type', 'checkin').gte('created_at', weekAgo),
+        admin.from('checkins').select('id')
+            .eq('coach_id', coachId).eq('type', 'checkin').gte('submitted_at', weekAgo),
+        admin.from('messages').select('sender_role')
+            .eq('coach_id', coachId).gte('created_at', weekAgo),
+        clientIds.length
+            ? admin.from('client_review_schedules').select('id', { count: 'exact', head: true })
+                .eq('coach_id', coachId).eq('is_active', true).in('client_id', clientIds)
+                .gte('next_due_date', today).lt('next_due_date', inAWeek)
+            : Promise.resolve({ count: 0 }),
+        admin.from('checkins').select('client_id')
+            .eq('coach_id', coachId).eq('type', 'checkin').gte('submitted_at', twoWeeksAgo),
+        admin.from('checkins').select('client_id')
+            .eq('coach_id', coachId).eq('type', 'checkin').in('status', ['pending', 'archived']).gte('created_at', twoWeeksAgo),
+    ])
+
+    const answeredIds = ((answered.data ?? []) as Array<{ id: string }>).map(r => r.id)
+    const approved = answeredIds.length
+        ? await admin.from('reviews').select('id', { count: 'exact', head: true }).in('checkin_id', answeredIds).eq('status', 'approved')
+        : { count: 0 }
+    const messageRows = (messages.data ?? []) as Array<{ sender_role: string }>
+
+    // Atletas a los que se envió revisión en 14 días y no han respondido ninguna
+    const answeredRecently = new Set(((recentAnswers.data ?? []) as Array<{ client_id: string }>).map(r => r.client_id))
+    const askedRecently = new Set(((pendingOld.data ?? []) as Array<{ client_id: string }>).map(r => r.client_id))
+    const silentAthletes = clients
+        .filter(c => askedRecently.has(c.id) && !answeredRecently.has(c.id))
+        .map(c => ({ clientId: c.id, name: c.full_name?.trim() || 'Atleta' }))
+
+    const daily = await gatherCoachDigestData(coachId, today, tz, now)
+    const expiringThisWeek = daily.expiring.filter(e => e.daysLeft >= 0).length
+    const activity = (sent.count ?? 0) + answeredIds.length + messageRows.length + (schedules.count ?? 0) + expiringThisWeek + silentAthletes.length
+    if (activity === 0) return 'empty'
+
+    const weekly = buildCoachWeeklyDigest({
+        reviewsSent: sent.count ?? 0,
+        reviewsAnswered: answeredIds.length,
+        reviewsApproved: approved.count ?? 0,
+        athleteMessages: messageRows.filter(m => m.sender_role === 'client').length,
+        coachMessages: messageRows.filter(m => m.sender_role === 'coach').length,
+        silentAthletes,
+        reviewsThisWeek: schedules.count ?? 0,
+        expiringThisWeek,
+    })
+
+    const appUrl = getAppUrl()
+    const sections: CoachDigestEmailSection[] = weekly.sections.map(section => ({
+        title: section.title,
+        items: section.items.map(item => ({
+            label: item.label,
+            detail: item.detail,
+            url: `${appUrl}${TAB_URL[section.tab]('clientId' in item ? item.clientId : undefined)}`,
+        })),
+    }))
+
+    const label = dateLabel(today, tz)
+    const { emails, name } = await getCoachRecipients(coachId)
+    let emailStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
+    for (const to of emails) {
+        const result = await sendCoachDigestEmail({
+            to,
+            coachName: name,
+            dateLabel: label,
+            headline: weekly.headline,
+            sections,
+            dashboardUrl: `${appUrl}/coach/dashboard`,
+            settingsUrl: `${appUrl}/coach/settings?tab=notificaciones`,
+            weekly: true,
+        })
+        emailStatus = result.ok ? 'sent' : emailStatus === 'sent' ? 'sent' : 'failed'
+    }
+
+    await notifyCoach(coachId, 'system', {
+        title: 'Tu resumen de la semana',
+        body: weekly.headline,
+        url: '/coach/analytics',
+        tag: `coach-weekly-${today}`,
+    }, { kind: 'weekly_digest', groupKey: `weekly:${today}`, push: false })
+
+    await logDelivery({ audience: 'coach', coachId, kind: 'weekly_digest_email', status: emailStatus === 'failed' ? 'failed' : 'sent', emailStatus })
+    return emailStatus === 'failed' ? 'failed' : 'sent'
+}
+
+function addDaysKey(key: string, days: number) {
+    const [y, m, d] = key.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }

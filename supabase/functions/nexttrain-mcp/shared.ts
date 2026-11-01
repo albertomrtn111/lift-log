@@ -197,6 +197,42 @@ export type RunContext = {
   log: Record<string, unknown>
 }
 
+// Herramientas que cambian algo que el atleta ve en su app. Tras escribir con
+// éxito dejan un aviso en notification_outbox; la web lo procesa y avisa al
+// atleta igual que cuando el coach guarda desde el portal (y solo si el plan
+// es el que el atleta ve).
+const PLAN_CHANGE_TOOLS: Record<string, 'training' | 'diet' | 'macros' | 'cardio'> = {
+  create_strength_program: 'training',
+  update_strength_program: 'training',
+  update_strength_program_days: 'training',
+  create_diet_plan: 'diet',
+  update_diet_plan: 'diet',
+  create_macro_plan: 'macros',
+  update_macro_plan: 'macros',
+  schedule_cardio_session: 'cardio',
+  update_cardio_session: 'cardio',
+}
+
+function changedPlanId(log: Record<string, unknown>, result: unknown): string | null {
+  const value = result as Row | null
+  const id = log.record_id ?? value?.program?.id ?? value?.diet_plan?.id ?? value?.macro_plan?.id ?? value?.session?.id ?? null
+  return typeof id === 'string' ? id : null
+}
+
+/** Encola el aviso al atleta. Nunca falla la herramienta: si no se puede, no hay aviso. */
+export async function queuePlanChangeNotice(db: Db, tool: string, coachId: string, clientId: string | null | undefined, log: Record<string, unknown>, result: unknown) {
+  const kind = PLAN_CHANGE_TOOLS[tool]
+  if (!kind || !clientId) return
+  try {
+    const { error } = await db.from('notification_outbox').insert({
+      coach_id: coachId, client_id: clientId, kind, plan_id: changedPlanId(log, result), source: 'mcp',
+    })
+    if (error) console.error(JSON.stringify({ event: 'nexttrain_mcp_notice_failed', tool }))
+  } catch {
+    // Sin cola (migración sin aplicar o cliente de pruebas): el cambio ya está guardado.
+  }
+}
+
 export function createToolRunner(db: Db, helpers: ToolHelpers = defaultHelpers) {
   const { resolveCoach, requireClient, jsonResult, toolError, audit, now = () => new Date() } = helpers
   return async (tool: string, options: RunOptions, action: (context: RunContext) => Promise<unknown>) => {
@@ -209,6 +245,7 @@ export function createToolRunner(db: Db, helpers: ToolHelpers = defaultHelpers) 
       const log: Record<string, unknown> = {}
       const result = await action({ coachId, timeZone, today: todayIn(timeZone, now()), client, log })
       audit(tool, { coach_id: coachId, ...scope, ...log, status: 'ok' })
+      await queuePlanChangeNotice(db, tool, coachId, options.clientId, log, result)
       return jsonResult(result)
     } catch (error) {
       audit(tool, { ...scope, status: 'error' })

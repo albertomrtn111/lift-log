@@ -36,6 +36,7 @@ interface CoachPreferencesState {
     same_day_time: string
     digest_enabled: boolean
     digest_time: string
+    weekly_digest_enabled: boolean
     quiet_hours_enabled: boolean
     quiet_start: string
     quiet_end: string
@@ -49,6 +50,7 @@ const DEFAULT_PREFERENCES: CoachPreferencesState = {
     same_day_time: '09:00',
     digest_enabled: true,
     digest_time: '08:30',
+    weekly_digest_enabled: true,
     quiet_hours_enabled: false,
     quiet_start: '22:00',
     quiet_end: '08:00',
@@ -259,7 +261,19 @@ export function NotificationSettingsPanel() {
                                     onCheckedChange={(v) => setPreferences(p => ({ ...p, digest_enabled: v }))}
                                 />
                             </div>
-                            {preferences.digest_enabled && (
+                            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
+                                <div>
+                                    <p className="text-sm font-medium">Resumen semanal</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Los lunes: revisiones respondidas, mensajes, atletas sin respuesta y lo que viene.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={preferences.weekly_digest_enabled}
+                                    onCheckedChange={(v) => setPreferences(p => ({ ...p, weekly_digest_enabled: v }))}
+                                />
+                            </div>
+                            {(preferences.digest_enabled || preferences.weekly_digest_enabled) && (
                                 <div className="mt-3 max-w-[12rem]">
                                     <Label htmlFor="digest-time" className="text-xs">Hora del resumen</Label>
                                     <Input

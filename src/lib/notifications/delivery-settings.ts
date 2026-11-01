@@ -12,9 +12,14 @@ export type ClientDeliverySettings = {
     quiet_start: string
     quiet_end: string
     timezone: string | null
+    /** Push con el entreno del día, a la hora elegida (apagado por defecto) */
+    workout_reminder_enabled: boolean
+    workout_reminder_time: string
+    /** Resumen de la semana en el buzón los lunes */
+    week_summary_enabled: boolean
 }
 
-const COLUMNS = 'reviews_email_enabled, quiet_hours_enabled, quiet_start, quiet_end, timezone'
+const COLUMNS = 'reviews_email_enabled, quiet_hours_enabled, quiet_start, quiet_end, timezone, workout_reminder_enabled, workout_reminder_time, week_summary_enabled'
 
 /** Ajustes de entrega del atleta. Ante cualquier fallo, los valores por defecto. */
 export async function getClientDeliverySettings(clientId: string): Promise<ClientDeliverySettings> {

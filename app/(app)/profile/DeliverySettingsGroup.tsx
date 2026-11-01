@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Mail, Moon } from 'lucide-react'
+import { CalendarDays, Dumbbell, Mail, Moon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
@@ -14,6 +14,9 @@ const DEFAULTS: ClientDeliverySettings = {
     quiet_start: '22:00',
     quiet_end: '08:00',
     timezone: null,
+    workout_reminder_enabled: false,
+    workout_reminder_time: '08:00',
+    week_summary_enabled: true,
 }
 
 /** Perfil → «Cómo te llegan»: email de revisiones y horas de silencio. */
@@ -52,8 +55,8 @@ export function DeliverySettingsGroup() {
         <SettingsGroup
             title="Cómo te llegan"
             footer={settings.timezone
-                ? `Las horas se aplican en tu zona horaria (${settings.timezone}). Los recordatorios de suplementación respetan su hora.`
-                : 'Los recordatorios de suplementación respetan la hora que fijó tu entrenador.'}
+                ? `Las horas se aplican en tu zona horaria (${settings.timezone}). Los recordatorios de suplementación y el entreno del día respetan su hora.`
+                : 'Los recordatorios de suplementación y el entreno del día respetan su hora aunque sea de silencio.'}
         >
             <SettingsRow
                 icon={Mail}
@@ -66,6 +69,50 @@ export function DeliverySettingsGroup() {
                         disabled={disabled}
                         onCheckedChange={(checked) => save({ reviews_email_enabled: checked })}
                         aria-label="Recibir revisiones por email"
+                    />
+                }
+            />
+            <SettingsRow
+                icon={Dumbbell}
+                iconTone="bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                title="Entreno del día"
+                description={settings.workout_reminder_enabled
+                    ? `A las ${settings.workout_reminder_time}, los días que tengas sesión`
+                    : 'Un aviso con lo que toca hoy, a la hora que elijas'}
+                trailing={
+                    <Switch
+                        checked={settings.workout_reminder_enabled}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => save({ workout_reminder_enabled: checked })}
+                        aria-label="Avisarme del entreno del día"
+                    />
+                }
+            />
+            {settings.workout_reminder_enabled && (
+                <div className="flex items-center gap-3 px-3.5 py-3">
+                    <label className="flex flex-1 items-center justify-between gap-2 text-sm">
+                        <span className="text-muted-foreground">Hora del aviso</span>
+                        <input
+                            type="time"
+                            value={settings.workout_reminder_time}
+                            disabled={disabled}
+                            onChange={(e) => e.target.value && save({ workout_reminder_time: e.target.value })}
+                            className="rounded-lg border border-border bg-background px-2 py-1 text-sm"
+                        />
+                    </label>
+                </div>
+            )}
+            <SettingsRow
+                icon={CalendarDays}
+                iconTone="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                title="Tu semana"
+                description="Los lunes, en la campana: las sesiones que tienes por delante"
+                trailing={
+                    <Switch
+                        checked={settings.week_summary_enabled}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => save({ week_summary_enabled: checked })}
+                        aria-label="Resumen de la semana"
                     />
                 }
             />

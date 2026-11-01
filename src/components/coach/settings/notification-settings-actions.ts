@@ -49,6 +49,7 @@ export async function updateCoachNotificationPreferencesAction(
                 same_day_time: input.same_day_time,
                 digest_enabled: Boolean(input.digest_enabled),
                 digest_time: input.digest_time,
+                weekly_digest_enabled: Boolean(input.weekly_digest_enabled),
                 quiet_hours_enabled: Boolean(input.quiet_hours_enabled),
                 quiet_start: input.quiet_start,
                 quiet_end: input.quiet_end,
