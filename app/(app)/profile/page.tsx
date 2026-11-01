@@ -21,10 +21,10 @@ import {
     UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { useAppMode } from '@/hooks/use-app-mode'
+import { useAvatarUpload } from '@/hooks/useAvatarUpload'
 import { APP_MODE_COOKIE, type AppMode } from '@/lib/mode-utils'
 import type { UserRole } from '@/types/coach'
 import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
@@ -32,7 +32,6 @@ import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
 import {
     getNotificationPreferencesAction,
-    updateAvatarUrlAction,
     updateNotificationPreferencesAction,
 } from './actions'
 import ProfileLoading from './loading'
@@ -59,10 +58,9 @@ function deleteCookie(name: string) {
 
 export default function ProfilePage() {
     const router = useRouter()
-    const queryClient = useQueryClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
-    const [uploading, setUploading] = useState(false)
+    const { upload: uploadAvatar, uploading } = useAvatarUpload()
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
         messages_enabled: true,
@@ -139,49 +137,17 @@ export default function ProfilePage() {
 
     const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
+        // Reset input para permitir subir el mismo archivo otra vez
+        if (fileInputRef.current) fileInputRef.current.value = ''
         if (!file) return
 
-        const maxSize = 2 * 1024 * 1024 // 2 MB
-        if (file.size > maxSize) {
-            toast.error('La imagen no puede superar 2 MB')
+        const result = await uploadAvatar(file)
+        if (!result.ok) {
+            toast.error(result.error)
             return
         }
-
-        setUploading(true)
-        try {
-            const supabase = createClient()
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('No autenticado')
-
-            const ext = file.name.split('.').pop() ?? 'jpg'
-            const path = `${user.id}/avatar.${ext}`
-
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(path, file, { upsert: true, contentType: file.type })
-
-            if (uploadError) throw uploadError
-
-            // Añadir cache-buster para que el browser no use la imagen anterior
-            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-            const urlWithBust = `${publicUrl}?t=${Date.now()}`
-
-            const result = await updateAvatarUrlAction(urlWithBust)
-            if (!result.success) throw new Error(result.error)
-
-            toast.success('Foto de perfil actualizada')
-            // El avatar del header y del perfil vienen de react-query, no del
-            // server render: invalidar para que la foto nueva se vea al momento.
-            await queryClient.invalidateQueries({ queryKey: ['client-context'] })
-            router.refresh()
-        } catch (err) {
-            console.error('[handleAvatarUpload]', err)
-            toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
-        } finally {
-            setUploading(false)
-            // Reset input para permitir subir el mismo archivo otra vez
-            if (fileInputRef.current) fileInputRef.current.value = ''
-        }
+        toast.success('Foto de perfil actualizada')
+        router.refresh()
     }
 
     if (isLoading) return <ProfileLoading />

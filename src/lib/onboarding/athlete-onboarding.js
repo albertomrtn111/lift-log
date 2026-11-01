@@ -1,10 +1,11 @@
 /**
- * Bienvenida del atleta: los cuatro pasos y los tiempos estimados.
+ * Bienvenida del atleta: cómo funciona la app, los pasos de configuración y
+ * el formulario del coach, con sus tiempos estimados.
  * Lógica pura (testeada en scripts/).
  *
  * @typedef {'done' | 'skipped'} StepResolution
- * @typedef {{ guided?: boolean, password_set_at?: string, install?: StepResolution, push?: StepResolution, watch?: StepResolution, completed_at?: string }} AthleteOnboardingState
- * @typedef {'install' | 'push' | 'watch' | 'form'} AthleteStepId
+ * @typedef {{ guided?: boolean, password_set_at?: string, tour?: StepResolution, install?: StepResolution, push?: StepResolution, photo?: StepResolution, watch?: StepResolution, completed_at?: string }} AthleteOnboardingState
+ * @typedef {'tour' | 'install' | 'push' | 'photo' | 'watch' | 'form'} AthleteStepId
  * @typedef {{ id: AthleteStepId, title: string, duration: string, optional: boolean, resolved: boolean }} AthleteStep
  */
 
@@ -54,6 +55,7 @@ export function formatMinutes(minutes) {
  * @param {{
  *   state: AthleteOnboardingState
  *   hasPushSubscription: boolean
+ *   hasAvatar: boolean
  *   stravaConnected: boolean
  *   form: 'none' | 'pending' | 'completed'
  *   formMinutes: number
@@ -62,12 +64,22 @@ export function formatMinutes(minutes) {
  */
 export function buildAthleteSteps(input) {
     const { state } = input
+    const pushResolved = Boolean(state.push) || input.hasPushSubscription
+    const watchResolved = Boolean(state.watch) || input.stravaConnected
+    const formResolved = input.form !== 'pending'
+    // «Cómo funciona» y la foto se añadieron el 01-11-2026. Quien ya había
+    // terminado la bienvenida no vuelve a ella: la foto se le pide con el aviso
+    // de novedades (src/lib/announcements/catalog.js).
+    const finishedBeforeNewSteps = !state.tour && !state.photo
+        && Boolean(state.install) && pushResolved && watchResolved && formResolved
     /** @type {AthleteStep[]} */
     const steps = [
+        { id: 'tour', title: 'Cómo funciona la app', duration: '30 s', optional: false, resolved: Boolean(state.tour) || finishedBeforeNewSteps },
         { id: 'install', title: 'Instalar la app', duration: '1 min', optional: false, resolved: Boolean(state.install) },
-        { id: 'push', title: 'Activar los avisos', duration: '30 s', optional: false, resolved: Boolean(state.push) || input.hasPushSubscription },
-        { id: 'watch', title: 'Conectar tu reloj', duration: '1 min', optional: true, resolved: Boolean(state.watch) || input.stravaConnected },
-        { id: 'form', title: 'Formulario de tu entrenador', duration: formatMinutes(input.formMinutes), optional: false, resolved: input.form !== 'pending' },
+        { id: 'push', title: 'Activar los avisos', duration: '30 s', optional: false, resolved: pushResolved },
+        { id: 'photo', title: 'Poner tu foto de perfil', duration: '30 s', optional: false, resolved: Boolean(state.photo) || input.hasAvatar || finishedBeforeNewSteps },
+        { id: 'watch', title: 'Conectar tu reloj', duration: '1 min', optional: true, resolved: watchResolved },
+        { id: 'form', title: 'Formulario de tu entrenador', duration: formatMinutes(input.formMinutes), optional: false, resolved: formResolved },
     ]
     const currentIndex = steps.findIndex(step => !step.resolved)
     return { steps, currentIndex, complete: currentIndex === -1 }

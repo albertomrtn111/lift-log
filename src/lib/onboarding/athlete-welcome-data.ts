@@ -14,6 +14,8 @@ export interface AthleteWelcomeData {
     /** Invitado con el flujo nuevo: solo a estos se les muestra la bienvenida */
     guided: boolean
     firstName: string
+    fullName: string | null
+    avatarUrl: string | null
     coachName: string
     needsPassword: boolean
     state: AthleteOnboardingState
@@ -66,8 +68,9 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
     if (!client) return null
 
     const clientId = client.id as string
-    const [coachName, { count: pushCount }, { data: integration }, { data: onboardingCheckins }] = await Promise.all([
+    const [coachName, { data: profile }, { count: pushCount }, { data: integration }, { data: onboardingCheckins }] = await Promise.all([
         getCoachDisplayName(client.coach_id as string),
+        admin.from('profiles').select('avatar_url').eq('id', userId).maybeSingle(),
         admin.from('push_subscriptions').select('id', { count: 'exact', head: true }).eq('client_id', clientId),
         admin.from('athlete_integrations').select('status').eq('client_id', clientId).eq('provider', 'strava').maybeSingle(),
         admin
@@ -91,12 +94,15 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
     const preferences = (client.preferences ?? {}) as { onboarding?: AthleteOnboardingState }
     const state = preferences.onboarding ?? {}
     const hasPushSubscription = (pushCount ?? 0) > 0
+    const avatarUrl = (profile?.avatar_url as string | null)?.trim() || null
     const stravaConnected = Boolean(integration && !['disconnected', 'revoked', 'error'].includes(integration.status as string))
 
     return {
         clientId,
         guided: Boolean(state.guided),
         firstName: (client.full_name as string | null)?.trim().split(/\s+/)[0] || 'atleta',
+        fullName: (client.full_name as string | null)?.trim() || null,
+        avatarUrl,
         coachName,
         // signed_up_at no sirve: el trigger de vinculación lo rellena al crear la cuenta
         needsPassword: !state.password_set_at,
@@ -110,6 +116,6 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
             sections,
             minutes,
         },
-        steps: buildAthleteSteps({ state, hasPushSubscription, stravaConnected, form: formStatus, formMinutes: minutes }),
+        steps: buildAthleteSteps({ state, hasPushSubscription, hasAvatar: Boolean(avatarUrl), stravaConnected, form: formStatus, formMinutes: minutes }),
     }
 }
