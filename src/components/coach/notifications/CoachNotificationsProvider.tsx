@@ -69,6 +69,20 @@ export function CoachNotificationsProvider({ children }: { children: React.React
         return () => { void supabase.removeChannel(channel) }
     }, [coachId, refresh])
 
+    // Al volver a la pestaña o recuperar la conexión, Realtime puede haberse
+    // perdido eventos: se vuelve a leer la campana.
+    useEffect(() => {
+        const resync = () => {
+            if (document.visibilityState === 'visible') void refresh()
+        }
+        document.addEventListener('visibilitychange', resync)
+        window.addEventListener('online', resync)
+        return () => {
+            document.removeEventListener('visibilitychange', resync)
+            window.removeEventListener('online', resync)
+        }
+    }, [refresh])
+
     useEffect(() => {
         if (!loading) syncAppBadge(unreadCount)
     }, [loading, unreadCount])
