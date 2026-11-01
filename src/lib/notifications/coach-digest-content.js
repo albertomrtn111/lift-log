@@ -171,3 +171,55 @@ export function trainingProgramEndDate(program) {
   if (candidates.length === 0) return null
   return candidates.sort()[0]
 }
+
+/**
+ * Resumen semanal del coach (lunes): cómo fue la semana pasada y qué viene.
+ * @param {{
+ *   reviewsSent: number
+ *   reviewsAnswered: number
+ *   reviewsApproved: number
+ *   athleteMessages: number
+ *   coachMessages: number
+ *   silentAthletes: Array<{ clientId: string; name: string }>
+ *   reviewsThisWeek: number
+ *   expiringThisWeek: number
+ * }} data
+ */
+export function buildCoachWeeklyDigest(data) {
+  const answerRate = data.reviewsSent > 0 ? Math.round((data.reviewsAnswered / data.reviewsSent) * 100) : null
+  const lastWeek = [
+    {
+      label: 'Revisiones respondidas',
+      detail: data.reviewsSent > 0
+        ? `${data.reviewsAnswered} de ${data.reviewsSent} enviadas (${answerRate} %)`
+        : `${data.reviewsAnswered} (no se envió ninguna)`,
+    },
+    { label: 'Revisiones validadas', detail: String(data.reviewsApproved) },
+    { label: 'Mensajes', detail: `${data.athleteMessages} de tus atletas · ${data.coachMessages} tuyos` },
+  ]
+  const ahead = [
+    { label: 'Revisiones que salen esta semana', detail: String(data.reviewsThisWeek) },
+    { label: 'Planes y objetivos que caducan', detail: String(data.expiringThisWeek) },
+  ]
+  const silent = data.silentAthletes.map((athlete) => ({
+    clientId: athlete.clientId,
+    label: athlete.name,
+    detail: 'Sin responder revisiones en 14 días',
+  }))
+
+  /** @type {Array<{ key: string; title: string; tab: 'checkins' | 'messages' | 'plan' | 'tasks' | 'calendar'; items: Array<{ clientId?: string; label: string; detail: string }> }>} */
+  const sections = [
+    { key: 'last-week', title: 'La semana pasada', tab: 'calendar', items: lastWeek },
+    { key: 'this-week', title: 'Esta semana', tab: 'calendar', items: ahead },
+  ]
+  if (silent.length > 0) {
+    sections.push({ key: 'silent', title: `Atletas sin respuesta (${silent.length})`, tab: 'checkins', items: silent })
+  }
+
+  return {
+    headline: answerRate === null
+      ? `${data.reviewsAnswered} revisiones respondidas la semana pasada`
+      : `${answerRate} % de revisiones respondidas la semana pasada`,
+    sections,
+  }
+}

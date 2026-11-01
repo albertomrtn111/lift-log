@@ -25,8 +25,10 @@ export interface CoachNotificationPreferences {
     same_day_time: string
     /** Resumen diario por email */
     digest_enabled: boolean
-    /** HH:MM — hora local del resumen diario */
+    /** HH:MM — hora local del resumen diario (y del semanal, los lunes) */
     digest_time: string
+    /** Resumen semanal por email los lunes */
+    weekly_digest_enabled: boolean
     /** Horas de silencio: el push espera a que terminen (desactivadas por defecto) */
     quiet_hours_enabled: boolean
     quiet_start: string
@@ -41,6 +43,7 @@ export const DEFAULT_COACH_NOTIFICATION_PREFERENCES: CoachNotificationPreference
     same_day_time: '09:00',
     digest_enabled: true,
     digest_time: '08:30',
+    weekly_digest_enabled: true,
     quiet_hours_enabled: false,
     quiet_start: '22:00',
     quiet_end: '08:00',
@@ -75,6 +78,7 @@ export async function getCoachNotificationPreferences(
         same_day_time: normalizeTime(data.same_day_time, '09:00'),
         digest_enabled: data.digest_enabled ?? true,
         digest_time: normalizeTime(data.digest_time, '08:30'),
+        weekly_digest_enabled: data.weekly_digest_enabled ?? true,
         quiet_hours_enabled: data.quiet_hours_enabled ?? false,
         quiet_start: normalizeTime(data.quiet_start, '22:00'),
         quiet_end: normalizeTime(data.quiet_end, '08:00'),

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getActiveSupplements, createSupplement, updateSupplement, deleteSupplement, type SupplementInput } from '@/data/supplements'
 import { useToast } from '@/hooks/use-toast'
+import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 
 export function useSupplements(coachId: string, clientId: string) {
     return useQuery({
@@ -18,6 +19,7 @@ export function useCreateSupplement(coachId: string, clientId: string) {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['supplements', coachId, clientId] })
             toast({ title: 'Suplemento añadido correctamente' })
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'supplements' })
         },
         onError: (err: any) => {
             toast({ title: 'Error al añadir suplemento', description: err.message, variant: 'destructive' })
@@ -31,9 +33,10 @@ export function useUpdateSupplement(coachId: string, clientId: string) {
     return useMutation({
         mutationFn: ({ id, input }: { id: string; input: Partial<SupplementInput> }) =>
             updateSupplement(id, input),
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['supplements', coachId, clientId] })
             toast({ title: 'Suplemento actualizado' })
+            void notifyClientPlanUpdatedAction({ clientId, kind: 'supplements', planId: variables.id })
         },
         onError: (err: any) => {
             toast({ title: 'Error al actualizar', description: err.message, variant: 'destructive' })

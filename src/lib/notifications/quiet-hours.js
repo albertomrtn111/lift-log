@@ -129,6 +129,9 @@ export const DEFAULT_CLIENT_DELIVERY_SETTINGS = {
   quiet_start: '22:00',
   quiet_end: '08:00',
   timezone: null,
+  workout_reminder_enabled: false,
+  workout_reminder_time: '08:00',
+  week_summary_enabled: true,
 }
 
 export const DEFAULT_COACH_QUIET_HOURS = {
@@ -145,8 +148,9 @@ function normalizeHour(value, fallback) {
 }
 
 /**
- * Ajustes de entrega del atleta: email de revisiones, horas de silencio y zona
- * horaria. Lo que no sea válido vuelve a su valor por defecto.
+ * Ajustes de entrega del atleta: email de revisiones, horas de silencio, zona
+ * horaria, entreno del día y resumen semanal. Lo que no sea válido vuelve a su
+ * valor por defecto.
  * @param {Record<string, unknown> | null | undefined} input
  */
 export function sanitizeClientDeliverySettings(input) {
@@ -158,6 +162,9 @@ export function sanitizeClientDeliverySettings(input) {
     quiet_start: normalizeHour(source.quiet_start, defaults.quiet_start),
     quiet_end: normalizeHour(source.quiet_end, defaults.quiet_end),
     timezone: isValidTimezone(/** @type {string} */ (source.timezone)) ? /** @type {string} */ (source.timezone) : null,
+    workout_reminder_enabled: typeof source.workout_reminder_enabled === 'boolean' ? source.workout_reminder_enabled : defaults.workout_reminder_enabled,
+    workout_reminder_time: normalizeHour(source.workout_reminder_time, defaults.workout_reminder_time),
+    week_summary_enabled: typeof source.week_summary_enabled === 'boolean' ? source.week_summary_enabled : defaults.week_summary_enabled,
   }
 }
 

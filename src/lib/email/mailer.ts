@@ -291,6 +291,8 @@ export async function sendCoachDigestEmail(params: {
     sections: CoachDigestEmailSection[]
     dashboardUrl: string
     settingsUrl: string
+    /** Resumen semanal: asunto, saludo y título propios. */
+    weekly?: boolean
 }): Promise<EmailResult> {
     const name = escapeHtml(params.coachName?.trim().split(/\s+/)[0] || 'coach')
     const sectionsHtml = params.sections.map(section => `
@@ -306,18 +308,18 @@ export async function sendCoachDigestEmail(params: {
         </table>`).join('')
 
     const body = `
-        <p>Buenos días, <strong>${name}</strong>. Esto es lo que tienes pendiente hoy:</p>
+        <p>Buenos días, <strong>${name}</strong>. ${params.weekly ? 'Así fue la semana pasada y esto es lo que viene:' : 'Esto es lo que tienes pendiente hoy:'}</p>
         <p style="font-size:14px;color:#6b7280;">${escapeHtml(params.headline)}</p>
         ${sectionsHtml}
         <p style="margin-top:24px;font-size:12px;color:#9ca3af;">
-          Puedes cambiar la hora o desactivar este resumen en
+          Puedes cambiar la hora o desactivar ${params.weekly ? 'los resúmenes' : 'este resumen'} en
           <a href="${escapeHtml(params.settingsUrl)}" style="color:#6b7280;">Ajustes → Notificaciones</a>.
         </p>`
 
     return send({
         to: params.to,
-        subject: `Tu día en NexTrain · ${params.dateLabel}`,
-        html: layout(`Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
+        subject: params.weekly ? `Tu semana en NexTrain · ${params.dateLabel}` : `Tu día en NexTrain · ${params.dateLabel}`,
+        html: layout(params.weekly ? `Resumen semanal, ${params.dateLabel}` : `Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
     })
 }
 

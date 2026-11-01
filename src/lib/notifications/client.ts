@@ -8,7 +8,7 @@ import {
     type ClientNotificationChannel,
 } from '@/lib/notifications/preferences'
 import { buildStravaActivityImportedNotification } from '@/lib/notifications/strava-activity'
-import { completeDelivery, logDelivery, type DeliveryRecord } from '@/lib/notifications/delivery-log'
+import { claimDelivery, completeDelivery, logDelivery, type DeliveryRecord } from '@/lib/notifications/delivery-log'
 import { getClientDeliverySettings } from '@/lib/notifications/delivery-settings'
 import { quietHoursEnd } from '@/lib/notifications/quiet-hours'
 
@@ -35,6 +35,9 @@ export type ClientNotificationKind =
     | 'plan_updated'
     | 'supplement'
     | 'strava_activity'
+    | 'strava_disconnected'
+    | 'workout_today'
+    | 'week_summary'
 
 export type ClientNotificationResult =
     | { status: 'sent'; inbox: boolean; pushDelivered: number }
@@ -153,7 +156,7 @@ async function countUnread(clientId: string): Promise<number | undefined> {
 /** Canales cuyo aviso sale del coach: apagarlos quita el push, pero el buzón lo guarda. */
 const COACH_DRIVEN_CHANNELS = new Set<ClientNotificationChannel>(['messages', 'reviews', 'plans'])
 /** Avisos que respetan su hora aunque sea de silencio (la eligió el coach a propósito). */
-const QUIET_HOURS_EXEMPT = new Set<ClientNotificationKind>(['supplement'])
+const QUIET_HOURS_EXEMPT = new Set<ClientNotificationKind>(['supplement', 'workout_today'])
 
 /**
  * Punto único de envío al cliente: buzón in-app + push.
@@ -479,7 +482,53 @@ export async function sendStravaFeedbackReminder(clientId: string, deliveryId: s
     return true
 }
 
-export type PlanUpdateKind = 'training' | 'diet' | 'macros'
+/** Entreno del día, a la hora que eligió el atleta (lo envía el cron de cada 15 minutos). */
+export async function sendWorkoutTodayNotification(
+    clientId: string,
+    copy: { title: string; body: string; url: string },
+    deliveryId: string | 'untracked',
+) {
+    return notifyClient(clientId, 'workout_today', { ...copy, tag: 'workout-today', type: 'general' }, 'plans', { deliveryId })
+}
+
+/** Resumen de la semana (lunes): solo buzón. */
+export async function sendWeekSummaryNotification(
+    clientId: string,
+    copy: { title: string; body: string; url: string },
+    deliveryId: string | 'untracked',
+) {
+    return notifyClient(clientId, 'week_summary', { ...copy, tag: 'week-summary', type: 'general' }, 'plans', { deliveryId, push: false })
+}
+
+/**
+ * Strava se ha desconectado o le faltan permisos: sin esto el atleta no se
+ * entera de que sus actividades han dejado de llegar. Uno al día como mucho.
+ */
+export async function sendStravaDisconnectedNotification(clientId: string, reason: 'revoked' | 'permissions') {
+    try {
+        const today = new Date().toISOString().slice(0, 10)
+        const deliveryId = await claimDelivery({
+            audience: 'client',
+            clientId,
+            kind: 'strava_disconnected',
+            dedupeKey: `strava-disconnected:${clientId}:${today}`,
+        })
+        if (!deliveryId) return
+        await notifyClient(clientId, 'strava_disconnected', {
+            title: reason === 'revoked' ? 'Strava se ha desconectado' : 'Strava necesita permisos',
+            body: reason === 'revoked'
+                ? 'Tus actividades ya no llegan a NexTrain. Vuelve a conectarlo desde tu perfil.'
+                : 'Faltan permisos para leer tus actividades. Vuelve a conectarlo desde tu perfil y acepta todos.',
+            url: '/profile',
+            tag: 'strava-disconnected',
+            type: 'general',
+        }, 'activities', { deliveryId })
+    } catch (error) {
+        console.warn('[notifications] Aviso de Strava desconectado no enviado:', error)
+    }
+}
+
+export type PlanUpdateKind = 'training' | 'diet' | 'macros' | 'cardio' | 'supplements'
 
 const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
     training: {
@@ -502,6 +551,20 @@ const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
         url: '/diet',
         tag: 'plan-updated-macros',
         type: 'macro_updated',
+    },
+    cardio: {
+        title: 'Tu planificación se ha actualizado',
+        body: 'Tu entrenador ha cambiado tus sesiones de cardio.',
+        url: '/planning',
+        tag: 'plan-updated-cardio',
+        type: 'plan_updated',
+    },
+    supplements: {
+        title: 'Tu suplementación ha cambiado',
+        body: 'Tu entrenador ha actualizado tus suplementos y sus horarios.',
+        url: '/diet?tab=supplements',
+        tag: 'plan-updated-supplements',
+        type: 'plan_updated',
     },
 }
 

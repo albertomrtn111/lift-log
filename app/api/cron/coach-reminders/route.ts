@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { schedulerTimezone } from '@/lib/reviews/scheduler'
 import { getCoachNotificationPreferences, notifyCoach } from '@/lib/notifications/coach'
-import { sendCoachDailyDigest } from '@/lib/notifications/coach-digest'
+import { sendCoachDailyDigest, sendCoachWeeklyDigest } from '@/lib/notifications/coach-digest'
 import { formatNameList } from '@/lib/notifications/coach-copy'
-import { releaseHeldPushes, sendStravaFeedbackReminders } from '@/lib/notifications/scheduled-jobs'
+import {
+    processNotificationOutbox,
+    releaseHeldPushes,
+    sendStravaFeedbackReminders,
+    sendWeekSummaries,
+    sendWorkoutReminders,
+} from '@/lib/notifications/scheduled-jobs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -22,10 +28,14 @@ export const maxDuration = 60
  * Y, para todos (lib/notifications/scheduled-jobs):
  *  - Suelta en un solo push lo retenido durante las horas de silencio.
  *  - Recordatorio de RPE de Strava a las 20:00 de cada atleta.
+ *  - Avisos de cambios de plan hechos por la IA (cola del MCP).
+ *  - Entreno del día y resumen de la semana del atleta.
+ *  - Resumen semanal del coach, los lunes a la hora del resumen diario.
  *
  * Dedupe: coach_reminder_log con unique(coach_id, kind, remind_date).
  * Seguridad: Authorization: Bearer <CRON_SECRET>. Fail-closed.
- * Ejecución manual (ignora la ventana horaria): ?force=1
+ * Ejecución manual (ignora la ventana horaria de los avisos del coach, no la
+ * de los del atleta): ?force=1
  */
 
 function getSecret(): string | null {
@@ -79,12 +89,17 @@ function inWindow(nowMinutes: number, targetTime: string): boolean {
     return nowMinutes >= target && nowMinutes < target + 15
 }
 
+function isMonday(dateStr: string): boolean {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1
+}
+
 function addDaysToDateStr(dateStr: string, days: number): string {
     const [y, m, d] = dateStr.split('-').map(Number)
     return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
-type ReminderKind = 'tasks_same_day' | 'tasks_day_before' | 'daily_digest'
+type ReminderKind = 'tasks_same_day' | 'tasks_day_before' | 'daily_digest' | 'weekly_digest'
 
 async function claimReminder(
     admin: ReturnType<typeof createAdminClient>,
@@ -151,6 +166,13 @@ async function handle(request: NextRequest) {
                     run: () => sendCoachDailyDigest(coachId, today, tz),
                 },
                 {
+                    kind: 'weekly_digest',
+                    enabled: prefs.weekly_digest_enabled && isMonday(today),
+                    when: prefs.digest_time,
+                    remindDate: today,
+                    run: () => sendCoachWeeklyDigest(coachId, today, tz),
+                },
+                {
                     kind: 'tasks_same_day',
                     enabled: prefs.tasks_enabled,
                     when: prefs.same_day_time,
@@ -209,9 +231,20 @@ async function handle(request: NextRequest) {
         jobs.heldPushes = { error: error instanceof Error ? error.message : String(error) }
     }
     try {
-        jobs.stravaFeedback = await sendStravaFeedbackReminders(new Date(), force)
+        jobs.stravaFeedback = await sendStravaFeedbackReminders()
     } catch (error) {
         jobs.stravaFeedback = { error: error instanceof Error ? error.message : String(error) }
+    }
+    for (const [key, job] of [
+        ['planChangesFromAI', () => processNotificationOutbox()],
+        ['workoutToday', () => sendWorkoutReminders()],
+        ['weekSummary', () => sendWeekSummaries()],
+    ] as const) {
+        try {
+            jobs[key] = await job()
+        } catch (error) {
+            jobs[key] = { error: error instanceof Error ? error.message : String(error) }
+        }
     }
 
     return NextResponse.json({ ok: true, coaches: coaches?.length ?? 0, sent, ...jobs })

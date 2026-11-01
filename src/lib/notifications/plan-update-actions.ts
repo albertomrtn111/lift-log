@@ -2,27 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { sendPlanUpdatedNotification, type PlanUpdateKind } from '@/lib/notifications/client'
-
-const PLAN_TABLES: Record<PlanUpdateKind, 'training_programs' | 'diet_plans' | 'macro_plans'> = {
-    training: 'training_programs',
-    diet: 'diet_plans',
-    macros: 'macro_plans',
-}
-
-type PlanRow = {
-    client_id: string
-    status?: string | null
-    effective_to?: string | null
-}
-
-/** Solo avisamos si el plan tocado es el que el cliente ve (o verá) en la app. */
-function isPlanVisibleToClient(kind: PlanUpdateKind, plan: PlanRow): boolean {
-    if (kind === 'macros') {
-        const today = new Date().toISOString().slice(0, 10)
-        return !plan.effective_to || plan.effective_to >= today
-    }
-    return plan.status === 'active'
-}
+import { PLAN_COLUMNS, PLAN_TABLES, isPlanVisibleToClient, type PlanRow } from '@/lib/notifications/plan-visibility'
 
 /**
  * Avisa al cliente de que su entrenamiento, dieta o macros han cambiado.
@@ -60,10 +40,9 @@ export async function notifyClientPlanUpdatedAction(input: {
         if (!membership) return { notified: false }
 
         if (input.planId) {
-            const columns = input.kind === 'macros' ? 'client_id, effective_to' : 'client_id, status'
             const { data: plan } = await supabase
                 .from(PLAN_TABLES[input.kind])
-                .select(columns)
+                .select(PLAN_COLUMNS[input.kind])
                 .eq('id', input.planId)
                 .maybeSingle()
 
