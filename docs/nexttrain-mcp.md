@@ -8,6 +8,8 @@ Servidor MCP remoto y multiusuario para entrenadores. Se despliega como Supabase
 
 Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login de NexTrain, muestra `/oauth/consent` y recibe un token de usuario. Todas las consultas se ejecutan con ese token y respetan RLS.
 
+La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/settings?tab=asistente-ia`): dirección con botón de copiar, pasos para Claude, Claude Code, ChatGPT y otros clientes, qué puede hacer la IA, ejemplos de peticiones y la lista de asistentes autorizados, que el coach puede desconectar (`auth.oauth.listGrants` / `revokeGrant` con su propia sesión). La dirección se calcula a partir de `NEXT_PUBLIC_SUPABASE_URL` (`src/lib/mcp-url.ts`). Los menús de los clientes se comprobaron en su documentación el 01-11-2026; si cambian, se actualizan en `src/components/coach/settings/McpSettingsPanel.tsx`.
+
 ## Herramientas
 
 - `who_am_i`: comprueba los espacios de entrenador disponibles.
