@@ -23,17 +23,37 @@ type HeldRow = {
     client_id: string | null
     coach_id: string | null
     kind: string
+    created_at: string
 }
 
-/** Envía un push por persona con lo retenido en sus horas de silencio. */
+/** Lote de ids por actualización: con cientos, la URL de PostgREST se hace demasiado larga. */
+const ID_BATCH = 100
+
+async function markReleased(admin: ReturnType<typeof createAdminClient>, ids: string[], at: string) {
+    for (let i = 0; i < ids.length; i += ID_BATCH) {
+        const { error } = await admin
+            .from('notification_deliveries')
+            .update({ released_at: at })
+            .in('id', ids.slice(i, i + ID_BATCH))
+            .is('released_at', null)
+        if (error) throw new Error(error.message)
+    }
+}
+
+/**
+ * Envía un push por persona con lo retenido en sus horas de silencio. Cada
+ * grupo se marca como enviado antes de mandarlo: si algo falla, como mucho se
+ * pierde ese push, pero nunca se repite cada 15 minutos.
+ */
 export async function releaseHeldPushes(now: Date = new Date()): Promise<{ released: number; pushes: number }> {
     const admin = createAdminClient()
     const { data, error } = await admin
         .from('notification_deliveries')
-        .select('id, audience, client_id, coach_id, kind')
+        .select('id, audience, client_id, coach_id, kind, created_at')
         .not('held_until', 'is', null)
         .is('released_at', null)
         .lte('held_until', now.toISOString())
+        .order('created_at', { ascending: true })
         .limit(1000)
     if (error) throw new Error(`Avisos retenidos: ${error.message}`)
 
@@ -46,38 +66,38 @@ export async function releaseHeldPushes(now: Date = new Date()): Promise<{ relea
         groups.set(key, [...(groups.get(key) ?? []), row])
     }
 
+    let released = 0
     let pushes = 0
     for (const group of groups.values()) {
         const first = group[0]
         try {
-            // Si ya lo ha leído todo en la app, no hace falta avisar.
-            const unread = first.audience === 'coach'
-                ? await admin.from('coach_notifications').select('id', { count: 'exact', head: true }).eq('coach_id', first.coach_id!).eq('is_read', false)
-                : await admin.from('client_notifications').select('id', { count: 'exact', head: true }).eq('client_id', first.client_id!).eq('is_read', false)
-            const unreadCount = unread.count ?? 0
+            await markReleased(admin, group.map(row => row.id), now.toISOString())
+            released += group.length
 
-            if (unreadCount > 0) {
-                const copy = buildHeldSummaryCopy(group.map(row => row.kind), first.audience)
-                const payload = { ...copy, tag: 'held-summary', badge: unreadCount }
-                if (first.audience === 'coach') {
-                    await sendPushToCoach(first.coach_id!, { ...payload, url: '/coach/dashboard' })
-                } else {
-                    await sendPushToClient(first.client_id!, { ...payload, url: '/' })
-                }
-                pushes += 1
+            // Solo cuenta lo retenido que sigue sin leer (lo de antes no es de esta noche).
+            const since = new Date(new Date(first.created_at).getTime() - 5_000).toISOString()
+            const unread = first.audience === 'coach'
+                ? await admin.from('coach_notifications').select('id', { count: 'exact', head: true })
+                    .eq('coach_id', first.coach_id!).eq('is_read', false).gte('updated_at', since)
+                : await admin.from('client_notifications').select('id', { count: 'exact', head: true })
+                    .eq('client_id', first.client_id!).eq('is_read', false).gte('created_at', since)
+            if ((unread.count ?? 0) === 0) continue
+
+            const copy = buildHeldSummaryCopy(group.map(row => row.kind), first.audience)
+            // Sin número para el icono: este recuento es solo de lo retenido, no el total.
+            const payload = { ...copy, tag: 'held-summary' }
+            if (first.audience === 'coach') {
+                await sendPushToCoach(first.coach_id!, { ...payload, url: '/coach/dashboard' })
+            } else {
+                await sendPushToClient(first.client_id!, { ...payload, url: '/' })
             }
+            pushes += 1
         } catch (err) {
             console.warn('[notifications/held] No se pudo soltar el aviso agrupado:', err)
         }
     }
 
-    const { error: updateError } = await admin
-        .from('notification_deliveries')
-        .update({ released_at: now.toISOString() })
-        .in('id', rows.map(row => row.id))
-    if (updateError) throw new Error(`Marcar avisos soltados: ${updateError.message}`)
-
-    return { released: rows.length, pushes }
+    return { released, pushes }
 }
 
 /** A las 20:00 de cada atleta con Strava: push si tiene actividades sin RPE. */

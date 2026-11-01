@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { resolveCheckinTemplateForClient } from '@/data/form-templates'
 import { getFormUrl } from '@/lib/app-url'
 import { toLocalDateStr } from '@/lib/date-utils'
-import { getReviewEmailPlan, sendReviewCreatedNotification } from '@/lib/notifications/client'
+import { decideReviewCreatedEmail, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import {
     listSchedulesForClient,
     type ClientReviewScheduleWithTemplate,
@@ -182,33 +182,36 @@ export async function sendReviewAction(
             .eq('id', chosenSchedule.id)
     }
 
-    // 8) Email directo desde la app — non-blocking. Solo si el atleta no
-    //    recibe el push de revisiones; si lo recibe, el email llega con el
-    //    recordatorio del día siguiente (lib/reviews/reminders).
-    const emailPlan = await getReviewEmailPlan(client.id)
-    if (emailPlan.canEmail && !emailPlan.hasReviewPush) {
-        const emailResult = await sendReviewEmailSmtp({
+    // 8) Aviso al atleta (push + buzón) y, si el push no le llegó, email.
+    //    Si llegó, el email espera al recordatorio del día siguiente
+    //    (lib/reviews/reminders). Todo non-blocking.
+    let pushDelivered = 0
+    try {
+        const notice = await sendReviewCreatedNotification(
+            client.id,
+            checkinId,
+            chosenSchedule?.review_template?.name,
+        )
+        pushDelivered = notice.status === 'sent' ? notice.pushDelivered : 0
+    } catch (notificationError) {
+        console.warn('[sendReviewAction] review notification failed (non-blocking):', notificationError)
+    }
+
+    const email = await decideReviewCreatedEmail({
+        clientId: client.id,
+        checkinId,
+        pushDelivered,
+        send: () => sendReviewEmailSmtp({
             to: client.email,
             clientName: client.full_name ?? undefined,
             formUrl,
             reviewTemplateName: chosenSchedule?.review_template?.name,
             periodEnd: scheduledDate,
             coachId: validatedCoachId,
-        })
-
-        if (!emailResult.ok) {
-            console.warn('[sendReviewAction] email failed (non-blocking):', emailResult.error)
-        }
-    }
-
-    try {
-        await sendReviewCreatedNotification(
-            client.id,
-            checkinId,
-            chosenSchedule?.review_template?.name,
-        )
-    } catch (notificationError) {
-        console.warn('[sendReviewAction] review notification failed (non-blocking):', notificationError)
+        }),
+    })
+    if (email === 'failed') {
+        console.warn('[sendReviewAction] email failed (non-blocking)')
     }
 
     // No actualizamos client.next_checkin_date (legacy fallback) — solo schedule.next_due_date.

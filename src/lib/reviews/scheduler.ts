@@ -13,7 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFormUrl } from '@/lib/app-url'
-import { getReviewEmailPlan, sendReviewCreatedNotification } from '@/lib/notifications/client'
+import { decideReviewCreatedEmail, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
 
@@ -227,37 +227,42 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
             }
 
             // --- Notificación push + inbox (non-blocking) -------------------
+            let pushDelivered = 0
             try {
-                await sendReviewCreatedNotification(
+                const notice = await sendReviewCreatedNotification(
                     schedule.client_id,
                     checkinId,
                     schedule.review_template.name
                 )
+                pushDelivered = notice.status === 'sent' ? notice.pushDelivered : 0
             } catch (err) {
                 console.warn('[scheduler] Push/Inbox falló (non-blocking):', err)
             }
 
             // --- Email (non-blocking) ---------------------------------------
-            // Solo si el atleta no recibe el push de revisiones; si lo recibe,
-            // el email llega con el recordatorio del día siguiente.
+            // Si el push llegó, el email espera al recordatorio del día siguiente.
             let emailDetail = 'sin email (cliente sin dirección)'
-            const emailPlan = schedule.client.email
-                ? await getReviewEmailPlan(schedule.client_id)
-                : null
-            if (emailPlan && !emailPlan.canEmail) {
-                emailDetail = 'email omitido (el cliente desactivó el email de revisiones)'
-            } else if (emailPlan?.hasReviewPush) {
-                emailDetail = 'email omitido (le llega por push; el email irá con el recordatorio)'
-            } else if (schedule.client.email) {
-                const emailResult = await sendReviewEmailSmtp({
-                    to: schedule.client.email,
-                    clientName: schedule.client.full_name ?? undefined,
-                    formUrl: getFormUrl(checkinId),
-                    reviewTemplateName: schedule.review_template.name,
-                    periodEnd,
-                    coachId: schedule.coach_id,
+            const clientEmail = schedule.client.email
+            if (clientEmail) {
+                const email = await decideReviewCreatedEmail({
+                    clientId: schedule.client_id,
+                    checkinId,
+                    pushDelivered,
+                    send: () => sendReviewEmailSmtp({
+                        to: clientEmail,
+                        clientName: schedule.client?.full_name ?? undefined,
+                        formUrl: getFormUrl(checkinId),
+                        reviewTemplateName: schedule.review_template?.name,
+                        periodEnd,
+                        coachId: schedule.coach_id,
+                    }),
                 })
-                emailDetail = emailResult.ok ? 'email enviado' : `email falló: ${emailResult.error}`
+                emailDetail = {
+                    sent: 'email enviado',
+                    failed: 'email falló',
+                    deferred: 'email aplazado (le llegó el push; irá con el recordatorio)',
+                    disabled: 'email omitido (el cliente desactivó el email de revisiones)',
+                }[email]
             }
 
             items.push({
