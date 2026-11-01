@@ -20,7 +20,14 @@ export default async function CoachLayout({
     if (user) {
         const coachId = await getCoachIdForUser(user.id)
         if (coachId) {
-            const [workspace, coachAccess] = await Promise.all([getCoachWorkspaceInfo(coachId), getCoachAccess(coachId)])
+            const [workspace, coachAccess] = await Promise.all([
+                getCoachWorkspaceInfo(coachId),
+                // Si no se puede leer la suscripción, el panel se muestra normal (el middleware hace lo mismo)
+                getCoachAccess(coachId).catch(error => {
+                    console.warn('[coach-layout] No se pudo leer la suscripción:', error instanceof Error ? error.message : error)
+                    return null
+                }),
+            ])
             if (workspace?.onboarding_state.welcome_pending) {
                 redirect('/welcome')
             }

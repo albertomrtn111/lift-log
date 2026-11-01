@@ -6,6 +6,7 @@ import {
     type CoachNotificationChannel,
 } from '@/lib/notifications/coach'
 import { sendPushToCoach } from '@/lib/push'
+import { getBlockedCoachIds } from '@/lib/subscription/coach-subscription'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -115,7 +116,10 @@ async function handle(request: NextRequest) {
         return NextResponse.json({ ok: false, error: subErr.message }, { status: 500 })
     }
 
-    const coachIds = [...new Set((subRows ?? []).map(r => r.coach_id as string))]
+    // Con el espacio bloqueado (prueba terminada) no tiene sentido recordarle tareas
+    const allCoachIds = [...new Set((subRows ?? []).map(r => r.coach_id as string))]
+    const blockedCoaches = await getBlockedCoachIds(allCoachIds)
+    const coachIds = allCoachIds.filter(id => !blockedCoaches.has(id))
     const sent: { coachId: string; kind: string }[] = []
 
     for (const coachId of coachIds) {

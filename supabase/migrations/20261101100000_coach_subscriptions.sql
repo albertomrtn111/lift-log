@@ -46,6 +46,15 @@ select c.id, 'comped', c.subscription_tier, c.billing_cycle
 from public.coaches c
 on conflict (coach_id) do nothing;
 
+-- ...y sin límite de atletas, como hasta ahora (nadie lo aplicaba). Si un día
+-- cambian de plan, trg_sync_coach_max_active_clients vuelve a fijar el del plan.
+update public.coaches c
+set max_active_clients = null
+where exists (
+    select 1 from public.coach_subscriptions s
+    where s.coach_id = c.id and s.status = 'comped'
+);
+
 -- 2. El plan del espacio (y con él el límite de atletas) solo lo cambia el servidor.
 --    Hasta ahora un admin del espacio podía cambiar subscription_tier desde la API.
 create or replace function public.protect_coach_plan_columns()

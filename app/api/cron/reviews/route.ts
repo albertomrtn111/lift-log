@@ -4,6 +4,7 @@ import {
     currentHourInTimezone,
     schedulerTimezone,
 } from '@/lib/reviews/scheduler'
+import { dispatchTrialNotices } from '@/lib/subscription/trial-notices'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -20,6 +21,9 @@ export const maxDuration = 60
  * Fail-closed: sin secreto configurado, nadie ejecuta.
  *
  * Ejecución manual (ignora el filtro de hora): añadir `?force=1`.
+ *
+ * En la misma pasada diaria salen los avisos por email de la prueba gratis
+ * de los coaches (7 días, 48 h y recién terminada).
  */
 
 function getSecret(): string | null {
@@ -54,12 +58,23 @@ async function handle(request: NextRequest) {
         })
     }
 
+    // Independiente de las revisiones: un fallo en uno no frena al otro
+    let trialNotices: Awaited<ReturnType<typeof dispatchTrialNotices>> | { error: string }
+    try {
+        trialNotices = await dispatchTrialNotices()
+        console.log(`[cron/reviews] avisos de prueba → candidatos=${trialNotices.candidates} enviados=${trialNotices.sent} errores=${trialNotices.errors}`)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error('[cron/reviews] Error en avisos de prueba:', message)
+        trialNotices = { error: message }
+    }
+
     try {
         const summary = await dispatchDueReviews()
         console.log(
             `[cron/reviews] ${summary.date} → due=${summary.due} sent=${summary.sent} skipped=${summary.skipped} errors=${summary.errors}`
         )
-        return NextResponse.json({ ok: true, ran: true, ...summary })
+        return NextResponse.json({ ok: true, ran: true, ...summary, trialNotices })
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('[cron/reviews] Error:', message)

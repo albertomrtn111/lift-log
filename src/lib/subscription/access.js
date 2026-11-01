@@ -145,3 +145,76 @@ export function normalizeStripeStatus(status) {
 export function isAthleteLimitError(error) {
     return error?.hint === 'athlete_limit'
 }
+
+/**
+ * @typedef {'trial_week' | 'trial_day' | 'trial_ended'} TrialNoticeKind
+ */
+
+/**
+ * Aviso por email que toca mandar hoy sobre la prueba gratis (el cron diario lo
+ * comprueba una vez al día). Solo para la prueba sin plan elegido: si ya tiene
+ * suscripción en Stripe, el aviso lo manda Stripe.
+ *  - trial_week: quedan 7 días o menos
+ *  - trial_day: quedan 48 h o menos (así llega con un día de margen aunque el cron sea a las 9:00)
+ *  - trial_ended: terminó hace menos de 3 días
+ * @param {SubscriptionRow | null | undefined} sub
+ * @param {Date} now
+ * @returns {TrialNoticeKind | null}
+ */
+export function trialNoticeKind(sub, now = new Date()) {
+    if (!sub || sub.status !== 'trialing' || sub.stripe_subscription_id || !sub.trial_ends_at) return null
+    const ms = new Date(sub.trial_ends_at).getTime() - now.getTime()
+    if (!Number.isFinite(ms)) return null
+    if (ms <= 0) return ms > -3 * DAY_MS ? 'trial_ended' : null
+    if (ms <= 2 * DAY_MS) return 'trial_day'
+    if (ms <= 7 * DAY_MS) return 'trial_week'
+    return null
+}
+
+/**
+ * Texto del email de aviso de la prueba. Sin HTML: lo maqueta el mailer.
+ * @param {{ kind: TrialNoticeKind, trialEndsAt: string, firstName?: string | null, timeZone?: string, now?: Date }} params
+ * @returns {{ subject: string, title: string, paragraphs: string[], cta: string }}
+ */
+export function trialNoticeCopy({ kind, trialEndsAt, firstName, timeZone = 'Europe/Madrid', now = new Date() }) {
+    // «domingo 8 de noviembre» (Intl pone una coma tras el día de la semana)
+    const end = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', timeZone }).format(new Date(trialEndsAt)).replace(',', '')
+    const hello = firstName ? `Hola, ${firstName}:` : 'Hola:'
+    const plans = 'Los planes empiezan en 29 €/mes + IVA (Starter, hasta 20 atletas) y puedes cambiar o cancelar cuando quieras.'
+
+    if (kind === 'trial_ended') {
+        return {
+            subject: 'Tu prueba gratis de NexTrain ha terminado',
+            title: 'Tu prueba gratis ha terminado',
+            paragraphs: [
+                hello,
+                'Tu prueba de 30 días de NexTrain ha terminado. Tus datos y los de tus atletas siguen guardados, y ellos pueden seguir usando su app.',
+                `Elige un plan para volver a tu panel justo donde lo dejaste. ${plans}`,
+            ],
+            cta: 'Elegir plan',
+        }
+    }
+    if (kind === 'trial_day') {
+        return {
+            subject: `Tu prueba gratis de NexTrain termina el ${end}`,
+            title: `Tu prueba termina el ${end}`,
+            paragraphs: [
+                hello,
+                `Tu prueba gratis de NexTrain con todo Pro termina el ${end}. Si eliges plan antes, no pierdes ni un día: el primer cobro es cuando acaba la prueba.`,
+                `Si no eliges plan, tu panel quedará en pausa (no se borra nada). ${plans}`,
+            ],
+            cta: 'Elegir plan',
+        }
+    }
+    const left = daysLeft(trialEndsAt, now) ?? 7
+    return {
+        subject: `Te quedan ${left} días de prueba gratis en NexTrain`,
+        title: `Te quedan ${left} días de prueba gratis`,
+        paragraphs: [
+            hello,
+            `Tu prueba de NexTrain con todo Pro termina el ${end}. Puedes elegir plan ya: guardas la tarjeta y no se te cobra nada hasta que acabe la prueba.`,
+            plans,
+        ],
+        cta: 'Elegir plan',
+    }
+}

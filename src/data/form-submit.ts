@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureReviewForCheckin } from '@/data/workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
+import { isCoachAllowed } from '@/lib/subscription/coach-subscription'
 
 interface SubmitFormResult {
     success: boolean
@@ -140,12 +141,14 @@ export async function submitFormAction(
                 if (!review) {
                     console.error('[submitFormAction] Could not create or load review for AI analysis')
                 } else {
+                    // Coach sin suscripción ni prueba: la revisión queda creada, pero sin gastar IA
+                    const aiAllowed = await isCoachAllowed(adminCheckin.coach_id)
                     const { error: reviewResetError } = await admin
                         .from('reviews')
                         .update({
                             status: 'draft',
                             approved_by: null,
-                            ai_status: 'pending',
+                            ai_status: aiAllowed ? 'pending' : 'idle',
                             ai_summary: null,
                             ai_error: null,
                             ai_generated_at: null,
@@ -155,7 +158,7 @@ export async function submitFormAction(
 
                     if (reviewResetError) {
                         console.error('[submitFormAction] Could not reset AI review fields:', reviewResetError)
-                    } else {
+                    } else if (aiAllowed) {
                         void generateCheckinAnalysis(checkinId, review.id)
                     }
                 }

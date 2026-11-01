@@ -17,6 +17,7 @@ import { sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { isClientNotificationChannelEnabled } from '@/lib/notifications/preferences'
 import { notifyCoach } from '@/lib/notifications/coach'
 import { sendReviewEmailSmtp } from '@/lib/email/mailer'
+import { getBlockedCoachIds } from '@/lib/subscription/coach-subscription'
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid'
 
@@ -125,6 +126,9 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
     }
 
     const schedules = (data ?? []) as unknown as DueScheduleRow[]
+    // Espacios con la prueba terminada o sin suscripción: se pausan sus revisiones.
+    // No se avanza la fecha, así que al pagar sale una (la pendiente) y sigue la cadencia.
+    const blockedCoaches = await getBlockedCoachIds(schedules.map(schedule => schedule.coach_id))
     const items: DispatchResultItem[] = []
     const sentByCoach = new Map<string, string[]>()
 
@@ -140,6 +144,10 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
             // --- Filtros de elegibilidad -----------------------------------
             if (!schedule.client) {
                 items.push({ ...base, status: 'skipped', detail: 'Cliente no encontrado' })
+                continue
+            }
+            if (blockedCoaches.has(schedule.coach_id)) {
+                items.push({ ...base, status: 'skipped', detail: 'Espacio sin suscripción activa' })
                 continue
             }
             if (schedule.client.status !== 'active') {

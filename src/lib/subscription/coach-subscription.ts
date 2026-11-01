@@ -37,6 +37,16 @@ export async function getCoachAccess(coachId: string): Promise<{ subscription: C
     return { subscription, access: subscriptionAccess(subscription) }
 }
 
+/** ¿Puede el espacio usar la app? Si no se puede leer la suscripción, sí (no se corta el servicio por un fallo). */
+export async function isCoachAllowed(coachId: string): Promise<boolean> {
+    try {
+        return (await getCoachAccess(coachId)).access.allowed
+    } catch (error) {
+        console.warn(`[subscription] No se pudo leer la suscripción de ${coachId}; se permite:`, error instanceof Error ? error.message : error)
+        return true
+    }
+}
+
 export async function saveStripeCustomerId(coachId: string, customerId: string) {
     const admin = createAdminClient()
     const { error } = await admin
@@ -127,4 +137,29 @@ export async function getAthleteUsage(coachId: string): Promise<{ active: number
     if (error) throw new Error(error.message)
     if (coachError) throw new Error(coachError.message)
     return { active: count ?? 0, limit: coach?.max_active_clients ?? null }
+}
+
+/**
+ * Espacios (de la lista) sin suscripción activa ni prueba en curso. Para que los
+ * envíos automáticos (revisiones, recordatorios) se pausen mientras están bloqueados.
+ * Si no se puede leer la tabla, no bloquea a nadie: mejor enviar que cortar el servicio.
+ */
+export async function getBlockedCoachIds(coachIds: string[]): Promise<Set<string>> {
+    const blocked = new Set<string>()
+    const ids = [...new Set(coachIds)]
+    if (!ids.length) return blocked
+    const admin = createAdminClient()
+    const { data, error } = await admin
+        .from('coach_subscriptions')
+        .select('coach_id, status, trial_ends_at, stripe_subscription_id')
+        .in('coach_id', ids)
+    if (error) {
+        console.warn('[subscription] No se pudo leer coach_subscriptions; no se pausa ningún envío:', error.message)
+        return blocked
+    }
+    const byCoach = new Map((data ?? []).map(row => [row.coach_id as string, row]))
+    for (const id of ids) {
+        if (!subscriptionAccess(byCoach.get(id) ?? null).allowed) blocked.add(id)
+    }
+    return blocked
 }

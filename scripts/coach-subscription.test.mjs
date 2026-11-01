@@ -76,3 +76,34 @@ test('estados de Stripe y error del límite', () => {
     assert.equal(isAthleteLimitError({ hint: null }), false)
     assert.equal(daysLeft(null, NOW), null)
 })
+
+test('avisos de la prueba: 7 días, 48 h y recién terminada', async () => {
+    const { trialNoticeKind } = await import('../src/lib/subscription/access.js')
+    const trial = ends => ({ status: 'trialing', trial_ends_at: ends, stripe_subscription_id: null })
+    assert.equal(trialNoticeKind(trial(inDays(10)), NOW), null)
+    assert.equal(trialNoticeKind(trial(inDays(7)), NOW), 'trial_week')
+    assert.equal(trialNoticeKind(trial(inDays(2.5)), NOW), 'trial_week')
+    assert.equal(trialNoticeKind(trial(inDays(1.9)), NOW), 'trial_day')
+    assert.equal(trialNoticeKind(trial(inDays(0.1)), NOW), 'trial_day')
+    assert.equal(trialNoticeKind(trial(inDays(-1)), NOW), 'trial_ended')
+    assert.equal(trialNoticeKind(trial(inDays(-4)), NOW), null)
+    // Con plan elegido en Stripe avisa Stripe; comped o activo, nada
+    assert.equal(trialNoticeKind({ ...trial(inDays(1)), stripe_subscription_id: 'sub_1' }, NOW), null)
+    assert.equal(trialNoticeKind({ status: 'active', trial_ends_at: inDays(1) }, NOW), null)
+    assert.equal(trialNoticeKind(null, NOW), null)
+})
+
+test('texto de los avisos de la prueba', async () => {
+    const { trialNoticeCopy } = await import('../src/lib/subscription/access.js')
+    const ends = '2026-11-08T15:00:00Z' // domingo 8 de noviembre en Madrid
+    const week = trialNoticeCopy({ kind: 'trial_week', trialEndsAt: ends, firstName: 'Álex', now: NOW })
+    assert.equal(week.subject, 'Te quedan 8 días de prueba gratis en NexTrain')
+    assert.match(week.paragraphs[0], /Hola, Álex:/)
+    assert.match(week.paragraphs[1], /termina el domingo 8 de noviembre\./)
+    const day = trialNoticeCopy({ kind: 'trial_day', trialEndsAt: ends, now: NOW })
+    assert.equal(day.subject, 'Tu prueba gratis de NexTrain termina el domingo 8 de noviembre')
+    assert.equal(day.paragraphs[0], 'Hola:')
+    const ended = trialNoticeCopy({ kind: 'trial_ended', trialEndsAt: ends, now: NOW })
+    assert.equal(ended.subject, 'Tu prueba gratis de NexTrain ha terminado')
+    assert.match(ended.paragraphs.join(' '), /29 €\/mes \+ IVA/)
+})

@@ -80,13 +80,16 @@ export async function requireActiveCoachId(
         coachId = memberships[0].coach_id
     }
 
-    // Prueba terminada o suscripción cancelada: nada de acciones de coach
-    const { data: subscription } = await supabase
+    // Prueba terminada o suscripción cancelada: nada de acciones de coach.
+    // Si no se puede leer la suscripción (fallo de red, tabla aún sin crear) no se bloquea.
+    const { data: subscription, error: subscriptionError } = await supabase
         .from('coach_subscriptions')
         .select('status, trial_ends_at, stripe_subscription_id')
         .eq('coach_id', coachId)
         .maybeSingle()
-    if (!subscriptionAccess(subscription).allowed) {
+    if (subscriptionError) {
+        console.warn(`[requireActiveCoachId] No se pudo leer la suscripción de ${coachId}: ${subscriptionError.message}`)
+    } else if (!subscriptionAccess(subscription).allowed) {
         throw new Error('Tu prueba gratis ha terminado. Elige un plan en Suscripción para seguir usando NexTrain.')
     }
 
