@@ -1,6 +1,7 @@
 'use client'
 
 import {
+    CHAT_IMAGE_MAX_SIDE,
     CHAT_IMAGE_QUALITY,
     fitWithin,
     isHeic,
@@ -20,7 +21,19 @@ export interface PreparedChatFile {
  * cobertura, pierde los metadatos (incluida la ubicación) y las HEIC del iPhone
  * se ven en cualquier navegador. Si algo falla, se envía el archivo original.
  */
-export async function prepareChatFile(file: File): Promise<PreparedChatFile> {
+export function prepareChatFile(file: File): Promise<PreparedChatFile> {
+    return prepareImageFile(file)
+}
+
+/**
+ * Versión configurable de prepareChatFile.
+ * `maxSide`: lado mayor en px. `alwaysConvert`: usar el JPEG aunque pese más
+ * que el original (p. ej. para buckets que solo aceptan ciertos formatos).
+ */
+export async function prepareImageFile(
+    file: File,
+    { maxSide = CHAT_IMAGE_MAX_SIDE, alwaysConvert = false }: { maxSide?: number; alwaysConvert?: boolean } = {},
+): Promise<PreparedChatFile> {
     const original: PreparedChatFile = {
         file,
         fileName: file.name,
@@ -31,7 +44,7 @@ export async function prepareChatFile(file: File): Promise<PreparedChatFile> {
     try {
         // from-image: respeta la orientación EXIF (fotos hechas en vertical)
         const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-        const { width, height } = fitWithin(bitmap.width, bitmap.height)
+        const { width, height } = fitWithin(bitmap.width, bitmap.height, maxSide)
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
@@ -49,7 +62,7 @@ export async function prepareChatFile(file: File): Promise<PreparedChatFile> {
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', CHAT_IMAGE_QUALITY))
         if (!blob) return original
         // Una imagen ya ligera puede crecer al recomprimirla; las HEIC se convierten siempre
-        if (!isHeic(file.type, file.name) && blob.size >= file.size) return original
+        if (!alwaysConvert && !isHeic(file.type, file.name) && blob.size >= file.size) return original
 
         return { file: blob, fileName: jpegFileName(file.name), mime: 'image/jpeg' }
     } catch (error) {

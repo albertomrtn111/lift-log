@@ -21,6 +21,7 @@ import {
     UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { prepareImageFile } from '@/lib/chat-image'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
@@ -38,6 +39,11 @@ import {
 } from './actions'
 import ProfileLoading from './loading'
 import { DeliverySettingsGroup } from './DeliverySettingsGroup'
+
+/** Límites del bucket público «avatars» (file_size_limit y allowed_mime_types) */
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024
+const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const AVATAR_MAX_SIDE = 512
 
 type ClientNotificationPreferences = {
     messages_enabled: boolean
@@ -143,32 +149,39 @@ export default function ProfilePage() {
         const file = e.target.files?.[0]
         if (!file) return
 
-        const maxSize = 2 * 1024 * 1024 // 2 MB
-        if (file.size > maxSize) {
-            toast.error('La imagen no puede superar 2 MB')
-            return
-        }
-
         setUploading(true)
         try {
+            // La foto del móvil (3-8 MB, a veces HEIC) se reduce a un JPEG de
+            // 512 px: el avatar se ve pequeño y el bucket admite hasta 2 MB.
+            const prepared = await prepareImageFile(file, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
+            if (!AVATAR_MIME_TYPES.includes(prepared.mime)) {
+                toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
+                return
+            }
+            if (prepared.file.size > AVATAR_MAX_BYTES) {
+                toast.error('La imagen es demasiado grande (máximo 2 MB). Prueba con otra foto.')
+                return
+            }
+
             const supabase = createClient()
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('No autenticado')
 
-            const ext = file.name.split('.').pop() ?? 'jpg'
-            const path = `${user.id}/avatar.${ext}`
+            // Nombre nuevo en cada subida, sin upsert: sobrescribir exige poder
+            // leer el objeto anterior y el bucket no tiene política de lectura
+            // (es público y no debe listarse), así que el upsert daba 403.
+            const ext = prepared.mime === 'image/jpeg' ? 'jpg' : prepared.mime.split('/')[1]
+            const path = `${user.id}/avatar-${Date.now()}.${ext}`
 
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(path, file, { upsert: true, contentType: file.type })
+                .upload(path, prepared.file, { upsert: false, contentType: prepared.mime })
 
             if (uploadError) throw uploadError
 
-            // Añadir cache-buster para que el browser no use la imagen anterior
             const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-            const urlWithBust = `${publicUrl}?t=${Date.now()}`
 
-            const result = await updateAvatarUrlAction(urlWithBust)
+            const result = await updateAvatarUrlAction(publicUrl)
             if (!result.success) throw new Error(result.error)
 
             toast.success('Foto de perfil actualizada')
