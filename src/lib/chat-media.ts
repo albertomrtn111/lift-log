@@ -1,18 +1,12 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import { uploadMedia } from '@/lib/media-upload'
+import { chatAttachmentR2Key, privateMediaUrl } from '@/lib/storage/media-refs'
 import type { MessageAttachment, MessageAttachmentType } from '@/types/messages'
 
 export const CHAT_MEDIA_BUCKET = 'chat-media'
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024 // 25 MB (límite del bucket)
-
-function sanitizeFileName(name: string): string {
-    return name
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-zA-Z0-9._-]/g, '_')
-        .slice(-80)
-}
 
 export function inferAttachmentType(mime: string): MessageAttachmentType {
     if (mime.startsWith('audio/')) return 'audio'
@@ -35,53 +29,10 @@ export function formatAudioDuration(seconds: number | null | undefined): string 
 }
 
 /**
- * Sube el archivo con XMLHttpRequest para poder mostrar el progreso
- * (supabase-js usa fetch, que no informa de la subida). Misma petición que
- * storage.upload(): con el token del usuario, así que aplican las mismas políticas.
- */
-async function uploadWithProgress(
-    path: string,
-    file: Blob,
-    mime: string,
-    onProgress?: (fraction: number) => void,
-): Promise<{ error?: string }> {
-    const supabase = createClient()
-    // getSession renueva el token si ha caducado (app que vuelve de segundo plano)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return { error: 'Tu sesión ha caducado. Vuelve a entrar para enviar archivos.' }
-
-    const objectPath = path.split('/').map(encodeURIComponent).join('/')
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${objectPath}`
-
-    return new Promise(resolve => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', url)
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
-        xhr.setRequestHeader('apikey', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '')
-        xhr.setRequestHeader('Content-Type', mime)
-        xhr.setRequestHeader('Cache-Control', 'max-age=3600')
-        xhr.setRequestHeader('x-upsert', 'false')
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable && event.total > 0) onProgress?.(event.loaded / event.total)
-        }
-        xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-                onProgress?.(1)
-                resolve({})
-            } else {
-                console.error('[chat-media] Upload error:', xhr.status, xhr.responseText)
-                resolve({ error: 'No se pudo subir el archivo. Inténtalo de nuevo.' })
-            }
-        }
-        xhr.onerror = () => resolve({ error: 'Sin conexión: no se pudo subir el archivo.' })
-        xhr.send(file)
-    })
-}
-
-/**
- * Sube un adjunto del chat al bucket privado.
- * Ruta: {coachId}/{clientId}/{uuid}-{nombre} — las políticas RLS del bucket
- * validan que quien sube pertenece a esa conversación.
+ * Sube un adjunto del chat. El servidor comprueba que quien sube pertenece a la
+ * conversación, convierte las fotos a WebP y lo guarda en el bucket privado de R2
+ * (`url` = «r2:chat-media/{coachId}/{clientId}/…») o, si R2 no está configurado,
+ * en el bucket chat-media de Supabase (`url` = «{coachId}/{clientId}/…»).
  */
 export async function uploadChatAttachment(params: {
     coachId: string
@@ -98,17 +49,22 @@ export async function uploadChatAttachment(params: {
         return { error: 'El archivo supera el máximo de 25 MB.' }
     }
 
-    const path = `${coachId}/${clientId}/${crypto.randomUUID()}-${sanitizeFileName(fileName)}`
-    const { error } = await uploadWithProgress(path, file, mime, onProgress)
-    if (error) return { error }
+    const blob = file.type ? file : new Blob([file], { type: mime })
+    const { data, error } = await uploadMedia<{ url: string; name: string; mime: string; size: number }>(
+        { kind: 'chat', coachId, clientId },
+        blob,
+        fileName,
+        onProgress,
+    )
+    if (error || !data) return { error: error ?? 'No se pudo subir el archivo.' }
 
     return {
         attachment: {
-            type: inferAttachmentType(mime),
-            url: path,
-            name: fileName,
-            size: file.size,
-            mime,
+            type: inferAttachmentType(data.mime),
+            url: data.url,
+            name: data.name,
+            size: data.size,
+            mime: data.mime,
             duration: duration ?? null,
         },
     }
@@ -116,8 +72,12 @@ export async function uploadChatAttachment(params: {
 
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
 
-/** URL firmada (1h) con caché en memoria para no repetir peticiones por burbuja. */
+/** Adjuntos antiguos de Supabase: URL firmada (1h) con caché en memoria para no repetir peticiones por burbuja. */
 export async function getChatAttachmentUrl(path: string): Promise<string | null> {
+    // En R2: la app lo sirve tras comprobar permisos (sin firma que caduque)
+    const r2Key = chatAttachmentR2Key(path)
+    if (r2Key) return privateMediaUrl(r2Key)
+
     const cached = signedUrlCache.get(path)
     if (cached && cached.expiresAt > Date.now() + 60_000) {
         return cached.url

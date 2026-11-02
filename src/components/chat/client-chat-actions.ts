@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notifyCoachClientMessage } from '@/lib/notifications/coach'
+import { isChatAttachmentOf } from '@/lib/storage/media-refs'
 import type { Message, MessageAttachment } from '@/types/messages'
 
 interface ClientChatContext {
@@ -162,7 +163,7 @@ export async function sendClientChatMessageAction(
     }
 
     // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
-    if (attachment && !attachment.url.startsWith(`${context.coachId}/${context.clientId}/`)) {
+    if (attachment && !isChatAttachmentOf(attachment.url, context.coachId, context.clientId)) {
         return {
             success: false,
             context,

@@ -1,9 +1,18 @@
 // Reglas puras para preparar las fotos del chat antes de subirlas (probadas
 // con node --test). El trabajo con canvas está en chat-image.ts.
 
-/** Lado mayor de las fotos enviadas: nítidas en pantalla y de pocos cientos de KB */
-export const CHAT_IMAGE_MAX_SIDE = 2048
-export const CHAT_IMAGE_QUALITY = 0.82
+/**
+ * Lado mayor de las fotos guardadas (chat y check-ins): nítidas en pantalla y de
+ * unos cientos de KB. El servidor las guarda en WebP con este mismo límite.
+ */
+export const MEDIA_IMAGE_MAX_SIDE = 1600
+export const MEDIA_WEBP_QUALITY = 80
+/** Lado mayor de las fotos de perfil */
+export const AVATAR_MAX_SIDE = 512
+
+export const CHAT_IMAGE_MAX_SIDE = MEDIA_IMAGE_MAX_SIDE
+/** JPEG intermedio del navegador: algo más alto porque el servidor vuelve a comprimir */
+export const CHAT_IMAGE_QUALITY = 0.88
 
 /**
  * @param {string} mime

@@ -21,8 +21,8 @@ test('isHeic recognises iPhone photos even when the browser gives no MIME type',
 })
 
 test('fitWithin keeps the aspect ratio and never upscales', () => {
-  assert.deepEqual(fitWithin(4032, 3024), { width: 2048, height: 1536 })
-  assert.deepEqual(fitWithin(3024, 4032), { width: 1536, height: 2048 })
+  assert.deepEqual(fitWithin(4032, 3024), { width: 1600, height: 1200 })
+  assert.deepEqual(fitWithin(3024, 4032), { width: 1200, height: 1600 })
   assert.deepEqual(fitWithin(800, 600), { width: 800, height: 600 })
   assert.deepEqual(fitWithin(10000, 3, 2048), { width: 2048, height: 1 })
 })
