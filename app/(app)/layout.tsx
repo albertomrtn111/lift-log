@@ -5,6 +5,7 @@ import { DevStalenessGuard } from '@/components/debug/DevStalenessGuard'
 import { PwaNavigationFix } from '@/components/layout/PwaNavigationFix'
 import { PushNotificationBanner } from '@/components/push/PushNotificationBanner'
 import { StravaPendingFeedback } from '@/components/strava/StravaPendingFeedback'
+import { AnnouncementHost } from '@/components/announcements/AnnouncementHost'
 
 export default function AppLayout({
     children,
@@ -22,6 +23,7 @@ export default function AppLayout({
                 </main>
                 <PwaNavigationFix />
                 <BottomNav />
+                <AnnouncementHost />
                 <DevStalenessGuard />
             </div>
         </ClientAppProvider>

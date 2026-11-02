@@ -5,10 +5,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notifyCoachAthleteJoined } from '@/lib/notifications/coach'
 
-type StepId = 'install' | 'push' | 'watch'
+type StepId = 'tour' | 'install' | 'push' | 'photo' | 'watch'
 type Resolution = 'done' | 'skipped'
 
-const STEPS: StepId[] = ['install', 'push', 'watch']
+const STEPS: StepId[] = ['tour', 'install', 'push', 'photo', 'watch']
 
 /** Marca un paso de la bienvenida como hecho u omitido (en clients.preferences.onboarding) */
 export async function setAthleteOnboardingStepAction(step: StepId, resolution: Resolution): Promise<{ success: boolean }> {

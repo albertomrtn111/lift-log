@@ -61,3 +61,9 @@ Rama `feature/guided-onboarding` (worktree `lift-log-onboarding`, desde `origin/
 - Propuestas 2 a 6 aprobadas tal cual (alta automática con límite del plan, Lucía, coaches existentes, contraseña inicial en "Más opciones").
 - Marca: **NexTrain** en todo (también en los emails).
 - Pruebas contra un Supabase de **staging**. El conector de Claude con Supabase no funciona: las tareas de BD van en `docs/onboarding-bd-staging.md` para que las ejecute otro modelo.
+
+## Cambios del 01-11-2026: «cómo funciona» y foto de perfil
+
+La bienvenida del atleta pasa a tener seis pasos: **cómo funciona la app** (las cinco pestañas), instalar la app, avisos, **foto de perfil**, reloj (Strava, opcional) y formulario del coach. Los dos nuevos se guardan en `clients.preferences.onboarding.tour` y `.photo`; la foto cuenta como hecha si el atleta ya tiene `profiles.avatar_url`.
+
+Quien ya había terminado la bienvenida antes de este cambio no vuelve a ella (`finishedBeforeNewSteps` en `athlete-onboarding.js`); a esos atletas la foto se les pide con el aviso de novedades `profile-photo` (ver `docs/avisos-novedades.md`).

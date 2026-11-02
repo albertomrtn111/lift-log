@@ -26,18 +26,40 @@ test('forms without sections become a single block', () => {
     assert.equal(formatMinutes(7), '7 min')
 })
 
+const ids = (result) => result.steps.map(step => step.id)
+const currentId = (result) => result.steps[result.currentIndex]?.id ?? null
+
 test('steps advance as each one is done or skipped', () => {
-    const base = { state: {}, hasPushSubscription: false, stravaConnected: false, form: 'pending', formMinutes: 9 }
-    assert.equal(buildAthleteSteps(base).currentIndex, 0)
-    assert.equal(buildAthleteSteps({ ...base, state: { install: 'skipped' } }).currentIndex, 1)
-    assert.equal(buildAthleteSteps({ ...base, state: { install: 'done' }, hasPushSubscription: true }).currentIndex, 2)
-    const almost = buildAthleteSteps({ ...base, state: { install: 'done', push: 'done', watch: 'skipped' } })
-    assert.equal(almost.steps[almost.currentIndex].id, 'form')
-    assert.equal(almost.steps[3].duration, '9 min')
-    assert.equal(buildAthleteSteps({ ...base, state: { install: 'done', push: 'done' }, stravaConnected: true, form: 'completed' }).complete, true)
+    const base = { state: {}, hasPushSubscription: false, hasAvatar: false, stravaConnected: false, form: 'pending', formMinutes: 9 }
+    assert.deepEqual(ids(buildAthleteSteps(base)), ['tour', 'install', 'push', 'photo', 'watch', 'form'])
+    assert.equal(currentId(buildAthleteSteps(base)), 'tour')
+    assert.equal(currentId(buildAthleteSteps({ ...base, state: { tour: 'done' } })), 'install')
+    assert.equal(currentId(buildAthleteSteps({ ...base, state: { tour: 'done', install: 'skipped' } })), 'push')
+    assert.equal(currentId(buildAthleteSteps({ ...base, state: { tour: 'done', install: 'done' }, hasPushSubscription: true })), 'photo')
+    assert.equal(currentId(buildAthleteSteps({ ...base, state: { tour: 'done', install: 'done', push: 'done', photo: 'skipped' } })), 'watch')
+    const almost = buildAthleteSteps({ ...base, state: { tour: 'done', install: 'done', push: 'done', photo: 'done', watch: 'skipped' } })
+    assert.equal(currentId(almost), 'form')
+    assert.equal(almost.steps[almost.currentIndex].duration, '9 min')
+    assert.equal(buildAthleteSteps({ ...base, state: { tour: 'done', install: 'done', push: 'done', photo: 'done' }, stravaConnected: true, form: 'completed' }).complete, true)
+})
+
+test('an existing photo resolves the photo step', () => {
+    const steps = buildAthleteSteps({ state: { tour: 'done', install: 'done', push: 'done' }, hasPushSubscription: false, hasAvatar: true, stravaConnected: false, form: 'pending', formMinutes: 5 })
+    assert.equal(currentId(steps), 'watch')
 })
 
 test('without an onboarding form the last step is already resolved', () => {
-    const steps = buildAthleteSteps({ state: { install: 'done', push: 'skipped', watch: 'skipped' }, hasPushSubscription: false, stravaConnected: false, form: 'none', formMinutes: 0 })
+    const steps = buildAthleteSteps({ state: { tour: 'done', install: 'done', push: 'skipped', photo: 'skipped', watch: 'skipped' }, hasPushSubscription: false, hasAvatar: false, stravaConnected: false, form: 'none', formMinutes: 0 })
     assert.equal(steps.complete, true)
+})
+
+test('athletes who finished the welcome before the new steps are not sent back to it', () => {
+    const before = { state: { guided: true, install: 'done', push: 'skipped', watch: 'skipped' }, hasPushSubscription: false, hasAvatar: false, stravaConnected: false, form: 'completed', formMinutes: 0 }
+    assert.equal(buildAthleteSteps(before).complete, true)
+    // A medias con los pasos de antes: sí ven los nuevos al seguir
+    const halfway = buildAthleteSteps({ ...before, state: { guided: true, install: 'done' } })
+    assert.equal(currentId(halfway), 'tour')
+    assert.equal(halfway.steps.find(step => step.id === 'photo').resolved, false)
+    // Con el formulario aún pendiente tampoco han terminado
+    assert.equal(currentId(buildAthleteSteps({ ...before, form: 'pending' })), 'tour')
 })
