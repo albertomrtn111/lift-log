@@ -27,7 +27,7 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `get_nutrition_history`: histórico paginado de planes de macros y cabeceras de dietas.
 - `search_foods`: catálogo de alimentos accesibles, macros por ración y peso por unidad.
 - `preview_diet_plan`: calcula y ajusta una dieta por opciones sin guardarla.
-- `create_macro_plan` / `update_macro_plan`: crea o edita macros simples o diferentes en entreno y descanso.
+- `create_macro_plan` / `update_macro_plan`: fija o edita los objetivos nutricionales (kcal y macros), simples o diferentes en entreno y descanso, con fecha de inicio y notas.
 - `create_diet_plan` / `update_diet_plan`: crea o edita dietas por opciones, con ajuste a objetivos y conservación de identificadores.
 - `get_recovery_history`: sueño y pasos diarios junto con señales subjetivas de los check-ins.
 - `list_client_events`: carreras, pruebas y objetivos, pasados o futuros.
@@ -428,6 +428,16 @@ El MCP lee y escribe la misma temporada que la pestaña Temporada de la app (`se
 - **Prompt `planificar_temporada`:** reúne objetivo, eventos y volumen real de las últimas semanas, propone fases y progresión, la enseña con `dry_run` y espera la confirmación.
 
 Migración `20261027100000_mcp_season_plan.sql`: `create_nexttrain_season_plan` y `update_nexttrain_season_plan` (`SECURITY INVOKER`, RLS del coach, bloqueo por cliente, concurrencia optimista) y funciones auxiliares. Verificación: `supabase/tests/mcp_season_plan.sql` (10 verificaciones; termina con `ROLLBACK`). Pruebas: `deno test supabase/functions/nexttrain-mcp/season.test.ts`. La web solo edita la temporada activa y no escribe fases; las fases que cree el MCP aparecen junto a cada semana en Temporada y en la carga semanal de Planificación.
+
+## Objetivos nutricionales encontrables y planes abiertos de la app (MCP 0.15.1)
+
+Una IA conectada dijo que no podía «modificar los objetivos nutricionales» de un atleta, aunque `create_macro_plan` y `update_macro_plan` ya existían con entreno y descanso.
+
+- **Descripciones.** Los clientes que cargan herramientas bajo demanda buscan por palabras, y las descripciones solo hablaban de «plan de macros». Ahora `create_macro_plan`, `update_macro_plan` y `get_current_nutrition` mencionan objetivos nutricionales, calorías, proteína, hidratos, grasas, días de entreno y descanso, fecha de inicio y notas. El servidor publica además `instructions` con el mapa de herramientas principales.
+- **Planes abiertos de la app.** La app crea planes de macros sin cerrar el anterior, así que muchos clientes tienen dos planes abiertos a la vez (vigente = el de `effective_from` más reciente). `save_nexttrain_nutrition_plan` rechazaba entonces cualquier edición con «Ya hay otro plan de macros en este periodo». `update_macro_plan` cierra ahora los planes anteriores solapados el día previo al inicio (no cambia lo que ve la app) y, si se edita un plan antiguo abierto, lo termina el día antes del siguiente. Devuelve `closed_previous_plan_ids`.
+- **Misma fecha.** `create_macro_plan` comprueba antes de guardar si ya hay un plan que empieza ese día o después y devuelve su `plan_id` para usar `update_macro_plan`.
+
+No requiere migraciones. Verificación: `deno test supabase/functions/nexttrain-mcp/nutrition.test.ts`.
 
 ## Despliegue
 
