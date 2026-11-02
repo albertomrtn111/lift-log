@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { BillingLedgerData } from '@/types/billing'
+import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 import { dueDateFor, isBillable, feeOf, monthsMissedWhileInactive, type LedgerClient, type LedgerRecord } from '@/lib/billing/ledger'
 
 export type { BillingLedgerData } from '@/types/billing'
@@ -62,7 +63,7 @@ export async function getBillingLedger(coachId: string, year: number): Promise<B
     const [{ data: clients }, { data: records }, { data: previousYear }] = await Promise.all([
         supabase
             .from('clients')
-            .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at')
+            .select('id, full_name, email, status, start_date, created_at, payment_amount, payment_day, deactivated_at, auth_user_id, user_id')
             .eq('coach_id', coachId)
             .eq('is_sample', false) // la atleta de ejemplo nunca se cobra
             .order('full_name', { ascending: true }),
@@ -78,6 +79,7 @@ export async function getBillingLedger(coachId: string, year: number): Promise<B
             .eq('year', year - 1)
             .eq('status', 'paid'),
     ])
+    const avatars = await getAthleteAvatarUrls(clients ?? [])
 
     return {
         year,
@@ -86,6 +88,7 @@ export async function getBillingLedger(coachId: string, year: number): Promise<B
         clients: (clients ?? []) as LedgerClient[],
         records: (records ?? []).map(record => ({ ...record, amount: Number(record.amount) })) as LedgerRecord[],
         previousYearCollected: (previousYear ?? []).reduce((sum, record) => sum + Number(record.amount), 0),
+        avatars: Object.fromEntries(avatars),
     }
 }
 

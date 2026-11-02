@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { buildYear, debtsByClient, periodIndex, type YearMonth } from '@/lib/billing/ledger'
 import type { BillingLedgerData } from '@/types/billing'
 import { MONTH_LONG, MONTH_SHORT, STATE_META, formatMoney, initialsOf, moneyFormatter } from './billing-format'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 
 interface YearViewProps {
     ledger: BillingLedgerData
@@ -25,7 +26,7 @@ function niceMax(value: number) {
 }
 
 export function YearView({ ledger, onOpenMonth }: YearViewProps) {
-    const { year, today, currency, clients, records, previousYearCollected } = ledger
+    const { year, today, currency, clients, records, previousYearCollected, avatars } = ledger
     const money = (value: number) => formatMoney(value, currency)
     const compact = moneyFormatter(currency, 0)
 
@@ -230,9 +231,12 @@ export function YearView({ ledger, onOpenMonth }: YearViewProps) {
                         <CatalogList>
                             {debts.map(debt => (
                                 <li key={debt.clientId} className="flex items-start gap-3 px-4 py-3">
-                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                                        {initialsOf(debt.name)}
-                                    </div>
+                                    <AthleteAvatar
+                                        initials={initialsOf(debt.name)}
+                                        avatarUrl={avatars[debt.clientId]}
+                                        className="h-9 w-9"
+                                        fallbackClassName="bg-muted text-xs font-semibold text-muted-foreground"
+                                    />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-baseline justify-between gap-2">
                                             <p className="truncate text-sm font-semibold">{debt.name}</p>

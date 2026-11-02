@@ -99,6 +99,12 @@ export function ClientSelector({ clients, selectedClientId, onClientChange, isSw
         >
             {selectedClient ? (
                 <div className="flex min-w-0 items-center gap-2">
+                    <AthleteAvatar
+                        initials={getClientDisplayIdentity(selectedClient).initials}
+                        avatarUrl={selectedClient.avatar_url}
+                        className="h-6 w-6"
+                        fallbackClassName="bg-primary/20 text-[10px] font-bold"
+                    />
                     <UrgencyDot client={selectedClient} />
                     <span className="truncate">{getClientDisplayIdentity(selectedClient).displayName}</span>
                     <Badge

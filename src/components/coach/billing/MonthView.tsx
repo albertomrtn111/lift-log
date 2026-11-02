@@ -39,6 +39,7 @@ import type { BillingLedgerData, PaymentStatus } from '@/types/billing'
 import { createPaymentRecordAction, markRecordsPaidAction, updatePaymentStatusAction } from './billing-actions'
 import type { RecordDialogTarget } from './BillingDialogs'
 import { MONTH_LONG, PAYMENT_METHODS, STATE_META, formatDayMonth, formatMoney, initialsOf } from './billing-format'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 
 type Filter = 'all' | 'due' | 'overdue' | 'missing' | 'paid' | 'waived'
 
@@ -68,7 +69,7 @@ interface MonthViewProps {
 
 export function MonthView({ ledger, month, onChanged, onOpenRecord, onOpenFee }: MonthViewProps) {
     const { toast } = useToast()
-    const { year, today, currency, clients, records } = ledger
+    const { year, today, currency, clients, records, avatars } = ledger
     const [filter, setFilter] = useState<Filter>('all')
     const [search, setSearch] = useState('')
     const [busyKey, setBusyKey] = useState<string | null>(null)
@@ -250,9 +251,12 @@ export function MonthView({ ledger, month, onChanged, onOpenRecord, onOpenFee }:
                                         onClick={() => onOpenFee(client)}
                                         className="flex h-8 items-center gap-1.5 rounded-full border border-border/70 bg-card pl-1 pr-3 text-xs font-medium shadow-sm transition-colors hover:bg-muted"
                                     >
-                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
-                                            {initialsOf(client.full_name || '?')}
-                                        </span>
+                                        <AthleteAvatar
+                                            initials={initialsOf(client.full_name || '?')}
+                                            avatarUrl={avatars[client.id]}
+                                            className="h-6 w-6"
+                                            fallbackClassName="bg-muted text-[10px] font-semibold"
+                                        />
                                         {client.full_name || client.email}
                                         <span className="text-primary">· Poner cuota</span>
                                     </button>
@@ -333,6 +337,7 @@ export function MonthView({ ledger, month, onChanged, onOpenRecord, onOpenFee }:
                         <BillingRow
                             key={row.key}
                             row={row}
+                            avatarUrl={avatars[row.clientId]}
                             today={today}
                             money={money}
                             busy={busyKey === row.key}
@@ -407,6 +412,7 @@ function rowDetail(row: MonthRow, today: string) {
 
 function BillingRow({
     row,
+    avatarUrl,
     today,
     money,
     busy,
@@ -416,6 +422,7 @@ function BillingRow({
     onFee,
 }: {
     row: MonthRow
+    avatarUrl?: string
     today: string
     money: (value: number) => string
     busy: boolean
@@ -430,9 +437,12 @@ function BillingRow({
     return (
         <li className={cn('flex items-center gap-3 px-4 py-3', row.state === 'waived' && 'opacity-70')}>
             <div className="relative shrink-0">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                    {initialsOf(row.name)}
-                </div>
+                <AthleteAvatar
+                    initials={initialsOf(row.name)}
+                    avatarUrl={avatarUrl}
+                    className="h-10 w-10"
+                    fallbackClassName="bg-muted text-xs font-semibold text-muted-foreground"
+                />
                 <span className={cn('absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card', meta.dot)} />
             </div>
 

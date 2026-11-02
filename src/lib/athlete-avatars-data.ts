@@ -21,7 +21,10 @@ export async function getAthleteAvatarUrls(clients: AthleteAvatarSource[]): Prom
             .in('id', profileIds)
             .not('avatar_url', 'is', null)
         if (error) throw error
-        return avatarUrlsByClient(clients, (data ?? []) as ProfileAvatarRow[], process.env.NEXT_PUBLIC_SUPABASE_URL)
+        return avatarUrlsByClient(clients, (data ?? []) as ProfileAvatarRow[], {
+            r2PublicUrl: process.env.R2_PUBLIC_URL,
+            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        })
     } catch (error) {
         console.error('[getAthleteAvatarUrls]', error)
         return new Map()
