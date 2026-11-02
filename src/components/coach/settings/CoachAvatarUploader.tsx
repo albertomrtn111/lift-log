@@ -1,18 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
 import { Camera, Loader2 } from 'lucide-react'
 import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import { toast } from '@/components/ui/sonner'
-import { prepareImageFile } from '@/lib/chat-image'
-import { AVATAR_MAX_SIDE } from '@/lib/chat-image-rules'
-import { uploadMedia } from '@/lib/media-upload'
-
-/** Formatos que el servidor sabe convertir a WebP */
-const AVATAR_INPUT_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+import { AVATAR_ACCEPT, useAvatarUpload } from '@/hooks/useAvatarUpload'
 
 interface CoachAvatarUploaderProps {
     name: string
@@ -24,12 +18,15 @@ interface CoachAvatarUploaderProps {
  * Foto de perfil del coach en Ajustes › Perfil. Mismo flujo que la del atleta
  * en /profile: encuadre, JPEG en el navegador y POST /api/media/upload.
  */
-export function CoachAvatarUploader({ name, initial, avatarUrl }: CoachAvatarUploaderProps) {
+export function CoachAvatarUploader({ name, initial, avatarUrl: serverAvatarUrl }: CoachAvatarUploaderProps) {
     const router = useRouter()
-    const queryClient = useQueryClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
-    const [uploading, setUploading] = useState(false)
+    const { upload, uploading } = useAvatarUpload()
+    // La tarjeta viene del server render: la foto nueva se pinta ya, sin
+    // esperar a router.refresh
+    const [avatarUrl, setAvatarUrl] = useState(serverAvatarUrl)
+    useEffect(() => setAvatarUrl(serverAvatarUrl), [serverAvatarUrl])
 
     const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -40,34 +37,17 @@ export function CoachAvatarUploader({ name, initial, avatarUrl }: CoachAvatarUpl
 
     /** Sube el cuadrado ya encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
     const handleAvatarUpload = async (cropped: File): Promise<boolean> => {
-        setUploading(true)
-        try {
-            const prepared = await prepareImageFile(cropped, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
-            if (!AVATAR_INPUT_TYPES.includes(prepared.mime)) {
-                toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
-                return false
-            }
-
-            const { error } = await uploadMedia<{ url: string }>({ kind: 'avatar' }, prepared.file, prepared.fileName)
-            if (error) {
-                toast.error(error)
-                return false
-            }
-
-            setAvatarToCrop(null)
-            toast.success('Foto de perfil actualizada')
-            // Esta tarjeta viene del server render (router.refresh); el resto del
-            // panel del coach lee el perfil de react-query (CoachContext).
-            await queryClient.invalidateQueries({ queryKey: ['coach-context'] })
-            router.refresh()
-            return true
-        } catch (err) {
-            console.error('[CoachAvatarUploader]', err)
-            toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
+        const result = await upload(cropped)
+        if (!result.ok) {
+            toast.error(result.error)
             return false
-        } finally {
-            setUploading(false)
         }
+        setAvatarUrl(result.url)
+        setAvatarToCrop(null)
+        toast.success('Foto de perfil actualizada')
+        // El resto del panel (CoachContext) ya lo actualiza el hook
+        router.refresh()
+        return true
     }
 
     return (
@@ -91,7 +71,7 @@ export function CoachAvatarUploader({ name, initial, avatarUrl }: CoachAvatarUpl
             <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={AVATAR_ACCEPT}
                 className="hidden"
                 onChange={handleAvatarPick}
             />
