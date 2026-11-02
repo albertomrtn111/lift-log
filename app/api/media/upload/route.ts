@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { AVATAR_MAX_SIDE, shouldPrepareImage } from '@/lib/chat-image-rules'
+import { AVATAR_MAX_SIDE, isRawPhoto, isWebDisplayable, photoUploadProblem, shouldPrepareImage } from '@/lib/chat-image-rules'
 import {
     R2_BUCKET_MARKER,
     R2_REF_PREFIX,
@@ -66,12 +66,17 @@ export async function POST(request: Request) {
     if (!kind || !(kind in MAX_INPUT_BYTES) || !(file instanceof Blob) || file.size === 0) {
         return fail(400, 'No se recibió ningún archivo.')
     }
+    const originalName = String(form.get('fileName') || (file instanceof File ? file.name : '') || 'archivo')
+    const originalMime = file.type || 'application/octet-stream'
+    // Un RAW que el navegador no pudo convertir no se intenta en el servidor: sharp
+    // leería solo la miniatura que lleva dentro y se guardaría una foto diminuta
+    if (isRawPhoto(originalMime, originalName)) {
+        return fail(415, photoUploadProblem(originalMime, originalName, file.size)!)
+    }
     if (file.size > MAX_INPUT_BYTES[kind]) {
         return fail(413, `El archivo supera el máximo de ${MAX_INPUT_BYTES[kind] / 1024 / 1024} MB.`)
     }
 
-    const originalName = String(form.get('fileName') || (file instanceof File ? file.name : '') || 'archivo')
-    const originalMime = file.type || 'application/octet-stream'
     const input = new Uint8Array(await file.arrayBuffer())
 
     // Las fotos se guardan siempre en WebP; GIF, audio y documentos, tal cual.
@@ -84,8 +89,11 @@ export async function POST(request: Request) {
             body = webp
             mime = 'image/webp'
             fileName = sanitizeFileName(withExtension(originalName, 'webp'))
-        } else if (kind === 'avatar') {
-            return fail(415, 'Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
+        } else if (kind === 'avatar' || !isWebDisplayable(originalMime)) {
+            // RAW (ProRAW del iPhone), HEIC fuera de Safari…: guardarlo dejaría una
+            // foto que nadie puede ver, así que se explica por qué no se puede subir
+            return fail(415, photoUploadProblem(originalMime, originalName, file.size)
+                ?? 'Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
         }
     } else if (kind === 'avatar') {
         return fail(415, 'Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')

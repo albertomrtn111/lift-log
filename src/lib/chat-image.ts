@@ -4,7 +4,7 @@ import {
     CHAT_IMAGE_MAX_SIDE,
     CHAT_IMAGE_QUALITY,
     fitWithin,
-    isHeic,
+    isWebDisplayable,
     jpegFileName,
     shouldPrepareImage,
 } from '@/lib/chat-image-rules'
@@ -62,8 +62,8 @@ export async function prepareImageFile(
 
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', CHAT_IMAGE_QUALITY))
         if (!blob) return original
-        // Una imagen ya ligera puede crecer al recomprimirla; las HEIC se convierten siempre
-        if (!alwaysConvert && !isHeic(file.type, file.name) && blob.size >= file.size) return original
+        // Una imagen ya ligera puede crecer al recomprimirla; las HEIC y RAW se convierten siempre
+        if (!alwaysConvert && isWebDisplayable(file.type) && blob.size >= file.size) return original
 
         return { file: blob, fileName: jpegFileName(file.name), mime: 'image/jpeg' }
     } catch (error) {

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Camera, X, Loader2, Upload, AlertCircle } from 'lucide-react'
 import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
 import { prepareChatFile } from '@/lib/chat-image'
+import { PHOTO_INPUT_ACCEPT, photoUploadProblem } from '@/lib/chat-image-rules'
 import { uploadMedia } from '@/lib/media-upload'
 import { R2_BUCKET_MARKER, privateMediaUrl } from '@/lib/storage/media-refs'
 
@@ -121,6 +122,13 @@ export function PhotoUploadBlock({
             for (const file of filesToUpload) {
                 // 1) Se reduce en el móvil y el servidor la guarda en WebP (R2 o Supabase)
                 const prepared = await prepareChatFile(file)
+                // RAW (ProRAW del iPhone), HEIC que el navegador no convierte o
+                // demasiado grande: avisar sin subir nada
+                const problem = photoUploadProblem(prepared.mime, prepared.fileName, prepared.file.size)
+                if (problem) {
+                    setError(`${file.name}: ${problem}`)
+                    continue
+                }
                 const { data: uploaded, error: uploadErr } = await uploadMedia<{
                     bucket: string
                     path: string
@@ -261,7 +269,7 @@ export function PhotoUploadBlock({
                     <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={PHOTO_INPUT_ACCEPT}
                         multiple
                         onChange={handleFileSelect}
                         className="hidden"
