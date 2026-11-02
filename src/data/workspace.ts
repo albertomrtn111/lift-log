@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 import type { Client } from '@/types/coach'
 
 // ============================================================================
@@ -190,6 +191,8 @@ export interface ClientSelectorOption {
     status: string | null
     auth_user_id: string | null
     is_sample?: boolean
+    /** Foto de perfil del atleta; null si no tiene */
+    avatar_url: string | null
     hasOverdueCheckin?: boolean
     hasPendingReview?: boolean
 }
@@ -199,7 +202,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
 
     const { data, error } = await supabase
         .from('clients')
-        .select('id, full_name, email, status, auth_user_id, next_checkin_date, is_sample')
+        .select('id, full_name, email, status, auth_user_id, user_id, next_checkin_date, is_sample')
         .eq('coach_id', coachId)
         .order('status', { ascending: true })
         .order('full_name', { ascending: true })
@@ -210,13 +213,16 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
     const clientIds = data.map(c => c.id)
 
     // Get latest checkin per client to check pending review
-    const { data: checkins } = await supabase
-        .from('checkins')
-        .select('id, client_id')
-        .in('client_id', clientIds)
-        .eq('type', 'checkin')
-        .not('submitted_at', 'is', null)
-        .order('submitted_at', { ascending: false })
+    const [{ data: checkins }, avatarsByClient] = await Promise.all([
+        supabase
+            .from('checkins')
+            .select('id, client_id')
+            .in('client_id', clientIds)
+            .eq('type', 'checkin')
+            .not('submitted_at', 'is', null)
+            .order('submitted_at', { ascending: false }),
+        getAthleteAvatarUrls(data),
+    ])
 
     const latestCheckinByClient = new Map<string, string>()
     for (const c of (checkins || [])) {
@@ -254,6 +260,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
             status: c.status,
             auth_user_id: c.auth_user_id,
             is_sample: Boolean(c.is_sample),
+            avatar_url: avatarsByClient.get(c.id) ?? null,
             hasOverdueCheckin: daysUntil !== null && daysUntil < 0,
             hasPendingReview: reviewStatus != null && reviewStatus !== 'approved',
         }

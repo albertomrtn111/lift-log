@@ -21,6 +21,7 @@ import { Check, ChevronsUpDown, Loader2, Users } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
+import { AthleteAvatar } from '../AthleteAvatar'
 import Link from 'next/link'
 import type { ClientSelectorOption } from '@/data/workspace'
 
@@ -132,13 +133,12 @@ export function ClientSelector({ clients, selectedClientId, onClientChange, isSw
                 className={cn('cursor-pointer', isMobile && 'gap-1 py-3', inactive && 'opacity-60')}
             >
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <div className={cn(
-                        'flex shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                        isMobile ? 'h-9 w-9' : 'h-6 w-6',
-                        inactive ? 'bg-muted' : 'bg-primary/20'
-                    )}>
-                        {initials}
-                    </div>
+                    <AthleteAvatar
+                        initials={initials}
+                        avatarUrl={client.avatar_url}
+                        className={isMobile ? 'h-9 w-9' : 'h-6 w-6'}
+                        fallbackClassName={cn('text-xs font-bold', inactive ? 'bg-muted' : 'bg-primary/20')}
+                    />
                     {!inactive && <UrgencyDot client={client} />}
                     <div className="min-w-0">
                         <p className="text-sm font-medium truncate">

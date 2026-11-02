@@ -304,6 +304,7 @@ export function NewClientWorkspace({
                     )}
                     <WorkspaceHeader
                         client={selectedClient}
+                        avatarUrl={clients.find(c => c.id === selectedClient.id)?.avatar_url}
                         clientStatus={clientStatus}
                         coachId={coachId}
                         formTemplates={formTemplates}

@@ -6,6 +6,7 @@ import { ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import {
     Tooltip,
     TooltipContent,
@@ -69,9 +70,12 @@ export function ClientRow({ client, showFrequency = true }: ClientRowProps) {
             <div className="flex items-center gap-3 min-w-0 flex-1">
                 {/* Avatar with adherence dot */}
                 <div className="relative shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-xs font-bold text-white">
-                        {initials}
-                    </div>
+                    <AthleteAvatar
+                        initials={initials}
+                        avatarUrl={client.avatar_url}
+                        className="w-8 h-8"
+                        fallbackClassName="bg-gradient-to-br from-primary to-primary/60 text-xs font-bold text-white"
+                    />
                     <div
                         className={cn(
                             'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background',
