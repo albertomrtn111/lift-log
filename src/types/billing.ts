@@ -11,4 +11,6 @@ export interface BillingLedgerData {
     clients: LedgerClient[]
     records: LedgerRecord[]
     previousYearCollected: number
+    /** Foto de perfil por id de atleta; sin foto no hay entrada */
+    avatars: Record<string, string>
 }

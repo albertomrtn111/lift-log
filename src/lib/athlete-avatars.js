@@ -1,9 +1,12 @@
+import { AVATARS_AREA } from './storage/media-refs.js'
+
 /**
  * Fotos de perfil de los atletas en el panel del coach. Lógica pura
  * (testeada en scripts/); la consulta está en athlete-avatars-data.ts.
  *
  * @typedef {{ id: string, auth_user_id?: string | null, user_id?: string | null }} AthleteAvatarSource
  * @typedef {{ id: string, avatar_url: string | null }} ProfileAvatarRow
+ * @typedef {{ r2PublicUrl?: string | null, supabaseUrl?: string | null }} AvatarOrigins
  */
 
 /**
@@ -28,17 +31,32 @@ export function athleteProfileIds(clients) {
 }
 
 /**
- * Solo enseñamos fotos del bucket público `avatars` de nuestro Supabase. El
- * atleta escribe `profiles.avatar_url` él mismo, y una URL de fuera haría que
- * el navegador del coach pidiera una imagen a un servidor ajeno.
+ * Dónde guarda la app las fotos de perfil: el bucket público de R2
+ * (`R2_PUBLIC_URL/avatars/…`) y, si R2 no está configurado, el bucket
+ * `avatars` de Supabase.
+ * @param {AvatarOrigins} origins
+ * @returns {string[]}
+ */
+function avatarUrlPrefixes({ r2PublicUrl, supabaseUrl }) {
+    /** @param {string | null | undefined} base */
+    const trim = base => (base ?? '').trim().replace(/\/+$/, '')
+    const prefixes = []
+    if (trim(r2PublicUrl)) prefixes.push(`${trim(r2PublicUrl)}/${AVATARS_AREA}/`)
+    if (trim(supabaseUrl)) prefixes.push(`${trim(supabaseUrl)}/storage/v1/object/public/${AVATARS_AREA}/`)
+    return prefixes
+}
+
+/**
+ * Solo enseñamos fotos que ha subido la app. El atleta escribe
+ * `profiles.avatar_url` él mismo, y una URL de fuera haría que el navegador
+ * del coach pidiera una imagen a un servidor ajeno.
  * @param {string | null | undefined} url
- * @param {string | null | undefined} supabaseUrl
+ * @param {AvatarOrigins} origins
  * @returns {boolean}
  */
-export function isAvatarBucketUrl(url, supabaseUrl) {
-    if (!url || !supabaseUrl) return false
-    const prefix = `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/avatars/`
-    return url.startsWith(prefix) && url.length > prefix.length
+export function isAthleteAvatarUrl(url, origins) {
+    if (!url) return false
+    return avatarUrlPrefixes(origins).some(prefix => url.startsWith(prefix) && url.length > prefix.length)
 }
 
 /**
@@ -46,14 +64,14 @@ export function isAvatarBucketUrl(url, supabaseUrl) {
  * cuenta, foto o una URL válida no aparecen, y se pintan con iniciales.
  * @param {AthleteAvatarSource[]} clients
  * @param {ProfileAvatarRow[]} profiles
- * @param {string | null | undefined} supabaseUrl
+ * @param {AvatarOrigins} origins
  * @returns {Map<string, string>}
  */
-export function avatarUrlsByClient(clients, profiles, supabaseUrl) {
+export function avatarUrlsByClient(clients, profiles, origins) {
     /** @type {Map<string, string>} */
     const byProfile = new Map()
     for (const profile of profiles) {
-        if (isAvatarBucketUrl(profile.avatar_url, supabaseUrl)) {
+        if (isAthleteAvatarUrl(profile.avatar_url, origins)) {
             byProfile.set(profile.id, /** @type {string} */ (profile.avatar_url))
         }
     }
