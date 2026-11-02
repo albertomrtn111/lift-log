@@ -33,10 +33,12 @@ El despliegue:
 1. Compara la revisión del servidor con `origin/main`; si ya está al día, no hace nada.
 2. Para si el servidor tiene cambios locales además de `.env`, o ficheros que no son del usuario `alberto`.
 3. Lista las migraciones añadidas entre las dos revisiones. Si hay alguna, para hasta que confirmes que están aplicadas con `MIGRATIONS_APPLIED=1 scripts/deploy-web.sh`. Para comprobarlo, compáralas con `list_migrations` del MCP de Supabase: allí aparecen con la fecha de aplicación como versión, no con la del nombre del fichero.
-4. Etiqueta las imágenes actuales como `rollback-<revisión anterior>`.
+4. Etiqueta las imágenes actuales como `rollback-<revisión anterior>`. Después borra las imágenes `rollback-*` de NexTrain más antiguas (se quedan las 3 más recientes) y la caché de build que ya no se usa (`docker builder prune -f`). Si aun así quedan menos de 5 GB libres en el disco, para sin desplegar.
 5. Hace `git fetch` y `git merge --ff-only` en `/srv/NextTrain`.
 6. Lanza la build y el reinicio con `nohup`, desacoplados del SSH, porque las builds largas cortaban la conexión: `docker compose build nexttrain_app supplement_reminder_worker && docker compose up -d --no-deps …`. Cada despliegue escribe su log en `/tmp/nexttrain-build-<revisión>.log` del servidor, y `/tmp/nexttrain-build.log` apunta al último.
-7. Espera a la marca `DEPLOY_OK <revisión>` de ese despliegue (unos 3-6 minutos) y comprueba que `https://nexttrain.ascenttech.cloud/login` responde 200. Las páginas privadas devuelven 307 (redirección al login) sin sesión: es lo normal.
+7. Espera a la marca `DEPLOY_OK <revisión>` de ese despliegue (unos 3-6 minutos). Si se corta el SSH mientras espera, reintenta: la build sigue en el servidor. Después comprueba que `https://nexttrain.ascenttech.cloud/login` responde 200. Las páginas privadas devuelven 307 (redirección al login) sin sesión: es lo normal.
+
+Si una build falla después de traer el código (por ejemplo, por disco lleno), el servidor ya está en la revisión de main y el script diría «Nada que desplegar» aunque los contenedores sigan con la versión anterior. Arregla la causa y repite con `REBUILD=1 scripts/deploy-web.sh`.
 
 Variables opcionales: `NEXTTRAIN_SSH_KEY` (por defecto `/Users/albertomrtn/SERVIDORALBERTO@2026`) y `NEXTTRAIN_SSH_HOST` (por defecto `alberto@72.61.167.159`).
 
