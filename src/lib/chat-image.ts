@@ -16,10 +16,11 @@ export interface PreparedChatFile {
 }
 
 /**
- * Reduce las fotos a JPEG de 2048 px como máximo antes de subirlas: una foto
+ * Reduce las fotos a JPEG de 1600 px como máximo antes de subirlas: una foto
  * del móvil pasa de 3-8 MB a unos cientos de KB, se sube en segundos con mala
  * cobertura, pierde los metadatos (incluida la ubicación) y las HEIC del iPhone
- * se ven en cualquier navegador. Si algo falla, se envía el archivo original.
+ * se ven en cualquier navegador. El servidor la guarda después en WebP (Safari no
+ * sabe generar WebP desde un canvas). Si algo falla, se envía el archivo original.
  */
 export function prepareChatFile(file: File): Promise<PreparedChatFile> {
     return prepareImageFile(file)

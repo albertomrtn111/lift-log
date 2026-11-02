@@ -2,7 +2,10 @@ export type MessageAttachmentType = 'document' | 'audio' | 'image'
 
 export interface MessageAttachment {
     type: MessageAttachmentType
-    /** Ruta dentro del bucket chat-media ({coach_id}/{client_id}/{archivo}) */
+    /**
+     * Dónde está el archivo: «r2:chat-media/{coach_id}/{client_id}/{archivo}» en R2,
+     * o la ruta dentro del bucket chat-media de Supabase ({coach_id}/{client_id}/{archivo}).
+     */
     url: string
     name: string
     size: number
