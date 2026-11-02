@@ -8,6 +8,16 @@ const nextConfig = {
             dynamic: 0,
         },
     },
+    // Ninguna URL de la app debe indexarse (tampoco redirecciones, imágenes ni PDFs):
+    // en Google solo debe aparecer la web comercial.
+    async headers() {
+        return [
+            {
+                source: '/:path*',
+                headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+            },
+        ]
+    },
 }
 
 export default nextConfig
