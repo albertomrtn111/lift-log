@@ -14,6 +14,7 @@ Desde noviembre de 2026 las fotos se guardan en Cloudflare R2 y no en Supabase S
 - **Hacen falta dos buckets.** R2 publica el bucket entero (r2.dev o dominio propio), así que en el bucket público cualquier archivo se puede leer conociendo su URL. Las fotos de check-in y del chat van en otro bucket sin acceso público.
 - **Las subidas pasan por el servidor** (`POST /api/media/upload`):
   1. El navegador reduce la foto a 1600 px en JPEG (512 px en el avatar), así se sube rápido con mala cobertura y las HEIC del iPhone se convierten en Safari.
+     La foto de perfil pasa antes por el encuadre (`AvatarCropDialog`, geometría en `src/lib/avatar-crop-rules.js`): el usuario elige el círculo y se sube ese cuadrado.
   2. El servidor comprueba la sesión y los permisos, convierte la foto a WebP de 1600 px como máximo (calidad 80, sin metadatos ni ubicación) con `sharp` y la guarda en R2.
   - La conversión a WebP la hace el servidor porque Safari no genera WebP desde un canvas.
   - GIF, audio y documentos del chat se guardan tal cual.
