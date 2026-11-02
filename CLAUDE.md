@@ -14,6 +14,21 @@ Lee `docs/despliegue.md` antes de desplegar nada. Resumen:
 
 No hay staging: el `.env.local` apunta a la base de datos de producción. Lee `docs/entorno-de-pruebas.md`.
 
+## Fotos y archivos
+
+Las fotos están en Cloudflare R2, no en Supabase Storage. No vuelvas a subir archivos a Supabase Storage. Detalles en `docs/almacenamiento-r2.md`.
+
+- **Subidas:** siempre por `POST /api/media/upload`. Comprueba permisos y convierte a WebP. Desde el cliente se llama con `uploadMedia` (`src/lib/media-upload.ts`).
+- **Check-ins y chat:** van al bucket privado y se sirven por `/api/media/{clave}`.
+- **Fotos de perfil:** van al bucket público (`R2_PUBLIC_URL`).
+
+## Tareas pendientes
+
+Se llevan en Notion: espacio Ascentechlabs → página «NexTrain» → bases **Tareas** y **Proyectos**. El `CLAUDE.md` de la carpeta de trabajo (`~/Desktop/SaasEntrenamientos_IA/CLAUDE.md`) explica cómo usarlas.
+
+- Si el dueño dice «déjalo en pendientes», crea ahí la tarea.
+- Al abrir un PR o desplegar, actualiza el estado de la tarea.
+
 ## Pruebas
 
 - `node --test scripts/*.test.mjs`

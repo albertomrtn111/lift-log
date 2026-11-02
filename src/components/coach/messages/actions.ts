@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendCoachMessageNotification } from '@/lib/notifications/client'
 import { markCoachNotificationsRead } from '@/lib/notifications/coach'
+import { isChatAttachmentOf } from '@/lib/storage/media-refs'
 import type { Message, MessageAttachment } from '@/types/messages'
 
 export async function getMessagesAction(
@@ -49,7 +50,7 @@ export async function sendMessageAction(
     }
 
     // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
-    if (attachment && !attachment.url.startsWith(`${validatedCoachId}/${clientId}/`)) {
+    if (attachment && !isChatAttachmentOf(attachment.url, validatedCoachId, clientId)) {
         return { success: false, error: 'Adjunto no válido para esta conversación' }
     }
 

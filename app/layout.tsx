@@ -11,6 +11,9 @@ const inter = Inter({
 export const metadata: Metadata = {
     title: 'NexTrain - Tu entrenamiento personal',
     description: 'Tu plataforma de entrenamiento personal',
+    // La app no debe salir en buscadores: la página pública es la web comercial (www.nextrain.ascenttech.cloud).
+    // next.config.mjs añade además la cabecera X-Robots-Tag a todas las respuestas.
+    robots: { index: false, follow: false, googleBot: { index: false, follow: false } },
     manifest: '/manifest.json',
     appleWebApp: {
         capable: true,

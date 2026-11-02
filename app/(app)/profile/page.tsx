@@ -21,6 +21,9 @@ import {
     UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { prepareImageFile } from '@/lib/chat-image'
+import { AVATAR_MAX_SIDE } from '@/lib/chat-image-rules'
+import { uploadMedia } from '@/lib/media-upload'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
@@ -31,13 +34,16 @@ import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
 import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
 import { PushDeviceRow } from '@/components/push/PushDeviceRow'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
+import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import {
     getNotificationPreferencesAction,
-    updateAvatarUrlAction,
     updateNotificationPreferencesAction,
 } from './actions'
 import ProfileLoading from './loading'
 import { DeliverySettingsGroup } from './DeliverySettingsGroup'
+
+/** Formatos que el servidor sabe convertir a WebP */
+const AVATAR_INPUT_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 type ClientNotificationPreferences = {
     messages_enabled: boolean
@@ -65,6 +71,7 @@ export default function ProfilePage() {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
         messages_enabled: true,
@@ -139,50 +146,45 @@ export default function ProfilePage() {
         }
     }
 
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        if (!file) return
+        // Reset input para permitir elegir el mismo archivo otra vez
+        e.target.value = ''
+        if (file) setAvatarToCrop(file)
+    }
 
-        const maxSize = 2 * 1024 * 1024 // 2 MB
-        if (file.size > maxSize) {
-            toast.error('La imagen no puede superar 2 MB')
-            return
-        }
-
+    /** Sube el cuadrado ya encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
+    const handleAvatarUpload = async (cropped: File): Promise<boolean> => {
         setUploading(true)
         try {
-            const supabase = createClient()
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('No autenticado')
+            // El recorte (512 px como máximo) pasa a JPEG en el navegador; el
+            // servidor lo guarda en WebP, actualiza profiles.avatar_url y borra
+            // la foto anterior.
+            const prepared = await prepareImageFile(cropped, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
+            if (!AVATAR_INPUT_TYPES.includes(prepared.mime)) {
+                toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
+                return false
+            }
 
-            const ext = file.name.split('.').pop() ?? 'jpg'
-            const path = `${user.id}/avatar.${ext}`
+            const { error } = await uploadMedia<{ url: string }>({ kind: 'avatar' }, prepared.file, prepared.fileName)
+            if (error) {
+                toast.error(error)
+                return false
+            }
 
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(path, file, { upsert: true, contentType: file.type })
-
-            if (uploadError) throw uploadError
-
-            // Añadir cache-buster para que el browser no use la imagen anterior
-            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-            const urlWithBust = `${publicUrl}?t=${Date.now()}`
-
-            const result = await updateAvatarUrlAction(urlWithBust)
-            if (!result.success) throw new Error(result.error)
-
+            setAvatarToCrop(null)
             toast.success('Foto de perfil actualizada')
             // El avatar del header y del perfil vienen de react-query, no del
             // server render: invalidar para que la foto nueva se vea al momento.
             await queryClient.invalidateQueries({ queryKey: ['client-context'] })
             router.refresh()
+            return true
         } catch (err) {
             console.error('[handleAvatarUpload]', err)
             toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
+            return false
         } finally {
             setUploading(false)
-            // Reset input para permitir subir el mismo archivo otra vez
-            if (fileInputRef.current) fileInputRef.current.value = ''
         }
     }
 
@@ -255,7 +257,12 @@ export default function ProfilePage() {
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             className="hidden"
-                            onChange={handleAvatarUpload}
+                            onChange={handleAvatarPick}
+                        />
+                        <AvatarCropDialog
+                            file={avatarToCrop}
+                            onCancel={() => setAvatarToCrop(null)}
+                            onSave={handleAvatarUpload}
                         />
                     </div>
                     <h2 className="mt-3 max-w-full truncate text-xl font-bold tracking-tight">{displayName}</h2>

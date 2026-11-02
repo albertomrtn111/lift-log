@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Camera, X, Loader2, Upload, AlertCircle } from 'lucide-react'
 import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
+import { prepareChatFile } from '@/lib/chat-image'
+import { PHOTO_INPUT_ACCEPT, photoUploadProblem } from '@/lib/chat-image-rules'
+import { uploadMedia } from '@/lib/media-upload'
+import { R2_BUCKET_MARKER, privateMediaUrl } from '@/lib/storage/media-refs'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,6 +18,7 @@ import { ProgressPhotoImage } from '@/components/media/ProgressPhotoImage'
 
 interface MediaRow {
     id: string
+    bucket: string
     path: string
     mime_type: string | null
     file_size_bytes: number | null
@@ -58,7 +63,7 @@ export function PhotoUploadBlock({
     const fetchPhotos = useCallback(async () => {
         const { data, error: fetchErr } = await supabase
             .from('checkin_media')
-            .select('id, path, mime_type, file_size_bytes, taken_at')
+            .select('id, bucket, path, mime_type, file_size_bytes, taken_at')
             .eq('checkin_id', checkinId)
             .eq('media_type', 'progress_photo')
             .order('taken_at', { ascending: true })
@@ -80,6 +85,21 @@ export function PhotoUploadBlock({
         onCountChange?.(photos.length)
     }, [onCountChange, photos.length])
 
+    /** Borra el archivo de R2 (vía la app, que comprueba permisos) o de Supabase */
+    const removeStoredFile = useCallback(async (bucket: string, path: string) => {
+        try {
+            if (bucket === R2_BUCKET_MARKER) {
+                const response = await fetch(privateMediaUrl(path), { method: 'DELETE' })
+                if (!response.ok) throw new Error(String(response.status))
+            } else {
+                const { error } = await supabase.storage.from('checkin-media').remove([path])
+                if (error) throw error
+            }
+        } catch (err) {
+            console.error('[PhotoUploadBlock] Storage delete error:', err)
+        }
+    }, [supabase])
+
     // -----------------------------------------------------------------------
     // Upload
     // -----------------------------------------------------------------------
@@ -100,23 +120,29 @@ export function PhotoUploadBlock({
 
         try {
             for (const file of filesToUpload) {
-                // Generate unique path
-                const ext = file.name.split('.').pop() || 'jpg'
-                const timestamp = Date.now()
-                const random = Math.random().toString(36).substring(2, 8)
-                const path = `${coachId}/${clientId}/${checkinId}/${timestamp}_${random}.${ext}`
+                // 1) Se reduce en el móvil y el servidor la guarda en WebP (R2 o Supabase)
+                const prepared = await prepareChatFile(file)
+                // RAW (ProRAW del iPhone), HEIC que el navegador no convierte o
+                // demasiado grande: avisar sin subir nada
+                const problem = photoUploadProblem(prepared.mime, prepared.fileName, prepared.file.size)
+                if (problem) {
+                    setError(`${file.name}: ${problem}`)
+                    continue
+                }
+                const { data: uploaded, error: uploadErr } = await uploadMedia<{
+                    bucket: string
+                    path: string
+                    mime: string
+                    size: number
+                }>(
+                    { kind: 'checkin', coachId, clientId, checkinId },
+                    prepared.file,
+                    prepared.fileName,
+                )
 
-                // 1) Upload to Storage
-                const { error: uploadErr } = await supabase.storage
-                    .from('checkin-media')
-                    .upload(path, file, {
-                        contentType: file.type,
-                        upsert: false,
-                    })
-
-                if (uploadErr) {
-                    console.error('[PhotoUploadBlock] Storage upload error:', uploadErr)
-                    setError(`Error al subir ${file.name}: ${uploadErr.message}`)
+                if (uploadErr || !uploaded) {
+                    console.error('[PhotoUploadBlock] Upload error:', uploadErr)
+                    setError(`Error al subir ${file.name}: ${uploadErr}`)
                     continue
                 }
 
@@ -127,18 +153,18 @@ export function PhotoUploadBlock({
                         coach_id: coachId,
                         client_id: clientId,
                         checkin_id: checkinId,
-                        bucket: 'checkin-media',
-                        path,
+                        bucket: uploaded.bucket,
+                        path: uploaded.path,
                         media_type: 'progress_photo',
-                        mime_type: file.type,
-                        file_size_bytes: file.size,
+                        mime_type: uploaded.mime,
+                        file_size_bytes: uploaded.size,
                         taken_at: new Date().toISOString(),
                     })
 
                 if (insertErr) {
                     console.error('[PhotoUploadBlock] Insert error:', insertErr)
                     // Try to clean up the uploaded file
-                    await supabase.storage.from('checkin-media').remove([path])
+                    await removeStoredFile(uploaded.bucket, uploaded.path)
                     setError(`Error al registrar ${file.name}: ${insertErr.message}`)
                     continue
                 }
@@ -160,15 +186,8 @@ export function PhotoUploadBlock({
     const handleDelete = async (photo: MediaRow) => {
         setError(null)
 
-        // 1) Delete from Storage
-        const { error: storageErr } = await supabase.storage
-            .from('checkin-media')
-            .remove([photo.path])
-
-        if (storageErr) {
-            console.error('[PhotoUploadBlock] Storage delete error:', storageErr)
-            // Still try to delete the row
-        }
+        // 1) Delete from Storage (still try to delete the row if it fails)
+        await removeStoredFile(photo.bucket, photo.path)
 
         // 2) Delete row from checkin_media
         const { error: deleteErr } = await supabase
@@ -250,7 +269,7 @@ export function PhotoUploadBlock({
                     <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/*"
+                        accept={PHOTO_INPUT_ACCEPT}
                         multiple
                         onChange={handleFileSelect}
                         className="hidden"

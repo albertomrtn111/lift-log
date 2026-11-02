@@ -36,6 +36,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
+import { AthleteAvatar } from '../AthleteAvatar'
 import { deactivateClientAction, reactivateClientAction } from '../actions'
 import { resendInviteAction } from '../invite-actions'
 import { sendOnboardingAction } from '../onboarding-actions'
@@ -51,6 +52,8 @@ import { parseLocalDate } from '@/lib/date-utils'
 
 interface WorkspaceHeaderProps {
     client: Client
+    /** Foto de perfil del atleta; sin ella se ven sus iniciales */
+    avatarUrl?: string | null
     clientStatus: ClientStatus | null
     coachId: string
     formTemplates: FormTemplate[]
@@ -58,7 +61,7 @@ interface WorkspaceHeaderProps {
     onClientUpdated: () => void
 }
 
-export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, reviewTemplates, onClientUpdated }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ client, avatarUrl, clientStatus, coachId, formTemplates, reviewTemplates, onClientUpdated }: WorkspaceHeaderProps) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
@@ -219,9 +222,12 @@ export function WorkspaceHeader({ client, clientStatus, coachId, formTemplates, 
                 <div className="flex items-center justify-between gap-2 sm:gap-4">
                     {/* Client Info */}
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                            {initials}
-                        </div>
+                        <AthleteAvatar
+                            initials={initials}
+                            avatarUrl={avatarUrl}
+                            className="w-9 h-9"
+                            fallbackClassName="bg-gradient-to-br from-primary to-primary/60 text-sm font-bold text-white"
+                        />
                         <div className="min-w-0">
                             <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
                                 <h2 className="text-sm font-semibold truncate max-w-full">{displayName}</h2>

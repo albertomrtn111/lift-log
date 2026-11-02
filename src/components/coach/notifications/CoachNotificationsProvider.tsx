@@ -38,7 +38,7 @@ export function useCoachNotifications() {
  * Los botones de campana (barra lateral, cabeceras móviles) solo lo abren.
  */
 export function CoachNotificationsProvider({ children }: { children: React.ReactNode }) {
-    const { coach } = useCoachContext()
+    const { coach, isLoading: coachLoading } = useCoachContext()
     const coachId = coach?.coachId ?? null
     const [notifications, setNotifications] = useState<CoachNotification[]>([])
     const [unreadCount, setUnreadCount] = useState(0)
@@ -56,6 +56,11 @@ export function CoachNotificationsProvider({ children }: { children: React.React
     useEffect(() => {
         void refresh()
     }, [refresh])
+
+    // Sin negocio de coach no hay nada que cargar: lista vacía en vez de esqueleto infinito
+    useEffect(() => {
+        if (!coachLoading && !coachId) setLoading(false)
+    }, [coachLoading, coachId])
 
     useEffect(() => {
         if (!coachId) return

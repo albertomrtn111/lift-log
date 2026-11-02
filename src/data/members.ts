@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 import type { Client, ClientWithMeta } from '@/types/coach'
 
 export type StatusFilter = 'all' | 'active' | 'inactive'
@@ -59,14 +60,19 @@ export async function getClients(options: ListClientsOptions): Promise<ClientWit
     // Resolver "próxima revisión" desde schedules activos (modelo nuevo).
     // Si un cliente no tiene schedules, usamos el legacy client.next_checkin_date.
     const earliestDueByClient = new Map<string, string>()
+    let avatarsByClient = new Map<string, string>()
     if (clientIds.length > 0) {
-        const { data: schedules } = await supabase
-            .from('client_review_schedules')
-            .select('client_id, next_due_date')
-            .in('client_id', clientIds)
-            .eq('is_active', true)
-            .not('next_due_date', 'is', null)
-            .order('next_due_date', { ascending: true })
+        const [{ data: schedules }, avatars] = await Promise.all([
+            supabase
+                .from('client_review_schedules')
+                .select('client_id, next_due_date')
+                .in('client_id', clientIds)
+                .eq('is_active', true)
+                .not('next_due_date', 'is', null)
+                .order('next_due_date', { ascending: true }),
+            getAthleteAvatarUrls(clientList),
+        ])
+        avatarsByClient = avatars
 
         for (const row of (schedules ?? []) as { client_id: string; next_due_date: string }[]) {
             if (!earliestDueByClient.has(row.client_id)) {
@@ -90,6 +96,7 @@ export async function getClients(options: ListClientsOptions): Promise<ClientWit
             // Prioriza el schedule activo más próximo; cae al legacy si no hay schedules.
             // El campo legacy `next_checkin_date` se mantiene intacto.
             effectiveNextCheckinDate: effectiveDate ?? null,
+            avatar_url: avatarsByClient.get(client.id) ?? null,
         } as ClientWithMeta
     })
 }

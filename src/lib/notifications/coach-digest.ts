@@ -212,6 +212,7 @@ export async function sendCoachDailyDigest(coachId: string, today: string, tz: s
     for (const to of emails) {
         const result = await sendCoachDigestEmail({
             to,
+            coachId,
             coachName: name,
             dateLabel: label,
             headline: digest.headline,
@@ -317,6 +318,7 @@ export async function sendCoachWeeklyDigest(coachId: string, today: string, tz: 
     for (const to of emails) {
         const result = await sendCoachDigestEmail({
             to,
+            coachId,
             coachName: name,
             dateLabel: label,
             headline: weekly.headline,

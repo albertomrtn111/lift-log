@@ -1,14 +1,6 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# La app de NexTrain no se indexa: cada respuesta lleva "X-Robots-Tag: noindex"
+# y las páginas, <meta name="robots" content="noindex">.
+# No bloquees aquí el rastreo: si Google no puede entrar, no ve el noindex y la URL
+# puede seguir apareciendo en resultados. La página pública es https://www.nextrain.ascenttech.cloud/
 User-agent: *
 Allow: /

@@ -11,6 +11,7 @@ dist-ssr
 
 # Environment files
 *.local
+.env
 .env*.local
 
 # Logs
@@ -46,3 +47,6 @@ coverage
 # Misc
 .turbo
 *.pem
+
+# Migración a R2: registro local (lo necesitan rollback y delete-supabase)
+r2-migration-log*.jsonl
