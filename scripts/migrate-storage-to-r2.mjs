@@ -19,13 +19,14 @@
 //   --limit=N            Procesa como mucho N archivos (para probar con pocos).
 //   --backup-dir=DIR     Guarda también el original en DIR/<bucket>/<ruta> (recomendado).
 //   --keep-format        Copia los originales sin convertir a WebP.
-//   --log=FICHERO        Registro de lo copiado (por defecto r2-migration-log.jsonl).
-//                        delete-supabase y rollback lo necesitan: no lo borres.
+//   --log=FICHERO        Registro de lo copiado (por defecto ~/nexttrain-r2-migration-log.jsonl).
+//                        plan, copy, delete-supabase y rollback lo usan: no lo borres.
 //
 // Variables: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_ENDPOINT,
 // R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL, R2_PRIVATE_BUCKET.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
@@ -57,7 +58,7 @@ const APPLY = flag('apply')
 const KEEP_FORMAT = flag('keep-format')
 const LIMIT = option('limit') ? Number(option('limit')) : Infinity
 const BACKUP_DIR = option('backup-dir')
-const LOG_FILE = option('log') ?? 'r2-migration-log.jsonl'
+const LOG_FILE = option('log') ?? join(homedir(), 'nexttrain-r2-migration-log.jsonl')
 const ONLY = new Set((option('only') ?? 'checkin,chat,avatars,orphans').split(','))
 const CONCURRENCY = 4
 
@@ -228,8 +229,11 @@ async function inventory() {
     if (!object) { missing.push(`profiles ${row.id}: avatars/${path}`); continue }
     tasks.push({ type: 'avatars', row, object })
   }
+  // Lo ya copiado deja de tener fila que apunte a Supabase: sin esto se tomaría
+  // por huérfano y se volvería a copiar entero en orphans/
+  const copied = new Set(readLog().map(e => `${e.from.bucket}/${e.from.path}`))
   for (const [id, object] of objects) {
-    if (!referenced.has(id)) tasks.push({ type: 'orphans', row: null, object })
+    if (!referenced.has(id) && !copied.has(id)) tasks.push({ type: 'orphans', row: null, object })
   }
 
   return { tasks: tasks.filter(t => ONLY.has(t.type)), objects, missing }
