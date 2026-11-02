@@ -41,8 +41,8 @@ Todo pasa por el servidor. Las credenciales de R2 nunca llegan al navegador y to
 Con el volumen actual (≈ 500 fotos y ~100 KB por foto en WebP), la carga extra del servidor es despreciable. Si algún día lo fuera, `R2_PRIVATE_DELIVERY=redirect` reparte las lecturas privadas con URLs firmadas de 5 minutos, pero entonces el token no se puede filtrar por IP.
 
 **Para filtrar el token por IP:** en Cloudflare, R2 → *Manage R2 API Tokens* → editar el token → *Client IP Address Filtering* → *Include*:
-- `72.61.167.159`: salida IPv4 del contenedor `nexttrain_app`, comprobada el 2 de noviembre de 2026.
-- `2a02:4780:28:64a9::/64`: IPv6 del servidor. El host sale por IPv6 por defecto, así que hace falta si se ejecuta algo fuera de Docker, como el script de migración.
+- La IPv4 pública del servidor, la de `NEXTTRAIN_SSH_HOST` en `docs/despliegue.md`. El contenedor `nexttrain_app` sale por ella; compruébalo con `docker exec nexttrain_app node -e "fetch('https://api.ipify.org').then(r=>r.text()).then(console.log)"`.
+- La IPv6 del servidor, como rango `/64` (`curl -6 https://api64.ipify.org` en el servidor). El host sale por IPv6 por defecto, así que hace falta si se ejecuta algo fuera de Docker, como el script de migración.
 
 Mientras el filtro esté activo, el script de migración **no funciona desde el Mac**. Haz la migración antes de activarlo, o añade temporalmente la IP de tu casa.
 
