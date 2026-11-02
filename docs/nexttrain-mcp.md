@@ -24,11 +24,11 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas. Cada actividad trae `discipline` (`running`, `bicicleta`, `natacion` o `hibrido`); en bicicleta la intensidad es `speed_kmh` y `pace` es `null`.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
 - `get_diet_plan`: detalle completo de una dieta por ID, también archivada o borrador; devuelve `updated_at` para editar.
-- `get_nutrition_history`: histórico paginado de planes de macros y cabeceras de dietas.
+- `get_nutrition_history`: historial paginado de cada cambio de nutrición. `timeline` mezcla macros y dietas con fechas, duración, motivo del cambio (`change_note`) y peso al empezar y al terminar; `macro_plans` y `diet_plans` dan el detalle.
 - `search_foods`: catálogo de alimentos accesibles, macros por ración y peso por unidad.
 - `preview_diet_plan`: calcula y ajusta una dieta por opciones sin guardarla.
-- `create_macro_plan` / `update_macro_plan`: fija o edita los objetivos nutricionales (kcal y macros), simples o diferentes en entreno y descanso, con fecha de inicio y notas.
-- `create_diet_plan` / `update_diet_plan`: crea o edita dietas por opciones, con ajuste a objetivos y conservación de identificadores.
+- `create_macro_plan` / `update_macro_plan`: fija o edita los objetivos nutricionales (kcal y macros), simples o diferentes en entreno y descanso, con fecha de inicio y notas. Al crear uno, el anterior se cierra el día previo y queda en el historial; `change_note` guarda el motivo del cambio.
+- `create_diet_plan` / `update_diet_plan`: crea o edita dietas por opciones, con ajuste a objetivos y conservación de identificadores. Al activar una nueva, la anterior se archiva; `change_note` guarda el motivo.
 - `get_recovery_history`: sueño y pasos diarios junto con señales subjetivas de los check-ins.
 - `list_client_events`: carreras, pruebas y objetivos, pasados o futuros.
 - `get_program_history`: lista de bloques con progreso temporal y de sesiones; con `program_id`, ejercicios, resultados y contexto de cambios de bloque.

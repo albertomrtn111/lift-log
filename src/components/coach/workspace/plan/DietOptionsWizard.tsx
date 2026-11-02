@@ -70,6 +70,7 @@ interface WizardState {
     effective_from: string
     effective_to: string
     status: DietPlanStatus
+    change_note: string
     dayTypes: DayType[]
     // Step 2 & 3
     meals: EditorMeal[]
@@ -97,6 +98,7 @@ export function DietOptionsWizard({
                 effective_from: existingPlan.effective_from,
                 effective_to: existingPlan.effective_to || '',
                 status: existingPlan.status,
+                change_note: existingPlan.change_note || '',
                 dayTypes: [...new Set(existingPlan.meals.map(m => m.day_type))],
                 meals: mealsFromStructure(existingPlan.meals),
             })
@@ -147,6 +149,7 @@ export function DietOptionsWizard({
             status: state.status,
             effective_from: state.effective_from,
             effective_to: state.effective_to || null,
+            change_note: state.change_note || null,
             meals: mealsToInput(state.meals),
         }
 
@@ -303,6 +306,20 @@ function Step1PlanInfo({
                         <SelectItem value="draft">Borrador</SelectItem>
                     </SelectContent>
                 </Select>
+            </div>
+
+            <div className="space-y-2">
+                <Label>Motivo del cambio (opcional)</Label>
+                <Input
+                    value={state.change_note}
+                    onChange={(e) => setState(s => ({ ...s, change_note: e.target.value }))}
+                    placeholder="Ej: más hidratos los días de entreno"
+                />
+                {state.status === 'active' && (
+                    <p className="text-xs text-muted-foreground">
+                        Si hay una dieta activa, se archiva y queda en el historial.
+                    </p>
+                )}
             </div>
 
             <div className="space-y-2">
@@ -578,6 +595,7 @@ function getInitialState(): WizardState {
         effective_from: new Date().toISOString().split('T')[0],
         effective_to: '',
         status: 'active',
+        change_note: '',
         dayTypes: ['default'],
         meals: [],
     }

@@ -35,6 +35,21 @@ export function normalizeMacroPlan(plan) {
   }
 }
 
+/** Una fila de nutrition_plan_history lista para el asistente. */
+export function historyEntry(row) {
+  const start = number(row.start_weight_kg), end = number(row.end_weight_kg)
+  const base = {
+    kind: row.kind, id: row.id, name: row.name ?? null, status: row.status,
+    effective_from: row.effective_from, effective_to: row.effective_to ?? null, days: number(row.days) ?? 0,
+    archived_at: row.archived_at ?? null, change_note: row.change_note ?? null, notes: row.notes ?? null,
+    start_weight_kg: start, end_weight_kg: end,
+    weight_change_kg: start !== null && end !== null ? round(end - start) : null,
+  }
+  if (row.kind !== 'macros') return { ...base, meals_count: number(row.meals_count) }
+  const macro = normalizeMacroPlan(row)
+  return { ...base, mode: macro.mode, target: normalizeTarget(row), day_type_config: macro.day_type_config, steps: number(row.steps) }
+}
+
 export function macroPayload(input) {
   const config = input.day_type_config
     ? { training: normalizeTarget(input.day_type_config.training), rest: normalizeTarget(input.day_type_config.rest) } : null

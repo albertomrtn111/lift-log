@@ -76,7 +76,7 @@ export const outputSchemas: Record<string, z.ZodType> = {
     selected_day_type: maybe(z.string()), selected_macro_target: maybe(record), app_active_diet_plan: maybe(record), note: text,
   }),
   get_diet_plan: z.looseObject({ client_id: z.string(), diet_plan: record }),
-  get_nutrition_history: z.looseObject({ client_id: z.string(), macro_plans: records, diet_plans: records, ...page }),
+  get_nutrition_history: z.looseObject({ client_id: z.string(), timeline: records, macro_plans: records, diet_plans: records, ...page }),
   search_foods: z.looseObject({ foods: records }),
   preview_diet_plan: z.looseObject({ client_id: z.string(), preview: z.unknown(), warnings: maybe(z.array(z.unknown())), saved: z.literal(false) }),
   create_macro_plan: z.looseObject({ ...createdOrUpdated, macro_plan: record }),

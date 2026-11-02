@@ -22,6 +22,7 @@ import type {
     DietPlanWithStructure,
 } from '@/data/nutrition/types'
 import { formatSupabaseError, logSupabaseError, formatSupabaseErrorVerbose, isRlsError } from '@/lib/supabase/helpers'
+import { nutritionHistoryKeys } from './useNutritionHistory'
 
 // ============================================================================
 // QUERY KEYS
@@ -101,6 +102,7 @@ export function useCreateDietPlan(coachId: string, clientId: string) {
             void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: data.id })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -136,6 +138,7 @@ export function useUpdateDietPlan(clientId: string) {
             void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: variables.planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             queryClient.invalidateQueries({
                 queryKey: dietPlanKeys.structure(variables.planId),
             })
@@ -186,6 +189,7 @@ export function useDuplicateDietPlan(clientId: string) {
         onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -217,6 +221,7 @@ export function useArchiveDietPlan(clientId: string) {
         onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -251,6 +256,7 @@ export function useSetDietPlanStatus(clientId: string) {
             void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId: variables.planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -281,6 +287,7 @@ export function useActivateDietPlan(coachId: string, clientId: string) {
             void notifyClientPlanUpdatedAction({ clientId, kind: 'diet', planId })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -310,6 +317,7 @@ export function useDeleteDietPlan(clientId: string) {
         onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })

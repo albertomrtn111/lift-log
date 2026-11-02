@@ -138,7 +138,9 @@ Deno.test('editing a plan created in the app closes the older open plan instead 
   const result = await run('update_macro_plan', { client_id: clientId, plan_id: newerId, day_type_config: bulk, notes: 'Volumen controlado' })
   assert.equal(result.error, undefined)
   assert.deepEqual(result.data.closed_previous_plan_ids, [planId])
-  assert.deepEqual(updates, [{ table: 'macro_plans', values: { effective_to: '2026-11-01' } }])
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0].values.effective_to, '2026-11-01')
+  assert.match(updates[0].values.archived_at, /^\d{4}-\d{2}-\d{2}T/)
   assert.equal(calls[0].args.p_plan_id, newerId)
   assert.equal(calls[0].args.p_payload.effective_from, '2026-11-02')
   assert.equal(calls[0].args.p_payload.day_type_config.rest.carbs_g, 325)
@@ -165,4 +167,33 @@ Deno.test('creating on a date that already has a plan names that plan_id and sav
   const later = await run('create_macro_plan', { client_id: clientId, effective_from: '2026-11-16', day_type_config: bulk, notes: 'Revisión a los 14 días' })
   assert.equal(later.data.created, true)
   assert.equal(calls[0].args.p_payload.day_type_config.training.carbs_g, 375)
+})
+
+Deno.test('history timeline mixes macros and diets with weights and the change note', async () => {
+  const { run, tables } = fixture()
+  tables.nutrition_plan_history = [
+    { kind: 'macros', id: newerId, coach_id: coachId, client_id: clientId, status: 'active', effective_from: '2026-11-02', effective_to: null, days: 1,
+      change_note: '+150 kcal', kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, day_type_config: bulk, start_weight_kg: '80.4', end_weight_kg: '80.4', created_at: timestamp },
+    { kind: 'options', id: planId, coach_id: coachId, client_id: clientId, status: 'archived', effective_from: '2026-10-01', effective_to: '2026-11-01', days: 32,
+      name: 'Dieta', meals_count: 4, start_weight_kg: 82, end_weight_kg: 80.4, created_at: timestamp },
+  ]
+  const result = await run('get_nutrition_history', { client_id: clientId })
+  assert.equal(result.error, undefined)
+  const [macro, diet] = result.data.timeline
+  assert.equal(macro.mode, 'training_rest')
+  assert.equal(macro.day_type_config.rest.carbs_g, 325)
+  assert.equal(macro.change_note, '+150 kcal')
+  assert.equal(macro.start_weight_kg, 80.4)
+  assert.equal(diet.weight_change_kg, -1.6)
+  assert.equal(diet.meals_count, 4)
+})
+
+Deno.test('create tools pass the change note and ignore plans replaced on their first day', async () => {
+  const { run, calls, tables } = fixture()
+  // Sustituido el mismo día: termina antes de empezar y no ocupa fechas.
+  tables.macro_plans.push({ ...newer, id: '88888888-8888-4888-8888-888888888888', effective_from: '2026-11-20', effective_to: '2026-11-19' })
+  const result = await run('create_macro_plan', { client_id: clientId, effective_from: '2026-11-16', day_type_config: bulk, change_note: 'Volumen' })
+  assert.equal(result.error, undefined)
+  assert.equal(calls[0].args.p_payload.change_note, 'Volumen')
+  assert.equal(calls[0].args.p_payload.replace_same_day, undefined)
 })

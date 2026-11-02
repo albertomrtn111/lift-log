@@ -32,6 +32,8 @@ export interface MacroPlan {
     day_type_config?: MacroDayTypeConfig | null
     effective_from: string
     effective_to?: string | null
+    archived_at?: string | null
+    change_note?: string | null
     created_at: string
 }
 
@@ -47,6 +49,8 @@ export interface MacroPlanInput {
     day_type_config?: MacroDayTypeConfig | null
     effective_from: string
     effective_to?: string | null
+    /** Motivo del cambio; solo al crear un plan nuevo */
+    change_note?: string | null
 }
 
 // ============================================================================
@@ -83,6 +87,8 @@ export interface DietPlan {
     status: DietPlanStatus
     effective_from: string
     effective_to?: string | null
+    archived_at?: string | null
+    change_note?: string | null
     created_at: string
     updated_at?: string
 }
@@ -197,6 +203,8 @@ export interface DietPlanInput {
     status: DietPlanStatus
     effective_from: string
     effective_to?: string | null
+    /** Motivo del cambio respecto a la dieta anterior */
+    change_note?: string | null
     meals: DietMealInput[]
 }
 

@@ -635,6 +635,7 @@ export function AINutritionDialog({
                     fat_g: proposal.fat_g,
                     steps: proposal.steps ?? null,
                     notes: proposal.notes || '',
+                    change_note: 'Propuesta de la IA',
                     effective_from: format(new Date(), 'yyyy-MM-dd'),
                 })
             } else {
@@ -643,6 +644,7 @@ export function AINutritionDialog({
                     type: 'options',
                     status: 'active',
                     effective_from: format(new Date(), 'yyyy-MM-dd'),
+                    change_note: 'Propuesta de la IA',
                     // La propuesta ya viene cuadrada y en formato de guardado
                     meals: proposal.meals,
                 })

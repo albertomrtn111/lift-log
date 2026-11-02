@@ -1,5 +1,5 @@
 import { z } from 'npm:zod@4.3.6'
-import { buildLegacyDiet, describeMeals, legacyMeals, macroPayload, normalizeMacroPlan, prepareDiet } from './nutrition-model.js'
+import { buildLegacyDiet, describeMeals, historyEntry, legacyMeals, macroPayload, normalizeMacroPlan, prepareDiet } from './nutrition-model.js'
 import {
   addDays,
   allRows as allRowsBase,
@@ -16,7 +16,8 @@ import {
 
 const FOOD_FIELDS = 'id, name, brand, kcal, protein_g, carbs_g, fat_g, serving_size_g, unit_weight_g, unit_label, food_group, is_generic'
 const PLAN_FIELDS = 'id, name, type, status, effective_from, effective_to, notes, created_at, updated_at, meals'
-const MACRO_FIELDS = 'id, name, kcal, protein_g, carbs_g, fat_g, steps, cardio_target, day_type_config, effective_from, effective_to, notes, created_at'
+const MACRO_FIELDS = 'id, name, kcal, protein_g, carbs_g, fat_g, steps, cardio_target, day_type_config, effective_from, effective_to, notes, archived_at, change_note, created_at'
+const HISTORY_FIELDS = 'kind, id, name, status, effective_from, effective_to, days, archived_at, change_note, notes, kcal, protein_g, carbs_g, fat_g, steps, day_type_config, meals_count, start_weight_kg, end_weight_kg, created_at'
 const scope = {
   client_id: z.string().uuid(), coach_id: z.string().uuid().optional(),
 }
@@ -99,16 +100,18 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     return plans[0]
   }
 
-  // La app crea planes de macros sin cerrar el anterior, así que puede haber varios abiertos a la vez.
+  // Antes la app creaba planes de macros sin cerrar el anterior, así que puede haber varios abiertos a la vez.
   // Vigente es el de effective_from más reciente; los anteriores solapados se pueden cerrar sin cambiar nada.
+  // Los sustituidos el mismo día (effective_to < effective_from) no ocupan ninguna fecha.
   async function otherMacroPlans(coachId: string, clientId: string, exceptId?: string) {
-    const plans = rows(await db.from('macro_plans').select('id, effective_from, effective_to').eq('coach_id', coachId).eq('client_id', clientId), 'los planes de macros')
-    return plans.filter(plan => plan.id !== exceptId)
+    const plans = rows(await db.from('macro_plans').select('id, effective_from, effective_to, archived_at').eq('coach_id', coachId).eq('client_id', clientId), 'los planes de macros')
+    return plans.filter(plan => plan.id !== exceptId && (!plan.effective_to || plan.effective_to >= plan.effective_from))
   }
   const overlaps = (plan: Row, from: string, to: string | null) => plan.effective_from <= (to ?? '9999-12-31') && (plan.effective_to ?? '9999-12-31') >= from
   async function closePlans(coachId: string, clientId: string, plans: Row[], from: string) {
     for (const plan of plans) {
-      const { error } = await db.from('macro_plans').update({ effective_to: addDays(from, -1) }).eq('coach_id', coachId).eq('client_id', clientId).eq('id', plan.id)
+      const { error } = await db.from('macro_plans').update({ effective_to: addDays(from, -1), archived_at: plan.archived_at ?? new Date().toISOString() })
+        .eq('coach_id', coachId).eq('client_id', clientId).eq('id', plan.id)
       if (error) throw new Error('No se ha podido cerrar el plan de macros anterior. No se guardó ningún cambio en el nuevo plan.')
     }
     return plans.map(plan => plan.id)
@@ -170,16 +173,19 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     diet_plan: await loadDiet(db, coachId, input.client_id, await planById(coachId, input.client_id, input.plan_id)) })))
 
   server.registerTool('get_nutrition_history', {
-    title: 'Histórico de macros y dietas', description: 'Lista planes nutricionales con fechas, estado y macros por tipo de día. Las dietas se resumen; usa get_diet_plan para el contenido completo.',
+    title: 'Histórico de macros y dietas', description: 'Historial de cada cambio de nutrición del atleta. timeline mezcla macros y dietas por fecha de inicio, con duración, motivo del cambio (change_note) y peso al empezar y al terminar (start_weight_kg, end_weight_kg). macro_plans y diet_plans dan el detalle; usa get_diet_plan para el contenido completo de una dieta.',
     inputSchema: z.strictObject({ ...scope, limit: z.number().int().min(1).max(50).default(10), offset: z.number().int().min(0).max(5000).default(0) }), annotations,
   }, (input: Row) => scoped('get_nutrition_history', input, async coachId => {
-    const [macroResult, dietResult] = await Promise.all([
+    const [timelineResult, macroResult, dietResult] = await Promise.all([
+      db.from('nutrition_plan_history').select(HISTORY_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id).order('effective_from', { ascending: false }).order('created_at', { ascending: false }).order('id').range(input.offset, input.offset + input.limit),
       db.from('macro_plans').select(MACRO_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id).order('effective_from', { ascending: false }).order('id').range(input.offset, input.offset + input.limit),
-      db.from('diet_plans').select('id, name, type, status, effective_from, effective_to, notes, created_at, updated_at').eq('coach_id', coachId).eq('client_id', input.client_id).order('created_at', { ascending: false }).order('id').range(input.offset, input.offset + input.limit),
+      db.from('diet_plans').select('id, name, type, status, effective_from, effective_to, notes, archived_at, change_note, created_at, updated_at').eq('coach_id', coachId).eq('client_id', input.client_id).order('created_at', { ascending: false }).order('id').range(input.offset, input.offset + input.limit),
     ])
+    const timeline = rows(timelineResult, 'el historial de nutrición')
     const macros = rows(macroResult, 'el histórico de macros'), diets = rows(dietResult, 'el histórico de dietas')
-    const hasMore = macros.length > input.limit || diets.length > input.limit
-    return { client_id: input.client_id, macro_plans: macros.slice(0, input.limit).map(normalizeMacroPlan), diet_plans: diets.slice(0, input.limit),
+    const hasMore = timeline.length > input.limit || macros.length > input.limit || diets.length > input.limit
+    return { client_id: input.client_id, timeline: timeline.slice(0, input.limit).map(historyEntry),
+      macro_plans: macros.slice(0, input.limit).map(normalizeMacroPlan), diet_plans: diets.slice(0, input.limit),
       has_more: hasMore, next_offset: hasMore ? input.offset + input.limit : null }
   }))
 
@@ -206,10 +212,12 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     effective_from: date.describe('Fecha de inicio (YYYY-MM-DD).'),
     effective_to: date.nullable().optional().describe('Fecha de fin; vacío = sin fin.'),
   }
+  const changeNote = z.string().trim().max(500).nullable().optional()
+    .describe('Motivo del cambio respecto al plan anterior, p. ej. «+150 kcal: peso estancado 3 semanas». Se ve en el historial del coach.')
   server.registerTool('create_macro_plan', {
     title: 'Fijar objetivos nutricionales (macros y calorías)',
     description: 'Pone nuevos objetivos nutricionales a un atleta: calorías (kcal), proteína, hidratos/carbohidratos y grasas, iguales todos los días (target) o distintos en días de entreno y de descanso (day_type_config), con fecha de inicio, pasos y notas. Úsala para subir o bajar calorías, empezar volumen o definición, o cambiar los macros. Las kcal omitidas salen de 4P+4HC+9G. El plan anterior se cierra el día previo y queda en el histórico. Si ya hay un plan que empieza ese día, el error da su plan_id para editarlo con update_macro_plan.',
-    inputSchema: z.strictObject({ ...scope, ...macroSettings }), annotations: write,
+    inputSchema: z.strictObject({ ...scope, ...macroSettings, change_note: changeNote }), annotations: write,
   }, (input: Row) => scoped('create_macro_plan', input, async coachId => {
     const payload = macroPayload(input)
     const to = input.effective_to ?? null
@@ -245,7 +253,7 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     effective_from: date, effective_to: date.nullable().optional(), notes: z.string().trim().max(3000).nullable().optional() }
   server.registerTool('create_diet_plan', {
     title: 'Crear dieta por opciones', description: 'Crea comidas con varias opciones para default, training y rest. Calcula macros desde alimentos del catálogo; permite ajuste a objetivos y validación estricta. Por defecto es borrador; active sustituye la dieta activa conservando la anterior archivada. No crea un plan de macros independiente.',
-    inputSchema: z.strictObject({ ...scope, ...dietHeader, meals, ...dietSettings }), annotations: write,
+    inputSchema: z.strictObject({ ...scope, ...dietHeader, change_note: changeNote, meals, ...dietSettings }), annotations: write,
   }, (input: Row) => scoped('create_diet_plan', input, async coachId => {
     const prepared = await prepare(input)
     const saved = await save('options', coachId, input, { ...input, meals: prepared.meals, legacy_meals: prepared.legacy })
