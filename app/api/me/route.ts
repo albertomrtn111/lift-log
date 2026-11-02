@@ -17,7 +17,10 @@ export async function GET() {
 
         return NextResponse.json(context, {
             headers: {
-                'Cache-Control': 'private, max-age=60', // Cache for 1 minute
+                // Sin caché del navegador: tras cambiar la foto o el nombre, la app
+                // volvía a pedir el perfil y recibía el de antes durante un minuto.
+                // React-query ya evita las peticiones repetidas.
+                'Cache-Control': 'private, no-store',
             }
         })
     } catch (error) {

@@ -45,7 +45,8 @@ const ClientAppContext = createContext<ClientAppContextValue>({
 })
 
 async function fetchClientContext(): Promise<ClientAppContextData> {
-    const res = await fetch('/api/me')
+    // no-store: una respuesta guardada antes del cambio (foto, nombre) no vale
+    const res = await fetch('/api/me', { cache: 'no-store' })
     if (!res.ok) {
         throw new Error('Failed to fetch client context')
     }

@@ -21,10 +21,7 @@ import {
     UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { prepareImageFile } from '@/lib/chat-image'
-import { AVATAR_MAX_SIDE } from '@/lib/chat-image-rules'
-import { uploadMedia } from '@/lib/media-upload'
-import { useQueryClient } from '@tanstack/react-query'
+import { AVATAR_ACCEPT, useAvatarUpload } from '@/hooks/useAvatarUpload'
 import { toast } from 'sonner'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { useAppMode } from '@/hooks/use-app-mode'
@@ -41,9 +38,6 @@ import {
 } from './actions'
 import ProfileLoading from './loading'
 import { DeliverySettingsGroup } from './DeliverySettingsGroup'
-
-/** Formatos que el servidor sabe convertir a WebP */
-const AVATAR_INPUT_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 type ClientNotificationPreferences = {
     messages_enabled: boolean
@@ -67,10 +61,9 @@ function deleteCookie(name: string) {
 
 export default function ProfilePage() {
     const router = useRouter()
-    const queryClient = useQueryClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
-    const [uploading, setUploading] = useState(false)
+    const { upload: uploadAvatar, uploading } = useAvatarUpload()
     const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
@@ -155,37 +148,16 @@ export default function ProfilePage() {
 
     /** Sube el cuadrado ya encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
     const handleAvatarUpload = async (cropped: File): Promise<boolean> => {
-        setUploading(true)
-        try {
-            // El recorte (512 px como máximo) pasa a JPEG en el navegador; el
-            // servidor lo guarda en WebP, actualiza profiles.avatar_url y borra
-            // la foto anterior.
-            const prepared = await prepareImageFile(cropped, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
-            if (!AVATAR_INPUT_TYPES.includes(prepared.mime)) {
-                toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
-                return false
-            }
-
-            const { error } = await uploadMedia<{ url: string }>({ kind: 'avatar' }, prepared.file, prepared.fileName)
-            if (error) {
-                toast.error(error)
-                return false
-            }
-
-            setAvatarToCrop(null)
-            toast.success('Foto de perfil actualizada')
-            // El avatar del header y del perfil vienen de react-query, no del
-            // server render: invalidar para que la foto nueva se vea al momento.
-            await queryClient.invalidateQueries({ queryKey: ['client-context'] })
-            router.refresh()
-            return true
-        } catch (err) {
-            console.error('[handleAvatarUpload]', err)
-            toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
+        // El hook deja la foto nueva en la caché de react-query (cabecera y
+        // perfil) antes de volver: se ve al cerrar el encuadre.
+        const result = await uploadAvatar(cropped)
+        if (!result.ok) {
+            toast.error(result.error)
             return false
-        } finally {
-            setUploading(false)
         }
+        setAvatarToCrop(null)
+        toast.success('Foto de perfil actualizada')
+        return true
     }
 
     if (isLoading) return <ProfileLoading />
@@ -255,7 +227,7 @@ export default function ProfilePage() {
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/jpeg,image/png,image/webp"
+                            accept={AVATAR_ACCEPT}
                             className="hidden"
                             onChange={handleAvatarPick}
                         />
