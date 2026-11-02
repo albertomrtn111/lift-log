@@ -285,6 +285,8 @@ export interface CoachDigestEmailSection {
  */
 export async function sendCoachDigestEmail(params: {
     to: string
+    /** Sale primero por el SMTP propio del coach, como sus revisiones; si no, por el global */
+    coachId: string
     coachName?: string | null
     dateLabel: string
     headline: string
@@ -320,7 +322,7 @@ export async function sendCoachDigestEmail(params: {
         to: params.to,
         subject: params.weekly ? `Tu semana en NexTrain · ${params.dateLabel}` : `Tu día en NexTrain · ${params.dateLabel}`,
         html: layout(params.weekly ? `Resumen semanal, ${params.dateLabel}` : `Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
-    })
+    }, params.coachId)
 }
 
 /** Email de prueba para validar la configuración SMTP del coach */

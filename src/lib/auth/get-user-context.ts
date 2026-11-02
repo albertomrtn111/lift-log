@@ -68,7 +68,24 @@ export async function getUserContext(userId: string): Promise<UserContext> {
     }
 
     const isCoach = !!roles?.is_coach
-    const coachId = roles?.coach_id || null
+
+    // get_my_roles solo devuelve booleanos: el negocio del coach sale de su
+    // membresía. Sin esto coachId era siempre null y todo lo del portal del
+    // coach que lo lee de /api/me (campana, contador de mensajes en vivo) no
+    // llegaba a cargar.
+    let coachId: string | null = null
+    if (isCoach) {
+        const { data: membership } = await supabase
+            .from('coach_memberships')
+            .select('coach_id, role')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .in('role', ['owner', 'coach'])
+            .order('role', { ascending: false }) // 'owner' antes que 'coach'
+            .limit(1)
+            .maybeSingle()
+        coachId = membership?.coach_id ?? null
+    }
 
     const isClient = !!roles?.is_client
 
