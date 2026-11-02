@@ -84,14 +84,14 @@ begin
       'legacy_meals',jsonb_build_object('days',jsonb_build_object('default','{}'::jsonb)),
       'meals',jsonb_build_array(jsonb_build_object('name','Comida','day_type','default','order_index',0,
         'options',jsonb_build_array(jsonb_build_object('name','A','order_index',0,'items',jsonb_build_array(
-          jsonb_build_object('name','Arroz','item_type','free_text','order_index',0)))))))
+          jsonb_build_object('name','Arroz','item_type','note','order_index',0)))))))
     ,null);
   perform public.save_nexttrain_nutrition_plan('options',v_coach,v_client,null,
     (jsonb_build_object('name','Dieta B','status','active','effective_from',v_today,'change_note','Más hidratos',
       'legacy_meals',jsonb_build_object('days',jsonb_build_object('default','{}'::jsonb)),
       'meals',jsonb_build_array(jsonb_build_object('name','Comida','day_type','default','order_index',0,
         'options',jsonb_build_array(jsonb_build_object('name','A','order_index',0,'items',jsonb_build_array(
-          jsonb_build_object('name','Pasta','item_type','free_text','order_index',0)))))))),null);
+          jsonb_build_object('name','Pasta','item_type','note','order_index',0)))))))),null);
   if not exists(select 1 from public.diet_plans where id=(v_diet->>'id')::uuid and status='archived' and archived_at is not null)
     or not exists(select 1 from public.diet_plans where client_id=v_client and status='active' and change_note='Más hidratos') then
     raise exception 'Dietas sin archived_at o sin motivo.';
