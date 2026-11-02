@@ -161,12 +161,12 @@ export function McpSettingsPanel({ serverUrl }: McpSettingsPanelProps) {
                                             </div>
                                         )}
                                     </li>
-                                    <li>Abre Claude Code, escribe <Code>/mcp</Code>, elige <Code>{SERVER_NAME}</Code> y sigue los pasos para autenticarte. También puedes ejecutar <Code>claude mcp login {SERVER_NAME}</Code>.</li>
+                                    <li>Abre Claude Code, escribe <Code>/mcp</Code>, elige <Code>{SERVER_NAME}</Code> y sigue los pasos para autenticarte.</li>
                                     <li>Se abrirá NexTrain en el navegador: inicia sesión y pulsa <Strong>Autorizar conexión</Strong>.</li>
                                     <li>Vuelve a <Code>/mcp</Code>: NexTrain debe aparecer como conectado.</li>
                                 </StepList>
                                 <Note>
-                                    <Code>--scope user</Code> deja NexTrain disponible en todos tus proyectos. Para cerrar la sesión: <Code>claude mcp logout {SERVER_NAME}</Code>.
+                                    <Code>--scope user</Code> deja NexTrain disponible en todos tus proyectos. Si el comando da error o no ves la opción de autenticarte en <Code>/mcp</Code>, actualiza Claude Code a la última versión.
                                 </Note>
                             </TabsContent>
 
@@ -233,7 +233,7 @@ export function McpSettingsPanel({ serverUrl }: McpSettingsPanelProps) {
                     <div className="grid gap-3 sm:grid-cols-3">
                         <SafetyItem icon={KeyRound} title="Con tu propia cuenta" text="Entra con OAuth: no compartes tu contraseña ni ninguna clave." />
                         <SafetyItem icon={EyeOff} title="Solo tus atletas" text="Respeta las mismas reglas de acceso que la app. Nunca ve datos de otros entrenadores." />
-                        <SafetyItem icon={Unplug} title="Tú decides" text="No envía mensajes a tus atletas ni publica revisiones, y puedes desconectarla cuando quieras." />
+                        <SafetyItem icon={Unplug} title="Tú decides" text="No envía mensajes a tus atletas ni publica revisiones. Puedes retirarle el acceso desde esta página." />
                     </div>
                 </CardContent>
             </Card>
@@ -301,7 +301,7 @@ function ConnectedAssistantsCard() {
                     <CardTitle className="text-lg">Asistentes conectados</CardTitle>
                 </div>
                 <CardDescription>
-                    Los asistentes que has autorizado con tu cuenta. Al desconectar uno, pierde el acceso al momento; para volver a usarlo, conéctalo de nuevo desde el asistente.
+                    Los asistentes que has autorizado con tu cuenta. Al desconectar uno, ya no puede renovar su sesión y pierde el acceso en un máximo de una hora, cuando caduca la sesión actual. Para volver a usarlo, conéctalo de nuevo desde el asistente.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -351,7 +351,7 @@ function ConnectedAssistantsCard() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Desconectar {pendingRevoke?.name}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Dejará de poder consultar y modificar tus datos de NexTrain. Lo que ya haya creado se mantiene. Puedes volver a conectarlo cuando quieras.
+                            No podrá renovar su sesión: dejará de consultar y modificar tus datos de NexTrain en un máximo de una hora, cuando caduque la sesión actual. Lo que ya haya creado se mantiene y puedes volver a conectarlo cuando quieras.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -377,12 +377,17 @@ function ConnectedAssistantsCard() {
 function useCopy(value: string, message: string) {
     const [copied, setCopied] = useState(false)
 
+    useEffect(() => {
+        if (!copied) return
+        const timeout = setTimeout(() => setCopied(false), 2000)
+        return () => clearTimeout(timeout)
+    }, [copied])
+
     const copy = async () => {
         try {
             await writeToClipboard(value)
             setCopied(true)
             toast.success(message)
-            setTimeout(() => setCopied(false), 2000)
         } catch {
             toast.error('No se pudo copiar. Selecciona el texto y cópialo a mano.')
         }
