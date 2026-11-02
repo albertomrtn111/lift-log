@@ -34,6 +34,7 @@ import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
 import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
 import { PushDeviceRow } from '@/components/push/PushDeviceRow'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
+import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import {
     getNotificationPreferencesAction,
     updateNotificationPreferencesAction,
@@ -70,6 +71,7 @@ export default function ProfilePage() {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
         messages_enabled: true,
@@ -144,39 +146,45 @@ export default function ProfilePage() {
         }
     }
 
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        if (!file) return
+        // Reset input para permitir elegir el mismo archivo otra vez
+        e.target.value = ''
+        if (file) setAvatarToCrop(file)
+    }
 
+    /** Sube el cuadrado ya encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
+    const handleAvatarUpload = async (cropped: File): Promise<boolean> => {
         setUploading(true)
         try {
-            // La foto del móvil (3-8 MB, a veces HEIC) se reduce a un JPEG de
-            // 512 px en el navegador; el servidor la guarda en WebP, actualiza
-            // profiles.avatar_url y borra la foto anterior.
-            const prepared = await prepareImageFile(file, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
+            // El recorte (512 px como máximo) pasa a JPEG en el navegador; el
+            // servidor lo guarda en WebP, actualiza profiles.avatar_url y borra
+            // la foto anterior.
+            const prepared = await prepareImageFile(cropped, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
             if (!AVATAR_INPUT_TYPES.includes(prepared.mime)) {
                 toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
-                return
+                return false
             }
 
             const { error } = await uploadMedia<{ url: string }>({ kind: 'avatar' }, prepared.file, prepared.fileName)
             if (error) {
                 toast.error(error)
-                return
+                return false
             }
 
+            setAvatarToCrop(null)
             toast.success('Foto de perfil actualizada')
             // El avatar del header y del perfil vienen de react-query, no del
             // server render: invalidar para que la foto nueva se vea al momento.
             await queryClient.invalidateQueries({ queryKey: ['client-context'] })
             router.refresh()
+            return true
         } catch (err) {
             console.error('[handleAvatarUpload]', err)
             toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
+            return false
         } finally {
             setUploading(false)
-            // Reset input para permitir subir el mismo archivo otra vez
-            if (fileInputRef.current) fileInputRef.current.value = ''
         }
     }
 
@@ -249,7 +257,12 @@ export default function ProfilePage() {
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             className="hidden"
-                            onChange={handleAvatarUpload}
+                            onChange={handleAvatarPick}
+                        />
+                        <AvatarCropDialog
+                            file={avatarToCrop}
+                            onCancel={() => setAvatarToCrop(null)}
+                            onSave={handleAvatarUpload}
                         />
                     </div>
                     <h2 className="mt-3 max-w-full truncate text-xl font-bold tracking-tight">{displayName}</h2>
