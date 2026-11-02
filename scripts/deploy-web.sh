@@ -26,7 +26,9 @@ APP_DIR=/srv/NextTrain
 SITE=https://nexttrain.ascenttech.cloud
 SERVICES="nexttrain_app supplement_reminder_worker"
 IMAGES="nexttrain-nexttrain_app nexttrain-supplement_reminder_worker"
-LOG=/tmp/nexttrain-build.log
+# Cada despliegue tiene su propio log (/tmp/nexttrain-build-<revisión>.log) y
+# /tmp/nexttrain-build.log apunta siempre al último.
+LATEST_LOG=/tmp/nexttrain-build.log
 
 cd "$(dirname "$0")/.."
 
@@ -66,6 +68,12 @@ case "$1" in
     CURRENT=$(remote "cd $APP_DIR && git rev-parse --short HEAD")
     echo "Revisión actual: $CURRENT"
     [ "$CURRENT" != "$TARGET" ] || { echo "El servidor ya está en $TARGET. Nada que desplegar."; exit 0; }
+    # Dos despliegues a la vez se pisan: comparten imágenes y el segundo podía dar por buena
+    # la build del primero. [d]ocker: que pgrep no se encuentre a sí mismo.
+    BUSY=$(remote "pgrep -af '[d]ocker compose (build|up)' || true")
+    [ -z "$BUSY" ] || fail "Hay otro despliegue en curso en el servidor:
+$BUSY
+Espera a que termine (scripts/deploy-web.sh status) y vuelve a lanzar este."
     DIRTY=$(remote "cd $APP_DIR && git status --porcelain | grep -v '^?? .env$' || true")
     [ -z "$DIRTY" ] || fail "El servidor tiene cambios locales además de .env:
 $DIRTY
@@ -88,27 +96,31 @@ Ver «Ficheros de root» en docs/despliegue.md."
     if [ "$1" = check ]; then echo; echo "Comprobaciones correctas: $CURRENT → $TARGET. Despliega con scripts/deploy-web.sh"; exit 0; fi
 
     step "Rollback, código y build"
+    LOG=/tmp/nexttrain-build-$TARGET.log
+    # La build escribe esta marca al terminar; se espera a la de esta revisión, no a cualquier DEPLOY_OK.
+    OK_MARK="DEPLOY_OK $TARGET"
     remote "set -e; cd $APP_DIR
       for image in $IMAGES; do docker tag \$image:latest \$image:rollback-$CURRENT; done
       git fetch -q origin main
       git merge --ff-only -q origin/main
       echo \"Código: \$(git log --oneline -1)\"
-      (nohup sh -c 'docker compose build $SERVICES && docker compose up -d --no-deps $SERVICES && echo DEPLOY_OK' > $LOG 2>&1 < /dev/null &)"
+      ln -sf $LOG $LATEST_LOG
+      (nohup sh -c 'docker compose build $SERVICES && docker compose up -d --no-deps $SERVICES && echo \"$OK_MARK\"' > $LOG 2>&1 < /dev/null &)"
     echo "Imágenes anteriores guardadas como rollback-$CURRENT. Construyendo (varios minutos)…"
 
     for _ in $(seq 1 90); do
       sleep 10
       TAIL=$(remote "tail -c 600 $LOG" || true)
-      if printf '%s' "$TAIL" | grep -q DEPLOY_OK; then break; fi
+      if printf '%s' "$TAIL" | grep -qF "$OK_MARK"; then break; fi
       # [d]ocker: que pgrep no se encuentre a sí mismo en la línea de órdenes del SSH
       if ! remote "pgrep -f '[d]ocker compose' >/dev/null"; then
         TAIL=$(remote "tail -c 1500 $LOG" || true)
-        if printf '%s' "$TAIL" | grep -q DEPLOY_OK; then break; fi
+        if printf '%s' "$TAIL" | grep -qF "$OK_MARK"; then break; fi
         printf '%s\n' "$TAIL"
-        fail "La build ha terminado sin DEPLOY_OK. Log completo: $LOG en el servidor. Para volver atrás: scripts/deploy-web.sh rollback $CURRENT"
+        fail "La build ha terminado sin $OK_MARK. Log completo: $LOG en el servidor. Para volver atrás: scripts/deploy-web.sh rollback $CURRENT"
       fi
     done
-    printf '%s' "$TAIL" | grep -q DEPLOY_OK || fail "La build sigue tras 15 minutos; revisa $LOG en el servidor."
+    printf '%s' "$TAIL" | grep -qF "$OK_MARK" || fail "La build sigue tras 15 minutos; revisa $LOG en el servidor."
 
     step "Comprobación"
     sleep 8
