@@ -28,6 +28,7 @@ import { LogoutButton } from '@/components/coach/LogoutButton'
 import { AppearanceSettingsPanel, SupportSettingsPanel } from '@/components/coach/settings/SettingsClientPanels'
 import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPanel'
 import { NotificationSettingsPanel } from '@/components/coach/settings/NotificationSettingsPanel'
+import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUploader'
 import { cn } from '@/lib/utils'
 
 type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'apariencia' | 'soporte'
@@ -183,6 +184,7 @@ async function getSettingsProfileData() {
             clientCount: 0,
             aiProfile: null,
             profileName: null as string | null,
+            avatarUrl: null as string | null,
         }
     }
 
@@ -203,7 +205,7 @@ async function getSettingsProfileData() {
             ? supabase.from('clients').select('*', { count: 'exact', head: true }).eq('coach_id', coachId).eq('status', 'active')
             : Promise.resolve({ count: 0 }),
         coachId ? getCoachAIProfile(coachId) : Promise.resolve(null),
-        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).maybeSingle(),
     ])
 
     return {
@@ -213,6 +215,7 @@ async function getSettingsProfileData() {
         clientCount: clientCount || 0,
         aiProfile,
         profileName: (profile?.full_name as string | null) ?? null,
+        avatarUrl: (profile?.avatar_url as string | null) ?? null,
     }
 }
 
@@ -228,6 +231,7 @@ function ProfileSettingsSection({
     clientCount,
     aiProfile,
     profileName,
+    avatarUrl,
 }: Awaited<ReturnType<typeof getSettingsProfileData>>) {
     if (!user) return null
 
@@ -240,9 +244,7 @@ function ProfileSettingsSection({
         <div className="space-y-6">
             <Card className="p-6">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-2xl font-bold text-white">
-                        {coachInitial}
-                    </div>
+                    <CoachAvatarUploader name={coachName} initial={coachInitial} avatarUrl={avatarUrl} />
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
