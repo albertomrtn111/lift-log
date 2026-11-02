@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 import { ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -59,6 +60,8 @@ export function CoachPageHeader({
                         )}
                     </div>
                     {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+                    {/* En móvil no hay barra lateral: la campana vive en la cabecera */}
+                    <CoachNotificationsBell className="self-start lg:hidden" />
                 </div>
                 {children && <div className="mt-3 lg:mt-4">{children}</div>}
             </div>

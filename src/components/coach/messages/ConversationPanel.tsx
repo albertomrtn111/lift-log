@@ -7,12 +7,16 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { uploadChatAttachment } from '@/lib/chat-media'
+import { prepareChatFile } from '@/lib/chat-image'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import { notifyCoachBadgesChanged } from '@/lib/coach-badges-events'
 import { ChatMessageBubble } from '@/components/chat/ChatMessageBubble'
 import { ChatComposer, type ChatComposerHandle } from '@/components/chat/ChatComposer'
 import { deliveryOf, formatDaySeparator, formatReadAt, groupByDay, initialsOf, sameGroup } from '@/components/chat/chat-utils'
 import type { Message, MessageAttachment } from '@/types/messages'
+import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import {
     getMessagesAction,
     markMessagesReadAction,
@@ -24,6 +28,8 @@ interface ConversationPanelProps {
     clientId: string
     clientName: string
     clientEmail?: string
+    /** Foto de perfil del atleta; sin ella se ven sus iniciales */
+    avatarUrl?: string | null
     isBlocked?: boolean
     /** Volver a la bandeja (solo móvil) */
     onBack?: () => void
@@ -49,6 +55,7 @@ export function ConversationPanel({
     clientId,
     clientName,
     clientEmail,
+    avatarUrl,
     isBlocked = false,
     onBack,
     onUnreadChange,
@@ -61,6 +68,7 @@ export function ConversationPanel({
     const [hasMore, setHasMore] = useState(false)
     const [sending, setSending] = useState(false)
     const [uploading, setUploading] = useState<string | null>(null)
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null)
     const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
     const [showJump, setShowJump] = useState(false)
     const [newWhileAway, setNewWhileAway] = useState(0)
@@ -71,6 +79,8 @@ export function ConversationPanel({
     const nearBottom = useRef(true)
     const knownIds = useRef(new Set<string>())
     const pendingPayloads = useRef(new Map<string, PendingPayload>())
+    const activeClientId = useRef(clientId)
+    activeClientId.current = clientId
 
     const recorder = useVoiceRecorder()
 
@@ -144,12 +154,37 @@ export function ConversationPanel({
         if (container.scrollTop < 80) loadOlder()
     }
 
+    // Recupera lo que Realtime no entregó mientras la pestaña estaba en segundo
+    // plano o sin conexión: mensajes nuevos y read_at de los propios.
+    const resync = useCallback(async () => {
+        const latest = await getMessagesAction(coachId, clientId)
+        // Si entretanto se abrió otra conversación, esta respuesta ya no aplica
+        if (latest.length === 0 || activeClientId.current !== clientId) return
+        const fresh = latest.filter(message => !knownIds.current.has(message.id))
+        const overlaps = fresh.length < latest.length
+        if (fresh.length > 0 && nearBottom.current) scrollIntent.current = { kind: 'bottom', smooth: true }
+        if (!overlaps) setHasMore(latest.length >= PAGE_SIZE)
+        setMessages(prev => overlaps
+            ? mergeUniqueMessages([...prev, ...latest])
+            // Hueco mayor que una página: se sustituye conservando los pendientes de envío
+            : mergeUniqueMessages([...latest, ...prev.filter(message => message.id.startsWith('temp-'))]))
+        onLastMessageChange?.(latest[latest.length - 1])
+
+        if (fresh.some(message => message.sender_role === 'client' && !message.read_at)) {
+            onUnreadChange?.(clientId, 0)
+            await markMessagesReadAction(coachId, clientId)
+            notifyCoachBadgesChanged()
+        }
+    }, [coachId, clientId, onLastMessageChange, onUnreadChange])
+
+    useResyncOnReturn(resync, !loading)
+
     // Tiempo real
     useEffect(() => {
         const supabase = createClient()
 
         const channel = supabase
-            .channel(`coach-messages:${coachId}:${clientId}`)
+            .channel(uniqueChannelName(`coach-messages:${coachId}:${clientId}`))
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
@@ -183,12 +218,12 @@ export function ConversationPanel({
                 if (updated.client_id !== clientId) return
                 setMessages(prev => prev.map(message => message.id === updated.id ? { ...message, read_at: updated.read_at } : message))
             })
-            .subscribe()
+            .subscribe(resyncOnResubscribe(resync))
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [coachId, clientId, onLastMessageChange, onUnreadChange])
+    }, [coachId, clientId, onLastMessageChange, onUnreadChange, resync])
 
     const dispatchMessage = useCallback(async (payload: PendingPayload, reuseId?: string) => {
         const { content, attachment } = payload
@@ -250,7 +285,9 @@ export function ConversationPanel({
         if (isBlocked) return
         setUploading(label)
         try {
-            const { attachment, error } = await uploadChatAttachment({ coachId, clientId, file, fileName, mime, duration })
+            const { attachment, error } = await uploadChatAttachment({
+                coachId, clientId, file, fileName, mime, duration, onProgress: setUploadProgress,
+            })
             if (error || !attachment) {
                 toast.error(error || 'No se pudo subir el archivo.')
                 return
@@ -258,6 +295,7 @@ export function ConversationPanel({
             await dispatchMessage({ content: caption, attachment })
         } finally {
             setUploading(null)
+            setUploadProgress(null)
         }
     }
 
@@ -267,7 +305,10 @@ export function ConversationPanel({
             setInput('')
             composerRef.current?.resetHeight()
         }
-        await uploadAndSend(file.name, file, file.name, file.type || 'application/octet-stream', undefined, caption)
+        // Las fotos se reducen y pasan a JPEG antes de subirlas (HEIC incluidas)
+        setUploading(file.name)
+        const prepared = await prepareChatFile(file)
+        await uploadAndSend(file.name, prepared.file, prepared.fileName, prepared.mime, undefined, caption)
     }
 
     const handleStartRecording = async () => {
@@ -290,9 +331,12 @@ export function ConversationPanel({
 
     const initials = initialsOf(clientName, 'A')
     const athleteAvatar = (
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary ring-1 ring-border/60">
-            {initials}
-        </span>
+        <AthleteAvatar
+            initials={initials}
+            avatarUrl={avatarUrl}
+            className="h-7 w-7 ring-1 ring-border/60"
+            fallbackClassName="bg-primary/10 text-[10px] font-bold text-primary"
+        />
     )
 
     return (
@@ -308,9 +352,12 @@ export function ConversationPanel({
                         <ChevronLeft className="h-5 w-5" />
                     </button>
                 )}
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary ring-1 ring-border/60">
-                    {initials}
-                </span>
+                <AthleteAvatar
+                    initials={initials}
+                    avatarUrl={avatarUrl}
+                    className="h-10 w-10 ring-1 ring-border/60"
+                    fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                />
                 <div className="min-w-0 flex-1">
                     <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">{clientName}</h2>
                     {clientEmail ? <p className="truncate text-xs text-muted-foreground">{clientEmail}</p> : null}
@@ -432,6 +479,7 @@ export function ConversationPanel({
                     isRecording={recorder.isRecording}
                     recordingSeconds={recorder.elapsedSeconds}
                     uploading={uploading}
+                    uploadProgress={uploadProgress}
                     sending={sending}
                 />
             )}

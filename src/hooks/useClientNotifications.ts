@@ -2,14 +2,33 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import {
     getCurrentClientId,
     getNotifications,
     getUnreadCount,
     markAsRead,
+    markManyAsRead,
     markAllAsRead,
     type ClientNotification,
 } from '@/data/notifications'
+import { syncAppBadge } from '@/lib/notifications/app-badge'
+import { syncTimezoneAction } from '@/lib/notifications/timezone-actions'
+
+const TIMEZONE_SYNC_KEY = 'nt:timezone-synced'
+
+/** Una vez por sesión: guarda la zona horaria del móvil para los recordatorios. */
+function syncTimezoneOnce() {
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        if (!tz || window.sessionStorage.getItem(TIMEZONE_SYNC_KEY) === tz) return
+        window.sessionStorage.setItem(TIMEZONE_SYNC_KEY, tz)
+        void syncTimezoneAction(tz).catch(() => window.sessionStorage.removeItem(TIMEZONE_SYNC_KEY))
+    } catch {
+        // Sin sessionStorage o sin Intl: se usará la zona del servidor.
+    }
+}
 
 export function useClientNotifications() {
     const [notifications, setNotifications] = useState<ClientNotification[]>([])
@@ -25,19 +44,25 @@ export function useClientNotifications() {
 
     useEffect(() => {
         refresh()
+        syncTimezoneOnce()
     }, [refresh])
+
+    // Vuelta a primer plano o reconexión: lo ocurrido mientras tanto no llega por Realtime
+    useResyncOnReturn(refresh)
 
     // Realtime: escucha inserts en client_notifications para el cliente actual
     useEffect(() => {
         const supabase = createClient()
         let channel: ReturnType<typeof supabase.channel> | null = null
+        let cancelled = false
 
         ;(async () => {
             const clientId = await getCurrentClientId()
-            if (!clientId) return
+            // Desmontado mientras se resolvía: no abrir un canal que nadie cerrará
+            if (!clientId || cancelled) return
 
             channel = supabase
-                .channel('client_notifications_' + clientId)
+                .channel(uniqueChannelName(`client-notifications:${clientId}`))
                 .on(
                     'postgres_changes',
                     {
@@ -48,10 +73,11 @@ export function useClientNotifications() {
                     },
                     () => { refresh() }
                 )
-                .subscribe()
+                .subscribe(resyncOnResubscribe(refresh))
         })()
 
         return () => {
+            cancelled = true
             if (channel) supabase.removeChannel(channel)
         }
     }, [refresh])
@@ -62,6 +88,20 @@ export function useClientNotifications() {
             prev.map(n => n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
         )
         setUnreadCount(prev => Math.max(0, prev - 1))
+    }, [])
+
+    useEffect(() => {
+        if (!loading) syncAppBadge(unreadCount)
+    }, [loading, unreadCount])
+
+    const handleMarkManyAsRead = useCallback(async (ids: string[]) => {
+        if (ids.length === 0) return
+        const idSet = new Set(ids)
+        setNotifications(prev =>
+            prev.map(n => idSet.has(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
+        )
+        setUnreadCount(prev => Math.max(0, prev - ids.length))
+        await markManyAsRead(ids)
     }, [])
 
     const handleMarkAllAsRead = useCallback(async () => {
@@ -75,6 +115,7 @@ export function useClientNotifications() {
         unreadCount,
         loading,
         markAsRead: handleMarkAsRead,
+        markManyAsRead: handleMarkManyAsRead,
         markAllAsRead: handleMarkAllAsRead,
         refresh,
     }

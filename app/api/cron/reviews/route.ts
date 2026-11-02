@@ -4,6 +4,7 @@ import {
     currentHourInTimezone,
     schedulerTimezone,
 } from '@/lib/reviews/scheduler'
+import { expireStaleClientNotifications, sendPendingReviewReminders } from '@/lib/reviews/reminders'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -19,8 +20,27 @@ export const maxDuration = 60
  * Seguridad: header `Authorization: Bearer <REVIEW_SCHEDULER_SECRET>`.
  * Fail-closed: sin secreto configurado, nadie ejecuta.
  *
+ * Después de enviar las revisiones del día, recuerda las pendientes
+ * (lib/reviews/reminders) y limpia del buzón los avisos caducados.
+ *
  * Ejecución manual (ignora el filtro de hora): añadir `?force=1`.
  */
+
+/** Pasos posteriores al envío: si fallan, no tumban el resumen del envío. */
+async function runFollowUps() {
+    const followUps: Record<string, unknown> = {}
+    try {
+        followUps.reminders = await sendPendingReviewReminders()
+    } catch (error) {
+        followUps.reminders = { error: error instanceof Error ? error.message : String(error) }
+    }
+    try {
+        followUps.inboxCleanup = await expireStaleClientNotifications()
+    } catch (error) {
+        followUps.inboxCleanup = { error: error instanceof Error ? error.message : String(error) }
+    }
+    return followUps
+}
 
 function getSecret(): string | null {
     return process.env.REVIEW_SCHEDULER_SECRET || process.env.CRON_SECRET || null
@@ -59,7 +79,9 @@ async function handle(request: NextRequest) {
         console.log(
             `[cron/reviews] ${summary.date} → due=${summary.due} sent=${summary.sent} skipped=${summary.skipped} errors=${summary.errors}`
         )
-        return NextResponse.json({ ok: true, ran: true, ...summary })
+        const followUps = await runFollowUps()
+        console.log('[cron/reviews] Recordatorios y limpieza:', JSON.stringify(followUps))
+        return NextResponse.json({ ok: true, ran: true, ...summary, ...followUps })
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('[cron/reviews] Error:', message)

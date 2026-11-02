@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { notifyCoach } from '@/lib/notifications/coach'
+import { notifyCoachClientMessage } from '@/lib/notifications/coach'
+import { isChatAttachmentOf } from '@/lib/storage/media-refs'
 import type { Message, MessageAttachment } from '@/types/messages'
 
 interface ClientChatContext {
@@ -162,7 +163,7 @@ export async function sendClientChatMessageAction(
     }
 
     // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
-    if (attachment && !attachment.url.startsWith(`${context.coachId}/${context.clientId}/`)) {
+    if (attachment && !isChatAttachmentOf(attachment.url, context.coachId, context.clientId)) {
         return {
             success: false,
             context,
@@ -199,28 +200,14 @@ export async function sendClientChatMessageAction(
         }
     }
 
-    // Push al coach (respeta sus preferencias; nunca bloquea el envío)
-    try {
-        const { data: clientRow } = await admin
-            .from('clients')
-            .select('full_name')
-            .eq('id', context.clientId)
-            .single()
-
-        const previewSource = trimmed
-            || (attachment?.type === 'audio' ? '🎤 Nota de voz'
-                : attachment?.type === 'image' ? '📷 Imagen'
-                : `📎 ${attachment?.name ?? 'Documento'}`)
-        const preview = previewSource.length > 100 ? `${previewSource.substring(0, 97)}...` : previewSource
-        await notifyCoach(context.coachId, 'messages', {
-            title: `Mensaje de ${clientRow?.full_name ?? 'un atleta'}`,
-            body: preview,
-            url: `/coach/messages?client=${context.clientId}`,
-            tag: `coach-message-${context.clientId}`,
-        })
-    } catch (notifyError) {
-        console.warn('[client-chat] Push al coach falló (non-blocking):', notifyError)
-    }
+    // Aviso al coach: campana + push agrupado por conversación. No se espera:
+    // el atleta ve su mensaje enviado al instante (el aviso nunca lanza errores).
+    const previewSource = trimmed
+        || (attachment?.type === 'audio' ? '🎤 Nota de voz'
+            : attachment?.type === 'image' ? '📷 Imagen'
+            : `📎 ${attachment?.name ?? 'Documento'}`)
+    const preview = previewSource.length > 100 ? `${previewSource.substring(0, 97)}...` : previewSource
+    void notifyCoachClientMessage({ coachId: context.coachId, clientId: context.clientId, preview })
 
     return {
         success: true,

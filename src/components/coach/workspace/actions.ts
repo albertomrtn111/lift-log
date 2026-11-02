@@ -8,6 +8,7 @@ import { assertClientLinked } from '@/lib/guards'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { toLocalDateStr } from '@/lib/date-utils'
 import { sendPlanUpdatedNotification, sendReviewApprovedNotification, sendReviewFeedbackNotification } from '@/lib/notifications/client'
+import { markCoachNotificationsRead } from '@/lib/notifications/coach'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSampleClient } from '@/lib/onboarding/sample-athlete'
 import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
@@ -1213,6 +1214,9 @@ export async function completeReviewAction(input: {
             await advanceReviewScheduleForCheckin(admin, validatedCoachId, input.clientId, input.checkinId)
         }
 
+        // Revisión atendida: su aviso en la campana deja de estar pendiente.
+        await markCoachNotificationsRead(validatedCoachId, [`checkin:${input.checkinId}`])
+
         if (input.sendToClient) {
             const { error: messageError } = await admin
                 .from('messages')
@@ -1251,14 +1255,14 @@ export async function completeReviewAction(input: {
                 }
             }
 
-            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage)
+            if (!isSample) await sendReviewFeedbackNotification(input.clientId, feedbackMessage, input.checkinId)
             await markSampleExplored()
             revalidateReviewSurfaces()
             return { success: true, sentToClient: true, isSample, offerAiProfile: await shouldOfferAiProfile() }
         }
 
         if (!isAlreadyApproved && !isSample) {
-            await sendReviewApprovedNotification(input.clientId)
+            await sendReviewApprovedNotification(input.clientId, input.checkinId)
         }
         await markSampleExplored()
         revalidateReviewSurfaces()

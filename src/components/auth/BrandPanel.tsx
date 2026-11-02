@@ -25,7 +25,7 @@ export function BrandPanel({ title, text }: { title?: React.ReactNode; text?: st
                         WebkitMaskImage: 'radial-gradient(ellipse at 70% 30%, black 20%, transparent 70%)',
                     }}
                 />
-                <div className="pointer-events-none absolute -right-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-[hsl(220_91%_56%/0.35)] blur-[120px]" />
+                <div className="pointer-events-none absolute -right-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-brand/35 blur-[120px]" />
                 <div className="pointer-events-none absolute -bottom-40 -left-24 h-[24rem] w-[24rem] rounded-full bg-[hsl(155_60%_40%/0.18)] blur-[120px]" />
 
                 <div className="relative">
@@ -45,7 +45,7 @@ export function BrandPanel({ title, text }: { title?: React.ReactNode; text?: st
                 <div className="relative mx-auto my-10 grid w-full max-w-[540px] grid-cols-2 gap-3.5 xl:grid-cols-[1.4fr_1fr]">
                     <GlassCard className="col-span-2 xl:col-span-1">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-blue-600 text-xs font-semibold">LM</span>
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-light to-brand text-xs font-semibold">LM</span>
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold">Laura M.</p>
                                 <p className="text-xs text-white/45">Check-in semanal</p>
@@ -60,7 +60,7 @@ export function BrandPanel({ title, text }: { title?: React.ReactNode; text?: st
                             <Stat label="Sueño" value="7,5" unit="h" />
                         </div>
                         <div className="mt-3 flex items-start gap-2 rounded-xl bg-white/[0.04] p-2.5 text-xs leading-relaxed text-white/60">
-                            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300" />
+                            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-soft" />
                             Buena semana: baja el peso sin perder fuerza. Mantén las calorías.
                         </div>
                     </GlassCard>
@@ -102,7 +102,7 @@ export function BrandPanel({ title, text }: { title?: React.ReactNode; text?: st
                         </div>
                         <div className="mt-3 space-y-2 text-xs">
                             <p className="w-fit max-w-[90%] rounded-2xl rounded-bl-md bg-white/[0.07] px-3 py-2 text-white/75">¡PR en sentadilla! 120 kg 💪</p>
-                            <p className="ml-auto w-fit max-w-[90%] rounded-2xl rounded-br-md bg-blue-500 px-3 py-2">¡Brutal! Subimos la semana que viene</p>
+                            <p className="ml-auto w-fit max-w-[90%] rounded-2xl rounded-br-md bg-brand px-3 py-2">¡Brutal! Subimos la semana que viene</p>
                         </div>
                     </GlassCard>
                 </div>

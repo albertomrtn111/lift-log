@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getAppUrl } from '@/lib/app-url'
 import { getUserContext } from '@/lib/auth/get-user-context'
-import { sendStravaActivityImportedNotification } from '@/lib/notifications/client'
+import { sendStravaActivityImportedNotification, sendStravaDisconnectedNotification } from '@/lib/notifications/client'
 import { calculateStravaLapMetrics } from '@/lib/strava/lap-metrics'
 import { buildStravaCardioPrivacyReset } from '@/lib/strava/cardio-cleanup'
 import { mapStravaSportToDiscipline, shouldImportStravaActivity } from '@/lib/strava/sport-mapping'
@@ -1030,13 +1030,17 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
     const ownerId = String(event.owner_id)
 
     if (event.object_type === 'athlete' && event.updates?.authorized === 'false') {
-        const { error } = await supabase
+        const { data: revoked, error } = await supabase
             .from('athlete_integrations')
             .update({ status: 'revoked', access_token: null, refresh_token: null, error_message: 'Strava access revoked' })
             .eq('provider', 'strava')
             .eq('provider_athlete_id', ownerId)
+            .select('client_id')
 
         if (error) throw new Error(error.message)
+        for (const row of revoked ?? []) {
+            await sendStravaDisconnectedNotification(row.client_id as string, 'revoked')
+        }
         return
     }
 
@@ -1060,6 +1064,7 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
             .eq('id', integration.id)
 
         if (permissionError) throw new Error(permissionError.message)
+        await sendStravaDisconnectedNotification(integration.client_id, 'permissions')
         return
     }
 

@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendCoachMessageNotification } from '@/lib/notifications/client'
+import { markCoachNotificationsRead } from '@/lib/notifications/coach'
+import { isChatAttachmentOf } from '@/lib/storage/media-refs'
 import type { Message, MessageAttachment } from '@/types/messages'
 
 export async function getMessagesAction(
@@ -48,7 +50,7 @@ export async function sendMessageAction(
     }
 
     // Seguridad: el adjunto debe vivir en la carpeta de esta conversación
-    if (attachment && !attachment.url.startsWith(`${validatedCoachId}/${clientId}/`)) {
+    if (attachment && !isChatAttachmentOf(attachment.url, validatedCoachId, clientId)) {
         return { success: false, error: 'Adjunto no válido para esta conversación' }
     }
 
@@ -72,7 +74,7 @@ export async function sendMessageAction(
 
     if (error) {
         console.error('Error sending message:', error)
-        return { success: false, error: error.message }
+        return { success: false, error: 'No se pudo enviar el mensaje.' }
     }
 
     if (data) {
@@ -108,6 +110,7 @@ export async function markMessagesReadAction(
         return
     }
 
+    await markCoachNotificationsRead(validatedCoachId, [`message:${clientId}`])
     revalidatePath('/coach/dashboard')
 }
 

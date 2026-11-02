@@ -7,7 +7,7 @@ Solo necesita Pillow. Lee las formas del SVG (círculo y trazados con M/L/H/V/Q/
 absolutos), las dibuja a 8x y reduce con LANCZOS para suavizar los bordes.
 
 - icons/icon-*.png: cuadrado opaco #0B0D12 a sangre (iOS no admite transparencia
-  y Android aplica su propia máscara), figura blanca y flecha #4F86F7. El símbolo
+  y Android aplica su propia máscara), figura blanca y flecha #3D8CFF (el azul del logo aclarado para fondo oscuro). El símbolo
   ocupa el 62 % del ancho, dentro de la zona segura de los iconos maskable.
 - icons/badge-72x72.png: silueta blanca sobre transparente (las insignias de
   notificación de Android solo usan el canal alfa).
@@ -26,7 +26,7 @@ SS = 8  # supermuestreo
 
 INK = '#0B0D12'
 WHITE = '#FFFFFF'
-ARROW_ON_DARK = '#4F86F7'
+ARROW_ON_DARK = '#3D8CFF'
 STROKE = 3  # grosor del trazo en unidades del viewBox, como public/icon.svg
 
 

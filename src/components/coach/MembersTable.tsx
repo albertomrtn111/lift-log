@@ -59,6 +59,7 @@ import type { ClientReviewScheduleWithTemplate } from '@/data/review-schedules'
 import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
+import { AthleteAvatar } from './AthleteAvatar'
 import { parseLocalDate } from '@/lib/date-utils'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -421,6 +422,7 @@ function ClientRow({
     )
 
     const { initials } = getClientDisplayIdentity(client)
+    const avatarColors = client.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
 
     return (
         <>
@@ -428,12 +430,12 @@ function ClientRow({
                 <Card className={cn('p-3 transition-opacity', isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
                     <div className="flex items-start gap-2">
                         <Link href={workspaceHref} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg">
-                            <div className={cn(
-                                'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
-                                client.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                            )}>
-                                {initials}
-                            </div>
+                            <AthleteAvatar
+                                initials={initials}
+                                avatarUrl={client.avatar_url}
+                                className="h-10 w-10"
+                                fallbackClassName={cn('text-sm font-bold', avatarColors)}
+                            />
                             <div className="min-w-0 flex-1">
                                 <p className="truncate font-medium leading-tight">{client.full_name}</p>
                                 <p className="truncate text-xs text-muted-foreground">{client.email}</p>
@@ -457,9 +459,17 @@ function ClientRow({
             ) : (
                 <TableRow className={cn(isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
                     <TableCell>
-                        <div>
-                            <p className="font-medium">{client.full_name}</p>
-                            <p className="text-sm text-muted-foreground">{client.email}</p>
+                        <div className="flex items-center gap-3">
+                            <AthleteAvatar
+                                initials={initials}
+                                avatarUrl={client.avatar_url}
+                                className="h-9 w-9"
+                                fallbackClassName={cn('text-xs font-bold', avatarColors)}
+                            />
+                            <div className="min-w-0">
+                                <p className="font-medium">{client.full_name}</p>
+                                <p className="text-sm text-muted-foreground">{client.email}</p>
+                            </div>
                         </div>
                     </TableCell>
                     <TableCell>{statusBadge}</TableCell>

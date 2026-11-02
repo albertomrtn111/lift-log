@@ -10,6 +10,7 @@ import { buildPlanningEventContext } from "@/lib/ai/planning-event-context";
 import { cardioActivityType, cardioSessionMetrics, hasRenderableCardioBlocks, prepareCardioSessionPlan, resolveCardioPlanForDisplay, summarizeCardioStructure } from "@/lib/cardio/structure";
 import { requireAIClient } from '@/lib/ai/access';
 import { dateSchema } from '@/lib/ai/planning-block';
+import { sendPlanUpdatedNotification } from '@/lib/notifications/client';
 
 type TrainingDayRow = {
     id: string;
@@ -215,6 +216,19 @@ async function getUpcomingEventContext(
         weekStart,
         weekEnd,
         events: data,
+    });
+}
+
+
+/**
+ * Avisa al atleta de que su semana ha cambiado (como mucho uno cada 12 h).
+ * Una sesión ya pasada no cambia nada de lo que tiene por delante. Nunca bloquea.
+ */
+function notifyPlanningChanged(clientId: string | null | undefined, date?: string | null) {
+    if (!clientId) return;
+    if (date && date < toLocalDateStr(new Date())) return;
+    void sendPlanUpdatedNotification(clientId, 'cardio').catch((error) => {
+        console.warn('[planning] Aviso de cambio de planificación no enviado:', error);
     });
 }
 
@@ -704,6 +718,10 @@ export async function applyWeeklyPlanningAIAction({
             }
         }
 
+        if (movedStrength + createdCardio + createdHybrid > 0) {
+            notifyPlanningChanged(clientId, toLocalDateStr(weekEndDate));
+        }
+
         return {
             success: true,
             counts: {
@@ -769,6 +787,7 @@ export async function scheduleStrengthSession({ clientId, programId, dayId, date
         }
 
         console.log('[scheduleStrengthSession] INSERT SUCCESS');
+        notifyPlanningChanged(clientId, date);
         return { success: true };
 
     } catch (error: any) {
@@ -847,6 +866,7 @@ export async function scheduleCardioSession({ clientId, coachId, date, name, des
             });
 
         if (error) throw new Error(error.message);
+        notifyPlanningChanged(clientId, date);
         return { success: true };
 
     } catch (error: any) {
@@ -910,16 +930,18 @@ export async function deleteCardioSession(sessionId: string) {
     const supabase = await createClient();
 
     try {
-        const { error } = await supabase
+        const { data: deleted, error } = await supabase
             .from('cardio_sessions')
             .delete()
-            .eq('id', sessionId);
+            .eq('id', sessionId)
+            .select('client_id, scheduled_date');
 
         if (error) {
             console.error('Error deleting cardio session:', error);
             throw new Error(error.message);
         }
 
+        for (const row of deleted ?? []) notifyPlanningChanged(row.client_id, row.scheduled_date);
         return { success: true };
 
     } catch (error: any) {
@@ -959,7 +981,7 @@ export async function updateCardioSession({
             blocks: Array.isArray(structure?.blocks) ? structure.blocks : [],
         }, description, targetDistanceKm, targetDurationMin, targetPace });
         const { data: existing, error: readError } = await supabase.from('cardio_sessions')
-            .select('id, coach_id, client_id').eq('id', id).single();
+            .select('id, coach_id, client_id, scheduled_date').eq('id', id).single();
         if (readError || !existing) throw new Error('Sesión de cardio no encontrada.');
         await requireActiveCoachId(existing.coach_id);
         const payload = {
@@ -988,6 +1010,7 @@ export async function updateCardioSession({
             throw new Error(error.message);
         }
 
+        notifyPlanningChanged(existing.client_id, existing.scheduled_date);
         return { success: true };
 
     } catch (error: any) {
@@ -1010,16 +1033,18 @@ export async function moveSession(
         const table = type === 'cardio' ? 'cardio_sessions' : 'scheduled_strength_sessions';
         const dateColumn = 'scheduled_date';
 
-        const { error } = await supabase
+        const { data: moved, error } = await supabase
             .from(table)
             .update({ [dateColumn]: newDate, ...(type === 'cardio' ? { date: newDate, updated_at: new Date().toISOString() } : {}) })
-            .eq('id', sessionId);
+            .eq('id', sessionId)
+            .select('client_id');
 
         if (error) {
             console.error(`[moveSession] Error updating ${table}:`, error.message);
             throw new Error(error.message);
         }
 
+        for (const row of moved ?? []) notifyPlanningChanged(row.client_id, newDate);
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };

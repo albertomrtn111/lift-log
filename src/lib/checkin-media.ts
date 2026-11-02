@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { checkinPathR2Key, privateMediaUrl } from '@/lib/storage/media-refs'
 
 export const CHECKIN_MEDIA_BUCKET = 'checkin-media'
 
@@ -19,12 +20,43 @@ const IMAGE_TRANSFORMS = {
     },
 }
 
-export function getCheckinMediaImageUrl(
+const SIGNED_URL_TTL_SECONDS = 3600
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
+
+/**
+ * URL de una foto de progreso. Las que siguen en Supabase: URL firmada (1 h). El bucket es privado: la firma solo se
+ * concede si las políticas de storage dejan leer el archivo (coach del espacio o el
+ * propio atleta). Se guarda en caché por ruta y tamaño para no pedirla en cada render.
+ */
+export async function getCheckinMediaImageUrl(
     supabase: SupabaseClient,
     path: string,
     size: CheckinMediaImageSize = 'original'
-): string {
+): Promise<string | null> {
+    // En R2 hay una sola versión (WebP de 1600 px como máximo), servida por la
+    // app tras comprobar los mismos permisos que las políticas de Supabase
+    const r2Key = checkinPathR2Key(path)
+    if (r2Key) return privateMediaUrl(r2Key)
+
+    const key = `${size}:${path}`
+    const cached = signedUrlCache.get(key)
+    if (cached && cached.expiresAt > Date.now() + 60_000) {
+        return cached.url
+    }
+
     const options = size === 'original' ? undefined : { transform: IMAGE_TRANSFORMS[size] }
-    const { data } = supabase.storage.from(CHECKIN_MEDIA_BUCKET).getPublicUrl(path, options)
-    return data.publicUrl
+    const { data, error } = await supabase.storage
+        .from(CHECKIN_MEDIA_BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, options)
+
+    if (error || !data?.signedUrl) {
+        console.error('[checkin-media] Signed URL error:', error)
+        return null
+    }
+
+    signedUrlCache.set(key, {
+        url: data.signedUrl,
+        expiresAt: Date.now() + SIGNED_URL_TTL_SECONDS * 1000,
+    })
+    return data.signedUrl
 }

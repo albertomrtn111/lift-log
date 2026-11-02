@@ -925,8 +925,8 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                     </div>
 
                     {compactStructure ? (
-                        <div className="mt-4 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
-                            <p className="font-medium text-blue-700 dark:text-blue-400">Entreno programado</p>
+                        <div className="mt-4 rounded-xl border border-primary/15 bg-primary/[0.05] px-3 py-2 text-sm leading-6 text-muted-foreground">
+                            <p className="font-medium text-primary">Entreno programado</p>
                             <p className="mt-0.5 whitespace-pre-wrap break-words">{compactStructure}</p>
                         </div>
                     ) : null}
@@ -965,8 +965,8 @@ function SessionCard({ session, thresholds }: { session: CardioSessionProgress; 
                         {/* El feedback del atleta ya se muestra completo en la tarjeta;
                             aquí solo va lo que no aparece fuera. */}
                         {session.coachNotes ? (
-                            <div className="rounded-2xl border border-blue-500/15 bg-blue-500/[0.05] p-4">
-                                <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                            <div className="rounded-2xl border border-primary/15 bg-primary/[0.05] p-4">
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary">
                                     <MessageSquareText className="h-4 w-4" />
                                     Notas del coach
                                 </div>

@@ -21,20 +21,29 @@ import {
     UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { prepareImageFile } from '@/lib/chat-image'
+import { AVATAR_MAX_SIDE } from '@/lib/chat-image-rules'
+import { uploadMedia } from '@/lib/media-upload'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { useAppMode } from '@/hooks/use-app-mode'
-import { useAvatarUpload } from '@/hooks/useAvatarUpload'
 import { APP_MODE_COOKIE, type AppMode } from '@/lib/mode-utils'
 import type { UserRole } from '@/types/coach'
 import { RoleDebugPanel } from '@/components/debug/RoleDebugPanel'
 import { StravaConnectorCard } from '@/components/strava/StravaConnectorCard'
+import { PushDeviceRow } from '@/components/push/PushDeviceRow'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
+import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import {
     getNotificationPreferencesAction,
     updateNotificationPreferencesAction,
 } from './actions'
 import ProfileLoading from './loading'
+import { DeliverySettingsGroup } from './DeliverySettingsGroup'
+
+/** Formatos que el servidor sabe convertir a WebP */
+const AVATAR_INPUT_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 type ClientNotificationPreferences = {
     messages_enabled: boolean
@@ -58,9 +67,11 @@ function deleteCookie(name: string) {
 
 export default function ProfilePage() {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [loggingOut, setLoggingOut] = useState(false)
-    const { upload: uploadAvatar, uploading } = useAvatarUpload()
+    const [uploading, setUploading] = useState(false)
+    const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
         messages_enabled: true,
@@ -135,19 +146,46 @@ export default function ProfilePage() {
         }
     }
 
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        // Reset input para permitir subir el mismo archivo otra vez
-        if (fileInputRef.current) fileInputRef.current.value = ''
-        if (!file) return
+        // Reset input para permitir elegir el mismo archivo otra vez
+        e.target.value = ''
+        if (file) setAvatarToCrop(file)
+    }
 
-        const result = await uploadAvatar(file)
-        if (!result.ok) {
-            toast.error(result.error)
-            return
+    /** Sube el cuadrado ya encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
+    const handleAvatarUpload = async (cropped: File): Promise<boolean> => {
+        setUploading(true)
+        try {
+            // El recorte (512 px como máximo) pasa a JPEG en el navegador; el
+            // servidor lo guarda en WebP, actualiza profiles.avatar_url y borra
+            // la foto anterior.
+            const prepared = await prepareImageFile(cropped, { maxSide: AVATAR_MAX_SIDE, alwaysConvert: true })
+            if (!AVATAR_INPUT_TYPES.includes(prepared.mime)) {
+                toast.error('Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
+                return false
+            }
+
+            const { error } = await uploadMedia<{ url: string }>({ kind: 'avatar' }, prepared.file, prepared.fileName)
+            if (error) {
+                toast.error(error)
+                return false
+            }
+
+            setAvatarToCrop(null)
+            toast.success('Foto de perfil actualizada')
+            // El avatar del header y del perfil vienen de react-query, no del
+            // server render: invalidar para que la foto nueva se vea al momento.
+            await queryClient.invalidateQueries({ queryKey: ['client-context'] })
+            router.refresh()
+            return true
+        } catch (err) {
+            console.error('[handleAvatarUpload]', err)
+            toast.error('No se pudo subir la foto. Inténtalo de nuevo.')
+            return false
+        } finally {
+            setUploading(false)
         }
-        toast.success('Foto de perfil actualizada')
-        router.refresh()
     }
 
     if (isLoading) return <ProfileLoading />
@@ -219,7 +257,12 @@ export default function ProfilePage() {
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             className="hidden"
-                            onChange={handleAvatarUpload}
+                            onChange={handleAvatarPick}
+                        />
+                        <AvatarCropDialog
+                            file={avatarToCrop}
+                            onCancel={() => setAvatarToCrop(null)}
+                            onSave={handleAvatarUpload}
                         />
                     </div>
                     <h2 className="mt-3 max-w-full truncate text-xl font-bold tracking-tight">{displayName}</h2>
@@ -245,8 +288,9 @@ export default function ProfilePage() {
 
                 <SettingsGroup
                     title="Notificaciones"
-                    footer="Los avisos llegan como notificaciones push al móvil si las tienes activadas."
+                    footer="Elige qué te avisa en el móvil. Mensajes, revisiones y cambios de plan siempre quedan en la campana aunque apagues su aviso."
                 >
+                    <PushDeviceRow />
                     <NotificationPreferenceRow
                         icon={MessageCircle}
                         iconTone="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
@@ -276,7 +320,7 @@ export default function ProfilePage() {
                     />
                     <NotificationPreferenceRow
                         icon={Dumbbell}
-                        iconTone="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        iconTone="bg-primary/10 text-primary"
                         title="Cambios de plan"
                         description="Cuando tu entrenador actualiza tu entrenamiento, dieta o macros"
                         checked={notificationPreferences.plans_enabled}
@@ -287,12 +331,14 @@ export default function ProfilePage() {
                         icon={Activity}
                         iconTone="bg-orange-500/10 text-orange-600 dark:text-orange-400"
                         title="Actividades importadas"
-                        description="Cuando llega una actividad nueva desde Strava"
+                        description="Un aviso a las 20:00 si tienes actividades de Strava sin RPE"
                         checked={notificationPreferences.activities_enabled}
                         disabled={loadingNotificationPreferences || savingNotificationKey === 'activities_enabled'}
                         onCheckedChange={(checked) => handleNotificationToggle('activities_enabled', checked)}
                     />
                 </SettingsGroup>
+
+                <DeliverySettingsGroup />
 
                 <SettingsGroup title="Cuenta">
                     <SettingsRow icon={UserRound} title="Datos personales" description="Nombre y email" href="/profile/settings" />
@@ -308,7 +354,7 @@ export default function ProfilePage() {
                 <SettingsGroup title="Ayuda">
                     <SettingsRow
                         icon={MessagesSquare}
-                        iconTone="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        iconTone="bg-primary/10 text-primary"
                         title="Escribe a tu entrenador"
                         description="Dudas sobre tu plan o sobre la app"
                         href="/chat"

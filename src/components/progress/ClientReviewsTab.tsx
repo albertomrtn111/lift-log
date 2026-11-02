@@ -49,7 +49,7 @@ const STATUS_META: Record<ClientReviewUiStatus, { label: string; icon: React.Com
     submitted: {
         label: 'Enviada',
         icon: CheckCircle2,
-        className: 'border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400',
+        className: 'border-primary/20 bg-primary/10 text-primary',
     },
     feedback: {
         label: 'Con feedback',

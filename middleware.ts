@@ -221,6 +221,8 @@ export const config = {
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
          * - robots.txt
+         * - sw.js y manifest.json (el navegador los pide sin sesión: el manifest
+         *   nunca lleva cookies y el service worker no admite redirecciones)
          * - api (API routes except auth signout if needed)
          * - login
          * - signup
@@ -229,6 +231,6 @@ export const config = {
          * - no-access
          * - assets / public files (svg, png, jpg, etc)
          */
-        "/((?!_next/static|_next/image|favicon.ico|robots.txt|api|auth|oauth|login|signup|forgot-password|set-password|mode|no-access|forms|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+        "/((?!_next/static|_next/image|favicon.ico|robots.txt|sw\\.js$|manifest\\.json$|api|auth|oauth|login|signup|forgot-password|set-password|mode|no-access|forms|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     ],
 }

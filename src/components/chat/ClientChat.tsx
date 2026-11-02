@@ -9,7 +9,10 @@ import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { createClient } from '@/lib/supabase/client'
 import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { uploadChatAttachment } from '@/lib/chat-media'
+import { prepareChatFile } from '@/lib/chat-image'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import { ChatMessageBubble } from './ChatMessageBubble'
 import { ChatComposer, type ChatComposerHandle } from './ChatComposer'
 import { deliveryOf, formatDaySeparator, formatReadAt, groupByDay, initialsOf, sameGroup } from './chat-utils'
@@ -54,6 +57,7 @@ export function ClientChat() {
     const [hasMore, setHasMore] = useState(false)
     const [sending, setSending] = useState(false)
     const [uploading, setUploading] = useState<string | null>(null)
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [chatSession, setChatSession] = useState<ChatSession | null>(null)
     const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set())
@@ -173,13 +177,31 @@ export function ClientChat() {
         if (container.scrollTop < 80) loadOlder()
     }
 
+    // Recupera lo que Realtime no entregó mientras la app estaba en segundo
+    // plano o sin conexión: mensajes nuevos y read_at de los propios.
+    const resync = useCallback(async () => {
+        const result = await getClientChatMessagesAction()
+        if (!result.success || !result.messages) return
+        const latest = result.messages
+        const hasNew = latest.some(message => !knownIds.current.has(message.id))
+        const overlaps = latest.some(message => knownIds.current.has(message.id))
+        if (hasNew && nearBottom.current) scrollIntent.current = { kind: 'bottom', smooth: true }
+        if (!overlaps) setHasMore(Boolean(result.hasMore))
+        setMessages(prev => overlaps
+            ? mergeUniqueMessages([...prev, ...latest])
+            // Hueco mayor que una página: se sustituye conservando los pendientes de envío
+            : mergeUniqueMessages([...latest, ...prev.filter(message => message.id.startsWith('temp-'))]))
+    }, [])
+
+    useResyncOnReturn(resync, !loading && !!chatSession)
+
     // Tiempo real: mensajes nuevos y doble check cuando el coach lee
     useEffect(() => {
         if (!coachId || !clientId) return
         const supabase = createClient()
 
         const channel = supabase
-            .channel(`client-messages:${coachId}:${clientId}`)
+            .channel(uniqueChannelName(`client-messages:${coachId}:${clientId}`))
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
@@ -210,10 +232,10 @@ export function ClientChat() {
                 if (updated.coach_id !== coachId) return
                 setMessages(prev => prev.map(message => message.id === updated.id ? { ...message, read_at: updated.read_at } : message))
             })
-            .subscribe()
+            .subscribe(resyncOnResubscribe(resync))
 
         return () => { supabase.removeChannel(channel) }
-    }, [coachId, clientId])
+    }, [coachId, clientId, resync])
 
     const dispatchMessage = useCallback(async (payload: PendingPayload, reuseId?: string) => {
         if (!coachId || !clientId || !userId) return
@@ -283,7 +305,9 @@ export function ClientChat() {
         if (!coachId || !clientId) return
         setUploading(label)
         try {
-            const { attachment, error } = await uploadChatAttachment({ coachId, clientId, file, fileName, mime, duration })
+            const { attachment, error } = await uploadChatAttachment({
+                coachId, clientId, file, fileName, mime, duration, onProgress: setUploadProgress,
+            })
             if (error || !attachment) {
                 toast.error(error || 'No se pudo subir el archivo.')
                 return
@@ -291,6 +315,7 @@ export function ClientChat() {
             await dispatchMessage({ content: caption, attachment })
         } finally {
             setUploading(null)
+            setUploadProgress(null)
         }
     }
 
@@ -300,7 +325,10 @@ export function ClientChat() {
             setInput('')
             composerRef.current?.resetHeight()
         }
-        await uploadAndSend(file.name, file, file.name, file.type || 'application/octet-stream', undefined, caption)
+        // Las fotos se reducen y pasan a JPEG antes de subirlas (HEIC incluidas)
+        setUploading(file.name)
+        const prepared = await prepareChatFile(file)
+        await uploadAndSend(file.name, prepared.file, prepared.fileName, prepared.mime, undefined, caption)
     }
 
     const handleStartRecording = async () => {
@@ -482,6 +510,7 @@ export function ClientChat() {
                 isRecording={recorder.isRecording}
                 recordingSeconds={recorder.elapsedSeconds}
                 uploading={uploading}
+                uploadProgress={uploadProgress}
                 sending={sending}
             />
         </ChatShell>

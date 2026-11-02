@@ -187,7 +187,7 @@ function TierCard({ tier, level, cycle, onSelect }: { tier: Tier; level: number;
                             WebkitMaskImage: 'radial-gradient(ellipse at 80% 0%, black 10%, transparent 65%)',
                         }}
                     />
-                    <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[hsl(220_91%_56%/0.45)] blur-[90px]" />
+                    <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-brand/45 blur-[90px]" />
                 </>
             )}
 
@@ -229,7 +229,7 @@ function TierCard({ tier, level, cycle, onSelect }: { tier: Tier; level: number;
                                 key={step}
                                 className={cn(
                                     'h-1.5 rounded-full',
-                                    step <= level ? (dark ? 'bg-sky-400' : 'bg-primary') : (dark ? 'bg-white/10' : 'bg-border'),
+                                    step <= level ? (dark ? 'bg-brand-light' : 'bg-primary') : (dark ? 'bg-white/10' : 'bg-border'),
                                 )}
                             />
                         ))}
@@ -255,7 +255,7 @@ function TierCard({ tier, level, cycle, onSelect }: { tier: Tier; level: number;
                     <ul className="space-y-2.5">
                         {ownFeatures.map(feature => (
                             <li key={feature} className={cn('flex items-start gap-2.5 text-sm', dark ? 'text-white/85' : 'text-foreground/85')}>
-                                <Check className={cn('mt-0.5 h-4 w-4 shrink-0', dark ? 'text-sky-300' : 'text-success')} strokeWidth={2.5} />
+                                <Check className={cn('mt-0.5 h-4 w-4 shrink-0', dark ? 'text-brand-soft' : 'text-success')} strokeWidth={2.5} />
                                 {feature}
                             </li>
                         ))}

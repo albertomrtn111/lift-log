@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { Camera, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { initialsOf } from '@/components/chat/chat-utils'
+import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import { AVATAR_ACCEPT, useAvatarUpload } from '@/hooks/useAvatarUpload'
 
 interface PickerState {
@@ -32,24 +33,33 @@ export function AvatarPhotoPicker({ name, initialUrl, onUploaded, children, clas
     const [url, setUrl] = useState(initialUrl)
     const [uploaded, setUploaded] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [fileToCrop, setFileToCrop] = useState<File | null>(null)
 
     const choose = () => {
         if (!uploading) inputRef.current?.click()
     }
 
-    const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         event.target.value = ''
         if (!file) return
         setError(null)
-        const result = await upload(file)
+        // Primero se encuadra, como en /profile
+        setFileToCrop(file)
+    }
+
+    /** Sube el cuadrado encuadrado. Devuelve false si falla, para reintentar desde el diálogo. */
+    const handleCropped = async (cropped: File): Promise<boolean> => {
+        const result = await upload(cropped)
         if (!result.ok) {
             setError(result.error)
-            return
+            return false
         }
+        setFileToCrop(null)
         setUrl(result.url)
         setUploaded(true)
         onUploaded?.(result.url)
+        return true
     }
 
     return (
@@ -85,6 +95,7 @@ export function AvatarPhotoPicker({ name, initialUrl, onUploaded, children, clas
                 {error && <p role="alert" className="mt-3 text-center text-sm text-destructive">{error}</p>}
             </div>
             {children({ choose, uploading, url, uploaded })}
+            <AvatarCropDialog file={fileToCrop} onCancel={() => setFileToCrop(null)} onSave={handleCropped} />
         </>
     )
 }

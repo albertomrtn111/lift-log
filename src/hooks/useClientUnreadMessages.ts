@@ -1,14 +1,18 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
+import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
+import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 
 /**
  * Returns the count of unread coach messages for the current client.
  * Automatically resets to 0 when the user navigates to /chat.
- * Updates in real time via Supabase Realtime.
+ * Updates in real time via Supabase Realtime, and re-counts when the app
+ * comes back to the foreground or reconnects (Realtime drops what happened
+ * while the socket was down).
  */
 export function useClientUnreadMessages(): number {
     const { client } = useClientAppContext()
@@ -31,23 +35,27 @@ export function useClientUnreadMessages(): number {
         }
     }, [pathname])
 
-    // Initial fetch (skip if already viewing chat)
-    useEffect(() => {
-        if (!coachId || !clientId) return
-        if (pathname === '/chat') return
+    const fetchCount = useCallback(async () => {
+        if (!coachId || !clientId || pathnameRef.current === '/chat') return
 
         const supabase = createClient()
-        supabase
+        const { count, error } = await supabase
             .from('messages')
             .select('*', { count: 'exact', head: true })
             .eq('coach_id', coachId)
             .eq('client_id', clientId)
             .eq('sender_role', 'coach')
             .is('read_at', null)
-            .then(({ count }) => {
-                setUnreadCount(count ?? 0)
-            })
-    }, [coachId, clientId]) // Intentionally omit pathname: only re-fetch on client/coach change
+
+        if (!error && pathnameRef.current !== '/chat') setUnreadCount(count ?? 0)
+    }, [coachId, clientId])
+
+    // Initial fetch: only on client/coach change, not on every navigation
+    useEffect(() => {
+        fetchCount()
+    }, [fetchCount])
+
+    useResyncOnReturn(fetchCount, Boolean(coachId && clientId))
 
     // Realtime — increment on new coach messages when NOT viewing chat
     useEffect(() => {
@@ -55,7 +63,7 @@ export function useClientUnreadMessages(): number {
         const supabase = createClient()
 
         const channel = supabase
-            .channel(`client-unread:${coachId}:${clientId}`)
+            .channel(uniqueChannelName(`client-unread:${coachId}:${clientId}`))
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
@@ -71,10 +79,10 @@ export function useClientUnreadMessages(): number {
                     setUnreadCount(prev => prev + 1)
                 }
             })
-            .subscribe()
+            .subscribe(resyncOnResubscribe(fetchCount))
 
         return () => { supabase.removeChannel(channel) }
-    }, [coachId, clientId])
+    }, [coachId, clientId, fetchCount])
 
     return unreadCount
 }

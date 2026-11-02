@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSupplementReminderNotification } from '@/lib/notifications/client'
 import { dateTimeInTimezone, getReminderTargets } from '@/lib/supplements/reminder-time'
+import { isValidTimezone } from '@/lib/notifications/quiet-hours'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,6 +118,30 @@ async function handleReminderRun(request: NextRequest) {
             for (const client of activeClients || []) activeClientIds.add(client.id)
         }
 
+        // Cada atleta recibe sus tomas en su hora local (la del móvil); sin ella, la del servidor.
+        const timezoneByClient = new Map<string, string>()
+        if (activeClientIds.size > 0) {
+            const { data: tzRows } = await supabase
+                .from('client_notification_preferences')
+                .select('client_id, timezone')
+                .in('client_id', [...activeClientIds])
+            for (const row of tzRows || []) {
+                if (isValidTimezone(row.timezone as string | null)) timezoneByClient.set(row.client_id as string, row.timezone as string)
+            }
+        }
+        const params = new URL(request.url).searchParams
+        const manualRun = Boolean(params.get('date') && params.get('time'))
+        const targetsByTimezone = new Map<string, ReminderTarget[]>([[timezone, targets]])
+        const targetsFor = (clientId: string) => {
+            const tz = manualRun ? timezone : (timezoneByClient.get(clientId) ?? timezone)
+            let cached = targetsByTimezone.get(tz)
+            if (!cached) {
+                cached = getRequestReminderTargets(request, tz)
+                targetsByTimezone.set(tz, cached)
+            }
+            return cached
+        }
+
         const due: DueReminder[] = []
         for (const row of supplementRows) {
             if (!activeClientIds.has(row.client_id)) continue
@@ -125,7 +150,7 @@ async function handleReminderRun(request: NextRequest) {
                 ? row.dose_schedule.filter((time): time is string => /^\d{2}:\d{2}$/.test(time))
                 : []
 
-            for (const target of targets) {
+            for (const target of targetsFor(row.client_id)) {
                 if (isActiveOnDate(row, target.date) && schedule.includes(target.time)) {
                     due.push({ supplement: row, target })
                 }
@@ -206,7 +231,7 @@ async function handleReminderRun(request: NextRequest) {
                 body,
                 url,
                 tag,
-            })
+            }, { date: group.date, time: group.time })
 
             if (result.status === 'failed') {
                 // No llegó por ningún canal: liberamos la marca de entrega para que la

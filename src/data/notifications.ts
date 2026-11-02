@@ -93,6 +93,21 @@ export async function markAsRead(id: string): Promise<boolean> {
     return true
 }
 
+export async function markManyAsRead(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true
+    const supabase = createClient()
+    const { error } = await supabase
+        .from('client_notifications')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .in('id', ids)
+        .eq('is_read', false)
+    if (error) {
+        console.error('markManyAsRead error:', error)
+        return false
+    }
+    return true
+}
+
 export async function markAllAsRead(): Promise<boolean> {
     const supabase = createClient()
     const clientId = await getCurrentClientId()

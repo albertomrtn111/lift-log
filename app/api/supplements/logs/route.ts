@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserContext } from '@/lib/auth/get-user-context'
+import { clearSupplementReminderIfDone } from '@/lib/supplements/reminder-clear'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,6 +124,8 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (error) throw error
+        // Todas las tomas del día hechas: el recordatorio deja de contar como pendiente.
+        await clearSupplementReminderIfDone(context.clientId, scheduledDate)
         return NextResponse.json({ log: data })
     } catch (error) {
         console.error('[supplements/logs:POST]', error)

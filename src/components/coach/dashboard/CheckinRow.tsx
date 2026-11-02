@@ -15,7 +15,7 @@ export function CheckinRow({ checkin }: CheckinRowProps) {
         // submitted_at ya viene limpio: null mientras el atleta no haya respondido
         if (!checkin.submitted_at) {
             return checkin.checkin_status === 'pending' ? (
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400">
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
                     Pendiente<span className="hidden sm:inline">&nbsp;de respuesta</span>
                 </Badge>
             ) : (

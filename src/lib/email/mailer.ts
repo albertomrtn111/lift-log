@@ -112,7 +112,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
     const ctaUrl = rawCtaUrl ? escapeHtml(rawCtaUrl) : undefined
     const button = ctaLabel && ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px;">
-             <tr><td style="border-radius:8px;background:#111827;">
+             <tr><td style="border-radius:8px;background:#0058D8;">
                <a href="${ctaUrl}" target="_blank"
                   style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
                  ${ctaLabel}
@@ -121,7 +121,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
            </table>
            <p style="font-size:12px;color:#6b7280;text-align:center;margin:8px 0 0;">
              Si el botón no funciona, copia este enlace:<br/>
-             <a href="${ctaUrl}" style="color:#2563eb;word-break:break-all;">${ctaUrl}</a>
+             <a href="${ctaUrl}" style="color:#0058D8;word-break:break-all;">${ctaUrl}</a>
            </p>`
         : ''
 
@@ -172,6 +172,41 @@ export async function sendReviewEmailSmtp(params: {
         Rellena el formulario con tus datos y fotos de progreso para que pueda
         valorar cómo ha ido el periodo y ajustar tu plan.</p>
         <p>Cuanto antes lo completes, antes tendrás tu feedback. 💪</p>`
+
+    return send(
+        {
+            to: params.to,
+            subject,
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+        },
+        params.coachId
+    )
+}
+
+/** Último recordatorio de una revisión sin responder (el día antes de que se archive). */
+export async function sendReviewReminderEmailSmtp(params: {
+    to: string
+    clientName?: string
+    formUrl: string
+    reviewTemplateName?: string
+    archivesTomorrow: boolean
+    coachId?: string
+}): Promise<EmailResult> {
+    const name = escapeHtml(params.clientName?.trim() || 'atleta')
+    const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
+    const reviewName = escapeHtml(rawReviewName)
+    const subject = params.archivesTomorrow
+        ? `⏰ Último día para enviar tu ${rawReviewName.toLowerCase()}`
+        : `⏰ Tu ${rawReviewName.toLowerCase()} sigue pendiente`
+
+    const deadline = params.archivesTomorrow
+        ? '<p>Mañana se archiva y tu entrenador ya no podrá revisarla.</p>'
+        : ''
+    const body = `
+        <p>Hola <strong>${name}</strong>,</p>
+        <p>Tu entrenador sigue esperando tu <strong>${reviewName}</strong> para valorar
+        cómo ha ido el periodo y ajustar tu plan.</p>
+        ${deadline}`
 
     return send(
         {
@@ -237,6 +272,57 @@ export async function sendInviteEmailSmtp(params: {
         },
         params.coachId
     )
+}
+
+export interface CoachDigestEmailSection {
+    title: string
+    items: Array<{ label: string; detail: string; url: string }>
+}
+
+/**
+ * Resumen diario del coach. Sale siempre por el SMTP de la app (no por el
+ * del coach): es un aviso de NexTrain al propio coach.
+ */
+export async function sendCoachDigestEmail(params: {
+    to: string
+    /** Sale primero por el SMTP propio del coach, como sus revisiones; si no, por el global */
+    coachId: string
+    coachName?: string | null
+    dateLabel: string
+    headline: string
+    sections: CoachDigestEmailSection[]
+    dashboardUrl: string
+    settingsUrl: string
+    /** Resumen semanal: asunto, saludo y título propios. */
+    weekly?: boolean
+}): Promise<EmailResult> {
+    const name = escapeHtml(params.coachName?.trim().split(/\s+/)[0] || 'coach')
+    const sectionsHtml = params.sections.map(section => `
+        <h2 style="margin:24px 0 8px;font-size:15px;color:#111827;">${escapeHtml(section.title)}</h2>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${section.items.map(item => `
+            <tr>
+              <td style="padding:8px 0;border-top:1px solid #e5e7eb;font-size:14px;">
+                <a href="${escapeHtml(item.url)}" style="color:#0058D8;font-weight:600;text-decoration:none;">${escapeHtml(item.label)}</a>
+                ${item.detail ? `<div style="color:#6b7280;font-size:13px;margin-top:2px;">${escapeHtml(item.detail)}</div>` : ''}
+              </td>
+            </tr>`).join('')}
+        </table>`).join('')
+
+    const body = `
+        <p>Buenos días, <strong>${name}</strong>. ${params.weekly ? 'Así fue la semana pasada y esto es lo que viene:' : 'Esto es lo que tienes pendiente hoy:'}</p>
+        <p style="font-size:14px;color:#6b7280;">${escapeHtml(params.headline)}</p>
+        ${sectionsHtml}
+        <p style="margin-top:24px;font-size:12px;color:#9ca3af;">
+          Puedes cambiar la hora o desactivar ${params.weekly ? 'los resúmenes' : 'este resumen'} en
+          <a href="${escapeHtml(params.settingsUrl)}" style="color:#6b7280;">Ajustes → Notificaciones</a>.
+        </p>`
+
+    return send({
+        to: params.to,
+        subject: params.weekly ? `Tu semana en NexTrain · ${params.dateLabel}` : `Tu día en NexTrain · ${params.dateLabel}`,
+        html: layout(params.weekly ? `Resumen semanal, ${params.dateLabel}` : `Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
+    }, params.coachId)
 }
 
 /** Email de prueba para validar la configuración SMTP del coach */
@@ -307,9 +393,9 @@ export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { sub
         <p>${coach}${business} te ha dado de alta en NexTrain, la app donde verás tu plan,
         registrarás tus entrenamientos y hablarás con ${coach}.</p>
         ${accessBlock}
-        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:14px;">
+        <p style="margin-top:20px;padding:12px 14px;border-radius:8px;background:#EAF1FD;color:#003A8F;font-size:14px;">
           📱 <strong>Ábrelo en el móvil donde vas a usar la app.</strong>
-          Si lo abres en otro dispositivo o navegador, el enlace puede no funcionar.
+          Así la sesión quedará iniciada donde vas a entrenar.
         </p>
         <p style="font-size:13px;color:#6b7280;">Si el enlace ha caducado, pide a ${coach} que te reenvíe la invitación.</p>`
 

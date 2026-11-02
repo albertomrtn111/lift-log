@@ -362,8 +362,8 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                             onClick={() => handleSelectType('strength')}
                         >
                             <CardContent className="flex flex-col items-center justify-center p-5 gap-3">
-                                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/40">
-                                    <Dumbbell className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+                                <div className="p-3 rounded-full bg-primary/10">
+                                    <Dumbbell className="h-7 w-7 text-primary" />
                                 </div>
                                 <div className="text-center">
                                     <h3 className="font-semibold">Fuerza</h3>
@@ -439,8 +439,8 @@ export function PlanningAddSessionDialog({ clientId, coachId, date, onSessionAdd
                                 onClick={handleCardioFromScratch}
                             >
                                 <CardContent className="flex flex-col items-center justify-center p-6 gap-4">
-                                    <div className="p-4 rounded-full bg-blue-100 dark:bg-blue-900/40">
-                                        <PenLine className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                                    <div className="p-4 rounded-full bg-primary/10">
+                                        <PenLine className="h-8 w-8 text-primary" />
                                     </div>
                                     <div className="text-center">
                                         <h3 className="font-semibold text-lg">Crear desde cero</h3>

@@ -21,6 +21,8 @@ interface ChatComposerProps {
     isRecording: boolean
     recordingSeconds: number
     uploading: string | null
+    /** 0-1 mientras se sube el adjunto; null mientras se prepara */
+    uploadProgress?: number | null
     sending: boolean
 }
 
@@ -37,6 +39,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     isRecording,
     recordingSeconds,
     uploading,
+    uploadProgress = null,
     sending,
 }, ref) {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -70,9 +73,30 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     return (
         <div className="border-t border-border/60 bg-background/90 px-3 pb-2.5 pt-2 backdrop-blur-xl">
             {uploading && (
-                <div className="mb-2 flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground animate-fade-in">
-                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-                    <span className="truncate">Enviando {uploading}…</span>
+                <div className="mb-2 rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground animate-fade-in">
+                    <div className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                        <span className="min-w-0 flex-1 truncate">
+                            {uploadProgress === null ? 'Preparando' : 'Enviando'} {uploading}…
+                        </span>
+                        {uploadProgress !== null && (
+                            <span className="shrink-0 tabular-nums">{Math.round(uploadProgress * 100)} %</span>
+                        )}
+                    </div>
+                    {uploadProgress !== null && (
+                        <div
+                            className="mt-1.5 h-1 overflow-hidden rounded-full bg-border"
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Math.round(uploadProgress * 100)}
+                        >
+                            <div
+                                className="h-full rounded-full bg-primary transition-[width] duration-200"
+                                style={{ width: `${Math.round(uploadProgress * 100)}%` }}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 

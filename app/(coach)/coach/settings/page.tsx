@@ -4,6 +4,7 @@ import type { ElementType } from 'react'
 import {
     Apple,
     Bell,
+    Bot,
     Brain,
     Calendar,
     CheckCircle2,
@@ -28,9 +29,12 @@ import { LogoutButton } from '@/components/coach/LogoutButton'
 import { AppearanceSettingsPanel, SupportSettingsPanel } from '@/components/coach/settings/SettingsClientPanels'
 import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPanel'
 import { NotificationSettingsPanel } from '@/components/coach/settings/NotificationSettingsPanel'
+import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUploader'
+import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
+import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -61,6 +65,12 @@ const SETTINGS_TABS: Array<{
         icon: Bell,
     },
     {
+        id: 'asistente-ia',
+        label: 'Asistente de IA',
+        description: 'Conecta Claude, ChatGPT u otra IA (MCP)',
+        icon: Bot,
+    },
+    {
         id: 'apariencia',
         label: 'Apariencia',
         description: 'Tema claro u oscuro',
@@ -84,7 +94,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
             <CoachPageHeader
                 eyebrow="Cuenta"
                 title="Ajustes"
-                description="Perfil, email de envío, notificaciones, apariencia y soporte."
+                description="Perfil, email de envío, notificaciones, asistente de IA, apariencia y soporte."
             >
                 <nav aria-label="Secciones de ajustes" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 scrollbar-hide lg:hidden">
                     {SETTINGS_TABS.map((item) => {
@@ -162,6 +172,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
+                        {activeTab === 'asistente-ia' && <McpSettingsPanel serverUrl={getMcpServerUrl()} />}
                         {activeTab === 'apariencia' && <AppearanceSettingsPanel />}
                         {activeTab === 'soporte' && <SupportSettingsPanel />}
                     </main>
@@ -183,6 +194,7 @@ async function getSettingsProfileData() {
             clientCount: 0,
             aiProfile: null,
             profileName: null as string | null,
+            avatarUrl: null as string | null,
         }
     }
 
@@ -203,7 +215,7 @@ async function getSettingsProfileData() {
             ? supabase.from('clients').select('*', { count: 'exact', head: true }).eq('coach_id', coachId).eq('status', 'active')
             : Promise.resolve({ count: 0 }),
         coachId ? getCoachAIProfile(coachId) : Promise.resolve(null),
-        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).maybeSingle(),
     ])
 
     return {
@@ -213,11 +225,12 @@ async function getSettingsProfileData() {
         clientCount: clientCount || 0,
         aiProfile,
         profileName: (profile?.full_name as string | null) ?? null,
+        avatarUrl: (profile?.avatar_url as string | null) ?? null,
     }
 }
 
 function parseSettingsTab(tab?: string): SettingsTab {
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
 
@@ -228,6 +241,7 @@ function ProfileSettingsSection({
     clientCount,
     aiProfile,
     profileName,
+    avatarUrl,
 }: Awaited<ReturnType<typeof getSettingsProfileData>>) {
     if (!user) return null
 
@@ -240,9 +254,7 @@ function ProfileSettingsSection({
         <div className="space-y-6">
             <Card className="p-6">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-2xl font-bold text-white">
-                        {coachInitial}
-                    </div>
+                    <CoachAvatarUploader name={coachName} initial={coachInitial} avatarUrl={avatarUrl} />
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
