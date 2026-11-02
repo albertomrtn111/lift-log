@@ -4,6 +4,7 @@ import type { ElementType } from 'react'
 import {
     Apple,
     Bell,
+    Bot,
     Brain,
     Calendar,
     CheckCircle2,
@@ -29,9 +30,11 @@ import { AppearanceSettingsPanel, SupportSettingsPanel } from '@/components/coac
 import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPanel'
 import { NotificationSettingsPanel } from '@/components/coach/settings/NotificationSettingsPanel'
 import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUploader'
+import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
+import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -62,6 +65,12 @@ const SETTINGS_TABS: Array<{
         icon: Bell,
     },
     {
+        id: 'asistente-ia',
+        label: 'Asistente de IA',
+        description: 'Conecta Claude, ChatGPT u otra IA (MCP)',
+        icon: Bot,
+    },
+    {
         id: 'apariencia',
         label: 'Apariencia',
         description: 'Tema claro u oscuro',
@@ -85,7 +94,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
             <CoachPageHeader
                 eyebrow="Cuenta"
                 title="Ajustes"
-                description="Perfil, email de envío, notificaciones, apariencia y soporte."
+                description="Perfil, email de envío, notificaciones, asistente de IA, apariencia y soporte."
             >
                 <nav aria-label="Secciones de ajustes" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 scrollbar-hide lg:hidden">
                     {SETTINGS_TABS.map((item) => {
@@ -163,6 +172,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
+                        {activeTab === 'asistente-ia' && <McpSettingsPanel serverUrl={getMcpServerUrl()} />}
                         {activeTab === 'apariencia' && <AppearanceSettingsPanel />}
                         {activeTab === 'soporte' && <SupportSettingsPanel />}
                     </main>
@@ -220,7 +230,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab?: string): SettingsTab {
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
 
