@@ -5,6 +5,8 @@
 # src/lib (de donde importa módulos compartidos), y después de pasar
 # deno check y todos los tests. Necesita una sesión de la CLI de Supabase:
 #   npx -y supabase@latest login
+# o un token personal (sbp_…, supabase.com/dashboard/account/tokens) solo para ese comando:
+#   SUPABASE_ACCESS_TOKEN=sbp_… scripts/deploy-mcp.sh
 #
 # Uso: scripts/deploy-mcp.sh            (desde cualquier carpeta del repo)
 #      ALLOW_NON_MAIN=1 scripts/deploy-mcp.sh   para desplegar otra revisión a propósito
@@ -51,7 +53,9 @@ fi
 step "Despliegue"
 # La función valida el token OAuth del entrenador por sí misma (withOAuthProtectedResource),
 # por eso el gateway no debe exigir JWT. No extender esta opción a otras funciones.
-$SUPABASE functions deploy "$FUNCTION" --project-ref "$PROJECT_REF" --no-verify-jwt
+# --yes: la CLI pide confirmar los cambios en producción y, lanzada por un agente, no puede preguntar.
+# Ejecutar este script ya es la confirmación.
+$SUPABASE functions deploy "$FUNCTION" --project-ref "$PROJECT_REF" --no-verify-jwt --yes
 
 step "Versión en marcha"
 $SUPABASE functions list --project-ref "$PROJECT_REF" | grep -E "$FUNCTION|NAME" || true
