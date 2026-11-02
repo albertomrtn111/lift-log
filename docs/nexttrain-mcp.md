@@ -441,7 +441,7 @@ No requiere migraciones. Verificación: `deno test supabase/functions/nexttrain-
 
 ## Despliegue
 
-`scripts/deploy-mcp.sh` despliega la función desde `origin/main` sin cambios locales en la función ni en `src/lib`, después de `deno check` y de todos los tests (Deno y Node). Requiere una sesión de la CLI (`npx -y supabase@latest login`). Mantiene `--no-verify-jwt` porque la función valida el token OAuth por sí misma. Las migraciones se aplican aparte y siempre antes de desplegar la función que las usa.
+`scripts/deploy-mcp.sh` despliega la función desde `origin/main` sin cambios locales en la función ni en `src/lib`, después de `deno check` y de todos los tests (Deno y Node). Requiere una sesión de la CLI (`npx -y supabase@latest login`) o un token personal `sbp_…` (supabase.com/dashboard/account/tokens) en `SUPABASE_ACCESS_TOKEN` solo para ese comando. Las claves `sb_secret_…` del proyecto no sirven. El script pasa `--yes` porque la CLI exige confirmar los cambios en producción y, lanzada por un agente, no puede preguntar. Mantiene `--no-verify-jwt` porque la función valida el token OAuth por sí misma. Las migraciones se aplican aparte y siempre antes de desplegar la función que las usa.
 
 Deno debe ejecutarse con `--node-modules-dir=none`: sin esa opción detecta el `package.json` de la web y busca las dependencias `npm:` en `node_modules`.
 
