@@ -40,7 +40,6 @@ import {
     ChevronLeft,
     ChevronRight,
     UserRound,
-    Bot,
     Loader2,
 } from 'lucide-react'
 import { WorkspaceHeader } from './workspace/WorkspaceHeader'
@@ -56,13 +55,11 @@ import { EventsTab } from './workspace/EventsTab'
 import { CoachDebugPanel } from '@/components/debug/CoachDebugPanel'
 import { PlanTab } from './workspace/PlanTab'
 import { OnboardingTab } from './workspace/OnboardingTab'
-import { NextIAChatPanel } from './workspace/NextIAChatPanel'
 
 const WORKSPACE_TABS = [
     { value: 'athlete-profile', label: 'Perfil del atleta', icon: UserRound, gated: false },
     { value: 'onboarding', label: 'Onboarding', icon: ClipboardList, gated: false },
     { value: 'resumen', label: 'Resumen', icon: LayoutDashboard, gated: false },
-    { value: 'nextia', label: 'Chat NextIA', icon: Bot, gated: false },
     { value: 'progreso', label: 'Progreso', icon: TrendingUp, gated: true },
     { value: 'plan', label: 'Plan', icon: CalendarDays, gated: false },
     { value: 'checkins', label: 'Revisiones', icon: FileText, gated: true },
@@ -412,15 +409,6 @@ export function NewClientWorkspace({
                                 />
                             </TabsContent>
 
-                            <TabsContent value="nextia" className="mt-0 min-w-0">
-                                <NextIAChatPanel
-                                    coachId={coachId}
-                                    clientId={selectedClient.id}
-                                    clientName={selectedClient.full_name || selectedClient.email}
-                                    standalone
-                                />
-                            </TabsContent>
-
                             <TabsContent value="plan" className="mt-0 min-w-0">
                                 <PlanTab
                                     coachId={coachId}
@@ -485,7 +473,6 @@ function normalizeWorkspaceTab(tab: string | null) {
         tab === 'athlete-profile' ||
         tab === 'onboarding' ||
         tab === 'resumen' ||
-        tab === 'nextia' ||
         tab === 'plan' ||
         tab === 'events' ||
         tab === 'checkins' ||
