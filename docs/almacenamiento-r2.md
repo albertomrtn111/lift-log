@@ -84,7 +84,7 @@ node --env-file=.env.local scripts/migrate-storage-to-r2.mjs delete-supabase --a
 ```
 
 - `copy` descarga cada archivo y guarda el original en `--backup-dir`. Después lo convierte a WebP de 1600 px (los avatares, a 512 px), lo sube a R2, comprueba el tamaño y cambia la fila de la BD. Solo la cambia si sigue apuntando al archivo de Supabase.
-  - Cada copia se anota en `r2-migration-log.jsonl`. **No borres ese fichero:** `rollback` y `delete-supabase` lo necesitan.
+  - Cada copia se anota en `~/nexttrain-r2-migration-log.jsonl`. **No borres ese fichero:** `plan` y `copy` lo usan para no volver a copiar lo ya migrado, y `rollback` y `delete-supabase` lo necesitan.
   - `--keep-format` copia los originales sin convertirlos.
 - `verify` comprueba que cada fila que apunta a R2 tiene su archivo allí, y cuenta lo que sigue en Supabase.
 - `rollback --apply` devuelve las filas a Supabase. Solo funciona mientras no se haya borrado nada de Supabase.
