@@ -1,6 +1,7 @@
 import { z } from 'npm:zod@4.3.6'
 import { buildLegacyDiet, describeMeals, legacyMeals, macroPayload, normalizeMacroPlan, prepareDiet } from './nutrition-model.js'
 import {
+  addDays,
   allRows as allRowsBase,
   createToolRunner,
   defaultHelpers,
@@ -23,7 +24,9 @@ const target = z.strictObject({
   kcal: z.number().min(0).max(20000).optional(),
   protein_g: z.number().min(0).max(1000), carbs_g: z.number().min(0).max(3000), fat_g: z.number().min(0).max(1000),
 })
-const config = z.strictObject({ training: target, rest: target })
+const config = z.strictObject({
+  training: target.describe('Objetivo de los días de entreno.'), rest: target.describe('Objetivo de los días de descanso.'),
+})
 const item = z.strictObject({
   id: z.string().uuid().optional(),
   food_id: z.string().uuid().nullable().optional().describe('ID del catálogo obtenido con search_foods. Necesario para calcular macros; los textos libres quedan sin contabilizar.'),
@@ -96,6 +99,24 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     return plans[0]
   }
 
+  // La app crea planes de macros sin cerrar el anterior, así que puede haber varios abiertos a la vez.
+  // Vigente es el de effective_from más reciente; los anteriores solapados se pueden cerrar sin cambiar nada.
+  async function otherMacroPlans(coachId: string, clientId: string, exceptId?: string) {
+    const plans = rows(await db.from('macro_plans').select('id, effective_from, effective_to').eq('coach_id', coachId).eq('client_id', clientId), 'los planes de macros')
+    return plans.filter(plan => plan.id !== exceptId)
+  }
+  const overlaps = (plan: Row, from: string, to: string | null) => plan.effective_from <= (to ?? '9999-12-31') && (plan.effective_to ?? '9999-12-31') >= from
+  async function closePlans(coachId: string, clientId: string, plans: Row[], from: string) {
+    for (const plan of plans) {
+      const { error } = await db.from('macro_plans').update({ effective_to: addDays(from, -1) }).eq('coach_id', coachId).eq('client_id', clientId).eq('id', plan.id)
+      if (error) throw new Error('No se ha podido cerrar el plan de macros anterior. No se guardó ningún cambio en el nuevo plan.')
+    }
+    return plans.map(plan => plan.id)
+  }
+  function conflictError(plan: Row) {
+    return new Error(`Ya hay un plan de macros desde ${plan.effective_from} (plan_id ${plan.id}). Para cambiar sus objetivos usa update_macro_plan con ese plan_id, o elige otra fecha de inicio.`)
+  }
+
   async function prepare(input: Row) {
     const ids = [...new Set<string>(input.meals.flatMap((meal: Row) => meal.options.flatMap((option: Row) => option.items.map((item: Row) => item.food_id))).filter(Boolean))]
     const foods: Row[] = []
@@ -118,7 +139,7 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
 
   server.registerTool('get_current_nutrition', {
     title: 'Nutrición vigente completa',
-    description: 'Macros vigentes y configuración de entreno/descanso como objetos, dieta completa con comidas, opciones, cantidades, alternativas y totales. Los alimentos sin macros se señalan, no se inventan.',
+    description: 'Objetivos nutricionales vigentes (kcal, proteína, hidratos y grasas; distintos en entreno y descanso si los hay) con el ID del plan de macros, y dieta completa con comidas, opciones, cantidades, alternativas y totales. Los alimentos sin macros se señalan, no se inventan.',
     inputSchema: z.strictObject({ ...scope, on_date: date.optional(), day_type: z.enum(['default', 'training', 'rest']).optional() }), annotations,
   }, (input: Row) => scoped('get_current_nutrition', input, async (coachId, today) => {
     const onDate = input.on_date ?? today
@@ -177,28 +198,47 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
   }))
 
   const macroSettings = {
-    name: z.string().trim().min(1).max(160).optional(), target: target.optional(),
-    day_type_config: config.nullable().optional().describe('Macros de entreno/descanso; null pasa a modo simple y requiere target.'),
-    steps: z.number().int().min(0).max(100000).nullable().optional(), notes: z.string().trim().max(3000).nullable().optional(),
-    effective_from: date, effective_to: date.nullable().optional(),
+    name: z.string().trim().min(1).max(160).optional().describe('Nombre del bloque, p. ej. «Volumen controlado».'),
+    target: target.optional().describe('Objetivo único para todos los días (modo simple). No lo uses si hay entreno y descanso.'),
+    day_type_config: config.nullable().optional().describe('Objetivos distintos para días de entreno (training) y de descanso (rest), como en la app. null pasa a modo simple y requiere target.'),
+    steps: z.number().int().min(0).max(100000).nullable().optional().describe('Pasos diarios objetivo.'),
+    notes: z.string().trim().max(3000).nullable().optional().describe('Notas del plan: fase, criterios y fecha de la próxima revisión.'),
+    effective_from: date.describe('Fecha de inicio (YYYY-MM-DD).'),
+    effective_to: date.nullable().optional().describe('Fecha de fin; vacío = sin fin.'),
   }
   server.registerTool('create_macro_plan', {
-    title: 'Crear plan de macros', description: 'Crea macros simples o distintos en entreno y descanso. Las kcal omitidas salen de 4P+4HC+9G. Cierra el plan anterior el día previo; conserva el histórico. Si ya hay uno en la misma fecha, usa update_macro_plan.',
+    title: 'Fijar objetivos nutricionales (macros y calorías)',
+    description: 'Pone nuevos objetivos nutricionales a un atleta: calorías (kcal), proteína, hidratos/carbohidratos y grasas, iguales todos los días (target) o distintos en días de entreno y de descanso (day_type_config), con fecha de inicio, pasos y notas. Úsala para subir o bajar calorías, empezar volumen o definición, o cambiar los macros. Las kcal omitidas salen de 4P+4HC+9G. El plan anterior se cierra el día previo y queda en el histórico. Si ya hay un plan que empieza ese día, el error da su plan_id para editarlo con update_macro_plan.',
     inputSchema: z.strictObject({ ...scope, ...macroSettings }), annotations: write,
-  }, (input: Row) => scoped('create_macro_plan', input, async coachId => ({ created: true,
-    macro_plan: normalizeMacroPlan(await save('macros', coachId, input, macroPayload(input))) })))
+  }, (input: Row) => scoped('create_macro_plan', input, async coachId => {
+    const payload = macroPayload(input)
+    const to = input.effective_to ?? null
+    const others = (await otherMacroPlans(coachId, input.client_id)).filter(plan => overlaps(plan, input.effective_from, to))
+    const conflict = others.find(plan => plan.effective_from >= input.effective_from)
+    if (conflict) throw conflictError(conflict)
+    return { created: true, macro_plan: normalizeMacroPlan(await save('macros', coachId, input, payload)) }
+  }))
 
   server.registerTool('update_macro_plan', {
-    title: 'Editar plan de macros', description: 'Edita un plan del cliente por ID. Los campos omitidos se conservan. target edita un plan simple; day_type_config edita ambos tipos de día.',
-    inputSchema: z.strictObject({ ...scope, plan_id: z.string().uuid(), ...macroSettings, effective_from: date.optional() }),
+    title: 'Editar objetivos nutricionales (macros y calorías)',
+    description: 'Cambia un plan de macros existente por plan_id (lo da get_current_nutrition en macro_target.id): calorías, proteína, hidratos y grasas de entreno y descanso, fechas, pasos o notas. Los campos omitidos se conservan. target edita un plan simple; day_type_config edita los dos tipos de día a la vez. Para un nuevo bloque con fecha de inicio distinta, mejor create_macro_plan: conserva el histórico.',
+    inputSchema: z.strictObject({ ...scope, plan_id: z.string().uuid(), ...macroSettings, effective_from: macroSettings.effective_from.optional() }),
     annotations: idempotentWriteAnnotations,
   }, (input: Row) => scoped('update_macro_plan', input, async coachId => {
     const raw = rows(await db.from('macro_plans').select(MACRO_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id).eq('id', input.plan_id), 'el plan de macros')[0]
     const current = normalizeMacroPlan(raw)
     if (!current) throw new Error('Plan de macros no encontrado en este cliente.')
     if (input.target && current.day_type_config && input.day_type_config === undefined) throw new Error('Este plan diferencia entreno y descanso: envía day_type_config completo o null para convertirlo en simple.')
-    const payload = { ...macroPayload({ ...current, ...input, target: input.target ?? current }), expected_macro: raw }
-    return { updated: true, macro_plan: normalizeMacroPlan(await save('macros', coachId, input, payload)) }
+    const from = input.effective_from ?? current.effective_from
+    let to = input.effective_to !== undefined ? input.effective_to : current.effective_to
+    const others = await otherMacroPlans(coachId, input.client_id, input.plan_id)
+    // Un plan antiguo que sigue abierto termina donde empieza el siguiente, como lo ve la app.
+    const later = others.filter(plan => plan.effective_from >= from && overlaps(plan, from, to)).sort((a, b) => a.effective_from.localeCompare(b.effective_from))[0]
+    if (later && (later.effective_from === from || input.effective_to !== undefined)) throw conflictError(later)
+    if (later) to = addDays(later.effective_from, -1)
+    const payload = { ...macroPayload({ ...current, ...input, effective_from: from, effective_to: to, target: input.target ?? current }), expected_macro: raw }
+    const closed = await closePlans(coachId, input.client_id, others.filter(plan => plan.effective_from < from && overlaps(plan, from, to)), from)
+    return { updated: true, macro_plan: normalizeMacroPlan(await save('macros', coachId, input, payload)), closed_previous_plan_ids: closed }
   }))
 
   const dietHeader = { name: z.string().trim().min(1).max(160), status: z.enum(['draft', 'active', 'archived']).default('draft'),

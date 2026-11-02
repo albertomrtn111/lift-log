@@ -23,6 +23,7 @@ function fixture() {
     foods: [{ id: foodId, name: 'Arroz', serving_size_g: 100, kcal: 360, protein_g: 7, carbs_g: 80, fat_g: 1 }],
   }
   const calls: any[] = []
+  const updates: any[] = []
   const db = {
     from(table: string) {
       let filtered = [...tables[table] ?? []]
@@ -32,6 +33,9 @@ function fixture() {
         in(key: string, values: unknown[]) { filtered = filtered.filter(row => values.includes(row[key])); return query },
         lte(key: string, value: string) { filtered = filtered.filter(row => row[key] <= value); return query },
         or() { return query }, ilike() { return query },
+        update(values: any) { updates.push({ table, values }); query.then = (resolve: any) => {
+          filtered.forEach(row => Object.assign(row, values)); return Promise.resolve({ data: null, error: null }).then(resolve)
+        }; return query },
         limit(limit: number) { filtered = filtered.slice(0, limit); return query },
         range(start: number, end: number) { filtered = filtered.slice(start, end + 1); return query },
         then(resolve: any) { return Promise.resolve({ data: filtered, error: null }).then(resolve) },
@@ -58,7 +62,7 @@ function fixture() {
     if (result.data) outputSchemas[name].parse(JSON.parse(JSON.stringify(result.data)))
     return result
   }
-  return { run, calls, tables, tools }
+  return { run, calls, tables, tools, updates }
 }
 
 Deno.test('current nutrition returns nested foods, options and parsed training/rest targets', async () => {
@@ -111,4 +115,54 @@ Deno.test('stale diet edits stop before saving and header-only edits keep the st
   assert.equal(calls[0].args.p_payload.meals, undefined)
   assert.equal(calls[0].args.p_payload.legacy_meals, undefined)
   assert.equal(calls[0].args.p_expected_updated_at, timestamp)
+})
+
+const newerId = '77777777-7777-4777-8777-777777777777'
+const newer = { id: newerId, coach_id: coachId, client_id: clientId, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
+  effective_from: '2026-11-02', effective_to: null, created_at: timestamp,
+  day_type_config: JSON.stringify({ training: { kcal: 2550, protein_g: 150, carbs_g: 364, fat_g: 55 }, rest: { kcal: 2350, protein_g: 150, carbs_g: 314, fat_g: 55 } }) }
+const bulk = { training: { kcal: 2550, protein_g: 150, carbs_g: 375, fat_g: 50 }, rest: { kcal: 2350, protein_g: 150, carbs_g: 325, fat_g: 50 } }
+
+Deno.test('macro tools are findable by nutrition-goal wording', () => {
+  const { tools } = fixture()
+  for (const name of ['create_macro_plan', 'update_macro_plan', 'get_current_nutrition']) {
+    const { title, description } = tools.get(name).config
+    assert.match(`${title} ${description}`, /objetivos nutricionales/i)
+  }
+  assert.match(tools.get('create_macro_plan').config.description, /entreno y de descanso/)
+})
+
+Deno.test('editing a plan created in the app closes the older open plan instead of failing', async () => {
+  const { run, calls, tables, updates } = fixture()
+  tables.macro_plans.push({ ...newer })
+  const result = await run('update_macro_plan', { client_id: clientId, plan_id: newerId, day_type_config: bulk, notes: 'Volumen controlado' })
+  assert.equal(result.error, undefined)
+  assert.deepEqual(result.data.closed_previous_plan_ids, [planId])
+  assert.deepEqual(updates, [{ table: 'macro_plans', values: { effective_to: '2026-11-01' } }])
+  assert.equal(calls[0].args.p_plan_id, newerId)
+  assert.equal(calls[0].args.p_payload.effective_from, '2026-11-02')
+  assert.equal(calls[0].args.p_payload.day_type_config.rest.carbs_g, 325)
+  assert.equal(calls[0].args.p_payload.kcal, 2550)
+})
+
+Deno.test('editing an old open plan ends it where the next one starts', async () => {
+  const { run, calls, tables, updates } = fixture()
+  tables.macro_plans.push({ ...newer })
+  const result = await run('update_macro_plan', { client_id: clientId, plan_id: planId, notes: 'Bloque anterior' })
+  assert.equal(result.error, undefined)
+  assert.equal(calls[0].args.p_payload.effective_to, '2026-11-01')
+  assert.equal(updates.length, 0)
+  assert.ok((await run('update_macro_plan', { client_id: clientId, plan_id: planId, effective_to: null })).error)
+})
+
+Deno.test('creating on a date that already has a plan names that plan_id and saves nothing', async () => {
+  const { run, calls, tables } = fixture()
+  tables.macro_plans.push({ ...newer })
+  const result = await run('create_macro_plan', { client_id: clientId, effective_from: '2026-11-02', day_type_config: bulk })
+  assert.match(result.error, new RegExp(newerId))
+  assert.match(result.error, /update_macro_plan/)
+  assert.equal(calls.length, 0)
+  const later = await run('create_macro_plan', { client_id: clientId, effective_from: '2026-11-16', day_type_config: bulk, notes: 'Revisión a los 14 días' })
+  assert.equal(later.data.created, true)
+  assert.equal(calls[0].args.p_payload.day_type_config.training.carbs_g, 375)
 })

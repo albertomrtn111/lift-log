@@ -78,8 +78,16 @@ function createNextTrainServer(supabase: Db) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.15.0',
+    version: '0.15.1',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
+  }, {
+    // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
+    instructions: [
+      'NexTrain: herramientas del entrenador para leer y cambiar todo lo de sus atletas. Empieza con list_clients para obtener el client_id.',
+      'Objetivos nutricionales (calorías, macros, proteína, hidratos, grasas, distintos en días de entreno y descanso): leer con get_current_nutrition; cambiarlos con create_macro_plan (nuevo bloque con fecha de inicio) o update_macro_plan (editar el plan vigente por plan_id).',
+      'Dieta con comidas y alimentos: get_diet_plan, preview_diet_plan, create_diet_plan, update_diet_plan.',
+      'Fuerza: create_strength_program, update_strength_program, update_strength_program_days. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
+    ].join('\n'),
   }))
   const run = createToolRunner(supabase)
 
