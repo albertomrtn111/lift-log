@@ -27,3 +27,24 @@ export function getCheckinResponseDate(checkin) {
 export function hasAthleteResponse(checkin) {
   return getCheckinResponseDate(checkin) !== null
 }
+
+/**
+ * Valores con los que se abre el formulario de una revisión.
+ * Pendiente: el borrador autoguardado (`raw_payload._draft`) o vacío; las
+ * claves `_draft`/`_draft_saved_at` no son respuestas y no se pasan al formulario.
+ * Respondida: lo que envió el atleta.
+ *
+ * @param {string | null} status
+ * @param {unknown} rawPayload
+ * @returns {Record<string, unknown>}
+ */
+export function reviewFormInitialValues(status, rawPayload) {
+  const payload = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+    ? /** @type {Record<string, unknown>} */ (rawPayload)
+    : {}
+  if (status !== 'pending') return payload
+  const draft = payload._draft
+  return draft && typeof draft === 'object' && !Array.isArray(draft)
+    ? /** @type {Record<string, unknown>} */ (draft)
+    : {}
+}

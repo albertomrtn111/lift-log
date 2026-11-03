@@ -9,6 +9,7 @@ import type { FormField } from '@/types/forms'
 import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
+import { reviewFormInitialValues } from '@/lib/reviews/checkin-response'
 
 interface PageProps {
     params: Promise<{ checkinId: string }>
@@ -171,12 +172,8 @@ export default async function FormPage({ params }: PageProps) {
     const schema: FormField[] = formTemplate?.schema ?? []
 
     // Pendiente con borrador autoguardado: se retoma donde se dejó
-    const rawPayload = (checkin.raw_payload as Record<string, unknown> | null) ?? {}
     const isPending = checkin.status === 'pending'
-    const draft = isPending && rawPayload._draft && typeof rawPayload._draft === 'object'
-        ? rawPayload._draft as Record<string, unknown>
-        : null
-    const initialValues = draft ?? (isPending ? {} : rawPayload)
+    const initialValues = reviewFormInitialValues(checkin.status, checkin.raw_payload)
 
     return (
         <div className="min-h-screen bg-background">
