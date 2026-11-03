@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,9 @@ import { ClientGalleryTab } from '@/components/progress/ClientGalleryTab'
 import { cn } from '@/lib/utils'
 import { ClientTabSwitcher, useTabSwipeLink } from '@/components/ui/client-tab-switcher'
 import { SwipeTabPanels } from '@/components/ui/swipe-tab-panels'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
+import { STRAVA_ACTIVITY_COMPLETED_EVENT } from '@/lib/strava/events'
+import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 
 type ProgressTab = 'resumen' | 'revisiones' | 'galeria'
 
@@ -367,11 +370,20 @@ export default function SummaryPage() {
     const [refreshKey, setRefreshKey] = useState(0)
     const swipeLink = useTabSwipeLink()
 
+    const loadRequest = useRef(0)
+    const loadedRange = useRef<MetricsRange | null>(null)
+
     const loadData = useCallback(async () => {
-        setLoading(true)
+        const request = ++loadRequest.current
+        // Esqueleto solo en la primera carga o al cambiar de rango; las
+        // recargas en segundo plano cambian los datos sin vaciar la pantalla.
+        if (loadedRange.current !== range) setLoading(true)
         try {
             // Una sola server action: el servidor paraleliza las 5 consultas
             const bundle = await getClientSummaryBundle(range)
+            // Una respuesta antigua (rango anterior, recarga solapada) no pisa la nueva
+            if (request !== loadRequest.current) return
+            loadedRange.current = range
             setProgram(bundle.program)
             setWeightData(bundle.weight)
             setAdherenceData(bundle.adherence)
@@ -380,13 +392,24 @@ export default function SummaryPage() {
         } catch (error) {
             console.error('Error loading summary data:', error)
         } finally {
-            setLoading(false)
+            if (request === loadRequest.current) setLoading(false)
         }
     }, [range])
 
     useEffect(() => {
         loadData()
     }, [loadData, refreshKey])
+
+    const reload = useCallback(() => setRefreshKey(k => k + 1), [])
+
+    // Vuelta a la app, cambios del coach o registros hechos en otra pantalla
+    useAthleteLiveRefresh(reload, ['cardio', 'training', 'metrics', 'reviews'])
+
+    // Actividad de Strava registrada desde el diálogo global
+    useEffect(() => {
+        window.addEventListener(STRAVA_ACTIVITY_COMPLETED_EVENT, reload)
+        return () => window.removeEventListener(STRAVA_ACTIVITY_COMPLETED_EVENT, reload)
+    }, [reload])
 
     useEffect(() => {
         const nextTab = normalizeTab(searchParams.get('tab'))
@@ -488,7 +511,7 @@ export default function SummaryPage() {
                 open={registrarOpen}
                 initialDate={registrarDate}
                 onOpenChange={setRegistrarOpen}
-                onSaved={() => setRefreshKey(k => k + 1)}
+                onSaved={() => notifyAthleteDataChanged(['metrics'])}
             />
         </div>
     )

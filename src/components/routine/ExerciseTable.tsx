@@ -248,14 +248,16 @@ export function ExerciseTable({
 
                           {isExpanded && (
                             <div className="space-y-1.5 pt-1">
+                              {/* Cada input lleva el valor en la key: al aplicar el bloque base o recargar,
+                                  las series mantienen su id y el input no controlado se quedaba con el valor viejo */}
                               {exerciseSets.map((s) => (
                                 <div key={s.id} className={cn('grid grid-cols-[32px_minmax(100px,1fr)_auto_minmax(85px,1fr)_auto_minmax(75px,1fr)_32px] items-center gap-2', s.isOverride && 'bg-amber-500/5 rounded-md px-1.5 py-1')}>
                                   <span className={cn('text-xs text-right font-medium', s.isOverride ? 'text-amber-600' : 'text-muted-foreground')}>{s.setIndex + 1}.</span>
-                                  <input type="number" defaultValue={s.weightKg ?? ''} placeholder="kg" className="w-full min-w-[100px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseFloat(e.target.value) : null; if (v !== s.weightKg) onSetUpdate(s.id, { weightKg: v }); }} />
+                                  <input key={`w-${s.id}-${s.weightKg}`} type="number" defaultValue={s.weightKg ?? ''} placeholder="kg" className="w-full min-w-[100px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseFloat(e.target.value) : null; if (v !== s.weightKg) onSetUpdate(s.id, { weightKg: v }); }} />
                                   <span className="text-xs text-muted-foreground">×</span>
-                                  <input type="number" defaultValue={s.reps ?? ''} placeholder="reps" className="w-full min-w-[85px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseInt(e.target.value) : null; if (v !== s.reps) onSetUpdate(s.id, { reps: v }); }} />
+                                  <input key={`r-${s.id}-${s.reps}`} type="number" defaultValue={s.reps ?? ''} placeholder="reps" className="w-full min-w-[85px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseInt(e.target.value) : null; if (v !== s.reps) onSetUpdate(s.id, { reps: v }); }} />
                                   <span className="text-xs text-muted-foreground">RIR</span>
-                                  <input type="number" defaultValue={s.rir ?? ''} placeholder="—" className="w-full min-w-[75px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseInt(e.target.value) : null; if (v !== s.rir) onSetUpdate(s.id, { rir: v }); }} />
+                                  <input key={`i-${s.id}-${s.rir}`} type="number" defaultValue={s.rir ?? ''} placeholder="—" className="w-full min-w-[75px] cell-client rounded text-center py-1 text-sm" onBlur={(e) => { const v = e.target.value ? parseInt(e.target.value) : null; if (v !== s.rir) onSetUpdate(s.id, { rir: v }); }} />
                                   <div className="flex items-center gap-0.5">
                                     {s.isOverride && (
                                       <button onClick={() => handleRevertClick(s.id, exercise.id)} className="p-1 hover:bg-muted rounded" title="Revertir"><RotateCcw className="h-3.5 w-3.5 text-amber-600" /></button>

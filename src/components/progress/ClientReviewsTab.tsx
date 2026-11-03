@@ -35,6 +35,8 @@ import {
     type ClientReviewItem,
     type ClientReviewUiStatus,
 } from '@/data/client-reviews'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
+import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 
 interface ClientReviewsTabProps {
     initialCheckinId?: string | null
@@ -305,7 +307,8 @@ export function ClientReviewsTab({ initialCheckinId }: ClientReviewsTabProps) {
         if (result.success) {
             setReviews(result.reviews)
             setError(null)
-        } else {
+        } else if (showLoading) {
+            // En una recarga en segundo plano se queda la lista que había
             setReviews([])
             setError(result.error ?? 'No se pudieron cargar tus revisiones.')
         }
@@ -336,11 +339,16 @@ export function ClientReviewsTab({ initialCheckinId }: ClientReviewsTabProps) {
         const result = await getClientReviewFormAction(activeCheckinId)
         if (result.success && result.form) setFormData(result.form)
         setEditing(false)
+        // Galería (fotos de la revisión) y resumen (peso) muestran lo enviado
+        notifyAthleteDataChanged(['reviews', 'metrics'])
     }, [activeCheckinId, loadReviews])
 
     useEffect(() => {
         loadReviews()
     }, [loadReviews])
+
+    // Feedback del coach, revisiones nuevas o vuelta a la app
+    useAthleteLiveRefresh(() => { void loadReviews(false) }, ['reviews'])
 
     useEffect(() => {
         if (!initialCheckinId || autoOpened || loading) return

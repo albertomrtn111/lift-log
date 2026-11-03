@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { Input } from '@/components/ui/input'
@@ -65,6 +65,7 @@ import {
     doesEntryBelongToMeal,
 } from '@/lib/nutrition/meals'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 
 interface MacrosTrackerProps {
     macroPlan: MacroPlan | null
@@ -101,13 +102,18 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
     const [confirmDelete, setConfirmDelete] = useState<NutritionLogEntry | null>(null)
     const [deleting, setDeleting] = useState(false)
 
+    const loadRequest = useRef(0)
+
     const loadDay = useCallback(async () => {
+        const request = ++loadRequest.current
         setLoading(true)
         const [list, dt, slots] = await Promise.all([
             getNutritionLogForDate(date),
             getDayTypeForDate(date),
             getNutritionMealSlotsForDate(date),
         ])
+        // Al pasar rápido de un día a otro, una respuesta tardía no pinta el día anterior
+        if (request !== loadRequest.current) return
         setEntries(list)
         const persistentMeals = buildMealSlotsForDate(DEFAULT_MEALS, slots).filter((meal: MealSlot) => meal.type === 'other')
 
@@ -142,6 +148,9 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
     useEffect(() => {
         void loadDay()
     }, [loadDay])
+
+    // Opción registrada en «Comidas», otro dispositivo, cambios del coach o vuelta a la app
+    useAthleteLiveRefresh(() => { void loadDay() }, ['nutrition'])
 
     const getEntriesForMeal = useCallback((meal: MealSlot, sourceEntries = entries) => {
         return sourceEntries.filter(entry => doesEntryBelongToMeal(entry, meal))

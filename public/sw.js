@@ -73,6 +73,12 @@ self.addEventListener('notificationclick', (event) => {
                 body: JSON.stringify(request.body || {}),
             }).then((response) => {
                 if (!response.ok) throw new Error(String(response.status))
+                // La app abierta (p. ej. Suplementos) recarga y muestra la toma hecha
+                return clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+                    for (const client of clientList) {
+                        client.postMessage({ type: 'nextrain:push', tag: event.notification.tag })
+                    }
+                })
             }).catch(() => clients.openWindow ? clients.openWindow(url) : undefined)
         )
         return

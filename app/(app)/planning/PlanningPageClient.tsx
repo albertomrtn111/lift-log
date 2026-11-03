@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils'
 import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { STRAVA_ACTIVITY_COMPLETED_EVENT, type StravaActivityCompletedDetail } from '@/lib/strava/events'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
+import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 
 interface PlanningPageClientProps {
     initialItems: CalendarItem[]
@@ -106,7 +108,7 @@ export default function PlanningPageClient({
 
     // Una actividad de Strava categorizada desde el diálogo global completa una
     // sesión: se recarga el rango visible para que aparezca como realizada sin
-    // recargar la página. También al volver a la app desde segundo plano.
+    // recargar la página.
     useEffect(() => {
         const handleCompleted = (event: Event) => {
             const detail = (event as CustomEvent<StravaActivityCompletedDetail>).detail
@@ -114,17 +116,13 @@ export default function PlanningPageClient({
                 fetchSchedule()
             }
         }
-        const handleVisibility = () => {
-            if (document.visibilityState === 'visible') fetchSchedule()
-        }
 
         window.addEventListener(STRAVA_ACTIVITY_COMPLETED_EVENT, handleCompleted)
-        document.addEventListener('visibilitychange', handleVisibility)
-        return () => {
-            window.removeEventListener(STRAVA_ACTIVITY_COMPLETED_EVENT, handleCompleted)
-            document.removeEventListener('visibilitychange', handleVisibility)
-        }
+        return () => window.removeEventListener(STRAVA_ACTIVITY_COMPLETED_EVENT, handleCompleted)
     }, [fetchSchedule, rangeEndStr, rangeStartStr])
+
+    // Vuelta a la app, reconexión o cambios del coach en la planificación
+    useAthleteLiveRefresh(fetchSchedule, ['cardio', 'training'])
 
     // Solo se pintan items del rango visible (evita mezclar datos mientras carga)
     const visibleItems = useMemo(
@@ -254,15 +252,15 @@ export default function PlanningPageClient({
 
         if (item.kind === 'cardio' && item.cardioSessionId) {
             const result = await saveCardioSessionLog(item.cardioSessionId, data)
-            if (result.success) {
-                setItems(prev =>
-                    prev.map(i =>
-                        i.id === itemId
-                            ? { ...i, isCompleted: true, ...data }
-                            : i
-                    )
+            if (!result.success) throw new Error(result.error || 'No se pudo guardar')
+            setItems(prev =>
+                prev.map(i =>
+                    i.id === itemId
+                        ? { ...i, isCompleted: true, ...data }
+                        : i
                 )
-            }
+            )
+            notifyAthleteDataChanged(['cardio'])
         }
     }
 

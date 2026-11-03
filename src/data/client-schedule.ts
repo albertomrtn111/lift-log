@@ -311,7 +311,7 @@ export async function saveCardioSessionLog(
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
         .from('cardio_sessions')
         .update({
             actual_distance_km: roundToDecimals(data.actualDistanceKm) ?? null,
@@ -325,10 +325,16 @@ export async function saveCardioSessionLog(
             performed_date: new Date().toISOString(),
         })
         .eq('id', sessionId)
+        .select('id')
 
     if (error) {
         console.error('[saveCardioSessionLog]', error.message)
         return { success: false, error: error.message }
+    }
+    // Sin permiso (RLS) el update no da error: no cambia nada y la ficha diría «Guardado»
+    if (!updated || updated.length === 0) {
+        console.error('[saveCardioSessionLog] No row updated for session', sessionId)
+        return { success: false, error: 'Session not updated' }
     }
     return { success: true }
 }

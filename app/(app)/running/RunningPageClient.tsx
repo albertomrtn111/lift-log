@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
+import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 import { startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns'
 
 interface RunningPageClientProps {
@@ -59,6 +61,9 @@ export default function RunningPageClient({
         const result = await getClientWeeklySchedule(clientId, toLocalDateStr(ws), toLocalDateStr(we))
         setItems(result)
     }, [clientId, initialWeekStart])
+
+    // Vuelta a la app, reconexión o cambios del coach en la planificación
+    useAthleteLiveRefresh(() => { void fetchWeek(weekOffset) }, ['cardio', 'training'])
 
     const handleWeekChange = (newWeek: number) => {
         // WeekNavigation uses 1-indexed weeks, convert to offset
@@ -109,16 +114,15 @@ export default function RunningPageClient({
                 avgHeartRate: data.avgHeartRate,
                 maxHeartRate: data.maxHeartRate,
             })
-            if (result.success) {
-                // Update local state
-                setItems(prev =>
-                    prev.map(i =>
-                        i.id === itemId
-                            ? { ...i, isCompleted: true, ...data }
-                            : i
-                    )
+            if (!result.success) throw new Error(result.error || 'No se pudo guardar')
+            setItems(prev =>
+                prev.map(i =>
+                    i.id === itemId
+                        ? { ...i, isCompleted: true, ...data }
+                        : i
                 )
-            }
+            )
+            notifyAthleteDataChanged(['cardio'])
         }
     }
 

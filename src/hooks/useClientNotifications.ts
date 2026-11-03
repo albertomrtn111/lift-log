@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
 import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
+import { notifyAthleteDataChanged, scopesForNotification } from '@/lib/athlete-data-events'
 import {
     getCurrentClientId,
     getNotifications,
@@ -71,7 +72,14 @@ export function useClientNotifications() {
                         table: 'client_notifications',
                         filter: `client_id=eq.${clientId}`,
                     },
-                    () => { refresh() }
+                    (payload) => {
+                        refresh()
+                        // Un aviso nuevo (plan cambiado, revisión respondida...) dice
+                        // qué pantallas tienen datos nuevos: se recargan sin esperar.
+                        if (payload.eventType === 'INSERT') {
+                            notifyAthleteDataChanged(scopesForNotification(payload.new as ClientNotification))
+                        }
+                    }
                 )
                 .subscribe(resyncOnResubscribe(refresh))
         })()

@@ -1,44 +1,48 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { GalleryTab } from '@/components/coach/workspace/GalleryTab'
 import {
     getClientGalleryAction,
     type ClientGalleryData,
 } from '@/data/client-reviews'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 
 export function ClientGalleryTab() {
     const [gallery, setGallery] = useState<ClientGalleryData | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
+    // `silent`: recarga en segundo plano; si falla, se queda la galería que había
+    const load = useCallback(async (silent: boolean, isCancelled: () => boolean = () => false) => {
+        try {
+            const result = await getClientGalleryAction()
+            if (isCancelled()) return
+            if (!result.success || !result.gallery) {
+                if (!silent) setError(result.error ?? 'No se pudo cargar tu galería.')
+                return
+            }
+            setGallery(result.gallery)
+            setError(null)
+        } catch (loadError) {
+            console.error('[ClientGalleryTab] Load error:', loadError)
+            if (!silent && !isCancelled()) setError('No se pudo cargar tu galería.')
+        } finally {
+            if (!isCancelled()) setLoading(false)
+        }
+    }, [])
+
     useEffect(() => {
         let cancelled = false
-
-        getClientGalleryAction()
-            .then((result) => {
-                if (cancelled) return
-
-                if (!result.success || !result.gallery) {
-                    setError(result.error ?? 'No se pudo cargar tu galería.')
-                    return
-                }
-
-                setGallery(result.gallery)
-            })
-            .catch((loadError) => {
-                console.error('[ClientGalleryTab] Load error:', loadError)
-                if (!cancelled) setError('No se pudo cargar tu galería.')
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false)
-            })
-
+        void load(false, () => cancelled)
         return () => {
             cancelled = true
         }
-    }, [])
+    }, [load])
+
+    // Fotos nuevas de una revisión, vuelta a la app o cambios del coach
+    useAthleteLiveRefresh(() => { void load(true) }, ['reviews'])
 
     if (loading) {
         return (

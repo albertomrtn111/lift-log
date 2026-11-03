@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { cn } from '@/lib/utils'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 
 export interface ClientSupplement {
     id: string
@@ -84,8 +85,10 @@ export function SupplementsTracker({ supplements, date, onDateChange }: Suppleme
     const weekEndStr = format(endOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd')
     const isFutureDay = isAfter(startOfDay(date), startOfDay(new Date()))
 
-    const loadWeek = useCallback(async () => {
-        setLoading(true)
+    // `silent`: recarga en segundo plano (vuelta a la app, «Hecho» desde el aviso,
+    // cambios del coach) sin indicador de carga ni error si falla
+    const loadWeek = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true)
         try {
             const res = await fetch(`/api/supplements/logs?start=${weekStartStr}&end=${weekEndStr}`, { cache: 'no-store' })
             if (!res.ok) throw new Error('logs')
@@ -97,15 +100,17 @@ export function SupplementsTracker({ supplements, date, onDateChange }: Suppleme
             }
             setLogsByDate(byDate)
         } catch {
-            toast.error('No se pudo cargar tu registro de suplementos')
+            if (!silent) toast.error('No se pudo cargar tu registro de suplementos')
         } finally {
-            setLoading(false)
+            if (!silent) setLoading(false)
         }
     }, [weekStartStr, weekEndStr])
 
     useEffect(() => {
         void loadWeek()
     }, [loadWeek])
+
+    useAthleteLiveRefresh(() => { void loadWeek(true) }, ['supplements'])
 
     const doses = useMemo(() => dosesFor(supplements, dateStr), [supplements, dateStr])
     const dayLogs = logsByDate[dateStr] ?? {}

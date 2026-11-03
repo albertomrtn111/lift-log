@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { WeekSelector } from '@/components/routine/WeekSelector'
 import { DayTabs } from '@/components/routine/DayTabs'
@@ -11,8 +11,10 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
-import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet } from '@/data/exercise-sets'
+import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet, getAllSetsForProgram } from '@/data/exercise-sets'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
+import { toast } from 'sonner'
 
 interface RoutinePageClientProps {
     clientId: string
@@ -45,6 +47,41 @@ export default function RoutinePageClient({
     const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
     const markedDays = useRef<Set<string>>(new Set())
     const router = useRouter()
+
+    // Cada edición de series suma uno: una recarga que empezó antes no pisa lo
+    // que el atleta acaba de escribir (se descarta y vale lo de pantalla).
+    const setEdits = useRef(0)
+
+    const exerciseIdsKey = exercises.map(e => e.id).join(',')
+
+    /** Relee las series de la BD: lo guardado manda sobre lo que haya en pantalla. */
+    const refreshSets = useCallback(async () => {
+        const ids = exerciseIdsKey ? exerciseIdsKey.split(',') : []
+        if (ids.length === 0) return
+        const editsAtStart = setEdits.current
+        try {
+            const fresh = await getAllSetsForProgram(ids)
+            if (setEdits.current === editsAtStart) setSets(fresh)
+        } catch (error) {
+            console.error('[RoutinePageClient] Could not reload sets:', error)
+        }
+    }, [exerciseIdsKey])
+
+    // Al volver con atrás/adelante Next reutiliza la página que tenía en memoria,
+    // con las series de entonces: se releen al entrar (y si el coach cambia los
+    // ejercicios) para no perder lo apuntado.
+    useEffect(() => { void refreshSets() }, [refreshSets])
+
+    // Vuelta a la app o cambios del coach: estructura del programa y series
+    useAthleteLiveRefresh(() => {
+        router.refresh()
+        void refreshSets()
+    }, ['training'])
+
+    const reportSaveError = useCallback(() => {
+        toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
+        void refreshSets()
+    }, [refreshSets])
 
     const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
 
@@ -107,6 +144,8 @@ export default function RoutinePageClient({
         const result = await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
         if (result.success) {
             await markCurrentDayComplete()
+        } else {
+            toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
         }
     }, [selectedWeek, cells, markCurrentDayComplete])
 
@@ -118,6 +157,7 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
+        setEdits.current += 1
         const result = await generateOrApplySets(exerciseId, selectedWeek, baseSeries, baseWeight, baseReps, baseRir)
         if (result.success && result.sets) {
             setSets(prev => [
@@ -125,15 +165,18 @@ export default function RoutinePageClient({
                 ...result.sets!
             ])
             await markCurrentDayComplete()
+        } else {
+            reportSaveError()
         }
         return result
-    }, [selectedWeek, markCurrentDayComplete])
+    }, [selectedWeek, markCurrentDayComplete, reportSaveError])
 
     // ─── Single set update (marks override) ─────────────────────
     const handleSetUpdate = useCallback(async (
         setId: string,
         payload: { weightKg?: number | null; reps?: number | null; rir?: number | null }
     ) => {
+        setEdits.current += 1
         // Optimistic
         setSets(prev => prev.map(s => {
             if (s.id !== setId) return s
@@ -149,8 +192,10 @@ export default function RoutinePageClient({
         const result = await updateSingleSet(setId, payload)
         if (result.success) {
             await markCurrentDayComplete()
+        } else {
+            reportSaveError()
         }
-    }, [markCurrentDayComplete])
+    }, [markCurrentDayComplete, reportSaveError])
 
     // ─── Revert override ────────────────────────────────────────
     const handleRevertSet = useCallback(async (
@@ -159,14 +204,16 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
+        setEdits.current += 1
         // Optimistic
         setSets(prev => prev.map(s => {
             if (s.id !== setId) return s
             return { ...s, weightKg: baseWeight, reps: baseReps, rir: baseRir, isOverride: false }
         }))
 
-        await revertSetToBase(setId, baseWeight, baseReps, baseRir)
-    }, [])
+        const result = await revertSetToBase(setId, baseWeight, baseReps, baseRir)
+        if (!result.success) reportSaveError()
+    }, [reportSaveError])
 
     // ─── Add one more set from base ─────────────────────────────
     const handleAddSet = useCallback(async (
@@ -175,19 +222,24 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
+        setEdits.current += 1
         const result = await addSetFromBase(exerciseId, selectedWeek, baseWeight, baseReps, baseRir)
         if (result.success && result.set) {
             setSets(prev => [...prev, result.set!])
             await markCurrentDayComplete()
+        } else {
+            reportSaveError()
         }
         return result
-    }, [selectedWeek, markCurrentDayComplete])
+    }, [selectedWeek, markCurrentDayComplete, reportSaveError])
 
     // ─── Delete set ─────────────────────────────────────────────
     const handleDeleteSet = useCallback(async (setId: string) => {
+        setEdits.current += 1
         setSets(prev => prev.filter(s => s.id !== setId))
-        await deleteExerciseSet(setId)
-    }, [])
+        const result = await deleteExerciseSet(setId)
+        if (!result.success) reportSaveError()
+    }, [reportSaveError])
 
     const sharedProps = {
         exercises: dayExercises,

@@ -1,7 +1,8 @@
 'use client'
 
 import { createContext, useContext, ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 import type { UserRole } from '@/types/coach'
 
 /**
@@ -78,6 +79,14 @@ export function ClientAppProvider({ children }: ClientAppProviderProps) {
         refetchOnMount: false,
         retry: 1,
     })
+
+    // Nombre, foto o coach cambiados desde otro sitio: al volver a la app o con
+    // un aviso del perfil se vuelve a pedir (la caché de 5 min no basta en la PWA)
+    const queryClient = useQueryClient()
+    useAthleteLiveRefresh(
+        () => { void queryClient.invalidateQueries({ queryKey: ['client-context'] }) },
+        ['profile'],
+    )
 
     return (
         <ClientAppContext.Provider value={{
