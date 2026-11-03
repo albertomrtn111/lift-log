@@ -73,6 +73,7 @@ interface FormData {
     // Common fields
     steps: number | undefined
     notes: string
+    change_note: string
     effective_from: string
     effective_to: string
 }
@@ -108,6 +109,7 @@ function planToFormData(plan: MacroPlan): { mode: MacroMode; formData: FormData 
                 },
                 steps: plan.steps ?? undefined,
                 notes: plan.notes || '',
+                change_note: plan.change_note || '',
                 effective_from: plan.effective_from,
                 effective_to: plan.effective_to || '',
             },
@@ -127,6 +129,7 @@ function planToFormData(plan: MacroPlan): { mode: MacroMode; formData: FormData 
             rest: { ...DEFAULT_VALUES, kcal: 1800, carbs: 150 },
             steps: plan.steps ?? undefined,
             notes: plan.notes || '',
+            change_note: plan.change_note || '',
             effective_from: plan.effective_from,
             effective_to: plan.effective_to || '',
         },
@@ -140,6 +143,7 @@ function freshFormData(): FormData {
         rest: withAutofitCarbs({ ...DEFAULT_VALUES, kcal: 1800 }),
         steps: undefined,
         notes: '',
+        change_note: '',
         effective_from: new Date().toISOString().split('T')[0],
         effective_to: '',
     }
@@ -235,6 +239,7 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
                 day_type_config: dayTypeConfig,
                 steps: formData.steps || undefined,
                 notes: formData.notes || undefined,
+                change_note: formData.change_note || null,
                 effective_from: formData.effective_from,
                 effective_to: formData.effective_to || null,
             })
@@ -349,6 +354,7 @@ export function MacroPlanPanel({ coachId, clientId }: MacroPlanPanelProps) {
                             mode={macroMode}
                             formData={formData}
                             isEditing={!!editingPlan}
+                            replacesPlan={!editingPlan && !!activePlan}
                             isSaving={upsertMutation.isPending}
                             onUpdateValues={updateValues}
                             autoCarbs={autoCarbs}
@@ -435,6 +441,7 @@ interface MacroFormStepProps {
     mode: MacroMode
     formData: FormData
     isEditing: boolean
+    replacesPlan: boolean
     isSaving: boolean
     onUpdateValues: (key: BlockKey, field: keyof MacroValues, value: number) => void
     autoCarbs: AutoCarbs
@@ -449,6 +456,7 @@ function MacroFormStep({
     mode,
     formData,
     isEditing,
+    replacesPlan,
     isSaving,
     onUpdateValues,
     autoCarbs,
@@ -552,6 +560,22 @@ function MacroFormStep({
                     onChange={(e) => onFormDataChange({ ...formData, notes: e.target.value })}
                 />
             </div>
+
+            {(replacesPlan || (isEditing && formData.change_note)) && (
+                <div className="space-y-2">
+                    <Label>Motivo del cambio (opcional)</Label>
+                    <Input
+                        placeholder="ej: +200 kcal, peso estancado 3 semanas"
+                        value={formData.change_note}
+                        onChange={(e) => onFormDataChange({ ...formData, change_note: e.target.value })}
+                    />
+                    {replacesPlan && (
+                        <p className="text-xs text-muted-foreground">
+                            El plan actual termina el día antes de «Desde» y queda en el historial.
+                        </p>
+                    )}
+                </div>
+            )}
 
             {/* Footer */}
             <DialogFooter>

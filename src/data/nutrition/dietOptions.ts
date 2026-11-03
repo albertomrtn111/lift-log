@@ -396,6 +396,7 @@ export async function createDietPlanOptions(
         status: input.status,
         effective_from: input.effective_from,
         effective_to: effectiveTo,
+        change_note: input.change_note?.trim() || null,
         // Description and macros not on input type currently
     }
     const { data: plan, error: planError } = await supabase
@@ -513,6 +514,7 @@ export async function updateDietPlanOptions(
             status: input.status,
             effective_from: input.effective_from,
             effective_to: input.effective_to || null,
+            ...(input.change_note !== undefined && { change_note: input.change_note?.trim() || null }),
             updated_at: new Date().toISOString(),
             meals: mealsJson, // KEY: Legacy JSON field
         })

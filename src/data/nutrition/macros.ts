@@ -60,7 +60,8 @@ export async function listMacroPlans(
 }
 
 /**
- * Create or update a macro plan
+ * Create or update a macro plan.
+ * Editar corrige el plan en su sitio; crear archiva el anterior.
  */
 export async function upsertMacroPlan(
     input: MacroPlanInput & { id?: string }
@@ -89,6 +90,7 @@ export async function upsertMacroPlan(
                 day_type_config: input.day_type_config ? JSON.stringify(input.day_type_config) : null,
                 effective_from: input.effective_from,
                 effective_to: input.effective_to || null,
+                change_note: input.change_note?.trim() || null,
             })
             .eq('id', input.id)
             .select()
@@ -105,43 +107,46 @@ export async function upsertMacroPlan(
         }
         console.log('[upsertMacroPlan] Update success:', data.id)
         return parseMacroPlan(data)
-    } else {
-        // Insert new
-        const { data, error } = await supabase
-            .from('macro_plans')
-            .insert({
+    }
+
+    // Plan nuevo: la función de guardado cierra el anterior el día antes
+    // (o lo sustituye si empieza el mismo día) y lo deja en el historial.
+    const { data, error } = await supabase.rpc('save_nexttrain_nutrition_plan', {
+        p_kind: 'macros',
+        p_coach_id: input.coach_id,
+        p_client_id: input.client_id,
+        p_plan_id: null,
+        p_payload: {
+            kcal: input.kcal,
+            protein_g: input.protein_g,
+            carbs_g: input.carbs_g,
+            fat_g: input.fat_g,
+            steps: input.steps ?? null,
+            notes: input.notes || null,
+            day_type_config: input.day_type_config ?? null,
+            effective_from: input.effective_from,
+            effective_to: input.effective_to || null,
+            change_note: input.change_note?.trim() || null,
+            replace_same_day: true,
+        },
+    })
+
+    if (error) {
+        console.error('[upsertMacroPlan] Insert error:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload: {
                 coach_id: input.coach_id,
                 client_id: input.client_id,
-                kcal: input.kcal,
-                protein_g: input.protein_g,
-                carbs_g: input.carbs_g,
-                fat_g: input.fat_g,
-                steps: input.steps ?? null,
-                notes: input.notes,
-                day_type_config: input.day_type_config ? JSON.stringify(input.day_type_config) : null,
                 effective_from: input.effective_from,
-                effective_to: input.effective_to || null,
-            })
-            .select()
-            .single()
-
-        if (error) {
-            console.error('[upsertMacroPlan] Insert error:', {
-                message: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
-                payload: {
-                    coach_id: input.coach_id,
-                    client_id: input.client_id,
-                    effective_from: input.effective_from,
-                }
-            })
-            throw error
-        }
-        console.log('[upsertMacroPlan] Insert success:', data.id)
-        return parseMacroPlan(data)
+            }
+        })
+        throw error
     }
+    console.log('[upsertMacroPlan] Insert success:', data?.id)
+    return parseMacroPlan(data as Record<string, unknown>)
 }
 
 /**
