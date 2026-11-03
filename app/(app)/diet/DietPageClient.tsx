@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { ChevronDown, Utensils } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ import { SupplementsTracker, type ClientSupplement } from '@/components/nutritio
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
 import { ClientTabSwitcher, useTabSwipeLink } from '@/components/ui/client-tab-switcher'
 import { SwipeTabPanels } from '@/components/ui/swipe-tab-panels'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 
 interface DietPlanMealItem {
     quantity: string
@@ -74,6 +75,10 @@ function parseDateParam(value: string | null) {
 
 export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: DietPageClientProps) {
     const searchParams = useSearchParams()
+    const router = useRouter()
+    // Macros, dieta y suplementos vienen del servidor: si el coach los cambia
+    // (o al volver a la app), se vuelve a pedir la página
+    useAthleteLiveRefresh(() => router.refresh(), ['diet-plan'])
     const hasMacros = !!macroPlan
     const hasStructuredMeals = dietMeals.length > 0
     const hasLegacyMeals = !!(dietPlan?.meals?.labels?.length)

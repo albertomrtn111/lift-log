@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { notifyStravaActivityCompleted, STRAVA_PENDING_UPDATED_EVENT } from '@/lib/strava/events'
 import { RPE_LABELS, dayLabel, groupByDay, inboxRange, inboxTotals } from '@/lib/strava/pending-inbox'
 import { formatCardioIntensity } from '@/lib/cardio/discipline'
+import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
 
 interface PlannedSessionOption {
     id: string
@@ -182,7 +183,7 @@ export function StravaPendingFeedback() {
             const data = await res.json()
             setActivities(data.activities || [])
         } catch {
-            setActivities([])
+            // Sin red: se quedan las que había
         }
     }, [])
 
@@ -191,6 +192,10 @@ export function StravaPendingFeedback() {
         window.addEventListener(STRAVA_PENDING_UPDATED_EVENT, loadPending)
         return () => window.removeEventListener(STRAVA_PENDING_UPDATED_EVENT, loadPending)
     }, [loadPending])
+
+    // Actividades que llegan por el webhook mientras la app estaba abierta o en
+    // segundo plano, y sesiones de cardio nuevas a las que asignarlas
+    useAthleteLiveRefresh(() => { void loadPending() }, ['cardio'])
 
     const today = useMemo(() => todayKey(), [])
     const groups = useMemo(() => groupByDay(activities, today), [activities, today])

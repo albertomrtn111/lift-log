@@ -1,7 +1,6 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
 import type { ExerciseSet } from '@/types/training'
 
 // ─── Reads ──────────────────────────────────────────────────────────
@@ -36,8 +35,9 @@ export async function getAllSetsForProgram(
         .in('exercise_id', exerciseIds)
         .order('set_index', { ascending: true })
 
-    if (error || !data) return []
-    return data.map(mapRow)
+    // Lanza en vez de devolver []: quien recarga no debe vaciar la pantalla por un fallo
+    if (error) throw new Error(error.message)
+    return (data || []).map(mapRow)
 }
 
 // ─── Base Block: Generate / Apply ───────────────────────────────────
@@ -61,13 +61,14 @@ export async function generateOrApplySets(
     const supabase = await createClient()
 
     // Get current sets
-    const { data: current } = await supabase
+    const { data: current, error: currentError } = await supabase
         .from('training_exercise_sets')
         .select('*')
         .eq('exercise_id', exerciseId)
         .eq('week_index', weekIndex)
         .order('set_index', { ascending: true })
 
+    if (currentError) return failSets('read', currentError.message)
     const existing = current || []
     const currentCount = existing.length
 
@@ -75,7 +76,7 @@ export async function generateOrApplySets(
     if (existing.length > 0) {
         const nonOverrideIds = existing.filter((s: any) => !s.is_override).map((s: any) => s.id)
         if (nonOverrideIds.length > 0) {
-            await supabase
+            const { error } = await supabase
                 .from('training_exercise_sets')
                 .update({
                     weight_kg: baseWeight,
@@ -84,6 +85,7 @@ export async function generateOrApplySets(
                     updated_at: new Date().toISOString(),
                 })
                 .in('id', nonOverrideIds)
+            if (error) return failSets('update', error.message)
         }
     }
 
@@ -102,7 +104,8 @@ export async function generateOrApplySets(
                 completed: false,
             })
         }
-        await supabase.from('training_exercise_sets').insert(toInsert)
+        const { error } = await supabase.from('training_exercise_sets').insert(toInsert)
+        if (error) return failSets('insert', error.message)
     }
 
     // 3. Delete excess sets if N decreased (only non-override from the end)
@@ -112,22 +115,29 @@ export async function generateOrApplySets(
             .map((s: any) => s.id)
 
         if (toDelete.length > 0) {
-            await supabase
+            const { error } = await supabase
                 .from('training_exercise_sets')
                 .delete()
                 .in('id', toDelete)
+            if (error) return failSets('delete', error.message)
         }
     }
 
     // 4. Re-fetch final state
-    const { data: final } = await supabase
+    const { data: final, error: finalError } = await supabase
         .from('training_exercise_sets')
         .select('*')
         .eq('exercise_id', exerciseId)
         .eq('week_index', weekIndex)
         .order('set_index', { ascending: true })
 
+    if (finalError) return failSets('reload', finalError.message)
     return { success: true, sets: (final || []).map(mapRow) }
+}
+
+function failSets(step: string, message: string) {
+    console.error(`[generateOrApplySets] ${step} failed:`, message)
+    return { success: false, error: message }
 }
 
 // ─── Single Set Operations ──────────────────────────────────────────
@@ -250,14 +260,19 @@ export async function deleteExerciseSet(
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
 
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('training_exercise_sets')
         .delete()
         .eq('id', setId)
+        .select('id')
 
     if (error) {
         console.error('[deleteExerciseSet] Error:', error.message)
         return { success: false, error: error.message }
+    }
+    // Sin permiso (RLS) el borrado no da error: simplemente no borra nada
+    if (!data || data.length === 0) {
+        return { success: false, error: 'Set not deleted' }
     }
 
     return { success: true }

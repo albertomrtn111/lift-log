@@ -20,6 +20,7 @@ import { ClientChipTabs, ClientTabSwitcher } from '@/components/ui/client-tab-sw
 import type { ClientDietItem, ClientDietMeal, ClientDietOption } from '@/data/diet'
 import { addNutritionLogEntriesBatch, deleteNutritionLogEntry } from '@/data/nutrition/log'
 import type { MealType, NutritionLogEntryInput } from '@/data/nutrition/tracking-types'
+import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -186,11 +187,18 @@ export function DietOptionsPlan({ planId, planName, meals }: DietOptionsPlanProp
             writeStorage(loggedKey, next)
             return next
         })
+        // La pestaña «Macros» sigue montada: que sume lo registrado sin recargar
+        notifyAthleteDataChanged(['nutrition'])
         toast.success(`${meal.name} añadida a tu diario de hoy`, {
             action: {
                 label: 'Deshacer',
                 onClick: async () => {
-                    await Promise.all(inserted.map(entry => deleteNutritionLogEntry(entry.id)))
+                    const deleted = await Promise.all(inserted.map(entry => deleteNutritionLogEntry(entry.id)))
+                    notifyAthleteDataChanged(['nutrition'])
+                    if (deleted.some(ok => !ok)) {
+                        toast.error('No se pudo deshacer del todo. Revisa la pestaña Macros.')
+                        return
+                    }
                     setLoggedToday(current => {
                         const next = { ...current }
                         delete next[meal.id]

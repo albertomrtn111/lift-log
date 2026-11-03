@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 import { hasRenderableCardioBlocks } from '@/lib/cardio/structure'
 import { resolveCardioDisplayKind } from '@/lib/cardio/display-kind'
+import { toast } from 'sonner'
 
 interface CardioSessionDetailProps {
   item: CalendarItem | null
@@ -42,7 +43,7 @@ interface CardioSessionDetailProps {
     feedbackNotes?: string
     avgHeartRate?: number
     maxHeartRate?: number
-  }) => Promise<void>
+  }) => Promise<void> // Lanza si no se guardó: la ficha se queda abierta con los datos
 }
 
 export function CardioSessionDetail({
@@ -117,6 +118,7 @@ export function CardioSessionDetail({
       }, 1000)
     } catch {
       setSaveStatus('idle')
+      toast.error('No se pudo guardar el registro. Inténtalo de nuevo.')
     }
   }
 
