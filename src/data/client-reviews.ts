@@ -7,6 +7,7 @@ import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
 import type { CheckinWithReview } from '@/data/workspace'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
+import { reviewFormInitialValues } from '@/lib/reviews/checkin-response'
 
 export type ClientReviewUiStatus = 'pending' | 'submitted' | 'feedback'
 
@@ -441,9 +442,8 @@ export async function getClientReviewFormAction(checkinId: string): Promise<{
             templateType: template.type,
             schema: template.schema,
             metrics: filteredMetrics,
-            initialValues: checkin.raw_payload && typeof checkin.raw_payload === 'object'
-                ? checkin.raw_payload as Record<string, unknown>
-                : {},
+            // Pendiente: el borrador autoguardado, igual que /forms/[checkinId]
+            initialValues: reviewFormInitialValues(checkin.status, checkin.raw_payload),
             photoConfig,
         },
     }

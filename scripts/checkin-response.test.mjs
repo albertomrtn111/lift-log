@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { getCheckinResponseDate, hasAthleteResponse } from '../src/lib/reviews/checkin-response.js'
+import { getCheckinResponseDate, hasAthleteResponse, reviewFormInitialValues } from '../src/lib/reviews/checkin-response.js'
 
 const created = '2026-10-31T07:00:00.123456+00:00'
 
@@ -31,4 +31,17 @@ test('una archivada sin responder conserva la marca del DEFAULT y no cuenta', ()
 test('una archivada que sí se respondió mantiene su fecha', () => {
   const checkin = { status: 'archived', submitted_at: '2026-11-01T08:00:00+00:00', created_at: created }
   assert.equal(getCheckinResponseDate(checkin), '2026-11-01T08:00:00+00:00')
+})
+
+test('reviewFormInitialValues opens a pending review with its autosaved draft', () => {
+  const draft = { weight: 70, notes: 'a medias' }
+  assert.deepEqual(reviewFormInitialValues('pending', { _draft: draft, _draft_saved_at: '2026-11-03T08:00:00Z' }), draft)
+  assert.deepEqual(reviewFormInitialValues('pending', null), {})
+  assert.deepEqual(reviewFormInitialValues('pending', { _draft_saved_at: 'x' }), {})
+})
+
+test('reviewFormInitialValues opens an answered review with the submitted answers', () => {
+  const answers = { weight: 70 }
+  assert.deepEqual(reviewFormInitialValues('reviewed', answers), answers)
+  assert.deepEqual(reviewFormInitialValues('archived', null), {})
 })

@@ -519,6 +519,7 @@ export function ClientReviewsTab({ initialCheckinId }: ClientReviewsTabProps) {
                                     photoConfig={formData.photoConfig}
                                     embedded
                                     submissionMode={activeReview.status === 'pending' ? 'submit' : 'update'}
+                                    autosave={activeReview.status === 'pending'}
                                     redirectOnOnboarding={false}
                                     onSubmitted={refreshOpenReview}
                                 />
