@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
  */
 export function ClientHeaderSkeleton({ segmented = false, children }: { segmented?: boolean; children?: React.ReactNode }) {
     return (
-        <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+        <header className="app-mobile-header border-b border-border/60">
             <div className="px-4 pb-3 pt-4">
                 <div className="flex min-h-10 flex-col justify-end gap-1.5 pr-24">
                     <Skeleton className="h-3 w-16" />

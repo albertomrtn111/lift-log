@@ -406,9 +406,11 @@
   }
 
   /* Entrada suave de cada pantalla del atleta (solo opacidad: un transform
-     convertiría el contenedor en referencia de los elementos `fixed`) */
+     convertiría el contenedor en referencia de los elementos `fixed`). Sin
+     relleno final: dejaría un contexto de apilamiento y los controles fijos
+     pasarían por debajo de los botones de arriba. */
   .client-page-enter {
-    animation: client-page-enter 260ms ease-out both;
+    animation: client-page-enter 260ms ease-out backwards;
   }
 
   @keyframes client-page-enter {
@@ -522,10 +524,37 @@
     min-height: 100%;
   }
 
+  /* Cabecera fija de las pantallas del atleta. Fondo sólido: con uno translúcido
+     el contenido se transparenta al hacer scroll y se ve emborronado. Por debajo
+     de los botones de arriba (z-30), que quedan encima en las pantallas de solo título. */
   .app-mobile-header {
     position: sticky;
     top: 0;
-    z-index: 40;
+    z-index: 20;
     padding-top: var(--safe-area-top);
+    background-color: hsl(var(--background));
+  }
+
+  /* Título grande: se va con el scroll, igual que los botones de arriba, y solo
+     quedan fijos los controles (--below-title), para no gastar un cuarto de pantalla. */
+  .app-mobile-title {
+    padding-top: var(--safe-area-top);
+  }
+
+  .app-mobile-header--below-title {
+    top: var(--safe-area-top);
+    z-index: 40;
+    padding-top: 0;
+  }
+
+  /* Tapa la barra de estado de iOS: el contenido pasa por debajo sin verse */
+  .app-mobile-statusbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 45;
+    height: var(--safe-area-top);
+    background-color: hsl(var(--background));
   }
 }

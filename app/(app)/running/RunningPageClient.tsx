@@ -164,7 +164,7 @@ export default function RunningPageClient({
     return (
         <div className="app-mobile-page min-h-screen pb-4">
             {/* Header */}
-            <header className="app-mobile-header bg-background/95 backdrop-blur-sm border-b border-border">
+            <header className="app-mobile-header border-b border-border">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3 mb-3 pr-24">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">

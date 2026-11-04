@@ -263,23 +263,27 @@ export default function RoutinePageClient({
 
     return (
         <div className="app-mobile-page min-h-screen">
-            <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
-                <div className="px-4 pb-3 pt-4">
+            <header className="app-mobile-title">
+                <div className="px-4 pt-4">
                     <div className="flex min-h-10 items-end pr-24">
                         <div className="min-w-0">
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fuerza</p>
                             <h1 className="line-clamp-2 text-xl font-bold leading-tight tracking-tight text-foreground">{program.name}</h1>
                         </div>
                     </div>
+                </div>
+            </header>
+
+            <div className="app-mobile-header app-mobile-header--below-title border-b border-border/60">
+                <div className="px-4 pb-3 pt-3">
                     <WeekSelector
-                        className="mt-3"
                         totalWeeks={program.totalWeeks}
                         selectedWeek={selectedWeek}
                         onSelectWeek={setSelectedWeek}
                     />
                 </div>
                 <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={setSelectedDayId} />
-            </header>
+            </div>
 
             <div className="pb-6 pt-4">
                 {dayExercises.length > 0 ? (

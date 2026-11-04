@@ -95,16 +95,20 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
 
     return (
         <div className="app-mobile-page min-h-screen pb-4">
-            <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
-                <div className="px-4 pb-3 pt-4">
+            <header className="app-mobile-title">
+                <div className="px-4 pt-4">
                     <div className="flex min-h-10 items-end pr-24">
                         <div>
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Nutrición</p>
                             <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">Dieta</h1>
                         </div>
                     </div>
+                </div>
+            </header>
+
+            <div className="app-mobile-header app-mobile-header--below-title border-b border-border/60">
+                <div className="px-4 pb-3 pt-3">
                     <ClientTabSwitcher
-                        className="mt-3"
                         aria-label="Secciones de la dieta"
                         idBase="diet"
                         value={activeTab}
@@ -116,7 +120,7 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
                         <DayNavigator className="mt-2" date={date} onChange={setDate} />
                     )}
                 </div>
-            </header>
+            </div>
 
             <SwipeTabPanels
                 idBase="diet"

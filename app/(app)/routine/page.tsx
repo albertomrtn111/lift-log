@@ -35,7 +35,7 @@ export default async function RoutinePage(
     if (!data) {
         return (
             <div className="app-mobile-page min-h-screen">
-                <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+                <header className="app-mobile-header border-b border-border/60">
                     <div className="px-4 pb-4 pt-4">
                         <div className="flex min-h-10 items-end pr-24">
                             <div>
