@@ -119,7 +119,7 @@ export function ClientPageHeader({
     children?: React.ReactNode
 }) {
     return (
-        <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
+        <header className="app-mobile-header border-b border-border/60">
             <div className="px-4 pb-3 pt-4">
                 <div className="flex min-h-10 items-end gap-3 pr-24">
                     {leading}

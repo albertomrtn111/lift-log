@@ -272,7 +272,7 @@ export default function PlanningPageClient({
         const isToday = dateStr === today
 
         return (
-            <section key={dateStr} id={`plan-day-${dateStr}`} className="scroll-mt-60">
+            <section key={dateStr} id={`plan-day-${dateStr}`} className="scroll-mt-[calc(var(--safe-area-top)+11rem)]">
                 {options.showHeading && (
                     <div className="mb-2 flex items-baseline gap-2 px-0.5">
                         <h3 className={cn('text-sm font-semibold', isToday ? 'text-primary' : 'text-foreground')}>
@@ -313,8 +313,8 @@ export default function PlanningPageClient({
     return (
         <div className="app-mobile-page min-h-screen">
             {/* Header */}
-            <header className="app-mobile-header border-b border-border/60 bg-background/90 backdrop-blur-xl">
-                <div className="px-4 pb-3 pt-4">
+            <header className="app-mobile-title">
+                <div className="px-4 pt-4">
                     <div className="flex min-h-10 items-end gap-2 pr-24">
                         <div className="min-w-0">
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -324,8 +324,12 @@ export default function PlanningPageClient({
                         </div>
                         {isPending && <Loader2 className="mb-1.5 h-4 w-4 animate-spin text-muted-foreground" aria-label="Cargando" />}
                     </div>
+                </div>
+            </header>
 
-                    <div className="mt-3 flex items-center gap-1.5">
+            <div className="app-mobile-header app-mobile-header--below-title border-b border-border/60">
+                <div className="px-4 pb-3 pt-3">
+                    <div className="flex items-center gap-1.5">
                         {/* Semana / Mes */}
                         <ClientTabSwitcher
                             fit="content"
@@ -389,7 +393,7 @@ export default function PlanningPageClient({
                         </button>
                     </div>
                 )}
-            </header>
+            </div>
 
             <div
                 className={cn('space-y-5 px-4 pb-6 pt-4 transition-opacity', isPending && 'opacity-60')}

@@ -15,6 +15,7 @@ export default function AppLayout({
     return (
         <ClientAppProvider>
             <div className="app-mobile-shell bg-background">
+                <div className="app-mobile-statusbar" aria-hidden="true" />
                 <PushNotificationBanner />
                 <StravaPendingFeedback />
                 <AppTopActions />

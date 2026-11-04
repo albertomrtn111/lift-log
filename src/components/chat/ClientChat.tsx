@@ -352,7 +352,7 @@ export function ClientChat() {
     const coachAvatar = <CoachAvatar name={coachName} avatarUrl={coach?.avatarUrl ?? null} size="sm" />
 
     const header = (
-        <header className="app-mobile-header shrink-0 border-b border-border/60 bg-background/90 backdrop-blur-xl">
+        <header className="app-mobile-header shrink-0 border-b border-border/60">
             <div className="flex min-h-[4.25rem] items-center gap-3 px-4 py-3 pr-24">
                 {loading && !coach ? (
                     <>
