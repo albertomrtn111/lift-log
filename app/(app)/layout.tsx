@@ -18,8 +18,8 @@ export default function AppLayout({
                 <div className="app-mobile-statusbar" aria-hidden="true" />
                 <PushNotificationBanner />
                 <StravaPendingFeedback />
-                <AppTopActions />
-                <main className="app-mobile-main">
+                <main className="app-mobile-main relative">
+                    <AppTopActions />
                     {children}
                 </main>
                 <PwaNavigationFix />
