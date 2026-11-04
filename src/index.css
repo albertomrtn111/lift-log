@@ -95,7 +95,9 @@
     --popover-foreground: 214 30% 94%;
 
     --primary: 215.6 100% 62%;
-    --primary-foreground: 222 47% 8%;
+    --primary-foreground: 0 0% 100%;
+    /* Azul del logo para lo relleno; --primary se queda para textos e iconos. */
+    --primary-fill: 215.6 100% 42.4%;
 
     --secondary: 223 24% 16%;
     --secondary-foreground: 214 24% 89%;
@@ -557,4 +559,23 @@
     height: var(--safe-area-top);
     background-color: hsl(var(--background));
   }
+}
+
+/* En oscuro, #0058D8 se lee mal como texto pero funciona relleno con texto blanco. */
+.dark .bg-primary,
+.dark .hover\:bg-primary:hover,
+.dark .week-pill-active,
+.dark .week-pill-active:hover,
+.dark .group.toast .group-\[\.toast\]\:bg-primary,
+.dark .data-\[state\=checked\]\:bg-primary[data-state="checked"],
+.dark .data-\[state\=active\]\:bg-primary[data-state="active"] {
+  background-color: hsl(var(--primary-fill));
+}
+
+.dark .hover\:bg-primary\/90:hover {
+  background-color: hsl(var(--primary-fill) / 0.9);
+}
+
+.dark .hover\:bg-primary\/80:hover {
+  background-color: hsl(var(--primary-fill) / 0.8);
 }
