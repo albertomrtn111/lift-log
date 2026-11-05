@@ -123,3 +123,28 @@ export const LIBRARY_TEMPLATES = {
         blocks: [...PATTERN_BLOCKS, 'biceps', 'triceps', 'cuadriceps', 'isquiotibiales', 'flexores_plantares', 'core'],
     },
 }
+
+/** Marcados dentro de un grupo de ejercicios: 'none', 'some' o 'all'. */
+export function selectionState(ids, selected) {
+    const marked = ids.filter(id => selected.has(id)).length
+    if (marked === 0) return 'none'
+    return marked === ids.length ? 'all' : 'some'
+}
+
+/** Selección con el grupo entero marcado o desmarcado. */
+export function setManySelected(selected, ids, checked) {
+    const next = new Set(selected)
+    for (const id of ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+    }
+    return next
+}
+
+/** Ejercicios predefinidos de una plantilla, o todos si no se indica ninguna. */
+export function presetIds(exercises, templateKey) {
+    const blocks = templateKey ? LIBRARY_TEMPLATES[templateKey]?.blocks ?? [] : null
+    return exercises
+        .filter(exercise => exercise.is_predefined && (!blocks || blocks.includes(exercise.block_key)))
+        .map(exercise => exercise.id)
+}

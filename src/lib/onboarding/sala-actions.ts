@@ -4,7 +4,6 @@ import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canManageTeam } from '@/lib/team/team-rules'
-import { LIBRARY_TEMPLATES } from '@/lib/training/workspace-library-rules'
 
 const AGENDA_MODES = ['connected', 'own', 'none'] as const
 export type AgendaMode = (typeof AGENDA_MODES)[number]
@@ -75,36 +74,6 @@ export async function saveCenterAction(input: { name: string; address: string })
             : { success: true }
     } catch {
         return { success: false, error: 'No se pudo guardar.' }
-    }
-}
-
-// Añade a la biblioteca los ejercicios de una plantilla. Lo que ya estaba no cambia.
-export async function applyLibraryTemplateAction(template: string): Promise<ActionResult<{ added: number }>> {
-    const definition = LIBRARY_TEMPLATES[template as keyof typeof LIBRARY_TEMPLATES]
-    if (!definition) return { success: false, error: 'Plantilla no válida.' }
-    try {
-        const { supabase, coachId, userId } = await requireSalaManager()
-        const { data: exercises, error } = await supabase
-            .from('exercise_catalog')
-            .select('id')
-            .eq('is_active', true)
-            .in('block_key', definition.blocks)
-        if (error) return { success: false, error: 'No se pudo leer el catálogo.' }
-
-        const { error: insertError } = await supabase
-            .from('workspace_exercises')
-            .upsert(
-                (exercises ?? []).map(exercise => ({
-                    coach_id: coachId,
-                    catalog_exercise_id: exercise.id,
-                    added_by: userId,
-                })),
-                { onConflict: 'coach_id,catalog_exercise_id', ignoreDuplicates: true }
-            )
-        if (insertError) return { success: false, error: 'No se pudo añadir la plantilla.' }
-        return { success: true, data: { added: exercises?.length ?? 0 } }
-    } catch {
-        return { success: false, error: 'No se pudo añadir la plantilla.' }
     }
 }
 

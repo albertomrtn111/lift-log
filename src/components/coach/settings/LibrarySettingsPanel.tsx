@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
-import { ArrowDown, ArrowUp, EyeOff, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, EyeOff, ListChecks, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPicker'
 import { ExerciseLibraryDialog } from '@/components/training/ExerciseLibraryDialog'
+import { LibraryBulkPicker, useLibrarySelection } from '@/components/training/LibraryBulkPicker'
 import { refreshWorkspaceLibrary, useExerciseCatalog } from '@/hooks/use-exercise-catalog'
 import {
     addToLibraryAction,
@@ -53,6 +54,7 @@ export function LibrarySettingsPanel() {
     const [library, setLibrary] = useState<LibraryData | null>(null)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [adding, setAdding] = useState(false)
+    const [picking, setPicking] = useState(false)
     const [editing, setEditing] = useState<Editing | null>(null)
     const [removing, setRemoving] = useState<LibraryEntry | null>(null)
     const [pending, startTransition] = useTransition()
@@ -133,16 +135,22 @@ export function LibrarySettingsPanel() {
                         siempre por el ejercicio del catálogo.
                     </p>
                 </div>
-                <Button className="shrink-0 gap-1.5" onClick={() => setAdding(true)}>
-                    <Plus className="h-4 w-4" />
-                    Añadir ejercicio
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button variant="outline" className="gap-1.5" onClick={() => setPicking(true)}>
+                        <ListChecks className="h-4 w-4" />
+                        Elegir por bloques
+                    </Button>
+                    <Button className="gap-1.5" onClick={() => setAdding(true)}>
+                        <Plus className="h-4 w-4" />
+                        Añadir ejercicio
+                    </Button>
+                </div>
             </Card>
 
             {sections.length === 0 && (
                 <Card className="p-6 text-center text-sm text-muted-foreground">
-                    Aún no hay ejercicios. Añade los que más usas: también los verás con una estrella en el selector
-                    de ejercicios.
+                    Aún no hay ejercicios. Pulsa «Elegir por bloques» para empezar con los predefinidos, o añade los que
+                    más usas.
                 </Card>
             )}
 
@@ -216,6 +224,17 @@ export function LibrarySettingsPanel() {
                 onSelect={exercise => run(() => addToLibraryAction(exercise.id), 'Añadido a tu biblioteca')}
             />
 
+            {picking && (
+                <PickerDialog
+                    empty={library.entries.length === 0}
+                    onClose={() => setPicking(false)}
+                    onSaved={() => {
+                        setPicking(false)
+                        void load()
+                    }}
+                />
+            )}
+
             {editing && (
                 <EditDialog
                     key={editing.kind === 'entry' ? editing.entry.id : editing.block.key}
@@ -252,6 +271,47 @@ export function LibrarySettingsPanel() {
                 />
             )}
         </div>
+    )
+}
+
+function PickerDialog({ empty, onClose, onSaved }: {
+    empty: boolean
+    onClose: () => void
+    onSaved: () => void
+}) {
+    const selection = useLibrarySelection({ preselect: empty })
+    const [saving, startSaving] = useTransition()
+
+    function save() {
+        startSaving(async () => {
+            const result = await selection.save()
+            if (result.success) {
+                toast.success('Biblioteca actualizada')
+                onSaved()
+            } else {
+                toast.error(result.error ?? 'No se pudieron añadir los ejercicios.')
+            }
+        })
+    }
+
+    return (
+        <Dialog open onOpenChange={open => !open && onClose()}>
+            <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-2rem)] max-w-2xl flex-col gap-3">
+                <DialogHeader>
+                    <DialogTitle>Elegir por bloques</DialogTitle>
+                    <DialogDescription>Lo que ya está en tu biblioteca sale marcado y no cambia.</DialogDescription>
+                </DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                    <LibraryBulkPicker selection={selection} />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>Cancelar</Button>
+                    <Button disabled={saving || selection.toAdd === 0} onClick={save}>
+                        {selection.toAdd === 1 ? 'Añadir 1 ejercicio' : `Añadir ${selection.toAdd} ejercicios`}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 

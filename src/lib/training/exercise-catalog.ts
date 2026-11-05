@@ -1,7 +1,7 @@
 import type { MuscleGroup } from '@/lib/training/muscle-groups'
 
 // Columnas del catálogo que usan los selectores de ejercicios.
-export const CATALOG_COLUMNS = 'id, name, primary_group, block_key, laterality, equipment, metrics'
+export const CATALOG_COLUMNS = 'id, name, primary_group, block_key, laterality, equipment, metrics, is_predefined'
 
 export interface CatalogBlock {
     key: string
@@ -18,6 +18,7 @@ export interface CatalogExercise {
     laterality?: string
     equipment?: string[]
     metrics?: string[]
+    is_predefined?: boolean
     // Nombres históricos ya normalizados (normalizeExerciseName) que apuntan a este ejercicio.
     aliases?: string[]
 }
