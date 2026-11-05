@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildGrid, cellSummary, normalizeText, prepareSessions } from '../src/lib/studio/grid-rules.js'
+import { autoCollapsedBlocks, buildGrid, cellSummary, normalizeText, orderBlocks, prepareSessions } from '../src/lib/studio/grid-rules.js'
 
 const session = (id, session_date, status = 'done') => ({ id, session_date, status, start_time: null, sort_order: null })
 
@@ -74,4 +74,33 @@ test('filtra por búsqueda y categoría', () => {
 test('un ejercicio usado sin bloque no se pierde', () => {
     const items = [{ catalog_exercise_id: 'x', exercise_name: 'Antiguo', block_key: null }]
     assert.deepEqual(names(buildGrid({ blocks, entries: [], items })), [['sin-bloque', ['Antiguo']]])
+})
+
+test('con historial se pliega lo que el cliente no ha usado últimamente', () => {
+    const sessions = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05'].map((date, index) => session(`s${index}`, date))
+    const collapsed = autoCollapsedBlocks({
+        blockKeys: ['viejo', 'nuevo', 'proximo'],
+        sessions: [...sessions, session('futura', '2026-12-01', 'planned')],
+        items: [
+            { session_id: 's0', block_key: 'viejo' },
+            { session_id: 's4', block_key: 'nuevo' },
+            { session_id: 'futura', block_key: 'proximo' },
+        ],
+        today: '2026-11-05',
+        recentBlocks: [],
+    })
+    assert.deepEqual([...collapsed], ['viejo'])
+})
+
+test('sin historial se pliega lo que nadie ha usado en cuatro semanas', () => {
+    const input = { blockKeys: ['a', 'b'], sessions: [], items: [], today: '2026-11-05' }
+    assert.deepEqual([...autoCollapsedBlocks({ ...input, recentBlocks: ['a'] })], ['b'])
+    assert.deepEqual([...autoCollapsedBlocks({ ...input, recentBlocks: [] })], [])
+})
+
+test('el orden del cliente manda y lo demás sigue como en el espacio', () => {
+    const blocks = [{ key: 'a' }, { key: 'b' }, { key: 'c' }]
+    assert.equal(orderBlocks(blocks, []), blocks)
+    const ordered = orderBlocks(blocks, [{ block_key: 'c', sort_order: 10 }, { block_key: 'a', sort_order: null }])
+    assert.deepEqual(ordered.map(block => block.key), ['c', 'a', 'b'])
 })

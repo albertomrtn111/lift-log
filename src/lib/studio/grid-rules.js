@@ -70,6 +70,39 @@ export function prepareSessions(sessions, today, pastLimit = STUDIO_PAST_SESSION
     }
 }
 
+/** Sesiones recientes que cuentan para saber qué bloques usa un cliente. */
+export const AUTO_COLLAPSE_SESSIONS = 4
+
+/**
+ * Bloques que se pliegan solos. Con historial, los que el cliente no ha usado en sus últimas sesiones
+ * ni tiene en las próximas; sin historial, los que nadie del espacio ha usado en cuatro semanas.
+ */
+export function autoCollapsedBlocks({ blockKeys, sessions, items, today, recentBlocks }) {
+    const live = sessions.filter(session => session.status !== 'cancelled' && session.status !== 'no_show')
+    const past = live.filter(session => session.session_date < today)
+    if (past.length === 0 && items.length === 0) {
+        const recent = new Set(recentBlocks)
+        return new Set(recent.size === 0 ? [] : blockKeys.filter(key => !recent.has(key)))
+    }
+    const considered = new Set([
+        ...past.slice(-AUTO_COLLAPSE_SESSIONS).map(session => session.id),
+        ...live.filter(session => session.session_date >= today).map(session => session.id),
+    ])
+    const used = new Set(items.filter(item => considered.has(item.session_id)).map(item => item.block_key))
+    return new Set(blockKeys.filter(key => !used.has(key)))
+}
+
+/** Orden propio de un cliente: primero lo que tiene orden y después el resto, como en el espacio. */
+export function orderBlocks(blocks, prefs) {
+    const order = new Map(prefs.filter(pref => pref.sort_order !== null).map(pref => [pref.block_key, pref.sort_order]))
+    if (order.size === 0) return blocks
+    const position = block => order.get(block.key) ?? Number.MAX_SAFE_INTEGER
+    return blocks
+        .map((block, index) => ({ block, index }))
+        .sort((a, b) => position(a.block) - position(b.block) || a.index - b.index)
+        .map(entry => entry.block)
+}
+
 /** Texto de una celda: «3×10», carga y lo demás. */
 export function cellSummary(item) {
     const volume = item.time_seconds

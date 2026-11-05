@@ -113,7 +113,7 @@ export function StudioMobileSession({
                             if (entry.type === 'section') {
                                 return (
                                     <li key={entry.section.id} className="px-1 pt-2 text-sm font-semibold uppercase tracking-wide text-primary">
-                                        {entry.section.title}
+                                        {entry.section.parent_title ? `${entry.section.parent_title} › ` : ''}{entry.section.title}
                                     </li>
                                 )
                             }

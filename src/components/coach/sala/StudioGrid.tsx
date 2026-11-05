@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronDown, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -23,12 +23,20 @@ import { defaultSessionId, initials } from '@/lib/studio/editor-rules'
 import {
     SESSION_STATUS_LABELS,
     STUDIO_PAST_SESSIONS,
+    autoCollapsedBlocks,
     buildGrid,
     cellSummary,
     formatShortDate,
+    orderBlocks,
     prepareSessions,
 } from '@/lib/studio/grid-rules'
-import { addItemsAction, setItemDoneAction, undoLastAction } from '@/lib/studio/session-actions'
+import {
+    addItemsAction,
+    setBlockCollapsedAction,
+    setBlockOrderAction,
+    setItemDoneAction,
+    undoLastAction,
+} from '@/lib/studio/session-actions'
 import { BLOCK_CATEGORY_LABELS } from '@/lib/training/exercise-catalog-rules'
 import { cn } from '@/lib/utils'
 
@@ -57,7 +65,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     const [category, setCategory] = useState<string | null>(null)
     const [onlyUsed, setOnlyUsed] = useState(false)
     const [zoom, setZoom] = useState(1)
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+    const [chosenCollapse, setChosenCollapse] = useState<Record<string, boolean>>({})
     const [panel, setPanel] = useState<Panel | null>(null)
     const isMobile = useIsMobile()
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
@@ -103,10 +111,28 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
         return data.items.filter(item => ids.has(item.session_id))
     }, [data.items, sessions])
 
+    const orderedBlocks = useMemo(() => orderBlocks(data.blocks, data.blockPrefs), [data.blocks, data.blockPrefs])
+
     const groups = useMemo(
-        () => buildGrid({ blocks: data.blocks, entries: data.entries, items: visibleItems, query, category, onlyUsed }),
-        [data.blocks, data.entries, visibleItems, query, category, onlyUsed]
+        () => buildGrid({ blocks: orderedBlocks, entries: data.entries, items: visibleItems, query, category, onlyUsed }),
+        [orderedBlocks, data.entries, visibleItems, query, category, onlyUsed]
     )
+
+    const autoCollapsed = useMemo(() => autoCollapsedBlocks({
+        blockKeys: data.blocks.map(block => block.key),
+        sessions: data.sessions,
+        items: data.items,
+        today,
+        recentBlocks: data.recentBlocks,
+    }), [data.blocks, data.sessions, data.items, today, data.recentBlocks])
+
+    // Lo elegido a mano manda; al buscar se abre todo para no esconder lo que se busca.
+    function isCollapsed(key: string) {
+        if (query.trim()) return false
+        return chosenCollapse[key]
+            ?? data.blockPrefs.find(pref => pref.block_key === key)?.collapsed
+            ?? autoCollapsed.has(key)
+    }
 
     const categories = useMemo(() => {
         const used = new Set(data.blocks.map(block => block.category))
@@ -198,11 +224,26 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     }
 
     function toggleBlock(key: string) {
-        setCollapsed(current => {
-            const next = new Set(current)
-            if (next.has(key)) next.delete(key)
-            else next.add(key)
-            return next
+        const collapsed = !isCollapsed(key)
+        setChosenCollapse(current => ({ ...current, [key]: collapsed }))
+        if (key === 'sin-bloque') return
+        void setBlockCollapsedAction(data.client.id, key, collapsed).then(result => {
+            if (!result.success) toast.error(result.error)
+        })
+    }
+
+    /** Sube o baja un bloque solo para este cliente. */
+    function moveBlock(key: string, direction: number) {
+        const keys: string[] = orderedBlocks.map((block: { key: string }) => block.key)
+        const from = keys.indexOf(key)
+        const to = from + direction
+        if (from < 0 || to < 0 || to >= keys.length) return
+        keys.splice(from, 1)
+        keys.splice(to, 0, key)
+        startMarking(async () => {
+            const result = await setBlockOrderAction(data.client.id, keys)
+            if (!result.success) return void toast.error(result.error)
+            router.refresh()
         })
     }
 
@@ -440,7 +481,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                     </tr>
                                 )}
                                 {groups.map(({ block, rows }) => {
-                                    const closed = collapsed.has(block.key)
+                                    const closed = isCollapsed(block.key)
                                     return (
                                         <Fragment key={block.key}>
                                             {block.groupTitle && (
@@ -452,16 +493,28 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                             )}
                                             <tr>
                                                 <th colSpan={sessions.length + 1} scope="colgroup" className="border-b bg-muted/60 p-0 text-left">
-                                                    <button
+                                                    <div className="sticky left-0 flex w-fit items-center gap-1">
+                                                        <button
                                                         type="button"
                                                         aria-expanded={!closed}
                                                         onClick={() => toggleBlock(block.key)}
-                                                        className="sticky left-0 flex min-h-8 items-center gap-1 px-2 font-semibold"
+                                                        className="flex min-h-8 items-center gap-1 px-2 font-semibold"
                                                     >
                                                         <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', closed && '-rotate-90')} />
                                                         {block.displayName}
                                                         <span className="font-normal text-muted-foreground">{rows.length}</span>
                                                     </button>
+                                                        {block.key !== 'sin-bloque' && (
+                                                            <>
+                                                                <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground" aria-label={`Subir ${block.displayName} para este cliente`} title="Solo para este cliente" disabled={isMarking} onClick={() => moveBlock(block.key, -1)}>
+                                                                    <ArrowUp className="h-3 w-3" />
+                                                                </button>
+                                                                <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground" aria-label={`Bajar ${block.displayName} para este cliente`} title="Solo para este cliente" disabled={isMarking} onClick={() => moveBlock(block.key, 1)}>
+                                                                    <ArrowDown className="h-3 w-3" />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </th>
                                             </tr>
                                             {!closed && rows.map((row: any) => (
