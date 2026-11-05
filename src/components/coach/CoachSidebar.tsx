@@ -21,6 +21,8 @@ import {
 import { useCallback, useState, useEffect } from 'react'
 import { LogoMark, SpaceLogo } from '@/components/brand/LogoMark'
 import { useSpaceBranding } from '@/components/brand/SpaceBrandingContext'
+import { WorkspaceSwitcher } from '@/components/coach/WorkspaceSwitcher'
+import type { Workspace } from '@/lib/auth/active-coach'
 import { Button } from '@/components/ui/button'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import {
@@ -91,7 +93,7 @@ const mobileSecondarySections: Array<{ title: string; items: NavItem[] }> = [
 
 const mobileSecondaryItems = mobileSecondarySections.flatMap(section => section.items)
 
-export function CoachSidebar() {
+export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
     const pathname = usePathname()
     const router = useRouter()
     const [loggingOut, setLoggingOut] = useState(false)
@@ -220,6 +222,11 @@ export function CoachSidebar() {
                         </div>
                         <CoachNotificationsBell className="ml-auto" />
                     </div>
+                    {workspaces.length > 1 && (
+                        <div className="border-b border-border p-3">
+                            <WorkspaceSwitcher workspaces={workspaces} />
+                        </div>
+                    )}
 
                     {/* Navigation - Scrollable Area */}
                     <div className="flex-1 overflow-y-auto py-4">
@@ -367,6 +374,7 @@ export function CoachSidebar() {
                         >
                             <SheetHeader className="pr-12 text-left">
                                 <SheetTitle>Más opciones</SheetTitle>
+                                {workspaces.length > 1 && <WorkspaceSwitcher workspaces={workspaces} />}
                                 <SheetDescription>
                                     Accede al resto de herramientas del portal de coach.
                                 </SheetDescription>

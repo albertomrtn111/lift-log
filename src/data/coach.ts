@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Coach, CoachMembership, CoachStats, UserRole } from '@/types/coach'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
+import { getActiveCoachId } from '@/lib/auth/active-coach'
 
 /**
  * Check if user has coach access (owner or coach role)
  */
 export async function getCoachMembership(userId: string): Promise<CoachMembership | null> {
+    const activeCoachId = await getActiveCoachId()
+    if (!activeCoachId) return null
+
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -13,8 +17,9 @@ export async function getCoachMembership(userId: string): Promise<CoachMembershi
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'active')
+        .eq('coach_id', activeCoachId)
         .in('role', COACH_AREA_ROLES)
-        .single()
+        .maybeSingle()
 
     if (error || !data) return null
     return data as CoachMembership

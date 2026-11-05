@@ -7,6 +7,7 @@ import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachWorkspaceInfo } from '@/lib/onboarding/coach-workspace'
 import { redirect } from 'next/navigation'
 import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
+import { getMyWorkspaces } from '@/lib/auth/active-coach'
 
 export const generateMetadata = spaceBrandingMetadata
 
@@ -33,7 +34,7 @@ export default async function CoachLayout({
             <CoachProvider>
                 <CoachNotificationsProvider>
                     <div className="coach-mobile-shell flex min-h-screen min-w-0 overflow-x-hidden bg-background pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] lg:px-0">
-                        <CoachSidebar />
+                        <CoachSidebar workspaces={await getMyWorkspaces()} />
                         <main className="coach-mobile-main min-w-0 flex-1 overflow-x-hidden pt-[var(--safe-area-top)] max-lg:[&>*>header.sticky]:top-[var(--safe-area-top)] lg:pl-64 lg:pt-0">
                             {children}
                         </main>

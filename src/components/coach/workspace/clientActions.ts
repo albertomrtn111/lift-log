@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 import { addWeeks, setDay, format, startOfWeek, addDays, isBefore, isAfter, parseISO } from 'date-fns'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
+import { getActiveCoachId } from '@/lib/auth/active-coach'
 
 /**
  * @deprecated Use TrainingProgramWizard Step 1 for program creation.
@@ -23,13 +24,18 @@ export async function createTrainingProgramClient(data: {
     }
 
     // Resolve real coach_id from memberships
+    const activeCoachId = await getActiveCoachId()
+    if (!activeCoachId) {
+        return { success: false, error: 'Cuenta sin asignación de entrenador o membresía activa.' }
+    }
+
     const { data: membership, error: memberError } = await supabase
         .from('coach_memberships')
         .select('coach_id')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
+        .eq('coach_id', activeCoachId)
         .in('role', COACH_AREA_ROLES)
-        .limit(1)
         .single()
 
     if (memberError || !membership) {

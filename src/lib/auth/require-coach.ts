@@ -19,8 +19,7 @@ export interface CoachAuthResult {
  * 1. Authenticates the user via supabase.auth.getUser()
  * 2. If `coachIdFromClient` is provided, validates the user has an active
  *    membership for that specific coach.
- * 3. If not provided, falls back to the user's first active membership
- *    (single-coach convenience).
+ * 3. If not provided, uses the workspace the user has chosen (active_coach_id).
  * 4. Throws if no valid membership exists — never creates coaches or
  *    deduces from role='owner'.
  *
@@ -59,22 +58,29 @@ export async function requireActiveCoachId(
 
         coachId = membership.coach_id
     } else {
-        // Fallback: grab the first active membership (single-coach scenario)
-        const { data: memberships, error: fetchError } = await supabase
-            .from('coach_memberships')
-            .select('coach_id')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
-            .order('created_at', { ascending: true })
-            .limit(1)
+        // Sin espacio indicado: el que el usuario tiene elegido. Si no tiene ninguno de
+        // equipo, la primera membresía activa, como hasta ahora.
+        const { data: activeCoachId } = await supabase.rpc('active_coach_id')
 
-        if (fetchError || !memberships?.length) {
-            throw new Error(
-                'No tienes ninguna membresía de coach activa.'
-            )
+        if (activeCoachId) {
+            coachId = activeCoachId as string
+        } else {
+            const { data: memberships, error: fetchError } = await supabase
+                .from('coach_memberships')
+                .select('coach_id')
+                .eq('user_id', user.id)
+                .eq('status', 'active')
+                .order('created_at', { ascending: true })
+                .limit(1)
+
+            if (fetchError || !memberships?.length) {
+                throw new Error(
+                    'No tienes ninguna membresía de coach activa.'
+                )
+            }
+
+            coachId = memberships[0].coach_id
         }
-
-        coachId = memberships[0].coach_id
     }
 
     return { supabase, coachId, userId: user.id }

@@ -249,7 +249,9 @@ async function getSettingsProfileData() {
         coachId
             ? supabase.from('coaches').select('*').eq('id', coachId).single()
             : Promise.resolve({ data: null }),
-        supabase.from('coach_memberships').select('role, status').eq('user_id', user.id).eq('status', 'active').single(),
+        coachId
+            ? supabase.from('coach_memberships').select('role, status').eq('user_id', user.id).eq('coach_id', coachId).eq('status', 'active').maybeSingle()
+            : Promise.resolve({ data: null }),
         coachId
             ? supabase.from('clients').select('*', { count: 'exact', head: true }).eq('coach_id', coachId).eq('status', 'active')
             : Promise.resolve({ count: 0 }),
