@@ -409,3 +409,35 @@ export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): 
     const { subject, html } = buildAthleteInviteEmail(params)
     return send({ to: params.to, subject, html }, params.coachId)
 }
+
+/** Email de invitación al equipo de un espacio. */
+export interface TeamInviteEmailParams {
+    to: string
+    inviterName: string
+    spaceName: string
+    roleLabel: string
+    accessUrl: string
+    coachId?: string
+}
+
+export function buildTeamInviteEmail(params: TeamInviteEmailParams): { subject: string; html: string } {
+    const inviter = escapeInviteText(params.inviterName.trim())
+    const space = escapeInviteText(params.spaceName.trim())
+    const role = escapeInviteText(params.roleLabel)
+
+    const body = `
+        <p>Hola:</p>
+        <p>${inviter} te ha invitado a unirte a <strong>${space}</strong> en NexTrain como <strong>${role}</strong>.</p>
+        <p>Abre el enlace para aceptar. Caduca en 7 días.</p>
+        <p style="font-size:13px;color:#6b7280;">Si no esperabas esta invitación, puedes ignorar este email.</p>`
+
+    return {
+        subject: `${params.inviterName.trim()} te ha invitado a ${params.spaceName.trim()} en NexTrain`,
+        html: layout('Invitación al equipo', body, 'Aceptar la invitación', params.accessUrl),
+    }
+}
+
+export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promise<EmailResult> {
+    const { subject, html } = buildTeamInviteEmail(params)
+    return send({ to: params.to, subject, html }, params.coachId)
+}

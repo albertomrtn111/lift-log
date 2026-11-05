@@ -31,10 +31,11 @@ import { EmailSettingsPanel } from '@/components/coach/settings/EmailSettingsPan
 import { NotificationSettingsPanel } from '@/components/coach/settings/NotificationSettingsPanel'
 import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUploader'
 import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
+import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -51,6 +52,12 @@ const SETTINGS_TABS: Array<{
         label: 'Perfil',
         description: 'Cuenta, atletas y perfil IA',
         icon: User,
+    },
+    {
+        id: 'equipo',
+        label: 'Equipo',
+        description: 'Invita a otros profesionales',
+        icon: Users,
     },
     {
         id: 'email',
@@ -170,6 +177,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
 
                     <main className="min-w-0">
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
+                        {activeTab === 'equipo' && <TeamSettingsPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
                         {activeTab === 'asistente-ia' && <McpSettingsPanel serverUrl={getMcpServerUrl()} />}
@@ -230,7 +238,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab?: string): SettingsTab {
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
 
