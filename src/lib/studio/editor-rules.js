@@ -352,6 +352,16 @@ export function sessionDiff(mine, theirs, names = {}) {
     ]
 }
 
+/** Sesión que se abre en el móvil: la de hoy, si no la próxima, y si no la última. */
+export function defaultSessionId(sessions, today) {
+    const live = sessions.filter(session => session.status !== 'cancelled' && session.status !== 'no_show')
+    const pick = live.find(session => session.session_date === today)
+        ?? live.find(session => session.session_date > today)
+        ?? live[live.length - 1]
+        ?? sessions[sessions.length - 1]
+    return pick?.id ?? null
+}
+
 /** Quién más está mirando, una vez por persona y sin contarme a mí. Manda la pestaña con sesión abierta. */
 export function viewersFromPresence(state, myUserId) {
     const people = new Map()

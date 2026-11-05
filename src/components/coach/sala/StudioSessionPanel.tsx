@@ -16,6 +16,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { StudioConflict } from '@/components/coach/sala/StudioConflict'
+import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -181,7 +182,7 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
 
     return (
         <Sheet open onOpenChange={open => { if (!open) onClose() }}>
-            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md" onOpenAutoFocus={keepKeyboardClosed}>
                 <SheetHeader className="border-b p-4 pr-10 text-left">
                     <SheetTitle className="text-base">{source ? 'Duplicar sesión' : 'Nueva sesión'}</SheetTitle>
                     <SheetDescription>{data.client.fullName}</SheetDescription>
@@ -255,7 +256,8 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
         [data.routines, data.client.id]
     )
     const routine = routines.find(entry => entry.id === routineId) ?? null
-    const canPaste = clip?.kind === 'session' && clip.fromSessionId !== session.id
+    // En la cuadrícula una celda se pega tocando otra celda; en el móvil, desde aquí.
+    const canPaste = clip !== null && (clip.kind === 'cell' || clip.fromSessionId !== session.id)
 
     const latest = useMemo(() => sessionToForm(session), [session])
     // Solo cuenta una versión más nueva: tras guardar, la mía llega antes que los datos recargados.
@@ -326,8 +328,9 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
     }
 
     function paste() {
-        if (clip?.kind !== 'session') return
-        run(() => addItemsAction(session.id, clip.items.map(item => clipItemFields(item)), { origin: 'copy' }), onPasted)
+        if (!clip) return
+        const items = clip.kind === 'cell' ? [clip.item] : clip.items
+        run(() => addItemsAction(session.id, items.map(item => clipItemFields(item)), { origin: 'copy' }), onPasted)
     }
 
     function saveAsTemplate() {
@@ -353,7 +356,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
 
     return (
         <Sheet open onOpenChange={open => { if (!open) onClose() }}>
-            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md" onOpenAutoFocus={keepKeyboardClosed}>
                 <SheetHeader className="border-b p-4 pr-10 text-left">
                     <SheetTitle className="text-base">{session.name || 'Sesión'} · {formatShortDate(session.session_date)}</SheetTitle>
                     <SheetDescription>{data.client.fullName}</SheetDescription>

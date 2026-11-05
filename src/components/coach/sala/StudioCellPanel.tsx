@@ -15,6 +15,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { StudioConflict } from '@/components/coach/sala/StudioConflict'
+import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -194,7 +195,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
 
     return (
         <Sheet open onOpenChange={open => { if (!open) onClose() }}>
-            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md" onOpenAutoFocus={keepKeyboardClosed}>
                 <SheetHeader className="border-b p-4 pr-10 text-left">
                     <SheetTitle className="text-base">{exerciseName}</SheetTitle>
                     <SheetDescription>

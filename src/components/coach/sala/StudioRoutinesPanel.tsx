@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { StudioExerciseSearch } from '@/components/coach/sala/StudioExerciseSearch'
+import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,7 +93,7 @@ export function StudioRoutinesPanel({ data, onClose }: { data: StudioGridData; o
 
     return (
         <Sheet open onOpenChange={open => { if (!open) onClose() }}>
-            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md" onOpenAutoFocus={keepKeyboardClosed}>
                 <SheetHeader className="border-b p-4 pr-10 text-left">
                     <SheetTitle className="text-base">Rutinas</SheetTitle>
                     <SheetDescription>Paquetes de ejercicios para añadir de una vez a una sesión.</SheetDescription>
