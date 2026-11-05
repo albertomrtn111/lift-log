@@ -134,7 +134,11 @@ async function syncConnection(db: any, connection: Row, kind: 'quick' | 'full') 
     updated_at: new Date().toISOString(),
   }).eq('id', connection.id)
 
-  return { appointments: appointments.length, removed: gone.length, incomplete }
+  // De las citas a las sesiones: las reglas viven en la base de datos, junto a los datos.
+  const applied = await db.rpc('agenda_apply', { p_coach_id: coachId })
+  if (applied.error) throw new Error('No se han podido aplicar las citas a las sesiones.')
+
+  return { appointments: appointments.length, removed: gone.length, incomplete, applied: applied.data }
 }
 
 Deno.serve(async (request) => {
