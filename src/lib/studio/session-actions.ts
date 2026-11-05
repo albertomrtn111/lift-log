@@ -17,6 +17,23 @@ export interface StudioTemplateOption {
     days: { id: string; name: string; items: Record<string, unknown>[]; skipped: number }[]
 }
 
+export interface StudioInjury {
+    id: string
+    region: string
+    structure: string | null
+    detail: string | null
+    occurred: string | null
+    status: string
+    version: number
+    updated_by: string | null
+    updated_at: string
+}
+
+export interface StudioClientFile {
+    injuries: StudioInjury[]
+    note: { note: string; version: number; updated_by: string | null; updated_at: string } | null
+}
+
 export interface StudioSetRow {
     set_index: number
     load_kg: number | null
@@ -388,6 +405,55 @@ export async function setSectionParentAction(sectionId: string, parentTitle: str
     const { error } = await supabase.rpc('studio_set_section_parent', {
         p_section_id: sectionId,
         p_parent_title: parentTitle,
+    })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function getClientFileAction(clientId: string): Promise<StudioResult<StudioClientFile>> {
+    const supabase = await createClient()
+    const [injuries, note] = await Promise.all([
+        supabase
+            .from('client_injuries')
+            .select('id, region, structure, detail, occurred, status, version, updated_by, updated_at')
+            .eq('client_id', clientId),
+        supabase
+            .from('client_notes_relevant')
+            .select('note, version, updated_by, updated_at')
+            .eq('client_id', clientId)
+            .maybeSingle(),
+    ])
+    if (injuries.error || note.error) return failure(injuries.error ?? note.error)
+    return { success: true, data: { injuries: (injuries.data ?? []) as StudioInjury[], note: note.data } }
+}
+
+export async function saveInjuryAction(
+    clientId: string,
+    injuryId: string | null,
+    version: number | null,
+    fields: Record<string, unknown>
+): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_save_injury', {
+        p_client_id: clientId,
+        p_injury_id: injuryId,
+        p_version: version,
+        p_fields: fields,
+    })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function deleteInjuryAction(injuryId: string, version: number): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_delete_injury', { p_injury_id: injuryId, p_version: version })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function saveRelevantNoteAction(clientId: string, version: number | null, note: string): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_save_relevant_note', {
+        p_client_id: clientId,
+        p_version: version,
+        p_note: note,
     })
     return error ? failure(error) : { success: true, data: undefined }
 }
