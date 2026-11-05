@@ -29,7 +29,7 @@ import {
     formFromPrevious,
     itemToForm,
     libraryDefaults,
-    previousItem,
+    previousByVariant,
     setRows,
     setsFields,
     timeAgo,
@@ -126,7 +126,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
     }, [item, onClose])
 
     const previous = useMemo(
-        () => previousItem(data.sessions, data.items, sessionId, catalogExerciseId),
+        () => previousByVariant(data.sessions, data.items, sessionId, catalogExerciseId),
         [data.sessions, data.items, sessionId, catalogExerciseId]
     )
 
@@ -214,23 +214,27 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                         />
                     )}
 
-                    {previous && (
-                        <div className="flex items-center justify-between gap-2 rounded-md bg-muted/60 p-2 text-sm">
+                    {previous.map(({ session: earlier, item: earlierItem, variant }) => (
+                        <div key={earlier.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/60 p-2 text-sm">
                             <span className="min-w-0">
-                                <span className="text-muted-foreground">Sesión anterior ({formatShortDate(previous.session.session_date)}): </span>
-                                <span className="font-medium">{previousText(previous.item)}</span>
+                                <span className="text-muted-foreground">
+                                    {previous.length > 1 || variant
+                                        ? `Última vez ${variant ? `con ${variant}` : 'sin variante'}`
+                                        : 'Sesión anterior'} ({formatShortDate(earlier.session_date)}):{' '}
+                                </span>
+                                <span className="font-medium">{previousText(earlierItem)}</span>
                             </span>
                             <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 className="shrink-0"
-                                onClick={() => setForm(formFromPrevious(form, previous.item))}
+                                onClick={() => setForm(formFromPrevious(form, earlierItem))}
                             >
                                 Usar
                             </Button>
                         </div>
-                    )}
+                    ))}
 
                     <div className="space-y-1.5">
                         <Label htmlFor="sala-tag">Material o variante</Label>

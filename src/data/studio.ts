@@ -38,7 +38,14 @@ export interface StudioSection {
     id: string
     session_id: string
     title: string
+    parent_title: string | null
     sort_order: number
+}
+
+export interface StudioBlockPref {
+    block_key: string
+    collapsed: boolean | null
+    sort_order: number | null
 }
 
 export interface StudioItem {
@@ -119,6 +126,9 @@ export interface StudioGridData {
     tags: string[]
     routines: StudioRoutine[]
     requests: StudioRequest[]
+    blockPrefs: StudioBlockPref[]
+    /** Bloques usados en el espacio en las últimas cuatro semanas. */
+    recentBlocks: string[]
 }
 
 /** Clientes activos del espacio, con quién tiene sesión hoy. */
@@ -171,7 +181,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         .maybeSingle()
     if (!client) return null
 
-    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }] = await Promise.all([
+    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }] = await Promise.all([
         supabase
             .from('studio_sessions')
             .select('id, session_date, start_time, status, name, sort_order, professional_id, version, duration_min, wellness_sleep, wellness_fatigue, wellness_stress, wellness_soreness, wellness_score, arrival_note, rpe')
@@ -190,6 +200,8 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
             .select('id, session_id, from_user, to_user, title, message, status, done_by')
             .eq('client_id', clientId)
             .order('created_at'),
+        supabase.from('client_block_prefs').select('block_key, collapsed, sort_order').eq('client_id', clientId),
+        supabase.rpc('studio_recent_blocks', { p_coach_id: coachId }),
     ])
 
     const sessionIds = (sessions ?? []).map(session => session.id)
@@ -202,7 +214,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
                 .order('sort_order', { ascending: true }),
             supabase
                 .from('studio_session_sections')
-                .select('id, session_id, title, sort_order')
+                .select('id, session_id, title, parent_title, sort_order')
                 .in('session_id', sessionIds)
                 .order('sort_order', { ascending: true }),
         ])
@@ -245,5 +257,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
                 .sort((a, b) => a.sort_order - b.sort_order),
         })),
         requests: (requests ?? []) as StudioRequest[],
+        blockPrefs: (blockPrefs ?? []) as StudioBlockPref[],
+        recentBlocks: (recentBlocks ?? []) as string[],
     }
 }

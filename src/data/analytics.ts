@@ -83,6 +83,28 @@ async function loadSets(supabase: Supabase, coachId: string, since: string, acti
     return [...byId.values()]
 }
 
+/** Series hechas en sala desde `since`. Son del ejercicio del catálogo, sin programa. */
+async function loadStudioSets(supabase: Supabase, coachId: string, since: string) {
+    // Los espacios sin sala no tienen nada que leer, y a ellos esto no les debe costar ni fallar.
+    const { data: enabled } = await supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'studio_mode' })
+    if (!enabled) return []
+
+    const rows = await fetchAll<any>((from, to) => supabase
+        .from('v_strength_set_facts')
+        .select('set_id, client_id, catalog_exercise_id, exercise_name, performed_at, load_kg, reps, rir')
+        .eq('coach_id', coachId)
+        .eq('source', 'studio')
+        .gte('performed_at', `${since}T00:00:00Z`)
+        .order('set_id')
+        .range(from, to))
+    const ids = [...new Set(rows.map(row => row.catalog_exercise_id as string))]
+    const { data: catalog } = ids.length > 0
+        ? await supabase.from('exercise_catalog').select('id, primary_group').in('id', ids)
+        : { data: [] }
+    const groupById = new Map((catalog ?? []).map(entry => [entry.id as string, entry.primary_group as string]))
+    return rows.map(row => ({ ...row, group: groupById.get(row.catalog_exercise_id) ?? null }))
+}
+
 /**
  * Cardio hecho: sesiones de NexTrain (marcadas o con datos) y actividades de
  * Strava que no estén ya contadas a través de una sesión, como en Temporada.
@@ -254,6 +276,29 @@ export async function loadAnalyticsFacts(coachId: string, since: string): Promis
     const exerciseOptions = new Map<string, { key: string; name: string; group: string | null }>()
     for (const exercise of exercises) {
         if (!exerciseOptions.has(exercise.exerciseKey)) exerciseOptions.set(exercise.exerciseKey, { key: exercise.exerciseKey, name: exercise.name, group: exercise.group })
+    }
+
+    // Lo hecho en sala cuenta igual que lo online. Las series por tiempo no tienen repeticiones.
+    for (const row of await loadStudioSets(supabase, coachId, since)) {
+        if (row.reps == null) continue
+        const weightKg = Number(row.load_kg ?? 0)
+        const reps = Number(row.reps)
+        strength.push({
+            a: row.client_id as string,
+            d: toDay.format(new Date(row.performed_at)),
+            x: row.catalog_exercise_id as string,
+            g: row.group,
+            v: row.group ? countsForVolume.get(row.group) ?? true : false,
+            kg: weightKg,
+            reps,
+            rir: row.rir != null ? Number(row.rir) : null,
+            prir: null,
+            e1rm: weightKg > 0 && reps >= 1 && reps <= E1RM_MAX_REPS ? epley1RM({ weightKg, reps } as any) : null,
+            ton: weightKg * reps,
+        })
+        if (!exerciseOptions.has(row.catalog_exercise_id)) {
+            exerciseOptions.set(row.catalog_exercise_id, { key: row.catalog_exercise_id, name: row.exercise_name, group: row.group })
+        }
     }
 
     return {

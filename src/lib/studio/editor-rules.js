@@ -156,6 +156,24 @@ export function previousItem(sessions, items, sessionId, catalogExerciseId) {
     return null
 }
 
+function variantKey(item) {
+    return [...(item.tags ?? [])].map(tag => tag.trim().toLocaleLowerCase('es')).sort().join('|')
+}
+
+/** La última vez de cada variante, la más reciente primero: la evolución solo compara con la misma. */
+export function previousByVariant(sessions, items, sessionId, catalogExerciseId, limit = 4) {
+    const seen = new Set()
+    const found = []
+    for (const session of olderSessions(sessions, sessionId)) {
+        const item = items.find(entry => entry.session_id === session.id && entry.catalog_exercise_id === catalogExerciseId)
+        if (!item || seen.has(variantKey(item))) continue
+        seen.add(variantKey(item))
+        found.push({ session, item, variant: (item.tags ?? []).join(', ') })
+        if (found.length === limit) break
+    }
+    return found
+}
+
 /** Nota de la sesión anterior que tiene nota, para comparar. */
 export function previousWellness(sessions, sessionId) {
     const session = olderSessions(sessions, sessionId).find(entry => entry.wellness_score !== null && entry.wellness_score !== undefined)

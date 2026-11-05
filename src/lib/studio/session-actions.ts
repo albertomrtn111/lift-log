@@ -366,3 +366,28 @@ export async function saveSessionAsTemplateAction(
     })
     return error ? failure(error) : { success: true, data: undefined }
 }
+
+export async function setBlockCollapsedAction(clientId: string, blockKey: string, collapsed: boolean): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_set_block_collapsed', {
+        p_client_id: clientId,
+        p_block_key: blockKey,
+        p_collapsed: collapsed,
+    })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function setBlockOrderAction(clientId: string, blockKeys: string[]): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_set_block_order', { p_client_id: clientId, p_block_keys: blockKeys })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function setSectionParentAction(sectionId: string, parentTitle: string): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_set_section_parent', {
+        p_section_id: sectionId,
+        p_parent_title: parentTitle,
+    })
+    return error ? failure(error) : { success: true, data: undefined }
+}

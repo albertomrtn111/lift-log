@@ -55,6 +55,7 @@ import {
     getStudioTemplatesAction,
     saveSectionAction,
     saveSessionAsTemplateAction,
+    setSectionParentAction,
     updateSessionAction,
     type StudioTemplateOption,
 } from '@/lib/studio/session-actions'
@@ -427,7 +428,20 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                                 if (entry.type === 'section') {
                                     const section = entry.section
                                     return (
-                                        <li key={section.id} className="flex items-center gap-1 pt-2">
+                                        <li key={section.id} className="space-y-1 pt-2">
+                                            <Input
+                                                key={section.parent_title ?? ''}
+                                                defaultValue={section.parent_title ?? ''}
+                                                maxLength={80}
+                                                aria-label={`Título superior de ${section.title}`}
+                                                placeholder="Título superior (opcional)"
+                                                className="h-7 text-xs uppercase"
+                                                onBlur={event => {
+                                                    const parent = event.target.value.trim()
+                                                    if (parent !== (section.parent_title ?? '')) run(() => setSectionParentAction(section.id, parent))
+                                                }}
+                                            />
+                                            <div className="flex items-center gap-1">
                                             <Input
                                                 key={section.title}
                                                 defaultValue={section.title}
@@ -452,6 +466,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                                             >
                                                 <X className="h-3.5 w-3.5" />
                                             </Button>
+                                            </div>
                                         </li>
                                     )
                                 }

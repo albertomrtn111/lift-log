@@ -11,6 +11,7 @@ import {
     listLayout,
     moveEntry,
     parseNumber,
+    previousByVariant,
     previousItem,
     previousWellness,
     sessionDiff,
@@ -244,4 +245,16 @@ test('el móvil abre la sesión de hoy, si no la próxima, y si no la última', 
     assert.equal(defaultSessionId([past, cancelledToday], '2026-11-05'), 'a')
     assert.equal(defaultSessionId([cancelledToday], '2026-11-05'), 'b')
     assert.equal(defaultSessionId([], '2026-11-05'), null)
+})
+
+test('la evolución propone la última vez de cada variante', () => {
+    const sessions = [session('a', '2026-11-01'), session('b', '2026-11-02'), session('c', '2026-11-03'), session('d', '2026-11-04')]
+    const items = [
+        { session_id: 'a', catalog_exercise_id: 'x', tags: ['Barra'] },
+        { session_id: 'b', catalog_exercise_id: 'x', tags: [] },
+        { session_id: 'c', catalog_exercise_id: 'x', tags: ['barra'] },
+    ]
+    const found = previousByVariant(sessions, items, 'd', 'x')
+    assert.deepEqual(found.map(entry => entry.session.id), ['c', 'b'])
+    assert.deepEqual(found.map(entry => entry.variant), ['barra', ''])
 })
