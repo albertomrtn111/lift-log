@@ -43,3 +43,22 @@ export function LogoAppIcon({ className }: { className?: string }) {
         </span>
     )
 }
+
+/** Logo de un espacio: la versión oscura en modo oscuro, si la tiene. */
+export function SpaceLogo({ lightUrl, darkUrl, alt, className }: {
+    lightUrl: string
+    darkUrl?: string | null
+    alt: string
+    className?: string
+}) {
+    return (
+        <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={lightUrl} alt={alt} className={cn('w-auto object-contain', darkUrl && 'dark:hidden', className)} />
+            {darkUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={darkUrl} alt={alt} className={cn('hidden w-auto object-contain dark:block', className)} />
+            )}
+        </>
+    )
+}

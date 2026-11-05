@@ -15,6 +15,7 @@ import {
     Mail,
     MessageSquare,
     Paintbrush,
+    Palette,
     Settings2,
     Sparkles,
     User,
@@ -35,10 +36,11 @@ import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { CatalogDuplicatesPanel } from '@/components/coach/settings/CatalogDuplicatesPanel'
 import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
+import { BrandingSettingsPanel } from '@/components/coach/settings/BrandingSettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -75,6 +77,12 @@ const SETTINGS_TABS: Array<{
         label: 'Biblioteca',
         description: 'Tus ejercicios y bloques',
         icon: Dumbbell,
+    },
+    {
+        id: 'look-feel',
+        label: 'Look & feel',
+        description: 'Logo, colores y nombre',
+        icon: Palette,
     },
     {
         id: 'email',
@@ -199,6 +207,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'equipo' && <TeamSettingsPanel />}
                         {activeTab === 'biblioteca' && <LibrarySettingsPanel />}
+                        {activeTab === 'look-feel' && <BrandingSettingsPanel />}
                         {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
@@ -261,7 +270,7 @@ async function getSettingsProfileData() {
 
 function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean): SettingsTab {
     if (tab === 'catalogo' && isPlatformAdmin) return 'catalogo'
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'look-feel' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
 

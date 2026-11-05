@@ -19,7 +19,8 @@ import {
     LineChart,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
-import { LogoMark } from '@/components/brand/LogoMark'
+import { LogoMark, SpaceLogo } from '@/components/brand/LogoMark'
+import { useSpaceBranding } from '@/components/brand/SpaceBrandingContext'
 import { Button } from '@/components/ui/button'
 import { ModeSwitch } from '@/components/layout/ModeSwitch'
 import {
@@ -133,6 +134,7 @@ export function CoachSidebar() {
 
     // Get user context from cached provider
     const { coach } = useCoachContext()
+    const brand = useSpaceBranding()
     const userRole = coach?.role ?? 'coach'
     const coachId = coach?.coachId ?? null
 
@@ -198,11 +200,22 @@ export function CoachSidebar() {
                 <div className="flex h-full flex-col">
                     {/* Logo */}
                     <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
-                        <LogoMark className="h-8 text-foreground" />
+                        {brand?.logoLightUrl ? (
+                            <SpaceLogo
+                                lightUrl={brand.logoLightUrl}
+                                darkUrl={brand.logoDarkUrl}
+                                alt=""
+                                className="h-8 max-w-[96px] shrink-0"
+                            />
+                        ) : (
+                            <LogoMark className="h-8 text-foreground" />
+                        )}
                         <div className="min-w-0 leading-none">
-                            <h1 className="text-[1.0625rem] font-bold tracking-tight text-foreground">NexTrain</h1>
+                            <h1 className="truncate text-[1.0625rem] font-bold tracking-tight text-foreground">
+                                {brand?.displayName ?? 'NexTrain'}
+                            </h1>
                             <p className="mt-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground/90">
-                                Coach Portal
+                                {brand ? 'con NexTrain' : 'Coach Portal'}
                             </p>
                         </div>
                         <CoachNotificationsBell className="ml-auto" />
