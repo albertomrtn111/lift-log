@@ -127,6 +127,7 @@ export interface StudioGridData {
     routines: StudioRoutine[]
     requests: StudioRequest[]
     blockPrefs: StudioBlockPref[]
+    activeInjuries: number
     /** Bloques usados en el espacio en las últimas cuatro semanas. */
     recentBlocks: string[]
 }
@@ -181,7 +182,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         .maybeSingle()
     if (!client) return null
 
-    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }] = await Promise.all([
+    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }, { count: activeInjuries }] = await Promise.all([
         supabase
             .from('studio_sessions')
             .select('id, session_date, start_time, status, name, sort_order, professional_id, version, duration_min, wellness_sleep, wellness_fatigue, wellness_stress, wellness_soreness, wellness_score, arrival_note, rpe')
@@ -202,6 +203,11 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
             .order('created_at'),
         supabase.from('client_block_prefs').select('block_key, collapsed, sort_order').eq('client_id', clientId),
         supabase.rpc('studio_recent_blocks', { p_coach_id: coachId }),
+        supabase
+            .from('client_injuries')
+            .select('id', { count: 'exact', head: true })
+            .eq('client_id', clientId)
+            .eq('status', 'active'),
     ])
 
     const sessionIds = (sessions ?? []).map(session => session.id)
@@ -258,6 +264,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         })),
         requests: (requests ?? []) as StudioRequest[],
         blockPrefs: (blockPrefs ?? []) as StudioBlockPref[],
+        activeInjuries: activeInjuries ?? 0,
         recentBlocks: (recentBlocks ?? []) as string[],
     }
 }

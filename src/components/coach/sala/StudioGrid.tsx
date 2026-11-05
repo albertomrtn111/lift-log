@@ -3,13 +3,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ChevronDown, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ClipboardList, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
+import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFilePanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
@@ -53,6 +54,7 @@ type Panel =
     | { type: 'cell'; target: CellTarget }
     | { type: 'requests'; sessionId: string }
     | { type: 'routines' }
+    | { type: 'file' }
 
 export function StudioGrid({ data, today, currentUserId, olderPages }: {
     data: StudioGridData
@@ -250,7 +252,17 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     return (
         <section className="min-w-0 space-y-3" aria-label={`Sesiones de ${data.client.fullName}`}>
             <div>
-                <h2 className="text-lg font-semibold">{data.client.fullName}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">{data.client.fullName}</h2>
+                    <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'file' })}>
+                        <ClipboardList className="mr-1 h-3.5 w-3.5" /> Ficha
+                    </Button>
+                    {data.activeInjuries > 0 && (
+                        <Badge variant="destructive" className="px-2 py-0.5 text-xs">
+                            {data.activeInjuries} {data.activeInjuries === 1 ? 'lesión activa' : 'lesiones activas'}
+                        </Badge>
+                    )}
+                </div>
                 {data.client.notes && (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{data.client.notes}</p>
                 )}
@@ -644,6 +656,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 <StudioRequestPanel data={data} session={openSession} onClose={() => setPanel(null)} />
             )}
             {panel?.type === 'routines' && <StudioRoutinesPanel data={data} onClose={() => setPanel(null)} />}
+            {panel?.type === 'file' && <StudioClientFilePanel data={data} onClose={() => setPanel(null)} />}
             {panel?.type === 'cell' && (
                 <StudioCellPanel
                     key={'itemId' in panel.target ? panel.target.itemId : `${panel.target.sessionId}:${panel.target.catalogExerciseId}`}
