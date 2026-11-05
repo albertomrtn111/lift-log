@@ -233,6 +233,6 @@ export const config = {
          * - assets / public files (svg, png, jpg, etc)
          * - archivos de verificación de Google Search Console (googleXXXX.html)
          */
-        "/((?!_next/static|_next/image|favicon.ico|robots.txt|sw\\.js$|manifest\\.json$|api|auth|oauth|login|signup|forgot-password|set-password|mode|no-access|forms|google[0-9a-f]+\\.html$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+        "/((?!_next/static|_next/image|favicon.ico|robots.txt|sw\\.js$|manifest\\.json$|api|auth|oauth|login|signup|forgot-password|set-password|mode|no-access|forms|informe/|google[0-9a-f]+\\.html$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     ],
 }

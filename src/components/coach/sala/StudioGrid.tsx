@@ -13,6 +13,7 @@ import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/Studio
 import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFilePanel'
 import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
+import { StudioReportPanel } from '@/components/coach/sala/StudioReportPanel'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
 import { StudioNewSessionPanel, StudioSessionPanel } from '@/components/coach/sala/StudioSessionPanel'
@@ -58,6 +59,7 @@ type Panel =
     | { type: 'routines' }
     | { type: 'file' }
     | { type: 'group' }
+    | { type: 'report'; sessionId: string }
 
 export function StudioGrid({ data, today, currentUserId, olderPages, clients, allGroups }: {
     data: StudioGridData
@@ -153,7 +155,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
         ? selectedSessionId
         : defaultSessionId(sessions, today)
     const routineNames = useMemo(() => routinesBySession(data.items, data.routines), [data.items, data.routines])
-    const openSession = panel && (panel.type === 'duplicate' || panel.type === 'session' || panel.type === 'requests')
+    const openSession = panel && (panel.type === 'duplicate' || panel.type === 'session' || panel.type === 'requests' || panel.type === 'report')
         ? data.sessions.find(session => session.id === panel.sessionId) ?? null
         : null
 
@@ -689,7 +691,11 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                         toast.success('Sesión copiada')
                     }}
                     onPasted={() => setClip(null)}
+                    onReport={() => setPanel({ type: 'report', sessionId: openSession.id })}
                 />
+            )}
+            {panel?.type === 'report' && openSession && (
+                <StudioReportPanel data={data} session={openSession} onClose={() => setPanel(null)} />
             )}
             {panel?.type === 'requests' && openSession && (
                 <StudioRequestPanel data={data} session={openSession} onClose={() => setPanel(null)} />

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { StudioExerciseSearch } from '@/components/coach/sala/StudioExerciseSearch'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ClipboardPaste, Copy, CopyPlus, Loader2, Save, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ClipboardPaste, Copy, CopyPlus, FileText, Loader2, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,
@@ -230,7 +230,7 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
     )
 }
 
-export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, onDuplicate, onCopy, onPasted }: {
+export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, onDuplicate, onCopy, onPasted, onReport }: {
     data: StudioGridData
     session: StudioSession
     clip: StudioClip | null
@@ -239,6 +239,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
     onDuplicate: () => void
     onCopy: (entries: ReturnType<typeof sessionList>) => void
     onPasted: () => void
+    onReport: () => void
 }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -679,6 +680,9 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                     </section>
 
                     <div className="space-y-2 border-t pt-4">
+                        <Button type="button" variant="outline" className="w-full" disabled={isPending} onClick={onReport}>
+                            <FileText className="mr-2 h-4 w-4" /> Informe
+                        </Button>
                         {canPaste && (
                             <Button type="button" className="w-full" disabled={isPending} onClick={paste}>
                                 <ClipboardPaste className="mr-2 h-4 w-4" /> Pegar aquí: {clip.label}
