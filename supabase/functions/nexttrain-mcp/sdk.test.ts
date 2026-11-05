@@ -67,7 +67,7 @@ Deno.test('tools/list publishes an object outputSchema for every tool', async ()
   const withoutSchema = tools.filter((tool: any) => tool.outputSchema?.type !== 'object').map((tool: any) => tool.name)
   assert.deepEqual(withoutSchema, [])
   // Las herramientas de index.ts no se registran aquí; el resto debe estar completo.
-  const indexTools = ['who_am_i', 'get_client_overview', 'get_athlete_goal', 'set_athlete_goal', 'list_exercise_catalog', 'create_strength_program', 'create_coach_task']
+  const indexTools = ['who_am_i', 'get_client_overview', 'get_athlete_goal', 'set_athlete_goal', 'list_workspace_library', 'add_to_library', 'list_exercise_catalog', 'create_strength_program', 'create_coach_task']
   assert.equal(tools.length, Object.keys(outputSchemas).length - indexTools.length)
 })
 
