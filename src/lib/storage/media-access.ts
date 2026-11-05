@@ -56,13 +56,31 @@ export async function canAccessChatMedia(
     return !!data
 }
 
+/**
+ * Archivos de la sala. La carpeta del espacio es de todo el equipo que entrena; la de un
+ * cliente, de quien lo lleva y mientras siga su consentimiento de imagen.
+ */
+export async function canAccessStudioMedia(
+    supabase: SupabaseClient,
+    coachId: string,
+    folderId: string,
+): Promise<boolean> {
+    const { data, error } = await supabase.rpc('studio_can_use_media', { p_coach_id: coachId, p_folder_id: folderId })
+    if (error) {
+        console.error('[media-access] studio_can_use_media:', error.message)
+        return false
+    }
+    return data === true
+}
+
 export async function canAccessPrivateMedia(
     supabase: SupabaseClient,
     userId: string,
-    area: 'checkin-media' | 'chat-media',
+    area: 'checkin-media' | 'chat-media' | 'studio-media',
     coachId: string,
     clientId: string,
 ): Promise<boolean> {
+    if (area === 'studio-media') return canAccessStudioMedia(supabase, coachId, clientId)
     return area === 'checkin-media'
         ? canAccessCheckinMedia(supabase, userId, coachId, clientId)
         : canAccessChatMedia(supabase, userId, coachId, clientId)

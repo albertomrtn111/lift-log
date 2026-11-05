@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import type { StudioGridData, StudioItem } from '@/data/studio'
 import { sessionList } from '@/lib/studio/editor-rules'
 import { SESSION_STATUS_LABELS, cellSummary, formatShortDate } from '@/lib/studio/grid-rules'
+import { exercisesWithMedia } from '@/lib/studio/media-rules'
 import { cn } from '@/lib/utils'
 
 type GridSession = StudioGridData['sessions'][number] & { number: number | null; isToday: boolean }
@@ -37,6 +38,8 @@ export function StudioMobileSession({
             data.sections.filter(section => section.session_id === session.id)
         )
     }, [data.items, data.sections, session])
+
+    const withMedia = useMemo(() => exercisesWithMedia(data.media), [data.media])
 
     const pending = session
         ? data.requests.filter(request => request.session_id === session.id && request.status === 'pending').length
@@ -124,6 +127,7 @@ export function StudioMobileSession({
                                 <li key={item.id} className={cn('flex items-stretch gap-2 rounded-lg border p-2', done ? 'border-primary/40 bg-primary/10' : 'bg-card')}>
                                     <button type="button" className="min-h-14 min-w-0 flex-1 text-left" onClick={() => onOpenItem(item.id)}>
                                         <span className="block font-medium">{item.exercise_name}</span>
+                                        {withMedia.has(item.catalog_exercise_id) && <span className="block text-xs text-primary">▶ técnica</span>}
                                         <span className="block text-sm text-muted-foreground">
                                             {[summary.volume, summary.load, summary.details].filter(Boolean).join(' · ') || 'Sin valores'}
                                             {summary.nextLoad && <span className="ml-1 font-semibold text-primary">{summary.nextLoad}</span>}

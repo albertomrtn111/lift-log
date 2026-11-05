@@ -11,6 +11,7 @@ import {
   parsePrivateKey,
   privateMediaUrl,
   sanitizeFileName,
+  studioKey,
   withExtension,
 } from '../src/lib/storage/media-refs.js'
 
@@ -35,6 +36,17 @@ test('parsePrivateKey rejects invented or dangerous paths', () => {
   assert.equal(parsePrivateKey(`avatars/${COACH}/a.webp`), null)
   assert.equal(parsePrivateKey(`chat-media/${COACH}/${CLIENT}/a/b.webp`), null)
   assert.equal(parsePrivateKey(`checkin-media/${COACH}/${CLIENT}/${CHECKIN}/a b.webp`), null)
+})
+
+test('parsePrivateKey accepts room files in the room or client folder', () => {
+  const client = studioKey({ coachId: COACH, folderId: CLIENT, fileName: `${CHECKIN}.webp` })
+  assert.deepEqual(parsePrivateKey(client), {
+    area: 'studio-media', coachId: COACH, clientId: CLIENT, checkinId: null, fileName: `${CHECKIN}.webp`,
+  })
+  assert.equal(parsePrivateKey(studioKey({ coachId: COACH, folderId: COACH, fileName: 'a.webp' }))?.clientId, COACH)
+  assert.equal(parsePrivateKey(`studio-media/${COACH}/x/a.webp`), null)
+  assert.equal(parsePrivateKey(`studio-media/${COACH}/${CLIENT}/a/b.webp`), null)
+  assert.equal(parsePrivateKey(`studio-media/${COACH}/${CLIENT}/..`), null)
 })
 
 test('stored references tell R2 and Supabase apart', () => {

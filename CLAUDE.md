@@ -19,7 +19,7 @@ No hay staging: el `.env.local` apunta a la base de datos de producción. Lee `d
 Las fotos están en Cloudflare R2, no en Supabase Storage. No vuelvas a subir archivos a Supabase Storage. Detalles en `docs/almacenamiento-r2.md`.
 
 - **Subidas:** siempre por `POST /api/media/upload`. Comprueba permisos y convierte a WebP. Desde el cliente se llama con `uploadMedia` (`src/lib/media-upload.ts`).
-- **Check-ins y chat:** van al bucket privado y se sirven por `/api/media/{clave}`.
+- **Check-ins, chat e imágenes de sala:** van al bucket privado y se sirven por `/api/media/{clave}`.
 - **Fotos de perfil:** van al bucket público (`R2_PUBLIC_URL`).
 
 ## Notion: tareas

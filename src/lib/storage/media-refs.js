@@ -3,6 +3,7 @@
 // Las fotos privadas se guardan en el bucket privado de R2 con estas claves:
 //   checkin-media/{coachId}/{clientId}/{checkinId}/{archivo}
 //   chat-media/{coachId}/{clientId}/{archivo}
+//   studio-media/{coachId}/{clientId o coachId}/{archivo}  (con el coachId, es de toda la sala)
 // y las fotos de perfil, en el bucket público: avatars/{userId}/{archivo}.
 //
 // En la base de datos:
@@ -15,7 +16,7 @@ export const R2_BUCKET_MARKER = 'r2'
 export const R2_REF_PREFIX = 'r2:'
 
 /** Carpetas privadas de R2 y su bucket de Supabase equivalente */
-export const PRIVATE_AREAS = /** @type {const} */ (['checkin-media', 'chat-media'])
+export const PRIVATE_AREAS = /** @type {const} */ (['checkin-media', 'chat-media', 'studio-media'])
 export const AVATARS_AREA = 'avatars'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -52,7 +53,7 @@ export function withExtension(name, ext) {
  * pueda pedir «../» ni carpetas de otro coach con una ruta inventada.
  *
  * @param {string} key
- * @returns {{ area: 'checkin-media' | 'chat-media', coachId: string, clientId: string, checkinId: string | null, fileName: string } | null}
+ * @returns {{ area: 'checkin-media' | 'chat-media' | 'studio-media', coachId: string, clientId: string, checkinId: string | null, fileName: string } | null}
  */
 export function parsePrivateKey(key) {
   if (typeof key !== 'string') return null
@@ -64,7 +65,7 @@ export function parsePrivateKey(key) {
     if (!isUuid(checkinId) || !FILE_RE.test(fileName) || fileName.startsWith('.')) return null
     return { area, coachId, clientId, checkinId, fileName }
   }
-  if (area === 'chat-media' && parts.length === 4) {
+  if ((area === 'chat-media' || area === 'studio-media') && parts.length === 4) {
     const fileName = parts[3]
     if (!FILE_RE.test(fileName) || fileName.startsWith('.')) return null
     return { area, coachId, clientId, checkinId: null, fileName }
@@ -82,6 +83,11 @@ export function checkinKey({ coachId, clientId, checkinId, fileName }) {
 /** @param {{ coachId: string, clientId: string, fileName: string }} p */
 export function chatKey({ coachId, clientId, fileName }) {
   return `chat-media/${coachId}/${clientId}/${fileName}`
+}
+
+/** @param {{ coachId: string, folderId: string, fileName: string }} p */
+export function studioKey({ coachId, folderId, fileName }) {
+  return `studio-media/${coachId}/${folderId}/${fileName}`
 }
 
 /** @param {{ userId: string, fileName: string }} p */

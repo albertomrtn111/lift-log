@@ -15,6 +15,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { StudioConflict } from '@/components/coach/sala/StudioConflict'
+import { StudioTechnique } from '@/components/coach/sala/StudioTechnique'
 import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -253,6 +254,8 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                             </Button>
                         </div>
                     ))}
+
+                    <StudioTechnique data={data} item={item} catalogExerciseId={catalogExerciseId} exerciseName={exerciseName} />
 
                     <div className="space-y-1.5">
                         <Label htmlFor="sala-tag">Material o variante</Label>

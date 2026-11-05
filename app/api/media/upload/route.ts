@@ -12,9 +12,10 @@ import {
     checkinKey,
     isUuid,
     sanitizeFileName,
+    studioKey,
     withExtension,
 } from '@/lib/storage/media-refs'
-import { canAccessChatMedia, canAccessCheckinMedia } from '@/lib/storage/media-access'
+import { canAccessChatMedia, canAccessCheckinMedia, canAccessStudioMedia } from '@/lib/storage/media-access'
 import { deleteObject, privateBucket, publicBucket, putObject } from '@/lib/storage/r2'
 import { toWebp } from '@/lib/storage/webp'
 import { toBrandingPng } from '@/lib/storage/branding-image'
@@ -33,8 +34,9 @@ export const runtime = 'nodejs'
  * Si R2 no está configurado (o falta el bucket privado), el archivo se guarda en
  * Supabase Storage como antes, ya comprimido, para poder desplegar esto primero.
  *
- * Campos (multipart): kind = avatar | branding | checkin | chat, file, fileName,
- * coachId y clientId (checkin y chat), checkinId (checkin).
+ * Campos (multipart): kind = avatar | branding | checkin | chat | studio, file, fileName,
+ * coachId y clientId (checkin y chat), checkinId (checkin). En studio, coachId y un
+ * clientId opcional: sin él, la imagen es de toda la sala. Solo imágenes y solo en R2.
  */
 
 const MAX_INPUT_BYTES = {
@@ -42,6 +44,7 @@ const MAX_INPUT_BYTES = {
     branding: 5 * 1024 * 1024,
     checkin: 25 * 1024 * 1024,
     chat: 25 * 1024 * 1024, // límite del bucket chat-media
+    studio: 25 * 1024 * 1024,
 } as const
 
 type Kind = keyof typeof MAX_INPUT_BYTES
@@ -96,13 +99,13 @@ export async function POST(request: Request) {
             body = webp
             mime = 'image/webp'
             fileName = sanitizeFileName(withExtension(originalName, 'webp'))
-        } else if (kind === 'avatar' || !isWebDisplayable(originalMime)) {
+        } else if (kind === 'avatar' || kind === 'studio' || !isWebDisplayable(originalMime)) {
             // RAW (ProRAW del iPhone), HEIC fuera de Safari…: guardarlo dejaría una
             // foto que nadie puede ver, así que se explica por qué no se puede subir
             return fail(415, photoUploadProblem(originalMime, originalName, file.size)
                 ?? 'Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
         }
-    } else if (kind === 'avatar') {
+    } else if (kind === 'avatar' || kind === 'studio') {
         return fail(415, 'Este formato de imagen no se puede usar. Prueba con una foto JPG o PNG.')
     }
 
@@ -111,6 +114,26 @@ export async function POST(request: Request) {
 
         const coachId = String(form.get('coachId') ?? '')
         const clientId = String(form.get('clientId') ?? '')
+
+        if (kind === 'studio') {
+            const folderId = clientId || coachId
+            if (!isUuid(coachId) || !isUuid(folderId)) return fail(400, 'Faltan datos de la subida.')
+            const [allowed, { data: enabled }] = await Promise.all([
+                canAccessStudioMedia(supabase, coachId, folderId),
+                supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'studio_mode' }),
+            ])
+            if (!allowed || !enabled) {
+                return fail(403, clientId
+                    ? 'No puedes subir esta imagen: revisa que lleves a este cliente y que conste su consentimiento.'
+                    : 'No puedes subir imágenes a esta sala.')
+            }
+            const bucket = privateBucket()
+            if (!bucket) return fail(503, 'El almacenamiento de imágenes no está disponible.')
+            const key = studioKey({ coachId, folderId, fileName: `${crypto.randomUUID()}.webp` })
+            await putObject(bucket, key, body, mime)
+            return NextResponse.json({ key, mime, size: body.byteLength })
+        }
+
         if (!isUuid(coachId) || !isUuid(clientId)) return fail(400, 'Faltan datos de la subida.')
 
         if (kind === 'checkin') {
