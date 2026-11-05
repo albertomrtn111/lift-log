@@ -15,6 +15,7 @@
 import nodemailer from 'nodemailer'
 import type Mail from 'nodemailer/lib/mailer'
 import { getCoachSmtpConfig, type CoachSmtpConfig } from '@/lib/email/coach-settings'
+import { getEmailBrand, type EmailBrand } from '@/lib/branding/get-branding'
 
 export interface EmailResult {
     ok: boolean
@@ -108,11 +109,22 @@ export function escapeHtml(value: string): string {
 // Layout base
 // ---------------------------------------------------------------------------
 
-function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: string): string {
+function loadEmailBrand(coachId?: string): Promise<EmailBrand | null> {
+    return coachId ? getEmailBrand(coachId) : Promise.resolve(null)
+}
+
+function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: string, brand?: EmailBrand | null): string {
     const ctaUrl = rawCtaUrl ? escapeHtml(rawCtaUrl) : undefined
+    const color = brand?.color ?? '#0058D8'
+    const brandName = brand?.name ? escapeHtml(brand.name) : ''
+    const header = brand?.logoUrl
+        ? `<img src="${escapeHtml(brand.logoUrl)}" alt="${brandName}" style="display:block;max-height:48px;max-width:200px;margin:0 0 20px;" />`
+        : brandName
+            ? `<p style="margin:0 0 20px;font-size:14px;font-weight:600;color:#111827;">${brandName}</p>`
+            : ''
     const button = ctaLabel && ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px;">
-             <tr><td style="border-radius:8px;background:#0058D8;">
+             <tr><td style="border-radius:8px;background:${color};">
                <a href="${ctaUrl}" target="_blank"
                   style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
                  ${ctaLabel}
@@ -121,7 +133,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
            </table>
            <p style="font-size:12px;color:#6b7280;text-align:center;margin:8px 0 0;">
              Si el botón no funciona, copia este enlace:<br/>
-             <a href="${ctaUrl}" style="color:#0058D8;word-break:break-all;">${ctaUrl}</a>
+             <a href="${ctaUrl}" style="color:${color};word-break:break-all;">${ctaUrl}</a>
            </p>`
         : ''
 
@@ -133,7 +145,7 @@ function layout(title: string, bodyHtml: string, ctaLabel?: string, rawCtaUrl?: 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
              style="max-width:560px;background:#ffffff;border-radius:12px;padding:36px 32px;text-align:left;">
         <tr><td>
-          <h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${escapeHtml(title)}</h1>
+          ${header}<h1 style="margin:0 0 18px;font-size:20px;color:#111827;">${escapeHtml(title)}</h1>
           <div style="font-size:15px;line-height:1.6;color:#374151;">
             ${bodyHtml}
           </div>
@@ -161,6 +173,7 @@ export async function sendReviewEmailSmtp(params: {
     periodEnd?: string | null
     coachId?: string
 }): Promise<EmailResult> {
+    const brand = await loadEmailBrand(params.coachId)
     const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
     const reviewName = escapeHtml(rawReviewName)
@@ -177,7 +190,7 @@ export async function sendReviewEmailSmtp(params: {
         {
             to: params.to,
             subject,
-            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl, brand),
         },
         params.coachId
     )
@@ -192,6 +205,7 @@ export async function sendReviewReminderEmailSmtp(params: {
     archivesTomorrow: boolean
     coachId?: string
 }): Promise<EmailResult> {
+    const brand = await loadEmailBrand(params.coachId)
     const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const rawReviewName = params.reviewTemplateName?.trim() || 'Revisión'
     const reviewName = escapeHtml(rawReviewName)
@@ -212,7 +226,7 @@ export async function sendReviewReminderEmailSmtp(params: {
         {
             to: params.to,
             subject,
-            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl),
+            html: layout(`${rawReviewName} pendiente`, body, 'Completar mi revisión', params.formUrl, brand),
         },
         params.coachId
     )
@@ -224,6 +238,7 @@ export async function sendOnboardingEmailSmtp(params: {
     formUrl: string
     coachId?: string
 }): Promise<EmailResult> {
+    const brand = await loadEmailBrand(params.coachId)
     const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const body = `
         <p>Hola <strong>${name}</strong>, ¡bienvenido/a! 🎉</p>
@@ -235,7 +250,7 @@ export async function sendOnboardingEmailSmtp(params: {
         {
             to: params.to,
             subject: '🚀 Bienvenido/a — completa tu formulario inicial',
-            html: layout('Formulario de inicio', body, 'Completar formulario inicial', params.formUrl),
+            html: layout('Formulario de inicio', body, 'Completar formulario inicial', params.formUrl, brand),
         },
         params.coachId
     )
@@ -248,6 +263,7 @@ export async function sendInviteEmailSmtp(params: {
     appUrl: string
     coachId?: string
 }): Promise<EmailResult> {
+    const brand = await loadEmailBrand(params.coachId)
     const name = escapeHtml(params.clientName?.trim() || 'atleta')
     const passwordBlock = params.tempPassword
         ? `<p>Tu contraseña temporal es:</p>
@@ -268,7 +284,7 @@ export async function sendInviteEmailSmtp(params: {
         {
             to: params.to,
             subject: '🔑 Invitación a tu plataforma de entrenamiento',
-            html: layout('Te han invitado', body, 'Acceder a la plataforma', `${params.appUrl}/login`),
+            html: layout('Te han invitado', body, 'Acceder a la plataforma', `${params.appUrl}/login`, brand),
         },
         params.coachId
     )
@@ -370,6 +386,7 @@ export interface AthleteInviteEmailParams {
     accessUrl: string
     tempPassword?: string | null
     coachId?: string
+    brand?: EmailBrand | null
 }
 
 export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { subject: string; html: string } {
@@ -401,12 +418,13 @@ export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { sub
 
     return {
         subject: `${params.coachName.trim()} te ha invitado a entrenar en NexTrain`,
-        html: layout('Tu acceso a NexTrain', body, params.tempPassword ? 'Entrar en NexTrain' : 'Crear mi acceso', params.accessUrl),
+        html: layout('Tu acceso a NexTrain', body, params.tempPassword ? 'Entrar en NexTrain' : 'Crear mi acceso', params.accessUrl, params.brand),
     }
 }
 
 export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): Promise<EmailResult> {
-    const { subject, html } = buildAthleteInviteEmail(params)
+    const brand = await loadEmailBrand(params.coachId)
+    const { subject, html } = buildAthleteInviteEmail({ ...params, brand })
     return send({ to: params.to, subject, html }, params.coachId)
 }
 
@@ -418,6 +436,7 @@ export interface TeamInviteEmailParams {
     roleLabel: string
     accessUrl: string
     coachId?: string
+    brand?: EmailBrand | null
 }
 
 export function buildTeamInviteEmail(params: TeamInviteEmailParams): { subject: string; html: string } {
@@ -433,11 +452,12 @@ export function buildTeamInviteEmail(params: TeamInviteEmailParams): { subject: 
 
     return {
         subject: `${params.inviterName.trim()} te ha invitado a ${params.spaceName.trim()} en NexTrain`,
-        html: layout('Invitación al equipo', body, 'Aceptar la invitación', params.accessUrl),
+        html: layout('Invitación al equipo', body, 'Aceptar la invitación', params.accessUrl, params.brand),
     }
 }
 
 export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promise<EmailResult> {
-    const { subject, html } = buildTeamInviteEmail(params)
+    const brand = await loadEmailBrand(params.coachId)
+    const { subject, html } = buildTeamInviteEmail({ ...params, brand })
     return send({ to: params.to, subject, html }, params.coachId)
 }

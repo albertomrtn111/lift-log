@@ -17,6 +17,10 @@ import {
 import { canAccessChatMedia, canAccessCheckinMedia } from '@/lib/storage/media-access'
 import { deleteObject, privateBucket, publicBucket, putObject } from '@/lib/storage/r2'
 import { toWebp } from '@/lib/storage/webp'
+import { toBrandingPng } from '@/lib/storage/branding-image'
+import { getCoachActor } from '@/lib/auth/get-coach-actor'
+import { BRANDING_SLOTS } from '@/lib/branding/branding-rules'
+import { canManageTeam } from '@/lib/team/team-rules'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -29,12 +33,13 @@ export const runtime = 'nodejs'
  * Si R2 no está configurado (o falta el bucket privado), el archivo se guarda en
  * Supabase Storage como antes, ya comprimido, para poder desplegar esto primero.
  *
- * Campos (multipart): kind = avatar | checkin | chat, file, fileName,
+ * Campos (multipart): kind = avatar | branding | checkin | chat, file, fileName,
  * coachId y clientId (checkin y chat), checkinId (checkin).
  */
 
 const MAX_INPUT_BYTES = {
     avatar: 15 * 1024 * 1024,
+    branding: 5 * 1024 * 1024,
     checkin: 25 * 1024 * 1024,
     chat: 25 * 1024 * 1024, // límite del bucket chat-media
 } as const
@@ -78,6 +83,8 @@ export async function POST(request: Request) {
     }
 
     const input = new Uint8Array(await file.arrayBuffer())
+
+    if (kind === 'branding') return uploadBranding(String(form.get('slot') ?? ''), input, originalMime, originalName)
 
     // Las fotos se guardan siempre en WebP; GIF, audio y documentos, tal cual.
     let body: Uint8Array = input
@@ -198,4 +205,60 @@ async function uploadAvatar(
 
     revalidatePath('/profile')
     return NextResponse.json({ url, mime, size: body.byteLength })
+}
+
+/**
+ * Logo o icono del espacio. Va al bucket público y queda guardado en workspace_branding;
+ * el fichero anterior se borra. Sin plan o sin permiso, las políticas tampoco dejarían guardarlo.
+ */
+async function uploadBranding(slot: string, input: Uint8Array, mime: string, name: string) {
+    if (!BRANDING_SLOTS.includes(slot)) return fail(400, 'Faltan datos de la subida.')
+
+    const isSvg = mime === 'image/svg+xml' || name.toLowerCase().endsWith('.svg')
+    if (!isSvg && !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) {
+        return fail(415, 'Sube una imagen PNG, JPG, WebP o SVG.')
+    }
+
+    const r2 = publicBucket()
+    if (!r2) return fail(503, 'El almacenamiento de imágenes no está disponible.')
+
+    try {
+        const { supabase, coachId, userId, role } = await getCoachActor()
+        if (!canManageTeam(role)) return fail(403, 'Solo el propietario y los administradores pueden cambiarlo.')
+        const { data: enabled } = await supabase.rpc('coach_has_feature', {
+            p_coach_id: coachId,
+            p_feature: 'branding',
+        })
+        if (!enabled) return fail(403, 'Tu plan no incluye look & feel.')
+
+        const png = await toBrandingPng(input, slot, isSvg)
+        if (!png) return fail(415, 'No se ha podido leer la imagen. Prueba con un PNG.')
+
+        const column = `${slot}_url`
+        const { data: previous } = await supabase
+            .from('workspace_branding')
+            .select(column)
+            .eq('coach_id', coachId)
+            .maybeSingle()
+
+        const key = `branding/${coachId}/${slot}-${Date.now()}.png`
+        await putObject(r2.bucket, key, png, 'image/png')
+        const url = `${r2.publicUrl}/${key}`
+
+        const { error } = await supabase
+            .from('workspace_branding')
+            .upsert({ coach_id: coachId, [column]: url, updated_by: userId }, { onConflict: 'coach_id' })
+        if (error) throw error
+
+        const oldUrl = (previous as Record<string, string | null> | null)?.[column]
+        const prefix = `${r2.publicUrl}/branding/${coachId}/`
+        if (oldUrl?.startsWith(prefix)) {
+            await deleteObject(r2.bucket, oldUrl.slice(r2.publicUrl.length + 1)).catch(err =>
+                console.warn('[media/upload] logo anterior:', err))
+        }
+        return NextResponse.json({ url })
+    } catch (error) {
+        console.error('[media/upload] branding', error)
+        return fail(500, 'No se ha podido guardar la imagen.')
+    }
 }

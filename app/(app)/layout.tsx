@@ -6,6 +6,9 @@ import { PwaNavigationFix } from '@/components/layout/PwaNavigationFix'
 import { PushNotificationBanner } from '@/components/push/PushNotificationBanner'
 import { StravaPendingFeedback } from '@/components/strava/StravaPendingFeedback'
 import { AnnouncementHost } from '@/components/announcements/AnnouncementHost'
+import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
+
+export const generateMetadata = spaceBrandingMetadata
 
 export default function AppLayout({
     children,
@@ -13,20 +16,22 @@ export default function AppLayout({
     children: React.ReactNode
 }) {
     return (
-        <ClientAppProvider>
-            <div className="app-mobile-shell bg-background">
-                <div className="app-mobile-statusbar" aria-hidden="true" />
-                <PushNotificationBanner />
-                <StravaPendingFeedback />
-                <main className="app-mobile-main relative">
-                    <AppTopActions />
-                    {children}
-                </main>
-                <PwaNavigationFix />
-                <BottomNav />
-                <AnnouncementHost />
-                <DevStalenessGuard />
-            </div>
-        </ClientAppProvider>
+        <SpaceBranding>
+            <ClientAppProvider>
+                <div className="app-mobile-shell bg-background">
+                    <div className="app-mobile-statusbar" aria-hidden="true" />
+                    <PushNotificationBanner />
+                    <StravaPendingFeedback />
+                    <main className="app-mobile-main relative">
+                        <AppTopActions />
+                        {children}
+                    </main>
+                    <PwaNavigationFix />
+                    <BottomNav />
+                    <AnnouncementHost />
+                    <DevStalenessGuard />
+                </div>
+            </ClientAppProvider>
+        </SpaceBranding>
     )
 }

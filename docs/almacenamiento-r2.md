@@ -7,6 +7,7 @@ Desde noviembre de 2026 las fotos se guardan en Cloudflare R2 y no en Supabase S
 | Qué | Bucket de R2 | Clave | Qué se guarda en la BD | Cómo se ve |
 |---|---|---|---|---|
 | Fotos de perfil | `R2_BUCKET` (público) | `avatars/{userId}/avatar-{ts}.webp` | `profiles.avatar_url` = URL pública | Directamente desde `R2_PUBLIC_URL` |
+| Logos e iconos de cada espacio | `R2_BUCKET` (público) | `branding/{coachId}/{slot}-{ts}.png` | `workspace_branding.*_url` = URL pública | Directa |
 | Fotos de check-in | `R2_PRIVATE_BUCKET` (privado) | `checkin-media/{coachId}/{clientId}/{checkinId}/{archivo}.webp` | `checkin_media.bucket = 'r2'`, `path` = clave | `/api/media/{clave}`, tras comprobar permisos |
 | Adjuntos del chat | `R2_PRIVATE_BUCKET` (privado) | `chat-media/{coachId}/{clientId}/{uuid}-{nombre}` | `messages.attachment_url` = `r2:` + clave | `/api/media/{clave}`, tras comprobar permisos |
 | Huérfanos de Supabase | `R2_PRIVATE_BUCKET` | `orphans/{bucket}/{ruta}` | — | No se muestran |
