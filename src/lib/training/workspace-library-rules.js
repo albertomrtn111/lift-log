@@ -86,3 +86,40 @@ export function swapInList(ids, first, second) {
 export function sortOrderFor(index) {
     return (index + 1) * 10
 }
+
+const PATTERN_BLOCKS = [
+    'dominante_rodilla',
+    'empuje_horizontal',
+    'traccion_horizontal',
+    'dominante_cadera',
+    'empuje_vertical',
+    'traccion_vertical',
+]
+
+/** Plantillas de biblioteca de NexTrain: de qué bloques salen los ejercicios favoritos. */
+export const LIBRARY_TEMPLATES = {
+    funcional: {
+        label: 'Funcional por patrones',
+        description: 'Core, prevención, pliometría y patrones de fuerza',
+        blocks: [
+            'core_antiextension',
+            'core_antiflexion',
+            'core_antirrotacion',
+            'gluteo_medio',
+            'aductor',
+            'flexores_plantares',
+            'flexores_cadera',
+            'manguito_rotador',
+            'pliometria_vertical',
+            'pliometria_horizontal',
+            'potencia_rotacional',
+            'pliometria_tren_superior',
+            ...PATTERN_BLOCKS,
+        ],
+    },
+    gimnasio: {
+        label: 'Gimnasio por grupo muscular',
+        description: 'Fuerza por músculos, con brazos y aislamiento',
+        blocks: [...PATTERN_BLOCKS, 'biceps', 'triceps', 'cuadriceps', 'isquiotibiales', 'flexores_plantares', 'core'],
+    },
+}

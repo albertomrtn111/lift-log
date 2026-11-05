@@ -12,6 +12,9 @@ export interface CoachOnboardingState {
     /** Falta contestar "Tu espacio está listo" */
     welcome_pending?: boolean
     welcome_completed_at?: string
+    /** Sala nueva: falta el onboarding de sala */
+    studio_pending?: boolean
+    studio_completed_at?: string
     checklist_dismissed_at?: string
     sample_created_at?: string
     sample_explored_at?: string

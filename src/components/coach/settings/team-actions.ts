@@ -3,8 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildAccessLink } from '@/lib/onboarding/athlete-invite'
-import { sendTeamInviteEmail } from '@/lib/email/mailer'
+import { sendInvitation } from '@/lib/team/send-invitation'
 import {
     INVITABLE_ROLES,
     ROLE_LABELS,
@@ -47,8 +46,6 @@ interface ActionResult {
     error?: string
 }
 
-const JOIN_PATH = '/unirse'
-
 /** Comprueba que quien actúa puede gestionar el equipo y que su plan lo incluye. */
 async function requireTeamManager() {
     const actor = await getCoachActor()
@@ -90,34 +87,6 @@ async function countSeats(coachId: string, supabase: SupabaseClient) {
     ])
     const open = (pending ?? []).filter(row => invitationState(row) === 'pending').length
     return seatsLeft(limit as number | null, active ?? 0, open)
-}
-
-async function sendInvitation(params: {
-    invitationId: string
-    email: string
-    role: string
-    coachId: string
-    inviterId: string
-}) {
-    const admin = createAdminClient()
-    const { url, accountCreated } = await buildAccessLink(params.email, `${JOIN_PATH}?invitacion=${params.invitationId}`)
-    const [{ data: space }, { data: inviter }] = await Promise.all([
-        admin.from('coaches').select('name').eq('id', params.coachId).maybeSingle(),
-        admin.from('profiles').select('full_name').eq('id', params.inviterId).maybeSingle(),
-    ])
-    const spaceName = (space?.name as string | undefined)?.trim() || 'NexTrain'
-    const result = await sendTeamInviteEmail({
-        to: params.email,
-        inviterName: (inviter?.full_name as string | undefined)?.trim() || spaceName,
-        spaceName,
-        roleLabel: ROLE_LABELS[params.role as keyof typeof ROLE_LABELS] ?? params.role,
-        accessUrl: url,
-        coachId: params.coachId,
-    })
-    if (accountCreated) {
-        await admin.from('coach_invitations').update({ needs_password: true }).eq('id', params.invitationId)
-    }
-    if (!result.ok) throw new Error(result.error || 'No se pudo enviar el email')
 }
 
 export async function getTeamAction(): Promise<{ success: boolean; team?: TeamData; error?: string }> {
