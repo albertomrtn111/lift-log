@@ -16,23 +16,34 @@ function isAlreadyRegistered(message: string) {
  * Enlace de un solo uso para entrar sin contraseña. Si la cuenta aún no
  * existe, la crea (invite); si ya existe, es un enlace mágico.
  */
-export async function buildAthleteAccessLink(email: string, fullName?: string | null): Promise<string> {
+export async function buildAccessLink(
+    email: string,
+    landingPath: string,
+    fullName?: string | null,
+): Promise<{ url: string; accountCreated: boolean }> {
     const admin = createAdminClient()
-    const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent(ATHLETE_LANDING_PATH)}`
+    const redirectTo = `${getAppUrl()}/auth/callback?next=${encodeURIComponent(landingPath)}`
 
     const invite = await admin.auth.admin.generateLink({
         type: 'invite',
         email,
         options: { redirectTo, data: fullName ? { full_name: fullName } : undefined },
     })
-    if (!invite.error && invite.data.properties?.action_link) return invite.data.properties.action_link
+    if (!invite.error && invite.data.properties?.action_link) {
+        return { url: invite.data.properties.action_link, accountCreated: true }
+    }
     if (invite.error && !isAlreadyRegistered(invite.error.message)) throw new Error(invite.error.message)
 
     const magic = await admin.auth.admin.generateLink({ type: 'magiclink', email, options: { redirectTo } })
     if (magic.error || !magic.data.properties?.action_link) {
         throw new Error(magic.error?.message ?? 'No se pudo generar el enlace de acceso')
     }
-    return magic.data.properties.action_link
+    return { url: magic.data.properties.action_link, accountCreated: false }
+}
+
+export async function buildAthleteAccessLink(email: string, fullName?: string | null): Promise<string> {
+    const { url } = await buildAccessLink(email, ATHLETE_LANDING_PATH, fullName)
+    return url
 }
 
 /** Nombre con el que firma el coach: su nombre; si no, el del negocio */
