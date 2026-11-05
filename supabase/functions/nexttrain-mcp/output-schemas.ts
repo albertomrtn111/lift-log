@@ -58,8 +58,19 @@ export const outputSchemas: Record<string, z.ZodType> = {
   get_checkins: z.looseObject({ client_id: z.string(), checkins: records, ...page }),
   get_recovery_history: z.looseObject({ client_id: z.string(), ...range, daily_progress: records, checkin_recovery: records, note: text }),
   list_client_events: z.looseObject({ client_id: z.string(), ...range, events: records, ...page }),
+  list_studio_sessions: z.looseObject({ client_id: z.string(), sessions: records }),
+  get_studio_session: z.looseObject({ session: record }),
+  create_studio_session: z.looseObject({
+    created: maybe(z.boolean()), dry_run: maybe(z.boolean()), session: maybe(record),
+    exercises: z.union([z.number().int(), records]), routine_exercises: maybe(z.number().int()),
+  }),
+  update_studio_session: z.looseObject({ updated: z.boolean(), session: record }),
+  record_studio_sets: z.looseObject({ recorded: z.boolean(), item: record }),
+  create_studio_request: z.looseObject({ created: z.boolean(), request: record }),
+
   get_strength_results: z.looseObject({
     client_id: z.string(), ...range, program_id: z.string().nullable(), ...strengthResults,
+    studio_sets: maybe(records),
     completed_sessions: records, ...page, programs_scanned: records, older_programs_available: z.boolean(),
     source_counts: record, data_quality: record, note: text,
   }),
