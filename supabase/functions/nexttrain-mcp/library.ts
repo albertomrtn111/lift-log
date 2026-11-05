@@ -128,7 +128,7 @@ export function registerLibraryTools(server: Server, db: Db, helpers: ToolHelper
       }),
       annotations: readOnlyAnnotations,
     },
-    (input) => run('list_workspace_library', {
+    (input: any) => run('list_workspace_library', {
       coachId: input.coach_id,
       fallbackError: 'No se ha podido consultar la biblioteca del espacio.',
     }, async ({ coachId, log }) => {
@@ -172,7 +172,7 @@ export function registerLibraryTools(server: Server, db: Db, helpers: ToolHelper
       }).refine((input) => input.catalog_exercise_id || input.name, 'Indica catalog_exercise_id o name.'),
       annotations: idempotentWriteAnnotations,
     },
-    (input) => run('add_to_library', {
+    (input: any) => run('add_to_library', {
       coachId: input.coach_id,
       fallbackError: 'No se ha podido añadir el ejercicio a la biblioteca.',
     }, async ({ coachId, log }) => {
