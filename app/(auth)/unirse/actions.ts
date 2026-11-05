@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { TEAM_ROLES, invitationState, normalizeEmail } from '@/lib/team/team-rules'
+import { invitationState, normalizeEmail } from '@/lib/team/team-rules'
 
 type JoinResult = { success: true; redirectTo: string } | { success: false; error: string }
 
@@ -25,23 +25,14 @@ export async function acceptInvitationAction(invitationId: string): Promise<Join
         return { success: false, error: 'Esta invitación es para otro email' }
     }
 
-    // El selector de espacio aún no existe: cada cuenta trabaja en un solo espacio
-    const { data: others } = await admin
-        .from('coach_memberships')
-        .select('coach_id')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .in('role', TEAM_ROLES)
-        .neq('coach_id', invitation.coach_id)
-    if ((others ?? []).length > 0) {
-        return { success: false, error: 'Tu cuenta ya pertenece a otro espacio. Pide que te inviten con otro email' }
-    }
-
     const { error } = await admin.from('coach_memberships').upsert(
         { coach_id: invitation.coach_id, user_id: user.id, role: invitation.role, status: 'active' },
         { onConflict: 'coach_id,user_id' },
     )
     if (error) return { success: false, error: 'No se pudo completar la invitación' }
+
+    // Al unirse entra directamente en el espacio nuevo.
+    await admin.from('profiles').update({ last_coach_id: invitation.coach_id }).eq('id', user.id)
 
     await admin
         .from('coach_invitations')
@@ -56,5 +47,5 @@ export async function acceptInvitationAction(invitationId: string): Promise<Join
         details: { role: invitation.role },
     })
 
-    return { success: true, redirectTo: invitation.needs_password ? '/set-password' : '/coach' }
+    return { success: true, redirectTo: invitation.needs_password ? '/set-password' : '/coach/dashboard' }
 }

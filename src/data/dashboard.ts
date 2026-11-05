@@ -1033,7 +1033,8 @@ export async function getCoachDisplayName(userId: string): Promise<string> {
         .from('coach_memberships')
         .select('coaches(name)')
         .eq('user_id', userId)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
     const coachData = membership?.coaches as unknown as { name: string } | null
     if (coachData?.name) return coachData.name

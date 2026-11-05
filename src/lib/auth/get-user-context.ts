@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { UserRole } from '@/types/coach'
 import type { UserModeResolution } from '@/lib/mode-utils'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
+import { getActiveCoachId } from '@/lib/auth/active-coach'
 
 export interface UserProfile {
     full_name: string | null
@@ -75,15 +76,15 @@ export async function getUserContext(userId: string): Promise<UserContext> {
     // coach que lo lee de /api/me (campana, contador de mensajes en vivo) no
     // llegaba a cargar.
     let coachId: string | null = null
-    if (isCoach) {
+    const activeCoachId = isCoach ? await getActiveCoachId() : null
+    if (activeCoachId) {
         const { data: membership } = await supabase
             .from('coach_memberships')
             .select('coach_id, role')
             .eq('user_id', userId)
             .eq('status', 'active')
+            .eq('coach_id', activeCoachId)
             .in('role', COACH_AREA_ROLES)
-            .order('role', { ascending: false }) // 'owner' antes que 'coach'
-            .limit(1)
             .maybeSingle()
         coachId = membership?.coach_id ?? null
     }
