@@ -5,6 +5,7 @@ import { LogoAppIcon } from '@/components/brand/LogoMark'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/server'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 function ErrorCard({ title, message }: { title: string; message: string }) {
     return (
@@ -41,7 +42,7 @@ export default async function OAuthConsentPage({
         .select('id')
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
         .maybeSingle()
 

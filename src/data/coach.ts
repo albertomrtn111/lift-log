@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Coach, CoachMembership, CoachStats, UserRole } from '@/types/coach'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 /**
  * Check if user has coach access (owner or coach role)
@@ -12,7 +13,7 @@ export async function getCoachMembership(userId: string): Promise<CoachMembershi
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .single()
 
     if (error || !data) return null
@@ -90,7 +91,7 @@ export async function getUserRole(userId: string): Promise<UserRole> {
         .select('id')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
 
     const isCoach = (membership?.length ?? 0) > 0

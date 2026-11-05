@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { UserRole } from '@/types/coach'
 import type { UserModeResolution } from '@/lib/mode-utils'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 export interface UserProfile {
     full_name: string | null
@@ -80,7 +81,7 @@ export async function getUserContext(userId: string): Promise<UserContext> {
             .select('coach_id, role')
             .eq('user_id', userId)
             .eq('status', 'active')
-            .in('role', ['owner', 'coach'])
+            .in('role', COACH_AREA_ROLES)
             .order('role', { ascending: false }) // 'owner' antes que 'coach'
             .limit(1)
             .maybeSingle()

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { createClient } from '@/lib/supabase/server'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 export async function POST(request: Request) {
     const formData = await request.formData()
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
         .select('id')
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
         .maybeSingle()
 
