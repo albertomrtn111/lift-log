@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { StudioExerciseSearch } from '@/components/coach/sala/StudioExerciseSearch'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ClipboardPaste, Copy, CopyPlus, Loader2, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { StudioConflict } from '@/components/coach/sala/StudioConflict'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -37,22 +39,30 @@ import {
     sessionToForm,
     wellnessScore,
 } from '@/lib/studio/editor-rules'
-import { cellSummary, formatShortDate, normalizeText } from '@/lib/studio/grid-rules'
+import { clipItemFields, routineItemFields, routinesForClient } from '@/lib/studio/copy-rules'
+import type { StudioClip } from '@/lib/studio/clipboard'
+import { cellSummary, formatShortDate } from '@/lib/studio/grid-rules'
 import {
     addItemAction,
+    addItemsAction,
     arrangeSessionAction,
     createSessionAction,
     deleteItemAction,
     deleteSectionAction,
     deleteSessionAction,
     duplicateSessionAction,
+    getStudioTemplatesAction,
     saveSectionAction,
+    saveSessionAsTemplateAction,
     updateSessionAction,
+    type StudioTemplateOption,
 } from '@/lib/studio/session-actions'
 import { cn } from '@/lib/utils'
 
 const NO_PROFESSIONAL = 'none'
 const NO_SECTION = 'none'
+const NO_TEMPLATE = 'none'
+const NO_ROUTINE = 'none'
 
 const STATUS_OPTIONS = [
     { value: 'normal', label: 'Normal' },
@@ -132,6 +142,17 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
         professionalId: data.team.some(member => member.id === currentUserId) ? currentUserId! : '',
         name: source?.name ?? '',
     })
+    const [templates, setTemplates] = useState<StudioTemplateOption[]>([])
+    const [templateDay, setTemplateDay] = useState(NO_TEMPLATE)
+
+    useEffect(() => {
+        if (source) return
+        let current = true
+        getStudioTemplatesAction().then(result => {
+            if (current && result.success) setTemplates(result.data)
+        })
+        return () => { current = false }
+    }, [source])
 
     function submit() {
         if (!form.date) return void toast.error('Elige una fecha.')
@@ -146,6 +167,13 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
                 ? await duplicateSessionAction({ ...input, sessionId: source.id })
                 : await createSessionAction({ ...input, clientId: data.client.id })
             if (!result.success) return void toast.error(result.error)
+
+            const day = templates.flatMap(template => template.days).find(entry => entry.id === templateDay)
+            if (day && day.items.length > 0) {
+                const added = await addItemsAction(result.data.id, day.items, { origin: 'template' })
+                if (!added.success) toast.error(added.error)
+                else if (day.skipped > 0) toast.warning(`${day.skipped} ejercicios de la plantilla no están en el catálogo y no se han añadido.`)
+            }
             router.refresh()
             onCreated(result.data.id)
         })
@@ -170,6 +198,20 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
                         professionals={data.professionals}
                         onChange={changes => setForm({ ...form, ...changes })}
                     />
+                    {templates.length > 0 && (
+                        <div className="space-y-1.5">
+                            <Label>Desde una plantilla (opcional)</Label>
+                            <Select value={templateDay} onValueChange={setTemplateDay}>
+                                <SelectTrigger aria-label="Plantilla"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NO_TEMPLATE}>Sin plantilla</SelectItem>
+                                    {templates.flatMap(template => template.days.map(day => (
+                                        <SelectItem key={day.id} value={day.id}>{template.name} · {day.name}</SelectItem>
+                                    )))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                 </div>
                 <div className="border-t p-4">
                     <Button type="button" className="w-full" disabled={isPending} onClick={submit}>
@@ -182,12 +224,15 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
     )
 }
 
-export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDuplicate }: {
+export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, onDuplicate, onCopy, onPasted }: {
     data: StudioGridData
     session: StudioSession
+    clip: StudioClip | null
     onClose: () => void
     onOpenItem: (itemId: string) => void
     onDuplicate: () => void
+    onCopy: (entries: ReturnType<typeof sessionList>) => void
+    onPasted: () => void
 }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -195,7 +240,9 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
     // Lo que había al abrir: si otro lo cambia después, guardar no debe pisarlo sin que lo veas.
     const [base, setBase] = useState(() => ({ version: session.version, form: sessionToForm(session) }))
     const [confirm, setConfirm] = useState<{ type: 'session' } | { type: 'item'; item: StudioItem } | null>(null)
-    const [query, setQuery] = useState('')
+    const [routineId, setRoutineId] = useState(NO_ROUTINE)
+    const [skipped, setSkipped] = useState<Set<number>>(new Set())
+    const [templateName, setTemplateName] = useState<string | null>(null)
     const [newSection, setNewSection] = useState('')
     const [addTo, setAddTo] = useState(NO_SECTION)
 
@@ -203,15 +250,12 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
     const sections = useMemo(() => data.sections.filter(section => section.session_id === session.id), [data.sections, session.id])
     const entries = useMemo(() => sessionList(items, sections), [items, sections])
 
-    const results = useMemo(() => {
-        const search = normalizeText(query)
-        if (!search) return []
-        return data.entries
-            .filter(entry => !entry.isHidden && (
-                normalizeText(entry.name).includes(search) || normalizeText(entry.shortName ?? '').includes(search)
-            ))
-            .slice(0, 8)
-    }, [data.entries, query])
+    const routines = useMemo(
+        () => routinesForClient(data.routines, data.client.id) as StudioGridData['routines'],
+        [data.routines, data.client.id]
+    )
+    const routine = routines.find(entry => entry.id === routineId) ?? null
+    const canPaste = clip?.kind === 'session' && clip.fromSessionId !== session.id
 
     const latest = useMemo(() => sessionToForm(session), [session])
     // Solo cuenta una versión más nueva: tras guardar, la mía llega antes que los datos recargados.
@@ -266,6 +310,33 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
     function useTheirs() {
         setForm(latest)
         setBase({ version: session.version, form: latest })
+    }
+
+    function addRoutine() {
+        if (!routine) return
+        const chosen = routine.items.filter((_, index) => !skipped.has(index)).map(routineItemFields)
+        if (chosen.length === 0) return void toast.error('Elige al menos un ejercicio.')
+        run(
+            () => addItemsAction(session.id, chosen, { routineId: routine.id }),
+            () => {
+                setRoutineId(NO_ROUTINE)
+                setSkipped(new Set())
+            }
+        )
+    }
+
+    function paste() {
+        if (clip?.kind !== 'session') return
+        run(() => addItemsAction(session.id, clip.items.map(item => clipItemFields(item)), { origin: 'copy' }), onPasted)
+    }
+
+    function saveAsTemplate() {
+        const name = templateName?.trim()
+        if (!name) return void toast.error('Ponle un nombre a la plantilla.')
+        run(() => saveSessionAsTemplateAction(name, entries), () => {
+            setTemplateName(null)
+            toast.success('Plantilla guardada')
+        })
     }
 
     function removeItem(item: StudioItem) {
@@ -413,14 +484,6 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
                         </ol>
 
                         <div className="space-y-2 rounded-md border p-3">
-                            <Label htmlFor="sesion-buscar">Añadir ejercicio</Label>
-                            <Input
-                                id="sesion-buscar"
-                                value={query}
-                                autoComplete="off"
-                                placeholder="Buscar en tu biblioteca…"
-                                onChange={event => setQuery(event.target.value)}
-                            />
                             {sections.length > 0 && (
                                 <Select value={sectionTarget} onValueChange={setAddTo}>
                                     <SelectTrigger aria-label="Añadir en"><SelectValue /></SelectTrigger>
@@ -430,35 +493,62 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
                                     </SelectContent>
                                 </Select>
                             )}
-                            {results.length > 0 && (
-                                <ul className="divide-y rounded-md border">
-                                    {results.map(entry => (
-                                        <li key={entry.catalogExerciseId}>
-                                            <button
-                                                type="button"
-                                                disabled={isPending}
-                                                className="flex w-full items-center gap-2 p-2 text-left text-sm hover:bg-muted/60"
-                                                onClick={() => run(
-                                                    () => addItemAction(
-                                                        session.id,
-                                                        entry.catalogExerciseId,
-                                                        sectionTarget === NO_SECTION ? null : sectionTarget,
-                                                        libraryDefaults(data.entries, data.blocks, entry.catalogExerciseId)
-                                                    ),
-                                                    () => setQuery('')
-                                                )}
-                                            >
-                                                <Plus className="h-3.5 w-3.5 shrink-0 text-primary" />
-                                                <span className="min-w-0 truncate">{entry.shortName ?? entry.name}</span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                            {query.trim() && results.length === 0 && (
-                                <p className="text-sm text-muted-foreground">No está en tu biblioteca.</p>
-                            )}
+                            <StudioExerciseSearch
+                                id="sesion-buscar"
+                                label="Añadir ejercicio"
+                                entries={data.entries}
+                                disabled={isPending}
+                                onPick={entry => run(() => addItemAction(
+                                    session.id,
+                                    entry.catalogExerciseId,
+                                    sectionTarget === NO_SECTION ? null : sectionTarget,
+                                    libraryDefaults(data.entries, data.blocks, entry.catalogExerciseId)
+                                ))}
+                            />
                         </div>
+
+                        {routines.length > 0 && (
+                            <div className="space-y-2 rounded-md border p-3">
+                                <Label>Añadir una rutina</Label>
+                                <Select
+                                    value={routineId}
+                                    onValueChange={value => {
+                                        setRoutineId(value)
+                                        setSkipped(new Set())
+                                    }}
+                                >
+                                    <SelectTrigger aria-label="Rutina"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NO_ROUTINE}>Elige una rutina</SelectItem>
+                                        {routines.map(entry => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                {routine && (
+                                    <>
+                                        <ul className="space-y-1">
+                                            {routine.items.map((item, index) => (
+                                                <li key={`${item.catalog_exercise_id}-${index}`} className="flex items-center gap-2 text-sm">
+                                                    <Checkbox
+                                                        checked={!skipped.has(index)}
+                                                        aria-label={`Incluir ${item.exercise_name}`}
+                                                        onCheckedChange={checked => {
+                                                            const next = new Set(skipped)
+                                                            if (checked) next.delete(index)
+                                                            else next.add(index)
+                                                            setSkipped(next)
+                                                        }}
+                                                    />
+                                                    <span className="min-w-0 truncate">{item.exercise_name}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        <Button type="button" size="sm" className="w-full" disabled={isPending} onClick={addRoutine}>
+                                            Añadir {routine.items.length - skipped.size} ejercicios
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex gap-2">
                             <Input
@@ -534,13 +624,44 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
                         {load !== null && <p className="text-sm text-muted-foreground">Carga de la sesión: <span className="font-semibold text-foreground">{load}</span></p>}
                     </section>
 
-                    <div className="flex gap-2 border-t pt-4">
-                        <Button type="button" variant="outline" className="flex-1" disabled={isPending} onClick={onDuplicate}>
-                            <Copy className="mr-2 h-4 w-4" /> Duplicar
-                        </Button>
-                        <Button type="button" variant="outline" className="flex-1" disabled={isPending} onClick={() => setConfirm({ type: 'session' })}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Borrar
-                        </Button>
+                    <div className="space-y-2 border-t pt-4">
+                        {canPaste && (
+                            <Button type="button" className="w-full" disabled={isPending} onClick={paste}>
+                                <ClipboardPaste className="mr-2 h-4 w-4" /> Pegar aquí: {clip.label}
+                            </Button>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button type="button" variant="outline" disabled={isPending || items.length === 0} onClick={() => onCopy(entries)}>
+                                <Copy className="mr-2 h-4 w-4" /> Copiar
+                            </Button>
+                            <Button type="button" variant="outline" disabled={isPending} onClick={onDuplicate}>
+                                <CopyPlus className="mr-2 h-4 w-4" /> Duplicar
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isPending || items.length === 0}
+                                onClick={() => setTemplateName(templateName === null ? session.name ?? '' : null)}
+                            >
+                                <Save className="mr-2 h-4 w-4" /> Plantilla
+                            </Button>
+                            <Button type="button" variant="outline" disabled={isPending} onClick={() => setConfirm({ type: 'session' })}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Borrar
+                            </Button>
+                        </div>
+                        {templateName !== null && (
+                            <div className="flex gap-2">
+                                <Input
+                                    value={templateName}
+                                    maxLength={120}
+                                    autoComplete="off"
+                                    aria-label="Nombre de la plantilla"
+                                    placeholder="Nombre de la plantilla"
+                                    onChange={event => setTemplateName(event.target.value)}
+                                />
+                                <Button type="button" className="shrink-0" disabled={isPending} onClick={saveAsTemplate}>Guardar</Button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

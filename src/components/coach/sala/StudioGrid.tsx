@@ -3,16 +3,20 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronDown, Minus, Plus, Search, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
+import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
+import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
 import { StudioNewSessionPanel, StudioSessionPanel } from '@/components/coach/sala/StudioSessionPanel'
 import type { StudioGridData, StudioItem } from '@/data/studio'
 import { useStudioLive } from '@/hooks/useStudioLive'
+import { readClip, writeClip, type StudioClip } from '@/lib/studio/clipboard'
+import { clipFromCell, clipFromSession, clipItemFields, routinesBySession } from '@/lib/studio/copy-rules'
 import { initials } from '@/lib/studio/editor-rules'
 import {
     SESSION_STATUS_LABELS,
@@ -22,7 +26,7 @@ import {
     formatShortDate,
     prepareSessions,
 } from '@/lib/studio/grid-rules'
-import { setItemDoneAction, undoLastAction } from '@/lib/studio/session-actions'
+import { addItemsAction, setItemDoneAction, undoLastAction } from '@/lib/studio/session-actions'
 import { BLOCK_CATEGORY_LABELS } from '@/lib/training/exercise-catalog-rules'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +41,8 @@ type Panel =
     | { type: 'duplicate'; sessionId: string }
     | { type: 'session'; sessionId: string }
     | { type: 'cell'; target: CellTarget }
+    | { type: 'requests'; sessionId: string }
+    | { type: 'routines' }
 
 export function StudioGrid({ data, today, currentUserId, olderPages }: {
     data: StudioGridData
@@ -53,6 +59,31 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     const [panel, setPanel] = useState<Panel | null>(null)
     const [doneShown, setDoneShown] = useState<Record<string, boolean>>({})
     const [isMarking, startMarking] = useTransition()
+    const [clip, setClipState] = useState<StudioClip | null>(null)
+
+    useEffect(() => setClipState(readClip()), [])
+
+    function setClip(next: StudioClip | null) {
+        setClipState(next)
+        writeClip(next)
+    }
+
+    function copyCell(item: StudioItem) {
+        setClip(clipFromCell(item) as StudioClip)
+        toast.success('Copiado. Toca una celda vacía para pegarlo.')
+    }
+
+    /** Lo copiado se usa una vez. */
+    function pasteCell(sessionId: string, catalogExerciseId: string) {
+        if (clip?.kind !== 'cell') return
+        const { item } = clip
+        startMarking(async () => {
+            const result = await addItemsAction(sessionId, [clipItemFields(item, catalogExerciseId)], { origin: 'copy' })
+            if (!result.success) return void toast.error(result.error)
+            setClip(null)
+            router.refresh()
+        })
+    }
 
     // Lo marcado se ve al momento; en cuanto llegan los datos, mandan ellos.
     useEffect(() => setDoneShown({}), [data.items])
@@ -79,7 +110,8 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     }, [data.blocks])
 
     const level = ZOOM_LEVELS[zoom]
-    const openSession = panel && panel.type !== 'new-session' && panel.type !== 'cell'
+    const routineNames = useMemo(() => routinesBySession(data.items, data.routines), [data.items, data.routines])
+    const openSession = panel && (panel.type === 'duplicate' || panel.type === 'session' || panel.type === 'requests')
         ? data.sessions.find(session => session.id === panel.sessionId) ?? null
         : null
 
@@ -113,17 +145,30 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
         })
     }
 
-    // Ctrl+Z en la cuadrícula. Dentro de un panel o de un campo, sigue siendo el deshacer del texto.
-    const undoRef = useRef(undo)
-    undoRef.current = undo
+    // Atajos en la cuadrícula. Dentro de un panel o de un campo, Ctrl+Z, C y V siguen siendo los del texto.
+    const shortcuts = useRef({ undo, copyCell, pasteCell, items: data.items })
+    shortcuts.current = { undo, copyCell, pasteCell, items: data.items }
     const panelOpen = panel !== null
     useEffect(() => {
         function onKeyDown(event: KeyboardEvent) {
-            if (panelOpen || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return
+            if (panelOpen || !(event.ctrlKey || event.metaKey) || event.shiftKey) return
             const element = event.target as HTMLElement
             if (element.closest('input, textarea, select, [contenteditable="true"]')) return
-            event.preventDefault()
-            undoRef.current()
+            const cell = element.closest<HTMLElement>('[data-sala-session]')
+            const key = event.key.toLowerCase()
+            if (key === 'z') {
+                event.preventDefault()
+                shortcuts.current.undo()
+            } else if (key === 'c' && cell?.dataset.salaItem) {
+                const item = shortcuts.current.items.find(entry => entry.id === cell.dataset.salaItem)
+                if (item) {
+                    event.preventDefault()
+                    shortcuts.current.copyCell(item)
+                }
+            } else if (key === 'v' && cell) {
+                event.preventDefault()
+                shortcuts.current.pasteCell(cell.dataset.salaSession!, cell.dataset.salaExercise!)
+            }
         }
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
@@ -189,6 +234,9 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 <Button size="sm" className="h-9" onClick={() => setPanel({ type: 'new-session' })}>
                     <Plus className="mr-1 h-4 w-4" /> Nueva sesión
                 </Button>
+                <Button size="sm" variant="outline" className="h-9" onClick={() => setPanel({ type: 'routines' })}>
+                    <ListChecks className="mr-1 h-4 w-4" /> Rutinas
+                </Button>
                 <Button size="sm" variant="outline" className="h-9" disabled={isMarking} onClick={undo}>
                     <Undo2 className="mr-1 h-4 w-4" /> Deshacer
                 </Button>
@@ -234,6 +282,20 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                     </button>
                 ))}
             </div>
+
+            {clip && (
+                <div className="flex items-center justify-between gap-2 rounded-md bg-primary/10 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate">
+                        Copiado: <span className="font-medium">{clip.label}</span>
+                        <span className="text-muted-foreground">
+                            {clip.kind === 'cell' ? ' · toca una celda vacía para pegarlo' : ' · abre otra sesión, también de otro cliente, y pulsa Pegar aquí'}
+                        </span>
+                    </span>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label="Vaciar lo copiado" onClick={() => setClip(null)}>
+                        <X className="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            )}
 
             {olderCount > 0 && (
                 <Link
@@ -305,6 +367,48 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                         </tr>
                     </thead>
                     <tbody>
+                        {sessions.length > 0 && (
+                            <tr>
+                                <th scope="row" className="sticky left-0 z-10 border-b border-r bg-card p-2 text-left font-medium">Encargos</th>
+                                {sessions.map(session => {
+                                    const requests = data.requests.filter(request => request.session_id === session.id)
+                                    const pending = requests.filter(request => request.status === 'pending').length
+                                    return (
+                                        <td key={session.id} className="border-b border-r p-1 align-top">
+                                            <button
+                                                type="button"
+                                                aria-label={`Encargos de la sesión del ${formatShortDate(session.session_date)}`}
+                                                onClick={() => setPanel({ type: 'requests', sessionId: session.id })}
+                                                className={cn(
+                                                    'min-h-7 w-full rounded px-1.5 py-1 text-left hover:bg-muted/60',
+                                                    pending > 0 && 'bg-primary/10 font-semibold',
+                                                    requests.length > 0 && pending === 0 && 'text-muted-foreground'
+                                                )}
+                                            >
+                                                {requests.length === 0 ? '' : pending > 0 ? `${pending} pendiente${pending > 1 ? 's' : ''}` : 'Hecho'}
+                                            </button>
+                                        </td>
+                                    )
+                                })}
+                            </tr>
+                        )}
+                        {sessions.length > 0 && data.routines.length > 0 && (
+                            <tr>
+                                <th scope="row" className="sticky left-0 z-10 border-b border-r bg-card p-2 text-left font-medium">Rutinas</th>
+                                {sessions.map(session => (
+                                    <td key={session.id} className="border-b border-r p-1 align-top text-muted-foreground">
+                                        <button
+                                            type="button"
+                                            aria-label={`Añadir una rutina a la sesión del ${formatShortDate(session.session_date)}`}
+                                            onClick={() => setPanel({ type: 'session', sessionId: session.id })}
+                                            className="min-h-7 w-full rounded px-1.5 py-1 text-left hover:bg-muted/60"
+                                        >
+                                            {(routineNames.get(session.id) ?? []).join(' · ')}
+                                        </button>
+                                    </td>
+                                ))}
+                            </tr>
+                        )}
                         {groups.map(({ block, rows }) => {
                             const closed = collapsed.has(block.key)
                             return (
@@ -372,12 +476,19 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                             {cellItems.length === 0 && !off && (
                                                                 <button
                                                                     type="button"
-                                                                    aria-label={`Añadir ${row.name} a esta sesión`}
-                                                                    className="flex min-h-8 w-full items-center justify-center rounded text-primary opacity-0 hover:bg-muted/60 hover:opacity-100 focus-visible:opacity-100"
-                                                                    onClick={() => setPanel({
-                                                                        type: 'cell',
-                                                                        target: { sessionId: session.id, catalogExerciseId: row.catalogId, exerciseName: row.fullName },
-                                                                    })}
+                                                                    aria-label={clip?.kind === 'cell' ? `Pegar en ${row.name}` : `Añadir ${row.name} a esta sesión`}
+                                                                    data-sala-session={session.id}
+                                                                    data-sala-exercise={row.catalogId}
+                                                                    className={cn(
+                                                                        'flex min-h-8 w-full items-center justify-center rounded text-primary hover:bg-muted/60 hover:opacity-100 focus-visible:opacity-100',
+                                                                        clip?.kind === 'cell' ? 'opacity-40' : 'opacity-0'
+                                                                    )}
+                                                                    onClick={() => (clip?.kind === 'cell'
+                                                                        ? pasteCell(session.id, row.catalogId)
+                                                                        : setPanel({
+                                                                            type: 'cell',
+                                                                            target: { sessionId: session.id, catalogExerciseId: row.catalogId, exerciseName: row.fullName },
+                                                                        }))}
                                                                 >
                                                                     <Plus className="h-3.5 w-3.5" />
                                                                 </button>
@@ -427,17 +538,31 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                     key={openSession.id}
                     data={data}
                     session={openSession}
+                    clip={clip}
                     onClose={() => setPanel(null)}
                     onOpenItem={itemId => setPanel({ type: 'cell', target: { itemId } })}
                     onDuplicate={() => setPanel({ type: 'duplicate', sessionId: openSession.id })}
+                    onCopy={entries => {
+                        setClip(clipFromSession(openSession, entries, `Sesión del ${formatShortDate(openSession.session_date)}`) as StudioClip)
+                        toast.success('Sesión copiada')
+                    }}
+                    onPasted={() => setClip(null)}
                 />
             )}
+            {panel?.type === 'requests' && openSession && (
+                <StudioRequestPanel data={data} session={openSession} onClose={() => setPanel(null)} />
+            )}
+            {panel?.type === 'routines' && <StudioRoutinesPanel data={data} onClose={() => setPanel(null)} />}
             {panel?.type === 'cell' && (
                 <StudioCellPanel
                     key={'itemId' in panel.target ? panel.target.itemId : `${panel.target.sessionId}:${panel.target.catalogExerciseId}`}
                     data={data}
                     target={panel.target}
                     onClose={() => setPanel(null)}
+                    onCopy={item => {
+                        copyCell(item)
+                        setPanel(null)
+                    }}
                 />
             )}
         </section>
@@ -456,6 +581,9 @@ function Cell({ item, done, busy, onOpen, onToggleDone }: {
         <div className={cn('relative mb-0.5 rounded last:mb-0', done ? 'bg-primary/10' : 'bg-muted/50')}>
             <button
                 type="button"
+                data-sala-item={item.id}
+                data-sala-session={item.session_id}
+                data-sala-exercise={item.catalog_exercise_id}
                 className="block w-full rounded px-1.5 py-1 pr-7 text-left hover:ring-1 hover:ring-primary/40"
                 onClick={onOpen}
                 aria-label={`Editar ${item.exercise_name}: ${summary.volume || 'sin valores'}`}

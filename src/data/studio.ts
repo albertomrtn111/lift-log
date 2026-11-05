@@ -63,6 +63,39 @@ export interface StudioItem {
     updated_by: string | null
     updated_at: string
     tags: string[]
+    routine_id: string | null
+}
+
+export interface StudioRoutineItem {
+    catalog_exercise_id: string
+    exercise_name: string
+    sort_order: number
+    sets: number | null
+    reps: string | null
+    time_seconds: number | null
+    load_kg: number | null
+    rir: number | null
+    rpe: number | null
+    note: string | null
+}
+
+export interface StudioRoutine {
+    id: string
+    client_id: string | null
+    name: string
+    kind: string
+    items: StudioRoutineItem[]
+}
+
+export interface StudioRequest {
+    id: string
+    session_id: string
+    from_user: string | null
+    to_user: string | null
+    title: string
+    message: string | null
+    status: 'pending' | 'done'
+    done_by: string | null
 }
 
 export interface StudioProfessional {
@@ -71,6 +104,7 @@ export interface StudioProfessional {
 }
 
 export interface StudioGridData {
+    coachId: string
     client: StudioClientHeader
     sessions: StudioSession[]
     sections: StudioSection[]
@@ -83,6 +117,8 @@ export interface StudioGridData {
     team: StudioProfessional[]
     /** Etiquetas de material o variante del espacio, las más usadas primero. */
     tags: string[]
+    routines: StudioRoutine[]
+    requests: StudioRequest[]
 }
 
 /** Clientes activos del espacio, con quién tiene sesión hoy. */
@@ -135,7 +171,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         .maybeSingle()
     if (!client) return null
 
-    const [{ data: sessions }, library, { names, team }, { data: tags }] = await Promise.all([
+    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }] = await Promise.all([
         supabase
             .from('studio_sessions')
             .select('id, session_date, start_time, status, name, sort_order, professional_id, version, duration_min, wellness_sleep, wellness_fatigue, wellness_stress, wellness_soreness, wellness_score, arrival_note, rpe')
@@ -144,6 +180,16 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         getLibraryAction(),
         getStudioTeam(coachId),
         supabase.from('studio_tags').select('name').eq('coach_id', coachId).order('uses', { ascending: false }).limit(200),
+        supabase
+            .from('studio_routines')
+            .select('id, client_id, name, kind, studio_routine_items(catalog_exercise_id, sort_order, sets, reps, time_seconds, load_kg, rir, rpe, note, exercise_catalog(name))')
+            .eq('coach_id', coachId)
+            .order('name'),
+        supabase
+            .from('studio_requests')
+            .select('id, session_id, from_user, to_user, title, message, status, done_by')
+            .eq('client_id', clientId)
+            .order('created_at'),
     ])
 
     const sessionIds = (sessions ?? []).map(session => session.id)
@@ -151,7 +197,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         ? await Promise.all([
             supabase
                 .from('studio_session_items')
-                .select('id, session_id, section_id, sort_order, catalog_exercise_id, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name))')
+                .select('id, session_id, section_id, sort_order, catalog_exercise_id, routine_id, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name))')
                 .in('session_id', sessionIds)
                 .order('sort_order', { ascending: true }),
             supabase
@@ -163,6 +209,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         : [{ data: [] }, { data: [] }]
 
     return {
+        coachId,
         client: {
             id: client.id,
             fullName: client.full_name,
@@ -188,5 +235,15 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         professionals: names,
         team,
         tags: (tags ?? []).map(tag => tag.name),
+        routines: (routines ?? []).map(({ studio_routine_items: routineItems, ...routine }) => ({
+            ...routine,
+            items: ((routineItems ?? []) as unknown as (Omit<StudioRoutineItem, 'exercise_name'> & { exercise_catalog: { name: string } | { name: string }[] | null })[])
+                .map(({ exercise_catalog: embed, ...item }) => ({
+                    ...item,
+                    exercise_name: (Array.isArray(embed) ? embed[0]?.name : embed?.name) ?? '',
+                }))
+                .sort((a, b) => a.sort_order - b.sort_order),
+        })),
+        requests: (requests ?? []) as StudioRequest[],
     }
 }

@@ -62,10 +62,11 @@ function previousText(item: StudioItem) {
     return [summary.volume, summary.load, summary.details].filter(Boolean).join(' · ') || 'sin datos'
 }
 
-export function StudioCellPanel({ data, target, onClose }: {
+export function StudioCellPanel({ data, target, onClose, onCopy }: {
     data: StudioGridData
     target: CellTarget
     onClose: () => void
+    onCopy: (item: StudioItem) => void
 }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -423,6 +424,11 @@ export function StudioCellPanel({ data, target, onClose }: {
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Guardar
                     </Button>
+                    {item && (
+                        <Button type="button" variant="outline" disabled={isPending} onClick={() => onCopy(item)}>
+                            Copiar
+                        </Button>
+                    )}
                     {item && (
                         <Button
                             type="button"
