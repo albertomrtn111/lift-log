@@ -1,7 +1,7 @@
 import { assertEquals, assertMatch } from 'jsr:@std/assert@1'
 import { outputSchemas } from './output-schemas.ts'
 import { jsonResult, toolError } from './shared.ts'
-import { exerciseFields, groupSummaries, registerStudioTools, sessionDetail, sessionSummary, studioError } from './studio.ts'
+import { agendaEntry, exerciseFields, groupSummaries, registerStudioTools, sessionDetail, sessionSummary, studioError } from './studio.ts'
 
 const coach = '22222222-2222-4222-8222-222222222222'
 const client = '11111111-1111-4111-8111-111111111111'
@@ -212,4 +212,14 @@ Deno.test('pasar lista marca a cada persona', async () => {
   })
   assertEquals(result.marked, 2)
   assertEquals(marked, ['attended', 'absent'])
+})
+
+Deno.test('una cita usa el nombre del cliente y no lleva contacto', () => {
+  const entry = agendaEntry({
+    id: 'a', starts_at: 'x', status: 'confirmed', client_id: 'c', clients: { full_name: 'Ana' },
+    external_patients: { id: 'p', full_name: 'Ana F', phone: '600', email: 'a@example.com' },
+    agenda_services: { name: 'TEAM' }, session_id: 's',
+  })
+  assertEquals([entry.client, entry.service, entry.external_patient_id], ['Ana', 'TEAM', 'p'])
+  assertEquals(JSON.stringify(entry).includes('600'), false)
 })
