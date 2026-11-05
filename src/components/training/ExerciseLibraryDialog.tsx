@@ -5,16 +5,25 @@ import { ArrowLeft, Check, Loader2, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { addExerciseToCatalogCache } from '@/hooks/use-exercise-catalog'
+import { addExerciseToCatalogCache, useExerciseBlocks } from '@/hooks/use-exercise-catalog'
 import { createCatalogExerciseAction } from '@/lib/training/exercise-catalog-actions'
 import {
+    findSimilarExercises,
+    type SimilarCatalogExercise,
+} from '@/lib/training/exercise-catalog-client'
+import {
     CATALOG_GROUPS,
-    findSimilarCatalogExercises,
     normalizeExerciseName,
     type CatalogExercise,
 } from '@/lib/training/exercise-catalog'
+import {
+    BLOCK_CATEGORY_LABELS,
+    EQUIPMENT_LABELS,
+    LATERALITIES,
+    LATERALITY_LABELS,
+} from '@/lib/training/exercise-catalog-rules'
 import { cn } from '@/lib/utils'
 
 interface ExerciseLibraryDialogProps {
@@ -26,6 +35,10 @@ interface ExerciseLibraryDialogProps {
     legacyName?: string | null
     loading?: boolean
     error?: string | null
+}
+
+function equipmentLabel(item: string) {
+    return EQUIPMENT_LABELS[item as keyof typeof EQUIPMENT_LABELS] ?? item
 }
 
 export function ExerciseLibraryDialog({
@@ -44,7 +57,12 @@ export function ExerciseLibraryDialog({
     const [group, setGroup] = useState<string | null>(null)
     const [newName, setNewName] = useState('')
     const [newGroup, setNewGroup] = useState<string>('')
+    const [newBlock, setNewBlock] = useState<string>('')
+    const [newLaterality, setNewLaterality] = useState<string>('')
+    const [newEquipment, setNewEquipment] = useState<string[]>([])
+    const [similar, setSimilar] = useState<SimilarCatalogExercise[]>([])
     const [creating, setCreating] = useState(false)
+    const blocks = useExerciseBlocks(open)
 
     useEffect(() => {
         if (!open) return
@@ -52,6 +70,15 @@ export function ExerciseLibraryDialog({
         setSearch('')
         setGroup(null)
     }, [open])
+
+    const blockNames = useMemo(() => new Map(blocks.map(block => [block.key, block.name])), [blocks])
+
+    const blocksByCategory = useMemo(
+        () => Object.entries(BLOCK_CATEGORY_LABELS)
+            .map(([category, label]) => ({ label, blocks: blocks.filter(block => block.category === category) }))
+            .filter(entry => entry.blocks.length > 0),
+        [blocks]
+    )
 
     const groups = useMemo(
         () => CATALOG_GROUPS.filter(item => exercises.some(exercise => exercise.primary_group === item)),
@@ -65,14 +92,29 @@ export function ExerciseLibraryDialog({
             if (!query) return true
             return normalizeExerciseName(exercise.name).includes(query)
                 || normalizeExerciseName(exercise.primary_group).includes(query)
+                || normalizeExerciseName(blockNames.get(exercise.block_key ?? '') ?? '').includes(query)
+                || (exercise.equipment ?? []).some(item => normalizeExerciseName(equipmentLabel(item)).includes(query))
                 || (exercise.aliases ?? []).some(alias => alias.includes(query))
         })
-    }, [exercises, search, group])
+    }, [exercises, search, group, blockNames])
 
-    const similar = useMemo(
-        () => (newName.trim().length >= 3 ? findSimilarCatalogExercises(exercises, newName) : []),
-        [exercises, newName]
-    )
+    useEffect(() => {
+        const name = newName.trim()
+        if (view !== 'create' || name.length < 3) {
+            setSimilar([])
+            return
+        }
+        let active = true
+        const timer = setTimeout(() => {
+            void findSimilarExercises(name, newBlock || null).then(matches => {
+                if (active) setSimilar(matches)
+            })
+        }, 300)
+        return () => {
+            active = false
+            clearTimeout(timer)
+        }
+    }, [view, newName, newBlock])
 
     function choose(exercise: CatalogExercise) {
         void onSelect(exercise)
@@ -82,12 +124,31 @@ export function ExerciseLibraryDialog({
     function startCreate() {
         setNewName(search.trim() || legacyName?.trim() || '')
         setNewGroup(group ?? '')
+        setNewBlock('')
+        setNewLaterality('')
+        setNewEquipment([])
         setView('create')
+    }
+
+    function chooseSimilar(match: SimilarCatalogExercise) {
+        choose(exercises.find(exercise => exercise.id === match.id) ?? match)
+    }
+
+    function toggleEquipment(item: string) {
+        setNewEquipment(current =>
+            current.includes(item) ? current.filter(value => value !== item) : [...current, item]
+        )
     }
 
     async function create() {
         setCreating(true)
-        const result = await createCatalogExerciseAction({ name: newName, primaryGroup: newGroup })
+        const result = await createCatalogExerciseAction({
+            name: newName,
+            primaryGroup: newGroup,
+            blockKey: newBlock,
+            laterality: newLaterality,
+            equipment: newEquipment,
+        })
         setCreating(false)
         if (!result.success) {
             toast({ title: 'No se pudo crear', description: result.error, variant: 'destructive' })
@@ -119,7 +180,7 @@ export function ExerciseLibraryDialog({
                                     autoFocus
                                     value={search}
                                     onChange={event => setSearch(event.target.value)}
-                                    placeholder="Buscar: press banca, sentadilla, remo…"
+                                    placeholder="Buscar por nombre, bloque o material…"
                                     className="h-11 pl-9"
                                     aria-label="Buscar ejercicio"
                                 />
@@ -167,7 +228,9 @@ export function ExerciseLibraryDialog({
                                 >
                                     <span className="min-w-0">
                                         <span className="block break-words text-sm font-medium">{exercise.name}</span>
-                                        <span className="block text-xs text-muted-foreground">{exercise.primary_group}</span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            {[blockNames.get(exercise.block_key ?? ''), exercise.primary_group].filter(Boolean).join(' · ')}
+                                        </span>
                                     </span>
                                     {value === exercise.id && <Check className="h-4 w-4 shrink-0 text-primary" />}
                                 </button>
@@ -230,6 +293,63 @@ export function ExerciseLibraryDialog({
                                 </Select>
                             </label>
 
+                            <label className="block space-y-1.5">
+                                <span className="text-sm font-medium">Bloque</span>
+                                <Select value={newBlock} onValueChange={setNewBlock}>
+                                    <SelectTrigger className="h-11">
+                                        <SelectValue placeholder="Selecciona un bloque" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {blocksByCategory.map(entry => (
+                                            <SelectGroup key={entry.label}>
+                                                <SelectLabel>{entry.label}</SelectLabel>
+                                                {entry.blocks.map(block => (
+                                                    <SelectItem key={block.key} value={block.key}>{block.name}</SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </label>
+
+                            <label className="block space-y-1.5">
+                                <span className="text-sm font-medium">Lateralidad</span>
+                                <Select value={newLaterality} onValueChange={setNewLaterality}>
+                                    <SelectTrigger className="h-11">
+                                        <SelectValue placeholder="Selecciona la lateralidad" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {LATERALITIES.map(item => (
+                                            <SelectItem key={item} value={item}>
+                                                {LATERALITY_LABELS[item as keyof typeof LATERALITY_LABELS]}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </label>
+
+                            <div className="space-y-1.5">
+                                <span className="text-sm font-medium">Material (opcional)</span>
+                                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Material">
+                                    {Object.entries(EQUIPMENT_LABELS).map(([item, label]) => (
+                                        <button
+                                            key={item}
+                                            type="button"
+                                            aria-pressed={newEquipment.includes(item)}
+                                            onClick={() => toggleEquipment(item)}
+                                            className={cn(
+                                                'h-8 rounded-full border px-3 text-xs font-medium transition-colors',
+                                                newEquipment.includes(item)
+                                                    ? 'border-primary bg-primary text-primary-foreground'
+                                                    : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
+                                            )}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             {similar.length > 0 && (
                                 <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
                                     <p className="text-sm font-medium">¿Es alguno de estos?</p>
@@ -237,7 +357,7 @@ export function ExerciseLibraryDialog({
                                         <button
                                             key={exercise.id}
                                             type="button"
-                                            onClick={() => choose(exercise)}
+                                            onClick={() => chooseSimilar(exercise)}
                                             className="flex w-full items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-accent"
                                         >
                                             <span className="min-w-0 break-words font-medium">{exercise.name}</span>
@@ -252,7 +372,7 @@ export function ExerciseLibraryDialog({
                             <Button
                                 className="w-full gap-1.5"
                                 onClick={create}
-                                disabled={creating || newName.trim().length < 3 || !newGroup}
+                                disabled={creating || newName.trim().length < 3 || !newGroup || !newBlock || !newLaterality}
                             >
                                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                                 Crear y usar

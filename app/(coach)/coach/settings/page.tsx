@@ -10,6 +10,7 @@ import {
     CheckCircle2,
     ClipboardList,
     Dumbbell,
+    GitMerge,
     Headphones,
     Mail,
     MessageSquare,
@@ -32,13 +33,22 @@ import { NotificationSettingsPanel } from '@/components/coach/settings/Notificat
 import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUploader'
 import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
+import { CatalogDuplicatesPanel } from '@/components/coach/settings/CatalogDuplicatesPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
+}
+
+// Solo para el equipo de NexTrain: no es un ajuste de ningún espacio.
+const CATALOG_TAB = {
+    id: 'catalogo' as const,
+    label: 'Catálogo',
+    description: 'Posibles duplicados',
+    icon: GitMerge,
 }
 
 const SETTINGS_TABS: Array<{
@@ -93,7 +103,10 @@ const SETTINGS_TABS: Array<{
 
 export default async function CoachSettingsPage({ searchParams }: CoachSettingsPageProps) {
     const params = await searchParams
-    const activeTab = parseSettingsTab(params.tab)
+    const supabase = await createClient()
+    const { data: isPlatformAdmin } = await supabase.rpc('is_platform_admin')
+    const tabs = isPlatformAdmin === true ? [...SETTINGS_TABS, CATALOG_TAB] : SETTINGS_TABS
+    const activeTab = parseSettingsTab(params.tab, isPlatformAdmin === true)
     const profileData = await getSettingsProfileData()
 
     return (
@@ -104,7 +117,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                 description="Perfil, email de envío, notificaciones, asistente de IA, apariencia y soporte."
             >
                 <nav aria-label="Secciones de ajustes" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 scrollbar-hide lg:hidden">
-                    {SETTINGS_TABS.map((item) => {
+                    {tabs.map((item) => {
                         const Icon = item.icon
                         const isActive = activeTab === item.id
                         return (
@@ -132,7 +145,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                 <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
                     <aside className="hidden self-start rounded-2xl border border-border bg-card p-2 shadow-sm lg:block">
                         <nav className="space-y-1">
-                            {SETTINGS_TABS.map((item) => {
+                            {tabs.map((item) => {
                                 const Icon = item.icon
                                 const isActive = activeTab === item.id
 
@@ -178,6 +191,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                     <main className="min-w-0">
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'equipo' && <TeamSettingsPanel />}
+                        {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
                         {activeTab === 'asistente-ia' && <McpSettingsPanel serverUrl={getMcpServerUrl()} />}
@@ -237,7 +251,8 @@ async function getSettingsProfileData() {
     }
 }
 
-function parseSettingsTab(tab?: string): SettingsTab {
+function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean): SettingsTab {
+    if (tab === 'catalogo' && isPlatformAdmin) return 'catalogo'
     if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
