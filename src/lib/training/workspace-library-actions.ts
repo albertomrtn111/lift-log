@@ -26,6 +26,7 @@ export interface LibraryEntry {
 export interface LibraryBlock {
     key: string
     name: string
+    category: string
     displayName: string
     groupTitle: string | null
     defaultSets: number | null
@@ -77,7 +78,7 @@ export async function getLibraryAction(): Promise<ActionResult<LibraryData>> {
                 .from('workspace_exercises')
                 .select('id, catalog_exercise_id, short_name, group_title, default_sets, default_reps, sort_order, is_hidden, exercise_catalog(name, primary_group, block_key)')
                 .eq('coach_id', coachId),
-            supabase.from('exercise_blocks').select('key, name, sort_order').eq('is_active', true),
+            supabase.from('exercise_blocks').select('key, name, category, sort_order').eq('is_active', true),
             supabase
                 .from('workspace_blocks')
                 .select('block_key, display_name, group_title, default_sets, default_reps, sort_order, is_hidden')

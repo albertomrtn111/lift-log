@@ -43,6 +43,7 @@ export function mergeBlocks(common, overrides) {
             return {
                 key: block.key,
                 name: block.name,
+                category: block.category,
                 displayName: own?.display_name ?? block.name,
                 groupTitle: own?.group_title ?? null,
                 defaultSets: own?.default_sets ?? null,

@@ -13,6 +13,7 @@ import {
     FileText,
     ClipboardList,
     BarChart2,
+    Dumbbell,
     Receipt,
     MessageCircle,
     MoreHorizontal,
@@ -93,7 +94,9 @@ const mobileSecondarySections: Array<{ title: string; items: NavItem[] }> = [
 
 const mobileSecondaryItems = mobileSecondarySections.flatMap(section => section.items)
 
-export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
+const STUDIO_NAV_ITEM: NavItem = { href: '/coach/sala', icon: Dumbbell, label: 'Sala' }
+
+export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Workspace[]; studioEnabled: boolean }) {
     const pathname = usePathname()
     const router = useRouter()
     const [loggingOut, setLoggingOut] = useState(false)
@@ -137,6 +140,12 @@ export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
     // Get user context from cached provider
     const { coach } = useCoachContext()
     const brand = useSpaceBranding()
+    const desktopSections = studioEnabled
+        ? navSections.map((section, index) => (index === 0 ? { ...section, items: [STUDIO_NAV_ITEM, ...section.items] } : section))
+        : navSections
+    const moreSections = studioEnabled
+        ? [{ title: 'Sala', items: [STUDIO_NAV_ITEM] }, ...mobileSecondarySections]
+        : mobileSecondarySections
     const userRole = coach?.role ?? 'coach'
     const coachId = coach?.coachId ?? null
 
@@ -185,7 +194,7 @@ export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
         }
     }
 
-    const isSecondaryRouteActive = mobileSecondaryItems.some(item => pathname?.startsWith(item.href))
+    const isSecondaryRouteActive = moreSections.flatMap(section => section.items).some(item => pathname?.startsWith(item.href))
     const secondaryBadgeCount = mobileSecondaryItems.reduce((total, item) => {
         return total + (item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0)
     }, 0)
@@ -230,7 +239,7 @@ export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
 
                     {/* Navigation - Scrollable Area */}
                     <div className="flex-1 overflow-y-auto py-4">
-                        {navSections.map((section, idx) => (
+                        {desktopSections.map((section, idx) => (
                             <div key={section.title} className={cn('px-3', idx > 0 ? 'mt-6 border-t border-border/50 pt-4' : '')}>
                                 <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                                     {section.title}
@@ -381,7 +390,7 @@ export function CoachSidebar({ workspaces }: { workspaces: Workspace[] }) {
                             </SheetHeader>
 
                             <div className="mt-5 space-y-5">
-                                {mobileSecondarySections.map(section => (
+                                {moreSections.map(section => (
                                     <section key={section.title}>
                                         <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                             {section.title}
