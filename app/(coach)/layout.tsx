@@ -5,11 +5,15 @@ import { CoachNotificationsProvider } from '@/components/coach/notifications/Coa
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachWorkspaceInfo } from '@/lib/onboarding/coach-workspace'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { canManageTeam } from '@/lib/team/team-rules'
 import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
 import { getMyWorkspaces } from '@/lib/auth/active-coach'
 
 export const generateMetadata = spaceBrandingMetadata
+
+const SALA_ONBOARDING_PATH = '/coach/sala-inicio'
 
 export default async function CoachLayout({
     children,
@@ -25,6 +29,16 @@ export default async function CoachLayout({
             const workspace = await getCoachWorkspaceInfo(coachId)
             if (workspace?.onboarding_state.welcome_pending) {
                 redirect('/welcome')
+            }
+            // Sala nueva: el propietario y los administradores pasan por el onboarding.
+            const pathname = (await headers()).get('x-pathname') ?? ''
+            const role = (await getMyWorkspaces()).find(item => item.coach_id === coachId)?.role
+            if (
+                workspace?.onboarding_state.studio_pending
+                && canManageTeam(role ?? '')
+                && pathname !== SALA_ONBOARDING_PATH
+            ) {
+                redirect(SALA_ONBOARDING_PATH)
             }
         }
     }

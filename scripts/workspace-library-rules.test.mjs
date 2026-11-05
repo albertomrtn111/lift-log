@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+    LIBRARY_TEMPLATES,
     cleanOptionalText,
     mergeBlocks,
     moveInList,
@@ -65,4 +66,10 @@ test('mover y cambiar de sitio', () => {
     assert.deepEqual(swapInList(['a', 'b', 'c', 'd'], 'a', 'c'), ['c', 'b', 'a', 'd'])
     assert.equal(sortOrderFor(0), 10)
     assert.equal(sortOrderFor(2), 30)
+})
+
+test('las plantillas no repiten bloques', () => {
+    for (const template of Object.values(LIBRARY_TEMPLATES)) {
+        assert.equal(new Set(template.blocks).size, template.blocks.length)
+    }
 })

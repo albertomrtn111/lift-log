@@ -6,6 +6,7 @@ import {
     Bell,
     Bot,
     Brain,
+    Building2,
     Calendar,
     CheckCircle2,
     ClipboardList,
@@ -35,24 +36,23 @@ import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUplo
 import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { CatalogDuplicatesPanel } from '@/components/coach/settings/CatalogDuplicatesPanel'
+import { SalasAdminPanel } from '@/components/coach/settings/SalasAdminPanel'
 import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
 import { BrandingSettingsPanel } from '@/components/coach/settings/BrandingSettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'salas' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
 }
 
-// Solo para el equipo de NexTrain: no es un ajuste de ningún espacio.
-const CATALOG_TAB = {
-    id: 'catalogo' as const,
-    label: 'Catálogo',
-    description: 'Posibles duplicados',
-    icon: GitMerge,
-}
+// Solo para el equipo de NexTrain: no son ajustes de ningún espacio.
+const PLATFORM_TABS = [
+    { id: 'salas' as const, label: 'Salas', description: 'Alta de salas nuevas', icon: Building2 },
+    { id: 'catalogo' as const, label: 'Catálogo', description: 'Posibles duplicados', icon: GitMerge },
+]
 
 const SETTINGS_TABS: Array<{
     id: SettingsTab
@@ -120,7 +120,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
     const params = await searchParams
     const supabase = await createClient()
     const { data: isPlatformAdmin } = await supabase.rpc('is_platform_admin')
-    const tabs = isPlatformAdmin === true ? [...SETTINGS_TABS, CATALOG_TAB] : SETTINGS_TABS
+    const tabs = isPlatformAdmin === true ? [...SETTINGS_TABS, ...PLATFORM_TABS] : SETTINGS_TABS
     const activeTab = parseSettingsTab(params.tab, isPlatformAdmin === true)
     const profileData = await getSettingsProfileData()
 
@@ -208,6 +208,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'equipo' && <TeamSettingsPanel />}
                         {activeTab === 'biblioteca' && <LibrarySettingsPanel />}
                         {activeTab === 'look-feel' && <BrandingSettingsPanel />}
+                        {activeTab === 'salas' && <SalasAdminPanel />}
                         {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
@@ -271,7 +272,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean): SettingsTab {
-    if (tab === 'catalogo' && isPlatformAdmin) return 'catalogo'
+    if ((tab === 'catalogo' || tab === 'salas') && isPlatformAdmin) return tab
     if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'look-feel' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
