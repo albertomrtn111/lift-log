@@ -36,6 +36,23 @@ const resultFormat = z.enum(['grouped', 'flat']).default('grouped').describe(
   'grouped (por defecto) agrupa las series por sesión y ejercicio sin repetir sus datos y omite los campos nulos de cada serie; flat devuelve una fila por serie, como antes.',
 )
 
+/** Series hechas en sala en el rango, de sesiones hechas. Es un añadido: sin ellas, sigue lo online. */
+async function studioSets(db: Db, clientId: string, range: { from_date: string; end_exclusive: string }) {
+  try {
+    const { data, error } = await db.from('v_strength_set_facts')
+      .select('catalog_exercise_id, exercise_name, set_index, performed_at, load_kg, reps, time_seconds, rir, rpe')
+      .eq('client_id', clientId)
+      .eq('source', 'studio')
+      .gte('performed_at', `${range.from_date}T00:00:00Z`)
+      .lt('performed_at', range.end_exclusive)
+      .order('performed_at')
+      .limit(500)
+    return error ? [] : data ?? []
+  } catch {
+    return []
+  }
+}
+
 // Página de resultados en el formato pedido. La paginación cuenta series en ambos formatos.
 function strengthResultPage(page: Row[], format: 'grouped' | 'flat') {
   return format === 'flat'
@@ -382,6 +399,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     return {
       client_id, ...range, program_id: program_id ?? null,
       ...strengthResultPage(data.results.slice(offset, offset + limit), format),
+      // Sala va aparte: sus series no pertenecen a ningún programa.
+      studio_sets: program_id ? [] : await studioSets(db, client_id, range),
       completed_sessions: data.sessions.filter((session) => session.is_completed),
       has_more: data.results.length > offset + limit, next_offset: data.results.length > offset + limit ? offset + limit : null,
       programs_scanned: context.programs.map((program) => ({ id: program.id, name: program.name })),

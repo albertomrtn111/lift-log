@@ -9,6 +9,7 @@ import { registerNutritionTools } from './nutrition.ts'
 import { registerCardioTools } from './cardio.ts'
 import { registerClientTools } from './clients.ts'
 import { loadCatalogView, registerLibraryTools, rolePermissions } from './library.ts'
+import { registerStudioTools } from './studio.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { withOutputSchemas } from './output-schemas.ts'
 import { registerAgendaTools } from './agenda.ts'
@@ -75,7 +76,7 @@ function createNextTrainServer(supabase: Db) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.17.0',
+    version: '0.18.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
@@ -112,6 +113,7 @@ function createNextTrainServer(supabase: Db) {
 
   registerClientTools(server, supabase)
   registerLibraryTools(server, supabase)
+  registerStudioTools(server, supabase)
 
   server.registerTool(
     'get_client_overview',
