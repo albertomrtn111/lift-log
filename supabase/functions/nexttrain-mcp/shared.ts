@@ -138,7 +138,7 @@ export async function resolveCoach(db: Db, requestedCoachId?: string) {
     // La zona del espacio viene en la misma consulta para no añadir una por herramienta.
     .select('coach_id, role, status, created_at, coaches(timezone)')
     .eq('status', 'active')
-    .in('role', ['owner', 'coach'])
+    .in('role', ['owner', 'admin', 'coach'])
     .order('created_at', { ascending: true })
 
   if (requestedCoachId) query = query.eq('coach_id', requestedCoachId)

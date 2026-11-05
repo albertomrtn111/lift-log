@@ -8,6 +8,7 @@ import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
 import { registerCardioTools } from './cardio.ts'
 import { registerClientTools } from './clients.ts'
+import { loadCatalogView, registerLibraryTools, rolePermissions } from './library.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { withOutputSchemas } from './output-schemas.ts'
 import { registerAgendaTools } from './agenda.ts'
@@ -54,10 +55,6 @@ const strengthExerciseSchema = z.object({
   notes: z.string().trim().max(800).optional(),
 })
 
-function exerciseNameKey(name: string) {
-  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
-}
-
 const strengthDaySchema = z.object({
   name: z.string().trim().min(1).max(120),
   weekday: z.number().int().min(1).max(7).describe('1=lunes, 7=domingo'),
@@ -78,7 +75,7 @@ function createNextTrainServer(supabase: Db) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.16.0',
+    version: '0.17.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
@@ -95,7 +92,7 @@ function createNextTrainServer(supabase: Db) {
     'who_am_i',
     {
       title: 'Comprobar acceso de entrenador',
-      description: 'Devuelve los espacios de entrenamiento a los que pertenece la cuenta conectada.',
+      description: 'Devuelve los espacios a los que pertenece la cuenta conectada, con su rol y lo que puede hacer en cada uno. Si hay varios, las demás herramientas piden coach_id.',
       inputSchema: z.object({}),
       annotations: readOnlyAnnotations,
     },
@@ -104,14 +101,17 @@ function createNextTrainServer(supabase: Db) {
         .from('coach_memberships')
         .select('coach_id, role, status, coaches(name)')
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', ['owner', 'admin', 'coach'])
 
       if (error) return toolError('No se ha podido comprobar la cuenta conectada.')
-      return jsonResult({ trainer_access: data ?? [] })
+      return jsonResult({
+        trainer_access: (data ?? []).map((access: Row) => ({ ...access, ...rolePermissions(access.role) })),
+      })
     },
   )
 
   registerClientTools(server, supabase)
+  registerLibraryTools(server, supabase)
 
   server.registerTool(
     'get_client_overview',
@@ -130,7 +130,7 @@ function createNextTrainServer(supabase: Db) {
       fallbackError: 'No se ha podido cargar el cliente.',
     }, async ({ coachId, client, today }) => {
 
-      const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult] = await Promise.all([
+      const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult, professionalsResult] = await Promise.all([
         supabase
           .from('checkins')
           .select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, status')
@@ -169,6 +169,8 @@ function createNextTrainServer(supabase: Db) {
           .eq('coach_id', coachId)
           .eq('client_id', client_id)
           .maybeSingle(),
+        // Dato de apoyo: si falla, el resumen del cliente sigue saliendo.
+        supabase.rpc('client_professionals_list', { p_client_id: client_id }),
       ])
 
       const failed = [checkinsResult, cardioResult, eventsResult, programsResult, goalResult].find((item) => item.error)
@@ -222,6 +224,7 @@ function createNextTrainServer(supabase: Db) {
         cardio_window: cardioResult.data ?? [],
         upcoming_events: eventsResult.data ?? [],
         training_programs: programsResult.data ?? [],
+        professionals: professionalsResult.data ?? [],
       }
     }),
   )
@@ -323,6 +326,7 @@ function createNextTrainServer(supabase: Db) {
       description: 'Lista los ejercicios de fuerza de la biblioteca común. create_strength_program solo admite ejercicios de esta lista (nombre exacto, alias o catalog_exercise_id).',
       inputSchema: z.object({
         search: z.string().trim().max(80).optional().describe('Texto a buscar en el nombre, el grupo o los nombres alternativos.'),
+        block: z.string().trim().max(60).optional().describe('Nombre del bloque, por ejemplo Empuje horizontal o Core antirrotación.'),
         primary_group: z.string().trim().max(40).optional().describe('Grupo exacto, por ejemplo Pecho, Espalda o Cuádriceps.'),
         coach_id: optionalCoachId,
       }),
@@ -331,27 +335,11 @@ function createNextTrainServer(supabase: Db) {
     (input) => run('list_exercise_catalog', {
       coachId: input.coach_id,
       fallbackError: 'No se ha podido consultar la biblioteca de ejercicios.',
-    }, async ({ log }) => {
-      const [catalogResult, aliasResult] = await Promise.all([
-        supabase.from('exercise_catalog').select('id, name, primary_group').eq('is_active', true).order('name'),
-        supabase.from('exercise_catalog_aliases').select('alias_key, catalog_exercise_id'),
-      ])
-      if (catalogResult.error) throw new Error('No se ha podido consultar la biblioteca de ejercicios.')
-
-      const aliasKeys = new Map<string, string[]>()
-      for (const alias of aliasResult.data ?? []) {
-        const keys = aliasKeys.get(alias.catalog_exercise_id) ?? []
-        keys.push(alias.alias_key)
-        aliasKeys.set(alias.catalog_exercise_id, keys)
-      }
-      const query = input.search ? exerciseNameKey(input.search) : ''
-      const group = input.primary_group ? exerciseNameKey(input.primary_group) : ''
-      const exercises = (catalogResult.data ?? []).filter((exercise: Row) => {
-        if (group && exerciseNameKey(exercise.primary_group) !== group) return false
-        if (!query) return true
-        return exerciseNameKey(exercise.name).includes(query)
-          || exerciseNameKey(exercise.primary_group).includes(query)
-          || (aliasKeys.get(exercise.id) ?? []).some((key) => key.includes(query))
+    }, async ({ coachId, log }) => {
+      const exercises = await loadCatalogView(supabase, coachId, {
+        search: input.search,
+        primaryGroup: input.primary_group,
+        block: input.block,
       })
 
       log.result_count = exercises.length

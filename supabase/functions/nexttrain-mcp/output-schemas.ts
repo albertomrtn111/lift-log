@@ -40,7 +40,7 @@ export const outputSchemas: Record<string, z.ZodType> = {
   get_client_overview: z.looseObject({
     client: record.nullable(), today: day, attention_flags: z.array(z.string()), latest_checkin: record.nullable(),
     recent_trend: record, recent_checkins: records, current_goal: record.nullable(),
-    cardio_window: records, upcoming_events: records, training_programs: records,
+    cardio_window: records, upcoming_events: records, training_programs: records, professionals: records,
   }),
   get_athlete_goal: z.looseObject({ client_id: z.string(), current_goal: record.nullable() }),
   set_athlete_goal: z.looseObject({ saved: z.boolean(), current_goal: record }),
@@ -49,6 +49,8 @@ export const outputSchemas: Record<string, z.ZodType> = {
     items: z.array(z.looseObject({ kind: z.enum(['cardio', 'event', 'strength']), date: day })),
   }),
   list_exercise_catalog: z.looseObject({ exercises: z.array(z.looseObject({ id: z.string(), name: z.string() })) }),
+  list_workspace_library: z.looseObject({ exercises: z.array(z.looseObject({ id: z.string(), name: z.string() })) }),
+  add_to_library: z.looseObject({ added: z.boolean(), exercise: record }),
   create_strength_program: z.looseObject({ created: z.boolean(), program: record, archived_program_ids: z.array(z.string()) }),
   create_coach_task: z.looseObject({ created: z.boolean(), task: record }),
 

@@ -12,9 +12,11 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 
 ## Herramientas
 
-- `who_am_i`: comprueba los espacios de entrenador disponibles.
+- `who_am_i`: lista los espacios de la cuenta, con su rol y lo que puede hacer en cada uno. Si hay varios, las demás herramientas piden `coach_id`.
+- `list_workspace_library`: ejercicios de la biblioteca del espacio, con nombre corto, bloque y valores por defecto.
+- `add_to_library`: añade un ejercicio del catálogo común a la biblioteca del espacio.
 - `list_clients`: lista clientes y señales de seguimiento, paginado con `offset`, `has_more` y `next_offset`.
-- `get_client_overview`: resume check-ins, tendencias, alertas, eventos y programas.
+- `get_client_overview`: resume check-ins, tendencias, alertas, eventos, programas y profesionales asignados.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
 - `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
@@ -36,7 +38,7 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `preview_cardio_session`: comprueba el modo, bloques, recuperaciones y totales sin guardar.
 - `get_cardio_session`: lee una sesión con bloques editables y la versión para actualizarla.
 - `update_cardio_session`: edita una sesión existente, mantiene su ID y no modifica los resultados reales.
-- `list_exercise_catalog`: busca en la biblioteca común de ejercicios de fuerza por nombre, grupo o nombre alternativo.
+- `list_exercise_catalog`: busca en el catálogo común de ejercicios de fuerza por nombre, grupo, bloque, material, nombre alternativo o nombre del espacio.
 - `create_strength_program`: crea un programa de fuerza completo en una sola transacción, solo con ejercicios de la biblioteca; por defecto queda en borrador.
 - `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
 - `update_strength_program_days`: reemplaza los días y ejercicios de un programa conservando los identificadores y los resultados.
@@ -392,7 +394,7 @@ Verificación: `supabase/tests/mcp_coach_today_in_sql.sql` (6 verificaciones, co
 
 - `create_strength_program` solo admite ejercicios de `exercise_catalog`. `create_nexttrain_strength_program` resuelve cada uno por `catalog_exercise_id`, por nombre exacto (sin distinguir mayúsculas, tildes ni espacios) o por un alias histórico de `exercise_catalog_aliases`, y guarda el nombre, el `catalog_exercise_id` y el grupo muscular del catálogo. Si alguno no existe no se crea nada y el error lista los nombres pendientes.
 - El campo `muscle_group` ya no forma parte de la entrada: lo define el ejercicio de la biblioteca.
-- `list_exercise_catalog` devuelve `id`, `name` y `primary_group`, con filtros `search` (nombre, grupo o alias) y `primary_group`.
+- `list_exercise_catalog` devuelve `id`, `name`, `primary_group`, `block`, `laterality`, `equipment`, `metrics`, `in_library` y `workspace_name`, con filtros `search`, `block` y `primary_group`.
 - La migración añade `exercise_name_key`, `catalog_group_muscle_group` y `resolve_catalog_exercise` (`SECURITY INVOKER`, solo `authenticated`).
 
 - `update_strength_program_days` usa la misma resolución: con la biblioteca instalada, los ejercicios nuevos o cambiados deben estar en ella y su `muscle_group` se ignora.
