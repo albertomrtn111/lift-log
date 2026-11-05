@@ -11,14 +11,16 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
 import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFilePanel'
+import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
 import { StudioNewSessionPanel, StudioSessionPanel } from '@/components/coach/sala/StudioSessionPanel'
-import type { StudioGridData, StudioItem } from '@/data/studio'
+import type { StudioClientSummary, StudioGridData, StudioGroupSummary, StudioItem } from '@/data/studio'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useStudioLive } from '@/hooks/useStudioLive'
 import { readClip, writeClip, type StudioClip } from '@/lib/studio/clipboard'
+import { groupCellLine, peopleLines, scheduleLabel } from '@/lib/studio/group-rules'
 import { clipFromCell, clipFromSession, clipItemFields, routinesBySession } from '@/lib/studio/copy-rules'
 import { defaultSessionId, initials } from '@/lib/studio/editor-rules'
 import {
@@ -55,12 +57,15 @@ type Panel =
     | { type: 'requests'; sessionId: string }
     | { type: 'routines' }
     | { type: 'file' }
+    | { type: 'group' }
 
-export function StudioGrid({ data, today, currentUserId, olderPages }: {
+export function StudioGrid({ data, today, currentUserId, olderPages, clients, allGroups }: {
     data: StudioGridData
     today: string
     currentUserId: string | null
     olderPages: number
+    clients: StudioClientSummary[]
+    allGroups: StudioGroupSummary[]
 }) {
     const router = useRouter()
     const [query, setQuery] = useState('')
@@ -142,6 +147,8 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     }, [data.blocks])
 
     const level = ZOOM_LEVELS[zoom]
+    const activeMembers = data.group?.members.filter(member => member.active) ?? []
+    const memberNames = Object.fromEntries((data.group?.members ?? []).map(member => [member.id, member.name]))
     const mobileSessionId = sessions.some(session => session.id === selectedSessionId)
         ? selectedSessionId
         : defaultSessionId(sessions, today)
@@ -228,7 +235,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     function toggleBlock(key: string) {
         const collapsed = !isCollapsed(key)
         setChosenCollapse(current => ({ ...current, [key]: collapsed }))
-        if (key === 'sin-bloque') return
+        if (key === 'sin-bloque' || data.group) return
         void setBlockCollapsedAction(data.client.id, key, collapsed).then(result => {
             if (!result.success) toast.error(result.error)
         })
@@ -254,9 +261,15 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
             <div>
                 <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold">{data.client.fullName}</h2>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'file' })}>
-                        <ClipboardList className="mr-1 h-3.5 w-3.5" /> Ficha
-                    </Button>
+                    {data.group ? (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'group' })}>
+                            <ClipboardList className="mr-1 h-3.5 w-3.5" /> Gestionar
+                        </Button>
+                    ) : (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'file' })}>
+                            <ClipboardList className="mr-1 h-3.5 w-3.5" /> Ficha
+                        </Button>
+                    )}
                     {data.activeInjuries > 0 && (
                         <Badge variant="destructive" className="px-2 py-0.5 text-xs">
                             {data.activeInjuries} {data.activeInjuries === 1 ? 'lesión activa' : 'lesiones activas'}
@@ -265,6 +278,11 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 </div>
                 {data.client.notes && (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{data.client.notes}</p>
+                )}
+                {data.group && (
+                    <p className="text-sm text-muted-foreground">
+                        {[`${activeMembers.length} personas`, scheduleLabel(data.group.schedule)].filter(Boolean).join(' · ')}
+                    </p>
                 )}
                 {viewers.length > 0 && (
                     <p className="mt-1 text-sm text-primary">
@@ -382,7 +400,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 <>
                     {olderCount > 0 && (
                         <Link
-                            href={`/coach/sala?cliente=${data.client.id}&anteriores=${olderPages + 1}`}
+                            href={`/coach/sala?${data.group ? 'grupo' : 'cliente'}=${data.client.id}&anteriores=${olderPages + 1}`}
                             className="inline-block text-sm font-medium text-primary hover:underline"
                         >
                             Ver anteriores ({olderCount})
@@ -428,6 +446,20 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                     {!narrow && session.name && <span className="block truncate">{session.name}</span>}
                                                     <span className="mt-1 flex flex-wrap gap-1">
                                                         {session.isToday && <Badge className="px-1.5 py-0 text-[10px]">Hoy</Badge>}
+                                                        {session.group_id && !data.group && session.group_name && (
+                                                            <Badge variant="secondary" className="max-w-full truncate px-1.5 py-0 text-[10px]">{session.group_name}</Badge>
+                                                        )}
+                                                        {data.group && data.attendance
+                                                            .filter(entry => entry.session_id === session.id && entry.status === 'attended')
+                                                            .map(entry => (
+                                                                <span
+                                                                    key={entry.client_id}
+                                                                    title={memberNames[entry.client_id]}
+                                                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold"
+                                                                >
+                                                                    {initials(memberNames[entry.client_id] ?? '?')}
+                                                                </span>
+                                                            ))}
                                                         {session.sameWeek > 1 && (
                                                             <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                                                                 {session.sameWeek} en la semana
@@ -516,7 +548,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                         {block.displayName}
                                                         <span className="font-normal text-muted-foreground">{rows.length}</span>
                                                     </button>
-                                                        {block.key !== 'sin-bloque' && (
+                                                        {block.key !== 'sin-bloque' && !data.group && (
                                                             <>
                                                                 <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground" aria-label={`Subir ${block.displayName} para este cliente`} title="Solo para este cliente" disabled={isMarking} onClick={() => moveBlock(block.key, -1)}>
                                                                     <ArrowUp className="h-3 w-3" />
@@ -549,6 +581,8 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                         {sessions.map(session => {
                                                             const off = session.status === 'cancelled' || session.status === 'no_show'
                                                             const cellItems: StudioItem[] = row.items.filter((item: StudioItem) => item.session_id === session.id)
+                                                            // Una clase se cambia en su grupo: aquí solo se ve lo de esta persona.
+                                                            const fromGroup = Boolean(session.group_id) && !data.group
                                                             return (
                                                                 <td
                                                                     key={session.id}
@@ -564,11 +598,16 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                                             item={item}
                                                                             done={doneShown[item.id] ?? item.is_done}
                                                                             busy={isMarking}
-                                                                            onOpen={() => setPanel({ type: 'cell', target: { itemId: item.id } })}
+                                                                            readOnly={fromGroup}
+                                                                            groupLine={data.group ? groupCellLine(item, data.attendance, data.people) : ''}
+                                                                            people={data.group ? peopleLines(item, data.people, memberNames) : []}
+                                                                            onOpen={() => (fromGroup
+                                                                                ? router.push(`/coach/sala?grupo=${session.group_id}`)
+                                                                                : setPanel({ type: 'cell', target: { itemId: item.id } }))}
                                                                             onToggleDone={() => toggleDone(item)}
                                                                         />
                                                                     ))}
-                                                                    {cellItems.length === 0 && !off && (
+                                                                    {cellItems.length === 0 && !off && !fromGroup && (
                                                                         <button
                                                                             type="button"
                                                                             aria-label={clip?.kind === 'cell' ? `Pegar en ${row.name}` : `Añadir ${row.name} a esta sesión`}
@@ -657,6 +696,21 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
             )}
             {panel?.type === 'routines' && <StudioRoutinesPanel data={data} onClose={() => setPanel(null)} />}
             {panel?.type === 'file' && <StudioClientFilePanel data={data} onClose={() => setPanel(null)} />}
+            {panel?.type === 'group' && data.group && (
+                <StudioGroupPanel
+                    coachId={data.coachId}
+                    group={allGroups.find(group => group.id === data.group?.id) ?? null}
+                    groups={allGroups}
+                    clients={clients}
+                    team={data.team}
+                    memberIds={activeMembers.map(member => member.id)}
+                    onClose={() => setPanel(null)}
+                    onSaved={groupId => {
+                        setPanel(null)
+                        router.push(`/coach/sala?grupo=${groupId}`)
+                    }}
+                />
+            )}
             {panel?.type === 'cell' && (
                 <StudioCellPanel
                     key={'itemId' in panel.target ? panel.target.itemId : `${panel.target.sessionId}:${panel.target.catalogExerciseId}`}
@@ -673,10 +727,13 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
     )
 }
 
-function Cell({ item, done, busy, onOpen, onToggleDone }: {
+function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleDone }: {
     item: StudioItem
     done: boolean
     busy: boolean
+    readOnly: boolean
+    groupLine: string
+    people: string[]
     onOpen: () => void
     onToggleDone: () => void
 }) {
@@ -693,7 +750,8 @@ function Cell({ item, done, busy, onOpen, onToggleDone }: {
                 aria-label={`Editar ${item.exercise_name}: ${summary.volume || 'sin valores'}`}
             >
                 <span className="block font-semibold">{summary.volume || '—'}</span>
-                {summary.load && (
+                {groupLine && <span className="block">{groupLine}</span>}
+                {!groupLine && summary.load && (
                     <span className="block">
                         {summary.load}
                         {summary.nextLoad && <span className="ml-1 font-semibold text-primary">{summary.nextLoad}</span>}
@@ -705,8 +763,9 @@ function Cell({ item, done, busy, onOpen, onToggleDone }: {
                     <span className="block truncate text-muted-foreground">{item.circuit.join(' · ')}</span>
                 )}
                 {item.note && <span className="block truncate text-muted-foreground" title={item.note}>{item.note}</span>}
+                {people.map(line => <span key={line} className="block truncate text-muted-foreground">{line}</span>)}
             </button>
-            <button
+            {!readOnly && <button
                 type="button"
                 role="checkbox"
                 aria-checked={done}
@@ -719,7 +778,7 @@ function Cell({ item, done, busy, onOpen, onToggleDone }: {
                 )}
             >
                 <Check className="h-3.5 w-3.5" />
-            </button>
+            </button>}
         </div>
     )
 }

@@ -45,7 +45,7 @@ export function useStudioLive({ clientId, userId, userName, openSessionId }: {
             .channel(uniqueChannelName(`studio-changes:${clientId}`))
             .on(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'studio_change_log', filter: `client_id=eq.${clientId}` },
+                { event: 'INSERT', schema: 'public', table: 'studio_change_log', filter: `scope_id=eq.${clientId}` },
                 refresh
             )
             .subscribe(resyncOnResubscribe(refresh))

@@ -47,6 +47,7 @@ import {
     addItemAction,
     addItemsAction,
     arrangeSessionAction,
+    createGroupSessionAction,
     createSessionAction,
     deleteItemAction,
     deleteSectionAction,
@@ -55,6 +56,7 @@ import {
     getStudioTemplatesAction,
     saveSectionAction,
     saveSessionAsTemplateAction,
+    setAttendanceAction,
     setSectionParentAction,
     updateSessionAction,
     type StudioTemplateOption,
@@ -167,7 +169,9 @@ export function StudioNewSessionPanel({ data, today, currentUserId, source, onCl
             }
             const result = source
                 ? await duplicateSessionAction({ ...input, sessionId: source.id })
-                : await createSessionAction({ ...input, clientId: data.client.id })
+                : data.group
+                    ? await createGroupSessionAction({ ...input, groupId: data.group.id })
+                    : await createSessionAction({ ...input, clientId: data.client.id })
             if (!result.success) return void toast.error(result.error)
 
             const day = templates.flatMap(template => template.days).find(entry => entry.id === templateDay)
@@ -589,7 +593,39 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                         </div>
                     </section>
 
-                    <section className="space-y-3" aria-labelledby="sesion-llega">
+                    {data.group && (
+                        <section className="space-y-2" aria-labelledby="sesion-asistencia">
+                            <h3 id="sesion-asistencia" className="text-sm font-semibold">Asistencia</h3>
+                            {data.attendance.filter(entry => entry.session_id === session.id).map(entry => (
+                                <div key={entry.client_id} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 p-1.5 pl-3 text-sm">
+                                    <span className="min-w-0 truncate">
+                                        {data.group?.members.find(member => member.id === entry.client_id)?.name ?? 'Persona'}
+                                    </span>
+                                    <div className="grid shrink-0 grid-cols-2 gap-1" role="group" aria-label="Asistencia">
+                                        {([['attended', 'Vino'], ['absent', 'No vino']] as const).map(([status, label]) => (
+                                            <button
+                                                key={status}
+                                                type="button"
+                                                disabled={isPending}
+                                                aria-pressed={entry.status === status}
+                                                onClick={() => run(() => setAttendanceAction(session.id, entry.client_id, entry.status === status ? 'unmarked' : status))}
+                                                className={cn(
+                                                    'h-9 rounded-md border px-3 text-xs font-medium',
+                                                    entry.status === status
+                                                        ? 'border-primary bg-primary text-primary-foreground'
+                                                        : 'text-muted-foreground hover:text-foreground'
+                                                )}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </section>
+                    )}
+
+                    {!data.group && <section className="space-y-3" aria-labelledby="sesion-llega">
                         <div className="flex items-baseline justify-between gap-2">
                             <h3 id="sesion-llega" className="text-sm font-semibold">Cómo llega</h3>
                             {score !== null && (
@@ -618,7 +654,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                             value={form.arrivalNote}
                             onChange={event => setForm({ ...form, arrivalNote: event.target.value })}
                         />
-                    </section>
+                    </section>}
 
                     <section className="space-y-2" aria-labelledby="sesion-final">
                         <h3 id="sesion-final" className="text-sm font-semibold">Al terminar</h3>

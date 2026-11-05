@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { itemForPerson } from '@/lib/studio/group-rules'
 import { createClient } from '@/lib/supabase/server'
 import { getLibraryAction, type LibraryBlock, type LibraryEntry } from '@/lib/training/workspace-library-actions'
 
@@ -17,6 +18,8 @@ export interface StudioClientHeader {
 
 export interface StudioSession {
     id: string
+    group_id: string | null
+    group_name: string | null
     session_date: string
     start_time: string | null
     status: string
@@ -110,9 +113,44 @@ export interface StudioProfessional {
     name: string
 }
 
+export interface StudioAttendance {
+    session_id: string
+    client_id: string
+    status: 'unmarked' | 'attended' | 'absent'
+    origin: string
+}
+
+export interface StudioItemPerson {
+    item_id: string
+    client_id: string
+    load_kg: number | null
+    reps: string | null
+    time_seconds: number | null
+    rir: number | null
+    rpe: number | null
+    next_load: string | null
+}
+
+export interface StudioGroupSummary {
+    id: string
+    name: string
+    kind: string
+    schedule: { weekday: number; time: string }[]
+    professional_ids: string[]
+    is_active: boolean
+    members: number
+    nextSession: string | null
+}
+
+export interface StudioGroupDetail extends Omit<StudioGroupSummary, 'members' | 'nextSession'> {
+    members: { id: string; name: string; active: boolean }[]
+}
+
 export interface StudioGridData {
     coachId: string
+    /** En la cuadrícula de un grupo, lleva su id y su nombre. */
     client: StudioClientHeader
+    group: StudioGroupDetail | null
     sessions: StudioSession[]
     sections: StudioSection[]
     items: StudioItem[]
@@ -128,6 +166,8 @@ export interface StudioGridData {
     requests: StudioRequest[]
     blockPrefs: StudioBlockPref[]
     activeInjuries: number
+    attendance: StudioAttendance[]
+    people: StudioItemPerson[]
     /** Bloques usados en el espacio en las últimas cuatro semanas. */
     recentBlocks: string[]
 }
@@ -172,6 +212,15 @@ async function getStudioTeam(coachId: string) {
     return { names, team: team.sort((a, b) => a.name.localeCompare(b.name, 'es')) }
 }
 
+const SESSION_COLUMNS = 'id, group_id, session_date, start_time, status, name, sort_order, professional_id, version, duration_min, wellness_sleep, wellness_fatigue, wellness_stress, wellness_soreness, wellness_score, arrival_note, rpe, training_groups(name)'
+
+function withGroupName(rows: any[] | null): StudioSession[] {
+    return (rows ?? []).map(({ training_groups: embed, ...session }) => {
+        const group = Array.isArray(embed) ? embed[0] : embed
+        return { ...session, group_name: group?.name ?? null } as StudioSession
+    })
+}
+
 export async function getStudioGrid(coachId: string, clientId: string): Promise<StudioGridData | null> {
     const supabase = await createClient()
     const { data: client } = await supabase
@@ -182,12 +231,98 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         .maybeSingle()
     if (!client) return null
 
-    const [{ data: sessions }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }, { count: activeInjuries }] = await Promise.all([
+    // Sus sesiones y las de los grupos en los que está, salvo aquellas a las que no vino.
+    const { data: attended } = await supabase
+        .from('studio_session_attendance')
+        .select('session_id')
+        .eq('client_id', clientId)
+        .neq('status', 'absent')
+    const groupSessionIds = (attended ?? []).map(row => row.session_id as string)
+    const { data: sessions } = await supabase
+        .from('studio_sessions')
+        .select(SESSION_COLUMNS)
+        .or(groupSessionIds.length > 0 ? `client_id.eq.${clientId},id.in.(${groupSessionIds.join(',')})` : `client_id.eq.${clientId}`)
+        .order('session_date', { ascending: true })
+
+    return buildGrid(
+        coachId,
+        { id: client.id, fullName: client.full_name, birthday: client.birthday, notes: client.notes },
+        withGroupName(sessions),
+        { clientId }
+    )
+}
+
+export async function getStudioGroupGrid(coachId: string, groupId: string): Promise<StudioGridData | null> {
+    const supabase = await createClient()
+    const { data: group } = await supabase
+        .from('training_groups')
+        .select('id, name, kind, schedule, professional_ids, is_active')
+        .eq('id', groupId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+    if (!group) return null
+
+    const [{ data: sessions }, { data: members }] = await Promise.all([
+        supabase.from('studio_sessions').select(SESSION_COLUMNS).eq('group_id', groupId).order('session_date', { ascending: true }),
+        supabase
+            .from('training_group_members')
+            .select('client_id, left_on, clients(full_name)')
+            .eq('group_id', groupId),
+    ])
+
+    const people = (members ?? []).map(row => {
+        const embed = row.clients as unknown as { full_name: string } | { full_name: string }[] | null
+        const client = Array.isArray(embed) ? embed[0] : embed
+        return { id: row.client_id as string, name: client?.full_name ?? 'Cliente', active: row.left_on === null }
+    }).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+
+    return buildGrid(
+        coachId,
+        { id: group.id, fullName: group.name, birthday: null, notes: null },
+        withGroupName(sessions),
+        { group: { ...group, members: people } as StudioGroupDetail }
+    )
+}
+
+export async function getStudioGroups(coachId: string, today: string): Promise<StudioGroupSummary[]> {
+    const supabase = await createClient()
+    const [{ data: groups }, { data: members }, { data: upcoming }] = await Promise.all([
+        supabase
+            .from('training_groups')
+            .select('id, name, kind, schedule, professional_ids, is_active')
+            .eq('coach_id', coachId)
+            .eq('is_active', true)
+            .order('name'),
+        supabase.from('training_group_members').select('group_id').is('left_on', null),
         supabase
             .from('studio_sessions')
-            .select('id, session_date, start_time, status, name, sort_order, professional_id, version, duration_min, wellness_sleep, wellness_fatigue, wellness_stress, wellness_soreness, wellness_score, arrival_note, rpe')
-            .eq('client_id', clientId)
-            .order('session_date', { ascending: true }),
+            .select('group_id, session_date')
+            .eq('coach_id', coachId)
+            .not('group_id', 'is', null)
+            .gte('session_date', today)
+            .order('session_date'),
+    ])
+    return (groups ?? []).map(group => ({
+        ...group,
+        members: (members ?? []).filter(member => member.group_id === group.id).length,
+        nextSession: (upcoming ?? []).find(session => session.group_id === group.id)?.session_date ?? null,
+    })) as StudioGroupSummary[]
+}
+
+export async function getStudioTeamList(coachId: string) {
+    return (await getStudioTeam(coachId)).team
+}
+
+async function buildGrid(
+    coachId: string,
+    header: StudioClientHeader,
+    sessions: StudioSession[],
+    { clientId, group = null }: { clientId?: string; group?: StudioGroupDetail | null }
+): Promise<StudioGridData> {
+    const supabase = await createClient()
+    const sessionIds = sessions.map(session => session.id)
+
+    const [library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }, { count: activeInjuries }] = await Promise.all([
         getLibraryAction(),
         getStudioTeam(coachId),
         supabase.from('studio_tags').select('name').eq('coach_id', coachId).order('uses', { ascending: false }).limit(200),
@@ -196,21 +331,26 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
             .select('id, client_id, name, kind, studio_routine_items(catalog_exercise_id, sort_order, sets, reps, time_seconds, load_kg, rir, rpe, note, exercise_catalog(name))')
             .eq('coach_id', coachId)
             .order('name'),
-        supabase
-            .from('studio_requests')
-            .select('id, session_id, from_user, to_user, title, message, status, done_by')
-            .eq('client_id', clientId)
-            .order('created_at'),
-        supabase.from('client_block_prefs').select('block_key, collapsed, sort_order').eq('client_id', clientId),
+        sessionIds.length > 0
+            ? supabase
+                .from('studio_requests')
+                .select('id, session_id, from_user, to_user, title, message, status, done_by')
+                .in('session_id', sessionIds)
+                .order('created_at')
+            : Promise.resolve({ data: [] }),
+        clientId
+            ? supabase.from('client_block_prefs').select('block_key, collapsed, sort_order').eq('client_id', clientId)
+            : Promise.resolve({ data: [] }),
         supabase.rpc('studio_recent_blocks', { p_coach_id: coachId }),
-        supabase
-            .from('client_injuries')
-            .select('id', { count: 'exact', head: true })
-            .eq('client_id', clientId)
-            .eq('status', 'active'),
+        clientId
+            ? supabase
+                .from('client_injuries')
+                .select('id', { count: 'exact', head: true })
+                .eq('client_id', clientId)
+                .eq('status', 'active')
+            : Promise.resolve({ count: 0 }),
     ])
 
-    const sessionIds = (sessions ?? []).map(session => session.id)
     const [{ data: items }, { data: sections }] = sessionIds.length > 0
         ? await Promise.all([
             supabase
@@ -226,27 +366,39 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         ])
         : [{ data: [] }, { data: [] }]
 
+    const groupSessionIds = sessions.filter(session => session.group_id).map(session => session.id)
+    const groupItemIds = (items ?? []).filter(item => groupSessionIds.includes(item.session_id)).map(item => item.id)
+    const [{ data: attendance }, { data: people }] = await Promise.all([
+        groupSessionIds.length > 0
+            ? supabase.from('studio_session_attendance').select('session_id, client_id, status, origin').in('session_id', groupSessionIds)
+            : Promise.resolve({ data: [] }),
+        groupItemIds.length > 0
+            ? supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, next_load').in('item_id', groupItemIds)
+            : Promise.resolve({ data: [] }),
+    ])
+
     return {
         coachId,
-        client: {
-            id: client.id,
-            fullName: client.full_name,
-            birthday: client.birthday,
-            notes: client.notes,
-        },
-        sessions: (sessions ?? []) as StudioSession[],
+        client: header,
+        group,
+        sessions,
         sections: (sections ?? []) as StudioSection[],
         items: (items ?? []).map(row => {
             const { exercise_catalog: embed, studio_item_tags: tagLinks, ...item } = row
             const raw = embed as unknown as { name: string; block_key: string | null } | { name: string; block_key: string | null }[] | null
             const catalog = Array.isArray(raw) ? raw[0] : raw
             const links = (tagLinks ?? []) as unknown as { studio_tags: { name: string } | { name: string }[] | null }[]
-            return {
+            const full = {
                 ...item,
                 exercise_name: catalog?.name ?? '',
                 block_key: catalog?.block_key ?? null,
                 tags: links.flatMap(link => link.studio_tags ?? []).map(tag => tag.name),
-            } as StudioItem
+            }
+            // En la cuadrícula de un integrante manda lo suyo.
+            const person = clientId
+                ? (people ?? []).find(entry => entry.item_id === item.id && entry.client_id === clientId)
+                : undefined
+            return itemForPerson(full, person) as StudioItem
         }),
         blocks: library.success ? library.data?.blocks ?? [] : [],
         entries: library.success ? library.data?.entries ?? [] : [],
@@ -265,6 +417,8 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
         requests: (requests ?? []) as StudioRequest[],
         blockPrefs: (blockPrefs ?? []) as StudioBlockPref[],
         activeInjuries: activeInjuries ?? 0,
+        attendance: (attendance ?? []) as StudioAttendance[],
+        people: (people ?? []) as StudioItemPerson[],
         recentBlocks: (recentBlocks ?? []) as string[],
     }
 }

@@ -2,14 +2,34 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, Search } from 'lucide-react'
+import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { StudioClientSummary } from '@/data/studio'
-import { normalizeText } from '@/lib/studio/grid-rules'
+import type { StudioClientSummary, StudioGroupSummary, StudioProfessional } from '@/data/studio'
+import { formatShortDate, normalizeText } from '@/lib/studio/grid-rules'
+import { sortGroups } from '@/lib/studio/group-rules'
 import { cn } from '@/lib/utils'
 
-export function StudioClientList({ clients, selectedId }: { clients: StudioClientSummary[]; selectedId: string | null }) {
+export function StudioClientList({ coachId, clients, groups, team, selectedId, selectedGroupId, currentUserId }: {
+    coachId: string
+    clients: StudioClientSummary[]
+    groups: StudioGroupSummary[]
+    team: StudioProfessional[]
+    selectedId: string | null
+    selectedGroupId: string | null
+    currentUserId: string | null
+}) {
+    const router = useRouter()
     const [search, setSearch] = useState('')
+    const [tab, setTab] = useState<'clients' | 'groups'>(selectedGroupId ? 'groups' : 'clients')
+    const [creating, setCreating] = useState(false)
+    const shownGroups = useMemo(() => {
+        const query = normalizeText(search)
+        return (sortGroups(groups, currentUserId) as StudioGroupSummary[])
+            .filter(group => !query || normalizeText(group.name).includes(query))
+    }, [groups, search, currentUserId])
 
     const { today, others } = useMemo(() => {
         const query = normalizeText(search)
@@ -21,24 +41,84 @@ export function StudioClientList({ clients, selectedId }: { clients: StudioClien
     }, [clients, search])
 
     return (
-        <aside className="min-w-0 space-y-3" aria-label="Clientes">
+        <aside className="min-w-0 space-y-3" aria-label="Clientes y grupos">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1" role="tablist" aria-label="Ver">
+                {([['clients', 'Clientes'], ['groups', 'Grupos']] as const).map(([value, label]) => (
+                    <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === value}
+                        onClick={() => setTab(value)}
+                        className={cn(
+                            'h-8 rounded-md text-sm font-medium',
+                            tab === value ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
             <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                     value={search}
                     onChange={event => setSearch(event.target.value)}
-                    placeholder="Buscar cliente…"
+                    placeholder={tab === 'clients' ? 'Buscar cliente…' : 'Buscar grupo…'}
                     className="pl-9"
-                    aria-label="Buscar cliente"
+                    aria-label={tab === 'clients' ? 'Buscar cliente' : 'Buscar grupo'}
                 />
             </div>
-            <div className="max-h-64 space-y-3 overflow-y-auto lg:max-h-[calc(100dvh-14rem)]">
-                {today.length > 0 && <ClientGroup title="Hoy en sala" clients={today} selectedId={selectedId} />}
-                {others.length > 0 && <ClientGroup title="Clientes" clients={others} selectedId={selectedId} />}
-                {today.length === 0 && others.length === 0 && (
-                    <p className="p-2 text-sm text-muted-foreground">No hay clientes con ese nombre.</p>
-                )}
-            </div>
+            {tab === 'clients' ? (
+                <div className="max-h-64 space-y-3 overflow-y-auto lg:max-h-[calc(100dvh-16rem)]">
+                    {today.length > 0 && <ClientGroup title="Hoy en sala" clients={today} selectedId={selectedId} />}
+                    {others.length > 0 && <ClientGroup title="Clientes" clients={others} selectedId={selectedId} />}
+                    {today.length === 0 && others.length === 0 && (
+                        <p className="p-2 text-sm text-muted-foreground">No hay clientes con ese nombre.</p>
+                    )}
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <ul className="max-h-64 space-y-0.5 overflow-y-auto lg:max-h-[calc(100dvh-19rem)]">
+                        {shownGroups.map(group => (
+                            <li key={group.id}>
+                                <Link
+                                    href={`/coach/sala?grupo=${group.id}`}
+                                    aria-current={group.id === selectedGroupId ? 'page' : undefined}
+                                    className={cn(
+                                        'block rounded-md px-2 py-1.5 text-sm hover:bg-accent',
+                                        group.id === selectedGroupId && 'bg-primary/10 font-medium text-primary'
+                                    )}
+                                >
+                                    <span className="block truncate">{group.name}</span>
+                                    <span className="block text-xs text-muted-foreground">
+                                        {group.members} personas{group.nextSession ? ` · ${formatShortDate(group.nextSession)}` : ''}
+                                    </span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                    {shownGroups.length === 0 && <p className="p-2 text-sm text-muted-foreground">Aún no hay grupos.</p>}
+                    <Button variant="outline" size="sm" className="w-full" onClick={() => setCreating(true)}>
+                        <Plus className="mr-1 h-4 w-4" /> Nuevo grupo
+                    </Button>
+                </div>
+            )}
+            {creating && (
+                <StudioGroupPanel
+                    coachId={coachId}
+                    group={null}
+                    groups={groups}
+                    clients={clients}
+                    team={team}
+                    memberIds={[]}
+                    onClose={() => setCreating(false)}
+                    onSaved={groupId => {
+                        setCreating(false)
+                        router.push(`/coach/sala?grupo=${groupId}`)
+                    }}
+                />
+            )}
         </aside>
     )
 }
