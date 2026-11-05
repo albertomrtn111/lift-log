@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
     cellDiff,
     cellFields,
+    defaultSessionId,
     formFromPrevious,
     initials,
     itemToForm,
@@ -231,4 +232,16 @@ test('cada persona sale una vez, sin contarme a mí', () => {
 test('las iniciales salen de las dos primeras palabras', () => {
     assert.equal(initials('Marcos Marcén López'), 'MM')
     assert.equal(initials('ana'), 'A')
+})
+
+test('el móvil abre la sesión de hoy, si no la próxima, y si no la última', () => {
+    const past = session('a', '2026-11-01')
+    const cancelledToday = session('b', '2026-11-05', { status: 'cancelled' })
+    const today = session('c', '2026-11-05')
+    const next = session('d', '2026-11-09')
+    assert.equal(defaultSessionId([past, cancelledToday, today, next], '2026-11-05'), 'c')
+    assert.equal(defaultSessionId([past, cancelledToday, next], '2026-11-05'), 'd')
+    assert.equal(defaultSessionId([past, cancelledToday], '2026-11-05'), 'a')
+    assert.equal(defaultSessionId([cancelledToday], '2026-11-05'), 'b')
+    assert.equal(defaultSessionId([], '2026-11-05'), null)
 })
