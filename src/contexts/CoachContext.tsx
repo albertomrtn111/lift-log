@@ -17,7 +17,7 @@ export interface CoachProfile {
 
 export interface CoachMembership {
     coach_id: string
-    role: 'owner' | 'coach'
+    role: 'owner' | 'admin' | 'coach'
 }
 
 export interface CoachContextData {

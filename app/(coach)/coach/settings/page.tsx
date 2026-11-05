@@ -265,7 +265,7 @@ function ProfileSettingsSection({
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
                                     <Badge variant="secondary" className="border-0 bg-primary/10 text-primary">
-                                        {membership?.role === 'owner' ? 'Propietario' : 'Coach'}
+                                        {membership?.role === 'owner' ? 'Propietario' : membership?.role === 'admin' ? 'Administrador' : 'Coach'}
                                     </Badge>
                                     {membership?.status && (
                                         <Badge variant="outline" className="text-muted-foreground">

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { addWeeks, setDay, format, startOfWeek, addDays, isBefore, isAfter, parseISO } from 'date-fns'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 /**
  * @deprecated Use TrainingProgramWizard Step 1 for program creation.
@@ -27,7 +28,7 @@ export async function createTrainingProgramClient(data: {
         .select('coach_id')
         .eq('user_id', session.user.id)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
         .single()
 

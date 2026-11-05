@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { UserRole } from '@/types/coach'
+import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 
 /**
  * Server-side helper to determine user's role
@@ -14,7 +15,7 @@ export async function getUserRole(userId: string): Promise<UserRole> {
         .select('id')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
 
     const isCoach = (membership?.length ?? 0) > 0
@@ -46,7 +47,7 @@ export async function getCoachIdForUser(userId: string): Promise<string | null> 
         .select('coach_id')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
         .single()
 
@@ -64,7 +65,7 @@ export async function hasCoachAccess(userId: string): Promise<boolean> {
         .select('id')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .in('role', ['owner', 'coach'])
+        .in('role', COACH_AREA_ROLES)
         .limit(1)
         .single()
 

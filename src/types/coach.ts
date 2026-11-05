@@ -12,7 +12,7 @@ export interface CoachMembership {
     id: string
     coach_id: string
     user_id: string
-    role: 'owner' | 'coach' | 'viewer'
+    role: 'owner' | 'admin' | 'coach' | 'viewer'
     status: 'active' | 'inactive' | 'pending'
     created_at: string
 }
