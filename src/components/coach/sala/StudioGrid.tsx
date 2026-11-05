@@ -1,20 +1,26 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Check, ChevronDown, Minus, Plus, Search } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
+import { StudioNewSessionPanel, StudioSessionPanel } from '@/components/coach/sala/StudioSessionPanel'
 import type { StudioGridData, StudioItem } from '@/data/studio'
 import {
     SESSION_STATUS_LABELS,
     STUDIO_PAST_SESSIONS,
     buildGrid,
     cellSummary,
+    formatShortDate,
     prepareSessions,
 } from '@/lib/studio/grid-rules'
+import { setItemDoneAction } from '@/lib/studio/session-actions'
 import { BLOCK_CATEGORY_LABELS } from '@/lib/training/exercise-catalog-rules'
 import { cn } from '@/lib/utils'
 
@@ -24,21 +30,30 @@ const ZOOM_LEVELS = [
     { column: 'w-[172px] min-w-[172px]', text: 'text-sm' },
 ]
 
-function formatDate(date: string) {
-    return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' })
-        .format(new Date(`${date}T00:00:00.000Z`))
-}
+type Panel =
+    | { type: 'new-session' }
+    | { type: 'duplicate'; sessionId: string }
+    | { type: 'session'; sessionId: string }
+    | { type: 'cell'; target: CellTarget }
 
-export function StudioGrid({ data, today, olderPages }: {
+export function StudioGrid({ data, today, currentUserId, olderPages }: {
     data: StudioGridData
     today: string
+    currentUserId: string | null
     olderPages: number
 }) {
+    const router = useRouter()
     const [query, setQuery] = useState('')
     const [category, setCategory] = useState<string | null>(null)
     const [onlyUsed, setOnlyUsed] = useState(false)
     const [zoom, setZoom] = useState(1)
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+    const [panel, setPanel] = useState<Panel | null>(null)
+    const [doneShown, setDoneShown] = useState<Record<string, boolean>>({})
+    const [isMarking, startMarking] = useTransition()
+
+    // Lo marcado se ve al momento; en cuanto llegan los datos, mandan ellos.
+    useEffect(() => setDoneShown({}), [data.items])
 
     const pastLimit = STUDIO_PAST_SESSIONS * (olderPages + 1)
     const { sessions, olderCount } = useMemo(
@@ -62,6 +77,25 @@ export function StudioGrid({ data, today, olderPages }: {
     }, [data.blocks])
 
     const level = ZOOM_LEVELS[zoom]
+    const openSession = panel && panel.type !== 'new-session' && panel.type !== 'cell'
+        ? data.sessions.find(session => session.id === panel.sessionId) ?? null
+        : null
+
+    function toggleDone(item: StudioItem) {
+        const done = !(doneShown[item.id] ?? item.is_done)
+        setDoneShown(current => ({ ...current, [item.id]: done }))
+        startMarking(async () => {
+            const result = await setItemDoneAction(item.id, item.version, done)
+            if (!result.success) {
+                setDoneShown(current => {
+                    const { [item.id]: _, ...rest } = current
+                    return rest
+                })
+                toast.error(result.error)
+            }
+            router.refresh()
+        })
+    }
 
     function toggleBlock(key: string) {
         setCollapsed(current => {
@@ -78,6 +112,9 @@ export function StudioGrid({ data, today, olderPages }: {
                 <h2 className="text-lg font-semibold">{data.client.fullName}</h2>
                 {data.client.notes && (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{data.client.notes}</p>
+                )}
+                {data.sessions.length === 0 && (
+                    <p className="mt-1 text-sm text-muted-foreground">Aún no tiene sesiones. Crea la primera con Nueva sesión.</p>
                 )}
             </div>
 
@@ -96,6 +133,9 @@ export function StudioGrid({ data, today, olderPages }: {
                     <Switch checked={onlyUsed} onCheckedChange={setOnlyUsed} aria-label="Solo los usados" />
                     Solo los usados
                 </label>
+                <Button size="sm" className="h-9" onClick={() => setPanel({ type: 'new-session' })}>
+                    <Plus className="mr-1 h-4 w-4" /> Nueva sesión
+                </Button>
                 <div className="flex items-center" role="group" aria-label="Tamaño de la cuadrícula">
                     <Button
                         size="icon"
@@ -165,29 +205,35 @@ export function StudioGrid({ data, today, olderPages }: {
                                         key={session.id}
                                         scope="col"
                                         className={cn(
-                                            'sticky top-0 z-20 border-b border-r bg-card p-2 text-left align-top font-normal',
+                                            'sticky top-0 z-20 border-b border-r bg-card p-0 text-left align-top font-normal',
                                             narrow ? 'w-[64px] min-w-[64px]' : level.column,
                                             session.isToday && 'bg-primary/10'
                                         )}
                                     >
-                                        <span className="block font-semibold">
-                                            {session.number ? `Sesión ${session.number}` : SESSION_STATUS_LABELS[session.status as keyof typeof SESSION_STATUS_LABELS]}
-                                        </span>
-                                        <span className="block text-muted-foreground">{formatDate(session.session_date)}</span>
-                                        {!narrow && session.professional_id && data.professionals[session.professional_id] && (
-                                            <span className="block truncate text-muted-foreground">
-                                                {data.professionals[session.professional_id]}
+                                        <button
+                                            type="button"
+                                            className="block h-full w-full p-2 text-left hover:bg-muted/60"
+                                            onClick={() => setPanel({ type: 'session', sessionId: session.id })}
+                                        >
+                                            <span className="block font-semibold">
+                                                {session.number ? `Sesión ${session.number}` : SESSION_STATUS_LABELS[session.status as keyof typeof SESSION_STATUS_LABELS]}
                                             </span>
-                                        )}
-                                        {!narrow && session.name && <span className="block truncate">{session.name}</span>}
-                                        <span className="mt-1 flex flex-wrap gap-1">
-                                            {session.isToday && <Badge className="px-1.5 py-0 text-[10px]">Hoy</Badge>}
-                                            {session.sameWeek > 1 && (
-                                                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                                                    {session.sameWeek} en la semana
-                                                </Badge>
+                                            <span className="block text-muted-foreground">{formatShortDate(session.session_date)}</span>
+                                            {!narrow && session.professional_id && data.professionals[session.professional_id] && (
+                                                <span className="block truncate text-muted-foreground">
+                                                    {data.professionals[session.professional_id]}
+                                                </span>
                                             )}
-                                        </span>
+                                            {!narrow && session.name && <span className="block truncate">{session.name}</span>}
+                                            <span className="mt-1 flex flex-wrap gap-1">
+                                                {session.isToday && <Badge className="px-1.5 py-0 text-[10px]">Hoy</Badge>}
+                                                {session.sameWeek > 1 && (
+                                                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                                        {session.sameWeek} en la semana
+                                                    </Badge>
+                                                )}
+                                            </span>
+                                        </button>
                                     </th>
                                 )
                             })}
@@ -236,20 +282,44 @@ export function StudioGrid({ data, today, olderPages }: {
                                                 >
                                                     <span className="line-clamp-2 break-words">{row.name}</span>
                                                 </th>
-                                                {sessions.map(session => (
-                                                    <td
-                                                        key={session.id}
-                                                        className={cn(
-                                                            'border-b border-r p-1 align-top',
-                                                            session.isToday && 'bg-primary/5',
-                                                            (session.status === 'cancelled' || session.status === 'no_show') && 'bg-muted/40'
-                                                        )}
-                                                    >
-                                                        {row.items
-                                                            .filter((item: StudioItem) => item.session_id === session.id)
-                                                            .map((item: StudioItem) => <Cell key={item.id} item={item} />)}
-                                                    </td>
-                                                ))}
+                                                {sessions.map(session => {
+                                                    const off = session.status === 'cancelled' || session.status === 'no_show'
+                                                    const cellItems: StudioItem[] = row.items.filter((item: StudioItem) => item.session_id === session.id)
+                                                    return (
+                                                        <td
+                                                            key={session.id}
+                                                            className={cn(
+                                                                'border-b border-r p-1 align-top',
+                                                                session.isToday && 'bg-primary/5',
+                                                                off && 'bg-muted/40'
+                                                            )}
+                                                        >
+                                                            {cellItems.map(item => (
+                                                                <Cell
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    done={doneShown[item.id] ?? item.is_done}
+                                                                    busy={isMarking}
+                                                                    onOpen={() => setPanel({ type: 'cell', target: { itemId: item.id } })}
+                                                                    onToggleDone={() => toggleDone(item)}
+                                                                />
+                                                            ))}
+                                                            {cellItems.length === 0 && !off && (
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`Añadir ${row.name} a esta sesión`}
+                                                                    className="flex min-h-8 w-full items-center justify-center rounded text-primary opacity-0 hover:bg-muted/60 hover:opacity-100 focus-visible:opacity-100"
+                                                                    onClick={() => setPanel({
+                                                                        type: 'cell',
+                                                                        target: { sessionId: session.id, catalogExerciseId: row.catalogId, exerciseName: row.fullName },
+                                                                    })}
+                                                                >
+                                                                    <Plus className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    )
+                                                })}
                                             </tr>
                                         </Fragment>
                                     ))}
@@ -266,29 +336,93 @@ export function StudioGrid({ data, today, olderPages }: {
                     </tbody>
                 </table>
             </div>
+
+            {panel?.type === 'new-session' && (
+                <StudioNewSessionPanel
+                    data={data}
+                    today={today}
+                    currentUserId={currentUserId}
+                    source={null}
+                    onClose={() => setPanel(null)}
+                    onCreated={sessionId => setPanel({ type: 'session', sessionId })}
+                />
+            )}
+            {panel?.type === 'duplicate' && openSession && (
+                <StudioNewSessionPanel
+                    data={data}
+                    today={today}
+                    currentUserId={currentUserId}
+                    source={openSession}
+                    onClose={() => setPanel(null)}
+                    onCreated={sessionId => setPanel({ type: 'session', sessionId })}
+                />
+            )}
+            {panel?.type === 'session' && openSession && (
+                <StudioSessionPanel
+                    key={openSession.id}
+                    data={data}
+                    session={openSession}
+                    onClose={() => setPanel(null)}
+                    onOpenItem={itemId => setPanel({ type: 'cell', target: { itemId } })}
+                    onDuplicate={() => setPanel({ type: 'duplicate', sessionId: openSession.id })}
+                />
+            )}
+            {panel?.type === 'cell' && (
+                <StudioCellPanel
+                    key={'itemId' in panel.target ? panel.target.itemId : `${panel.target.sessionId}:${panel.target.catalogExerciseId}`}
+                    data={data}
+                    target={panel.target}
+                    onClose={() => setPanel(null)}
+                />
+            )}
         </section>
     )
 }
 
-function Cell({ item }: { item: StudioItem }) {
+function Cell({ item, done, busy, onOpen, onToggleDone }: {
+    item: StudioItem
+    done: boolean
+    busy: boolean
+    onOpen: () => void
+    onToggleDone: () => void
+}) {
     const summary = cellSummary(item)
     return (
-        <div className={cn('rounded px-1.5 py-1', item.is_done ? 'bg-primary/10' : 'bg-muted/50')}>
-            <div className="flex items-start justify-between gap-1">
-                <span className="font-semibold">{summary.volume || '—'}</span>
-                {item.is_done && <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Realizado" />}
-            </div>
-            {summary.load && (
-                <span className="block">
-                    {summary.load}
-                    {summary.nextLoad && <span className="ml-1 font-semibold text-primary">{summary.nextLoad}</span>}
-                </span>
-            )}
-            {summary.details && <span className="block text-muted-foreground">{summary.details}</span>}
-            {item.circuit.length > 0 && (
-                <span className="block truncate text-muted-foreground">{item.circuit.join(' · ')}</span>
-            )}
-            {item.note && <span className="block truncate text-muted-foreground" title={item.note}>{item.note}</span>}
+        <div className={cn('relative mb-0.5 rounded last:mb-0', done ? 'bg-primary/10' : 'bg-muted/50')}>
+            <button
+                type="button"
+                className="block w-full rounded px-1.5 py-1 pr-7 text-left hover:ring-1 hover:ring-primary/40"
+                onClick={onOpen}
+                aria-label={`Editar ${item.exercise_name}: ${summary.volume || 'sin valores'}`}
+            >
+                <span className="block font-semibold">{summary.volume || '—'}</span>
+                {summary.load && (
+                    <span className="block">
+                        {summary.load}
+                        {summary.nextLoad && <span className="ml-1 font-semibold text-primary">{summary.nextLoad}</span>}
+                    </span>
+                )}
+                {summary.details && <span className="block text-muted-foreground">{summary.details}</span>}
+                {item.tags.length > 0 && <span className="block truncate text-muted-foreground">{item.tags.join(' · ')}</span>}
+                {item.circuit.length > 0 && (
+                    <span className="block truncate text-muted-foreground">{item.circuit.join(' · ')}</span>
+                )}
+                {item.note && <span className="block truncate text-muted-foreground" title={item.note}>{item.note}</span>}
+            </button>
+            <button
+                type="button"
+                role="checkbox"
+                aria-checked={done}
+                aria-label={`${item.exercise_name} realizado`}
+                disabled={busy}
+                onClick={onToggleDone}
+                className={cn(
+                    'absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded border',
+                    done ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-transparent hover:text-muted-foreground'
+                )}
+            >
+                <Check className="h-3.5 w-3.5" />
+            </button>
         </div>
     )
 }

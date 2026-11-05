@@ -1,0 +1,564 @@
+'use client'
+
+import { useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowDown, ArrowUp, Check, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
+import type { StudioGridData, StudioItem, StudioSession } from '@/data/studio'
+import {
+    DEFAULT_SESSION_MINUTES,
+    WELLNESS_QUESTIONS,
+    libraryDefaults,
+    listLayout,
+    moveEntry,
+    parseNumber,
+    previousWellness,
+    sessionList,
+    sessionLoad,
+    sessionPatch,
+    sessionToForm,
+    wellnessScore,
+} from '@/lib/studio/editor-rules'
+import { cellSummary, formatShortDate, normalizeText } from '@/lib/studio/grid-rules'
+import {
+    addItemAction,
+    arrangeSessionAction,
+    createSessionAction,
+    deleteItemAction,
+    deleteSectionAction,
+    deleteSessionAction,
+    duplicateSessionAction,
+    saveSectionAction,
+    updateSessionAction,
+} from '@/lib/studio/session-actions'
+import { cn } from '@/lib/utils'
+
+const NO_PROFESSIONAL = 'none'
+const NO_SECTION = 'none'
+
+const STATUS_OPTIONS = [
+    { value: 'normal', label: 'Normal' },
+    { value: 'cancelled', label: 'Anulada' },
+    { value: 'no_show', label: 'No vino' },
+]
+
+interface BasicsForm {
+    date: string
+    time: string
+    professionalId: string
+    name: string
+}
+
+function BasicFields({ form, team, professionals, onChange }: {
+    form: BasicsForm
+    team: StudioGridData['team']
+    professionals: StudioGridData['professionals']
+    onChange: (changes: Partial<BasicsForm>) => void
+}) {
+    // Un profesional que ya no está en el equipo se sigue viendo en las sesiones que dio.
+    const options = form.professionalId && !team.some(member => member.id === form.professionalId)
+        ? [...team, { id: form.professionalId, name: professionals[form.professionalId] ?? 'Antiguo profesional' }]
+        : team
+    return (
+        <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+                <Label htmlFor="sesion-fecha">Fecha</Label>
+                <Input id="sesion-fecha" type="date" value={form.date} onChange={event => onChange({ date: event.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+                <Label htmlFor="sesion-hora">Hora</Label>
+                <Input id="sesion-hora" type="time" value={form.time} onChange={event => onChange({ time: event.target.value })} />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+                <Label>Profesional</Label>
+                <Select
+                    value={form.professionalId || NO_PROFESSIONAL}
+                    onValueChange={value => onChange({ professionalId: value === NO_PROFESSIONAL ? '' : value })}
+                >
+                    <SelectTrigger aria-label="Profesional"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NO_PROFESSIONAL}>Sin asignar</SelectItem>
+                        {options.map(member => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="sesion-nombre">Nombre (opcional)</Label>
+                <Input
+                    id="sesion-nombre"
+                    value={form.name}
+                    maxLength={120}
+                    autoComplete="off"
+                    placeholder="Fuerza A, Pliometría, Readaptación…"
+                    onChange={event => onChange({ name: event.target.value })}
+                />
+            </div>
+        </div>
+    )
+}
+
+/** Crear una sesión o duplicar otra: fecha, hora, profesional y nombre. */
+export function StudioNewSessionPanel({ data, today, currentUserId, source, onClose, onCreated }: {
+    data: StudioGridData
+    today: string
+    currentUserId: string | null
+    source: StudioSession | null
+    onClose: () => void
+    onCreated: (sessionId: string) => void
+}) {
+    const router = useRouter()
+    const [isPending, startTransition] = useTransition()
+    const [form, setForm] = useState<BasicsForm>({
+        date: today,
+        time: '',
+        professionalId: data.team.some(member => member.id === currentUserId) ? currentUserId! : '',
+        name: source?.name ?? '',
+    })
+
+    function submit() {
+        if (!form.date) return void toast.error('Elige una fecha.')
+        startTransition(async () => {
+            const input = {
+                date: form.date,
+                time: form.time || null,
+                professionalId: form.professionalId || null,
+                name: form.name.trim() || null,
+            }
+            const result = source
+                ? await duplicateSessionAction({ ...input, sessionId: source.id })
+                : await createSessionAction({ ...input, clientId: data.client.id })
+            if (!result.success) return void toast.error(result.error)
+            router.refresh()
+            onCreated(result.data.id)
+        })
+    }
+
+    return (
+        <Sheet open onOpenChange={open => { if (!open) onClose() }}>
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+                <SheetHeader className="border-b p-4 pr-10 text-left">
+                    <SheetTitle className="text-base">{source ? 'Duplicar sesión' : 'Nueva sesión'}</SheetTitle>
+                    <SheetDescription>{data.client.fullName}</SheetDescription>
+                </SheetHeader>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                    {source && (
+                        <p className="text-sm text-muted-foreground">
+                            Se crea una sesión nueva con los mismos ejercicios, series, repeticiones y pesos que la del {formatShortDate(source.session_date)}. Las notas no se copian.
+                        </p>
+                    )}
+                    <BasicFields
+                        form={form}
+                        team={data.team}
+                        professionals={data.professionals}
+                        onChange={changes => setForm({ ...form, ...changes })}
+                    />
+                </div>
+                <div className="border-t p-4">
+                    <Button type="button" className="w-full" disabled={isPending} onClick={submit}>
+                        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {source ? 'Duplicar' : 'Crear sesión'}
+                    </Button>
+                </div>
+            </SheetContent>
+        </Sheet>
+    )
+}
+
+export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDuplicate }: {
+    data: StudioGridData
+    session: StudioSession
+    onClose: () => void
+    onOpenItem: (itemId: string) => void
+    onDuplicate: () => void
+}) {
+    const router = useRouter()
+    const [isPending, startTransition] = useTransition()
+    const [form, setForm] = useState(() => sessionToForm(session))
+    const [confirm, setConfirm] = useState<{ type: 'session' } | { type: 'item'; item: StudioItem } | null>(null)
+    const [query, setQuery] = useState('')
+    const [newSection, setNewSection] = useState('')
+    const [addTo, setAddTo] = useState(NO_SECTION)
+
+    const items = useMemo(() => data.items.filter(item => item.session_id === session.id), [data.items, session.id])
+    const sections = useMemo(() => data.sections.filter(section => section.session_id === session.id), [data.sections, session.id])
+    const entries = useMemo(() => sessionList(items, sections), [items, sections])
+
+    const results = useMemo(() => {
+        const search = normalizeText(query)
+        if (!search) return []
+        return data.entries
+            .filter(entry => !entry.isHidden && (
+                normalizeText(entry.name).includes(search) || normalizeText(entry.shortName ?? '').includes(search)
+            ))
+            .slice(0, 8)
+    }, [data.entries, query])
+
+    const score = wellnessScore(form)
+    const earlierScore = previousWellness(data.sessions, session.id)
+    const load = sessionLoad(parseNumber(form.rpe), parseNumber(form.duration))
+
+    /** Las acciones de la ficha se guardan al momento; el formulario sigue con lo que se está escribiendo. */
+    function run(action: () => Promise<{ success: boolean; error?: string }>, after?: () => void) {
+        startTransition(async () => {
+            const result = await action()
+            router.refresh()
+            if (!result.success) return void toast.error(result.error)
+            after?.()
+        })
+    }
+
+    function move(index: number, direction: number) {
+        const next = moveEntry(entries, index, direction)
+        if (next === entries) return
+        const layout = listLayout(next)
+        run(() => arrangeSessionAction(session.id, layout.sectionIds, layout.items))
+    }
+
+    function save() {
+        const { patch, error } = sessionPatch(form, session)
+        if (error) return void toast.error(error)
+        run(() => updateSessionAction(session.id, session.version, patch!), () => toast.success('Sesión guardada'))
+    }
+
+    function removeItem(item: StudioItem) {
+        run(() => deleteItemAction(item.id, item.version))
+    }
+
+    function runConfirmed() {
+        if (confirm?.type === 'item') removeItem(confirm.item)
+        if (confirm?.type === 'session') run(() => deleteSessionAction(session.id, session.version), onClose)
+        setConfirm(null)
+    }
+
+    const sectionTarget = sections.some(section => section.id === addTo) ? addTo : NO_SECTION
+
+    return (
+        <Sheet open onOpenChange={open => { if (!open) onClose() }}>
+            <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-md">
+                <SheetHeader className="border-b p-4 pr-10 text-left">
+                    <SheetTitle className="text-base">{session.name || 'Sesión'} · {formatShortDate(session.session_date)}</SheetTitle>
+                    <SheetDescription>{data.client.fullName}</SheetDescription>
+                </SheetHeader>
+
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+                    <section className="space-y-3" aria-label="Datos de la sesión">
+                        <BasicFields
+                            form={form}
+                            team={data.team}
+                            professionals={data.professionals}
+                            onChange={changes => setForm({ ...form, ...changes })}
+                        />
+                        <div className="space-y-1.5">
+                            <span className="text-sm font-medium">Estado</span>
+                            <div className="grid grid-cols-3 gap-2" role="group" aria-label="Estado de la sesión">
+                                {STATUS_OPTIONS.map(option => (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        aria-pressed={form.status === option.value}
+                                        onClick={() => setForm({ ...form, status: option.value })}
+                                        className={cn(
+                                            'h-9 rounded-md border text-sm font-medium',
+                                            form.status === option.value
+                                                ? 'border-primary bg-primary text-primary-foreground'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        )}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Pasa a hecha sola en cuanto hay un ejercicio realizado. Las anuladas no cuentan en el historial.
+                            </p>
+                        </div>
+                    </section>
+
+                    <section className="space-y-3" aria-labelledby="sesion-ejercicios">
+                        <h3 id="sesion-ejercicios" className="text-sm font-semibold">Ejercicios</h3>
+                        {entries.length === 0 && <p className="text-sm text-muted-foreground">Aún no tiene ejercicios.</p>}
+                        <ol className="space-y-1">
+                            {entries.map((entry, index) => {
+                                const canUp = moveEntry(entries, index, -1) !== entries
+                                const canDown = moveEntry(entries, index, 1) !== entries
+                                const arrows = (label: string) => (
+                                    <>
+                                        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" disabled={!canUp || isPending} aria-label={`Subir ${label}`} onClick={() => move(index, -1)}>
+                                            <ArrowUp className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" disabled={!canDown || isPending} aria-label={`Bajar ${label}`} onClick={() => move(index, 1)}>
+                                            <ArrowDown className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </>
+                                )
+
+                                if (entry.type === 'section') {
+                                    const section = entry.section
+                                    return (
+                                        <li key={section.id} className="flex items-center gap-1 pt-2">
+                                            <Input
+                                                key={section.title}
+                                                defaultValue={section.title}
+                                                maxLength={80}
+                                                aria-label="Título del subbloque"
+                                                className="h-8 flex-1 font-semibold text-primary"
+                                                onBlur={event => {
+                                                    const title = event.target.value.trim()
+                                                    if (title && title !== section.title) run(() => saveSectionAction(session.id, section.id, title))
+                                                }}
+                                            />
+                                            {arrows(section.title)}
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8"
+                                                disabled={isPending}
+                                                aria-label={`Quitar el subbloque ${section.title}`}
+                                                title="Quita el título; los ejercicios se quedan"
+                                                onClick={() => run(() => deleteSectionAction(section.id))}
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </li>
+                                    )
+                                }
+
+                                const item = entry.item
+                                const summary = cellSummary(item)
+                                return (
+                                    <li key={item.id} className="flex items-center gap-1 rounded-md bg-muted/50 pl-2">
+                                        <button type="button" className="min-w-0 flex-1 py-1.5 text-left text-sm" onClick={() => onOpenItem(item.id)}>
+                                            <span className="flex items-center gap-1 font-medium">
+                                                {item.is_done && <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Realizado" />}
+                                                <span className="truncate">{item.exercise_name}</span>
+                                            </span>
+                                            <span className="block truncate text-xs text-muted-foreground">
+                                                {[summary.volume, summary.load, summary.details].filter(Boolean).join(' · ') || 'Sin valores'}
+                                            </span>
+                                        </button>
+                                        {arrows(item.exercise_name)}
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-8 w-8"
+                                            disabled={isPending}
+                                            aria-label={`Quitar ${item.exercise_name}`}
+                                            onClick={() => (item.is_done ? setConfirm({ type: 'item', item }) : removeItem(item))}
+                                        >
+                                            <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </li>
+                                )
+                            })}
+                        </ol>
+
+                        <div className="space-y-2 rounded-md border p-3">
+                            <Label htmlFor="sesion-buscar">Añadir ejercicio</Label>
+                            <Input
+                                id="sesion-buscar"
+                                value={query}
+                                autoComplete="off"
+                                placeholder="Buscar en tu biblioteca…"
+                                onChange={event => setQuery(event.target.value)}
+                            />
+                            {sections.length > 0 && (
+                                <Select value={sectionTarget} onValueChange={setAddTo}>
+                                    <SelectTrigger aria-label="Añadir en"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NO_SECTION}>Sin subbloque</SelectItem>
+                                        {sections.map(section => <SelectItem key={section.id} value={section.id}>{section.title}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {results.length > 0 && (
+                                <ul className="divide-y rounded-md border">
+                                    {results.map(entry => (
+                                        <li key={entry.catalogExerciseId}>
+                                            <button
+                                                type="button"
+                                                disabled={isPending}
+                                                className="flex w-full items-center gap-2 p-2 text-left text-sm hover:bg-muted/60"
+                                                onClick={() => run(
+                                                    () => addItemAction(
+                                                        session.id,
+                                                        entry.catalogExerciseId,
+                                                        sectionTarget === NO_SECTION ? null : sectionTarget,
+                                                        libraryDefaults(data.entries, data.blocks, entry.catalogExerciseId)
+                                                    ),
+                                                    () => setQuery('')
+                                                )}
+                                            >
+                                                <Plus className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                                <span className="min-w-0 truncate">{entry.shortName ?? entry.name}</span>
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {query.trim() && results.length === 0 && (
+                                <p className="text-sm text-muted-foreground">No está en tu biblioteca.</p>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Input
+                                value={newSection}
+                                maxLength={80}
+                                autoComplete="off"
+                                aria-label="Título del nuevo subbloque"
+                                placeholder="Calentamiento, Fuerza…"
+                                onChange={event => setNewSection(event.target.value)}
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="shrink-0"
+                                disabled={!newSection.trim() || isPending}
+                                onClick={() => run(() => saveSectionAction(session.id, null, newSection), () => setNewSection(''))}
+                            >
+                                Añadir subbloque
+                            </Button>
+                        </div>
+                    </section>
+
+                    <section className="space-y-3" aria-labelledby="sesion-llega">
+                        <div className="flex items-baseline justify-between gap-2">
+                            <h3 id="sesion-llega" className="text-sm font-semibold">Cómo llega</h3>
+                            {score !== null && (
+                                <span className="text-sm">
+                                    <span className="font-semibold">{score.toLocaleString('es-ES', { maximumFractionDigits: 1 })}/10</span>
+                                    {earlierScore !== null && (
+                                        <span className="text-muted-foreground"> · antes {earlierScore.toLocaleString('es-ES', { maximumFractionDigits: 1 })}</span>
+                                    )}
+                                </span>
+                            )}
+                        </div>
+                        {WELLNESS_QUESTIONS.map(question => (
+                            <Scale
+                                key={question.key}
+                                label={question.label}
+                                hint={question.hint}
+                                value={form[question.key as keyof typeof form] as number | null}
+                                onChange={value => setForm({ ...form, [question.key]: value })}
+                            />
+                        ))}
+                        <Textarea
+                            rows={2}
+                            maxLength={1000}
+                            aria-label="Cómo llega, en texto libre"
+                            placeholder="Viene con molestias en el hombro, ha dormido mal…"
+                            value={form.arrivalNote}
+                            onChange={event => setForm({ ...form, arrivalNote: event.target.value })}
+                        />
+                    </section>
+
+                    <section className="space-y-2" aria-labelledby="sesion-final">
+                        <h3 id="sesion-final" className="text-sm font-semibold">Al terminar</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sesion-rpe">RPE de la sesión</Label>
+                                <Input id="sesion-rpe" inputMode="decimal" autoComplete="off" value={form.rpe} onChange={event => setForm({ ...form, rpe: event.target.value })} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sesion-duracion">Minutos</Label>
+                                <Input
+                                    id="sesion-duracion"
+                                    inputMode="numeric"
+                                    autoComplete="off"
+                                    placeholder={String(DEFAULT_SESSION_MINUTES)}
+                                    value={form.duration}
+                                    onChange={event => setForm({ ...form, duration: event.target.value })}
+                                />
+                            </div>
+                        </div>
+                        {load !== null && <p className="text-sm text-muted-foreground">Carga de la sesión: <span className="font-semibold text-foreground">{load}</span></p>}
+                    </section>
+
+                    <div className="flex gap-2 border-t pt-4">
+                        <Button type="button" variant="outline" className="flex-1" disabled={isPending} onClick={onDuplicate}>
+                            <Copy className="mr-2 h-4 w-4" /> Duplicar
+                        </Button>
+                        <Button type="button" variant="outline" className="flex-1" disabled={isPending} onClick={() => setConfirm({ type: 'session' })}>
+                            <Trash2 className="mr-2 h-4 w-4" /> Borrar
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="border-t p-4">
+                    <Button type="button" className="w-full" disabled={isPending} onClick={save}>
+                        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Guardar cambios
+                    </Button>
+                </div>
+
+                <AlertDialog open={confirm !== null} onOpenChange={open => { if (!open) setConfirm(null) }}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>{confirm?.type === 'session' ? '¿Borrar esta sesión?' : '¿Quitar este ejercicio?'}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                {confirm?.type === 'session'
+                                    ? 'Se borran sus ejercicios y las series registradas, que dejarán de contar en el historial. Si solo no ha venido, márcala como Anulada o No vino.'
+                                    : 'Está marcado como realizado: sus series dejarán de contar en el historial.'}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={runConfirmed}>{confirm?.type === 'session' ? 'Borrar' : 'Quitar'}</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </SheetContent>
+        </Sheet>
+    )
+}
+
+/** De 0 a 10. Tocar otra vez el valor elegido lo quita. */
+function Scale({ label, hint, value, onChange }: {
+    label: string
+    hint: string
+    value: number | null
+    onChange: (value: number | null) => void
+}) {
+    return (
+        <div className="space-y-1">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span>{label}</span>
+                <span className="text-xs text-muted-foreground">{hint}</span>
+            </div>
+            <div className="grid grid-cols-11 gap-0.5" role="group" aria-label={label}>
+                {Array.from({ length: 11 }, (_, option) => (
+                    <button
+                        key={option}
+                        type="button"
+                        aria-pressed={value === option}
+                        onClick={() => onChange(value === option ? null : option)}
+                        className={cn(
+                            'h-8 rounded text-xs font-medium',
+                            value === option ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {option}
+                    </button>
+                ))}
+            </div>
+        </div>
+    )
+}
