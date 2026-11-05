@@ -4,8 +4,9 @@ import { ChevronLeft } from 'lucide-react'
 import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import { StudioClientList } from '@/components/coach/sala/StudioClientList'
 import { StudioGrid } from '@/components/coach/sala/StudioGrid'
+import { StudioPendingReports } from '@/components/coach/sala/StudioPendingReports'
 import { Card } from '@/components/ui/card'
-import { getStudioClients, getStudioGrid, getStudioGroupGrid, getStudioGroups, getStudioTeamList } from '@/data/studio'
+import { getStudioClients, getStudioGrid, getStudioGroupGrid, getStudioGroups, getStudioPendingReports, getStudioTeamList } from '@/data/studio'
 import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { createClient } from '@/lib/supabase/server'
 
@@ -34,10 +35,11 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
     const { cliente, grupo, anteriores } = await searchParams
     const today = todayInMadrid()
     const uuid = /^[0-9a-f-]{36}$/i
-    const [clients, groups, team] = await Promise.all([
+    const [clients, groups, team, pendingReports] = await Promise.all([
         getStudioClients(coachId, today),
         getStudioGroups(coachId, today),
         getStudioTeamList(coachId),
+        getStudioPendingReports(coachId, today),
     ])
     const grid = grupo && uuid.test(grupo)
         ? await getStudioGroupGrid(coachId, grupo)
@@ -49,7 +51,8 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
         <div className="min-h-screen bg-background pb-24 lg:pb-8">
             <CoachPageHeader eyebrow="Operativa" title="Sala" description="Sesiones presenciales de tus clientes." />
             <div className="grid gap-4 p-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
-                <div className={grid ? 'hidden lg:block' : undefined}>
+                <div className={grid ? 'hidden space-y-3 lg:block' : 'space-y-3'}>
+                    <StudioPendingReports reports={pendingReports} />
                     <StudioClientList
                         coachId={coachId}
                         clients={clients}

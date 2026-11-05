@@ -256,6 +256,27 @@ export async function sendOnboardingEmailSmtp(params: {
     )
 }
 
+export async function sendSessionReportEmail(params: {
+    to: string
+    clientName: string
+    url: string
+    coachId: string
+}): Promise<EmailResult> {
+    const brand = await loadEmailBrand(params.coachId)
+    const name = escapeHtml(params.clientName.trim().split(/\s+/)[0] || 'atleta')
+    const body = `
+        <p>Hola <strong>${name}</strong>,</p>
+        <p>Aquí tienes el informe de tu sesión de entrenamiento. Se abre en el móvil, sin cuenta ni aplicación.</p>`
+    return send(
+        {
+            to: params.to,
+            subject: `Tu informe de sesión${brand?.name ? ` en ${brand.name}` : ''}`,
+            html: layout('Tu informe de sesión', body, 'Ver el informe', params.url, brand),
+        },
+        params.coachId
+    )
+}
+
 export async function sendInviteEmailSmtp(params: {
     to: string
     clientName?: string

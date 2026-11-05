@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { itemForPerson } from '@/lib/studio/group-rules'
+import { pendingReports } from '@/lib/studio/report-rules'
 import { createClient } from '@/lib/supabase/server'
 import { getLibraryAction, type LibraryBlock, type LibraryEntry } from '@/lib/training/workspace-library-actions'
 
@@ -307,6 +308,54 @@ export async function getStudioGroups(coachId: string, today: string): Promise<S
         members: (members ?? []).filter(member => member.group_id === group.id).length,
         nextSession: (upcoming ?? []).find(session => session.group_id === group.id)?.session_date ?? null,
     })) as StudioGroupSummary[]
+}
+
+export interface StudioPendingReport {
+    sessionId: string
+    clientId: string
+    groupId: string | null
+    name: string
+}
+
+/** Sesiones de hoy ya hechas cuyo informe sigue sin enviarse, dentro de la ventana del aviso. */
+export async function getStudioPendingReports(coachId: string, today: string): Promise<StudioPendingReport[]> {
+    const supabase = await createClient()
+    const [{ data: sessions }, { data: settings }] = await Promise.all([
+        supabase
+            .from('studio_sessions')
+            .select('id, client_id, group_id, session_date, start_time, duration_min, clients!studio_sessions_client_id_fkey(full_name), studio_session_attendance(client_id, status, clients(full_name)), session_reports(client_id, dismissed_at, report_deliveries(id))')
+            .eq('coach_id', coachId)
+            .eq('session_date', today)
+            .eq('status', 'done'),
+        supabase.from('report_settings').select('notice_hours').eq('coach_id', coachId).maybeSingle(),
+    ])
+
+    const rows = (sessions ?? []).flatMap(session => {
+        const reports = (session.session_reports ?? []) as unknown as { client_id: string; dismissed_at: string | null; report_deliveries: unknown[] }[]
+        const people = session.group_id
+            ? ((session.studio_session_attendance ?? []) as unknown as { client_id: string; status: string; clients: { full_name: string } | null }[])
+                .filter(entry => entry.status === 'attended')
+                .map(entry => ({ clientId: entry.client_id, name: entry.clients?.full_name ?? 'Cliente' }))
+            : [{ clientId: session.client_id as string, name: (session.clients as unknown as { full_name: string } | null)?.full_name ?? 'Cliente' }]
+        return people.map(person => {
+            const report = reports.find(entry => entry.client_id === person.clientId)
+            return {
+                ...person,
+                sessionId: session.id,
+                groupId: session.group_id,
+                session_date: session.session_date,
+                start_time: session.start_time,
+                duration_min: session.duration_min,
+                delivered: (report?.report_deliveries.length ?? 0) > 0,
+                dismissed: Boolean(report?.dismissed_at),
+            }
+        })
+    })
+
+    // Las horas de la sesión son de Madrid: «ahora» se compara en la misma hora de pared.
+    const wall = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'medium' }).format(new Date())
+    return (pendingReports(rows, new Date(`${wall.replace(' ', 'T')}Z`), settings?.notice_hours ?? 3) as typeof rows)
+        .map(({ sessionId, clientId, groupId, name }) => ({ sessionId, clientId, groupId, name }))
 }
 
 export async function getStudioTeamList(coachId: string) {
