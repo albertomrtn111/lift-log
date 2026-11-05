@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+    cellDiff,
     cellFields,
     formFromPrevious,
+    initials,
     itemToForm,
     libraryDefaults,
     listLayout,
@@ -10,6 +12,7 @@ import {
     parseNumber,
     previousItem,
     previousWellness,
+    sessionDiff,
     sessionList,
     sessionLoad,
     sessionPatch,
@@ -17,6 +20,7 @@ import {
     setRows,
     setsFields,
     timeAgo,
+    viewersFromPresence,
     wellnessScore,
 } from '../src/lib/studio/editor-rules.js'
 
@@ -184,4 +188,47 @@ test('dice cuándo fue el último cambio', () => {
     assert.equal(timeAgo('2026-11-05T11:50:00.000Z', now), 'hace 10 min')
     assert.equal(timeAgo('2026-11-05T09:00:00.000Z', now), 'hace 3 h')
     assert.equal(timeAgo('2026-11-04T09:00:00.000Z', now), 'ayer')
+})
+
+test('un conflicto enseña solo lo que es distinto', () => {
+    const mine = form({ loadKg: '42,5', reps: '10', tags: ['barra'], nextLoad: 'up' })
+    const theirs = form({ loadKg: '45', reps: '10', tags: ['barra'], nextLoad: 'up', isDone: true })
+    assert.deepEqual(cellDiff(mine, theirs), [
+        { label: 'Carga (kg)', mine: '42.5', theirs: '45' },
+        { label: 'Realizado', mine: 'No', theirs: 'Sí' },
+    ])
+})
+
+test('escribir lo mismo con coma o punto no es un conflicto', () => {
+    assert.deepEqual(cellDiff(form({ loadKg: '42,50' }), form({ loadKg: '42.5' })), [])
+})
+
+test('el conflicto de sesión traduce al profesional y lo vacío', () => {
+    const base = session('a', '2026-11-01', { professional_id: 'u1' })
+    const rows = sessionDiff(
+        { ...sessionToForm(base), name: 'Fuerza' },
+        { ...sessionToForm(base), professionalId: 'u2' },
+        { u1: 'Marcos', u2: 'Ana' }
+    )
+    assert.deepEqual(rows, [
+        { label: 'Profesional', mine: 'Marcos', theirs: 'Ana' },
+        { label: 'Nombre', mine: 'Fuerza', theirs: '—' },
+    ])
+})
+
+test('cada persona sale una vez, sin contarme a mí', () => {
+    const viewers = viewersFromPresence({
+        u1: [{ userId: 'u1', name: 'Yo', sessionId: null }],
+        u2: [{ userId: 'u2', name: 'Ana', sessionId: null }, { userId: 'u2', name: 'Ana', sessionId: 's1' }],
+        u3: [{ userId: 'u3', name: 'Luis', sessionId: null, presence_ref: 'x' }],
+    }, 'u1')
+    assert.deepEqual(viewers, [
+        { userId: 'u2', name: 'Ana', sessionId: 's1' },
+        { userId: 'u3', name: 'Luis', sessionId: null },
+    ])
+})
+
+test('las iniciales salen de las dos primeras palabras', () => {
+    assert.equal(initials('Marcos Marcén López'), 'MM')
+    assert.equal(initials('ana'), 'A')
 })

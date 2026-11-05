@@ -302,3 +302,70 @@ export function timeAgo(iso, now = new Date()) {
     if (hours < 48) return 'ayer'
     return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' }).format(new Date(iso))
 }
+
+const NEXT_LOAD_MARKS = { up: '↑ Subir', same: '= Mantener', down: '↓ Bajar' }
+
+function differs(label, mine, theirs) {
+    return mine === theirs ? [] : [{ label, mine: mine || '—', theirs: theirs || '—' }]
+}
+
+/** Números escritos con coma o punto, para compararlos como iguales. */
+function sameNumberText(value) {
+    const number = parseNumber(value)
+    return number === null || Number.isNaN(number) ? String(value ?? '').trim() : String(number)
+}
+
+/** Lo que cambia entre dos formularios de celda, para enseñar los dos valores. */
+export function cellDiff(mine, theirs) {
+    const list = values => values.map(value => value.trim()).filter(Boolean).join(', ')
+    return [
+        ...differs('Material', list(mine.tags), list(theirs.tags)),
+        ...differs('Series', sameNumberText(mine.sets), sameNumberText(theirs.sets)),
+        ...differs('Repeticiones', mine.reps.trim(), theirs.reps.trim()),
+        ...differs('Tiempo (s)', sameNumberText(mine.timeSeconds), sameNumberText(theirs.timeSeconds)),
+        ...differs('Carga (kg)', sameNumberText(mine.loadKg), sameNumberText(theirs.loadKg)),
+        ...differs('RIR', sameNumberText(mine.rir), sameNumberText(theirs.rir)),
+        ...differs('RPE', sameNumberText(mine.rpe), sameNumberText(theirs.rpe)),
+        ...differs('Próxima sesión', NEXT_LOAD_MARKS[mine.nextLoad] ?? '', NEXT_LOAD_MARKS[theirs.nextLoad] ?? ''),
+        ...differs('Circuito', list(mine.circuit), list(theirs.circuit)),
+        ...differs('Nota', mine.note.trim(), theirs.note.trim()),
+        ...differs('Realizado', mine.isDone ? 'Sí' : 'No', theirs.isDone ? 'Sí' : 'No'),
+    ]
+}
+
+/** Lo mismo para el formulario de la sesión. `names` traduce los profesionales. */
+export function sessionDiff(mine, theirs, names = {}) {
+    const person = id => (id ? names[id] ?? 'Otro profesional' : 'Sin asignar')
+    const status = value => ({ normal: 'Normal', cancelled: 'Anulada', no_show: 'No vino' })[value]
+    const wellness = WELLNESS_QUESTIONS.flatMap(question =>
+        differs(question.label, String(mine[question.key] ?? ''), String(theirs[question.key] ?? '')))
+    return [
+        ...differs('Fecha', mine.date, theirs.date),
+        ...differs('Hora', mine.time, theirs.time),
+        ...differs('Profesional', person(mine.professionalId), person(theirs.professionalId)),
+        ...differs('Nombre', mine.name.trim(), theirs.name.trim()),
+        ...differs('Estado', status(mine.status), status(theirs.status)),
+        ...wellness,
+        ...differs('Cómo llega', mine.arrivalNote.trim(), theirs.arrivalNote.trim()),
+        ...differs('RPE', sameNumberText(mine.rpe), sameNumberText(theirs.rpe)),
+        ...differs('Minutos', sameNumberText(mine.duration), sameNumberText(theirs.duration)),
+    ]
+}
+
+/** Quién más está mirando, una vez por persona y sin contarme a mí. Manda la pestaña con sesión abierta. */
+export function viewersFromPresence(state, myUserId) {
+    const people = new Map()
+    for (const entries of Object.values(state)) {
+        for (const entry of entries) {
+            if (!entry.userId || entry.userId === myUserId) continue
+            if (!people.has(entry.userId) || entry.sessionId) people.set(entry.userId, entry)
+        }
+    }
+    return [...people.values()]
+        .map(({ userId, name, sessionId }) => ({ userId, name, sessionId: sessionId ?? null }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+}
+
+export function initials(name) {
+    return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toLocaleUpperCase('es')).join('')
+}
