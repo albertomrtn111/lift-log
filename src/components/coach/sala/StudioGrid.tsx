@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ChevronDown, ClipboardList, ListChecks, Minus, Plus, Search, Undo2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ClipboardList, ListChecks, Minus, Paperclip, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useStudioLive } from '@/hooks/useStudioLive'
 import { readClip, writeClip, type StudioClip } from '@/lib/studio/clipboard'
 import { groupCellLine, peopleLines, scheduleLabel } from '@/lib/studio/group-rules'
+import { exercisesWithMedia } from '@/lib/studio/media-rules'
 import { clipFromCell, clipFromSession, clipItemFields, routinesBySession } from '@/lib/studio/copy-rules'
 import { defaultSessionId, initials } from '@/lib/studio/editor-rules'
 import {
@@ -121,6 +122,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
     }, [data.items, sessions])
 
     const orderedBlocks = useMemo(() => orderBlocks(data.blocks, data.blockPrefs), [data.blocks, data.blockPrefs])
+    const withMedia = useMemo(() => exercisesWithMedia(data.media), [data.media])
 
     const groups = useMemo(
         () => buildGrid({ blocks: orderedBlocks, entries: data.entries, items: visibleItems, query, category, onlyUsed }),
@@ -579,6 +581,9 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                                                             className="sticky left-0 z-10 w-[190px] min-w-[190px] max-w-[190px] border-b border-r bg-card p-2 text-left font-medium"
                                                         >
                                                             <span className="line-clamp-2 break-words">{row.name}</span>
+                                                            {withMedia.has(row.catalogId) && (
+                                                                <span className="block text-[11px] font-normal text-primary">▶ técnica</span>
+                                                            )}
                                                         </th>
                                                         {sessions.map(session => {
                                                             const off = session.status === 'cancelled' || session.status === 'no_show'
@@ -770,6 +775,11 @@ function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleD
                 )}
                 {item.note && <span className="block truncate text-muted-foreground" title={item.note}>{item.note}</span>}
                 {people.map(line => <span key={line} className="block truncate text-muted-foreground">{line}</span>)}
+                {(item.attachment?.image_key || item.attachment?.link_url) && (
+                    <span className="block text-muted-foreground">
+                        <Paperclip className="inline h-3 w-3" aria-hidden /> adjunto
+                    </span>
+                )}
             </button>
             {!readOnly && <button
                 type="button"

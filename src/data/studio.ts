@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { itemForPerson } from '@/lib/studio/group-rules'
+import { attachmentImageVisible } from '@/lib/studio/media-rules'
 import { pendingReports } from '@/lib/studio/report-rules'
 import { createClient } from '@/lib/supabase/server'
 import { getLibraryAction, type LibraryBlock, type LibraryEntry } from '@/lib/training/workspace-library-actions'
@@ -75,6 +76,18 @@ export interface StudioItem {
     updated_at: string
     tags: string[]
     routine_id: string | null
+    /** Imagen y enlace de esta celda. */
+    attachment: { image_key: string | null; link_url: string | null } | null
+}
+
+export interface StudioExerciseMedia {
+    id: string
+    catalog_exercise_id: string
+    client_id: string | null
+    kind: 'youtube' | 'link' | 'image'
+    url: string | null
+    storage_key: string | null
+    title: string | null
 }
 
 export interface StudioRoutineItem {
@@ -171,6 +184,9 @@ export interface StudioGridData {
     people: StudioItemPerson[]
     /** Bloques usados en el espacio en las últimas cuatro semanas. */
     recentBlocks: string[]
+    /** Medios de la sala y, en la cuadrícula de un cliente, los suyos. */
+    media: StudioExerciseMedia[]
+    imageConsent: boolean
 }
 
 /** Clientes activos del espacio, con quién tiene sesión hoy. */
@@ -371,7 +387,17 @@ async function buildGrid(
     const supabase = await createClient()
     const sessionIds = sessions.map(session => session.id)
 
-    const [library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }, { count: activeInjuries }] = await Promise.all([
+    const mediaQuery = supabase
+        .from('exercise_media')
+        .select('id, catalog_exercise_id, client_id, kind, url, storage_key, title')
+        .eq('coach_id', coachId)
+        .order('created_at')
+
+    const [{ data: media }, { data: consent }, library, { names, team }, { data: tags }, { data: routines }, { data: requests }, { data: blockPrefs }, { data: recentBlocks }, { count: activeInjuries }] = await Promise.all([
+        clientId ? mediaQuery.or(`client_id.is.null,client_id.eq.${clientId}`) : mediaQuery.is('client_id', null),
+        clientId
+            ? supabase.from('client_consents').select('accepted').eq('client_id', clientId).eq('kind', 'image').maybeSingle()
+            : Promise.resolve({ data: null }),
         getLibraryAction(),
         getStudioTeam(coachId),
         supabase.from('studio_tags').select('name').eq('coach_id', coachId).order('uses', { ascending: false }).limit(200),
@@ -404,7 +430,7 @@ async function buildGrid(
         ? await Promise.all([
             supabase
                 .from('studio_session_items')
-                .select('id, session_id, section_id, sort_order, catalog_exercise_id, routine_id, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name))')
+                .select('id, session_id, section_id, sort_order, catalog_exercise_id, routine_id, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name)), studio_item_attachments(image_key, link_url)')
                 .in('session_id', sessionIds)
                 .order('sort_order', { ascending: true }),
             supabase
@@ -426,19 +452,30 @@ async function buildGrid(
             : Promise.resolve({ data: [] }),
     ])
 
+    const imageConsent = consent?.accepted === true
+
     return {
         coachId,
+        media: (media ?? []) as StudioExerciseMedia[],
+        imageConsent,
         client: header,
         group,
         sessions,
         sections: (sections ?? []) as StudioSection[],
         items: (items ?? []).map(row => {
-            const { exercise_catalog: embed, studio_item_tags: tagLinks, ...item } = row
+            const { exercise_catalog: embed, studio_item_tags: tagLinks, studio_item_attachments: attachmentEmbed, ...item } = row
             const raw = embed as unknown as { name: string; block_key: string | null } | { name: string; block_key: string | null }[] | null
             const catalog = Array.isArray(raw) ? raw[0] : raw
             const links = (tagLinks ?? []) as unknown as { studio_tags: { name: string } | { name: string }[] | null }[]
+            const rawAttachment = attachmentEmbed as unknown as StudioItem['attachment'] | NonNullable<StudioItem['attachment']>[]
+            const attachment = (Array.isArray(rawAttachment) ? rawAttachment[0] : rawAttachment) ?? null
             const full = {
                 ...item,
+                // Sin consentimiento, su imagen no llega a la pantalla.
+                attachment: attachment && {
+                    link_url: attachment.link_url,
+                    image_key: attachmentImageVisible(attachment.image_key, coachId, imageConsent) ? attachment.image_key : null,
+                },
                 exercise_name: catalog?.name ?? '',
                 block_key: catalog?.block_key ?? null,
                 tags: links.flatMap(link => link.studio_tags ?? []).map(tag => tag.name),

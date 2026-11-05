@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 /**
- * Fotos privadas guardadas en R2 (check-ins y chat): /api/media/{clave}.
+ * Fotos privadas guardadas en R2 (check-ins, chat y sala): /api/media/{clave}.
  * Comprueba la sesión y los permisos en cada petición y después entrega el
  * archivo desde el servidor (proxy) o redirige a una URL firmada de 5 minutos.
  */
