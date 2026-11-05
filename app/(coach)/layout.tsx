@@ -23,9 +23,15 @@ export default async function CoachLayout({
     // El onboarding de IA ya no es obligatorio: solo exigimos contestar la bienvenida
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    let studioEnabled = false
     if (user) {
         const coachId = await getCoachIdForUser(user.id)
         if (coachId) {
+            const { data: hasStudio } = await supabase.rpc('coach_has_feature', {
+                p_coach_id: coachId,
+                p_feature: 'studio_mode',
+            })
+            studioEnabled = hasStudio === true
             const workspace = await getCoachWorkspaceInfo(coachId)
             if (workspace?.onboarding_state.welcome_pending) {
                 redirect('/welcome')
@@ -48,7 +54,7 @@ export default async function CoachLayout({
             <CoachProvider>
                 <CoachNotificationsProvider>
                     <div className="coach-mobile-shell flex min-h-screen min-w-0 overflow-x-hidden bg-background pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] lg:px-0">
-                        <CoachSidebar workspaces={await getMyWorkspaces()} />
+                        <CoachSidebar workspaces={await getMyWorkspaces()} studioEnabled={studioEnabled} />
                         <main className="coach-mobile-main min-w-0 flex-1 overflow-x-hidden pt-[var(--safe-area-top)] max-lg:[&>*>header.sticky]:top-[var(--safe-area-top)] lg:pl-64 lg:pt-0">
                             {children}
                         </main>
