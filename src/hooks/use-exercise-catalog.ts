@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { loadExerciseBlocks, loadExerciseCatalog } from '@/lib/training/exercise-catalog-client'
+import {
+    loadExerciseBlocks,
+    loadExerciseCatalog,
+    loadWorkspaceLibrary,
+    type LibrarySummaryEntry,
+} from '@/lib/training/exercise-catalog-client'
 import type { CatalogBlock, CatalogExercise } from '@/lib/training/exercise-catalog'
 
 // Catálogo compartido entre todos los selectores de la página: un ejercicio
@@ -85,4 +90,36 @@ export function useExerciseBlocks(enabled = true) {
     }, [enabled])
 
     return blocks
+}
+
+let libraryCache: LibrarySummaryEntry[] = []
+const libraryListeners = new Set<(entries: LibrarySummaryEntry[]) => void>()
+
+function publishLibrary(next: LibrarySummaryEntry[]) {
+    libraryCache = next
+    libraryListeners.forEach(listener => listener(next))
+}
+
+// Vuelve a leer la biblioteca: los selectores abiertos se actualizan solos.
+export async function refreshWorkspaceLibrary() {
+    try {
+        publishLibrary(await loadWorkspaceLibrary())
+    } catch {
+        // La biblioteca es una ayuda: sin ella, el selector sigue mostrando el catálogo.
+    }
+}
+
+export function useWorkspaceLibrary(enabled = true) {
+    const [entries, setEntries] = useState<LibrarySummaryEntry[]>(libraryCache)
+
+    useEffect(() => {
+        if (!enabled) return
+        libraryListeners.add(setEntries)
+        void refreshWorkspaceLibrary()
+        return () => {
+            libraryListeners.delete(setEntries)
+        }
+    }, [enabled])
+
+    return entries
 }

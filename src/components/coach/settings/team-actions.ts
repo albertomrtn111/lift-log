@@ -1,7 +1,7 @@
 'use server'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildAccessLink } from '@/lib/onboarding/athlete-invite'
 import { sendTeamInviteEmail } from '@/lib/email/mailer'
@@ -49,21 +49,9 @@ interface ActionResult {
 
 const JOIN_PATH = '/unirse'
 
-async function getActor() {
-    const { supabase, coachId, userId } = await requireActiveCoachId()
-    const { data } = await supabase
-        .from('coach_memberships')
-        .select('role')
-        .eq('coach_id', coachId)
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .single()
-    return { supabase, coachId, userId, role: (data?.role as string | undefined) ?? '' }
-}
-
 /** Comprueba que quien actúa puede gestionar el equipo y que su plan lo incluye. */
 async function requireTeamManager() {
-    const actor = await getActor()
+    const actor = await getCoachActor()
     if (!canManageTeam(actor.role)) throw new Error('No tienes permiso para gestionar el equipo')
     const { data: enabled } = await actor.supabase.rpc('coach_has_feature', {
         p_coach_id: actor.coachId,
@@ -134,7 +122,7 @@ async function sendInvitation(params: {
 
 export async function getTeamAction(): Promise<{ success: boolean; team?: TeamData; error?: string }> {
     try {
-        const actor = await getActor()
+        const actor = await getCoachActor()
         const { data: enabled } = await actor.supabase.rpc('coach_has_feature', {
             p_coach_id: actor.coachId,
             p_feature: 'team',

@@ -8,12 +8,14 @@ import {
     pickPossibleDuplicate,
     validateNewExercise,
 } from '@/lib/training/exercise-catalog-rules'
+import { addToLibraryAction } from '@/lib/training/workspace-library-actions'
 
 type CreateCatalogExerciseResult =
     | { success: true; exercise: CatalogExercise; existed: boolean }
     | { success: false; error: string }
 
-// Alta en el catálogo común: visible para todos los entrenadores en cuanto se crea.
+// Alta en el catálogo común: visible para todos los entrenadores en cuanto se crea,
+// y dentro de la biblioteca del espacio que lo crea.
 export async function createCatalogExerciseAction(input: {
     name: string
     primaryGroup: string
@@ -55,7 +57,10 @@ export async function createCatalogExerciseAction(input: {
     const exact = (matches ?? []).find((match: { exact: boolean }) => match.exact)
     if (exact) {
         const existing = await findExisting(exact.id)
-        if (existing) return { success: true, exercise: existing, existed: true }
+        if (existing) {
+            await addToLibraryAction(existing.id)
+            return { success: true, exercise: existing, existed: true }
+        }
     }
 
     const { data, error } = await admin
@@ -72,7 +77,11 @@ export async function createCatalogExerciseAction(input: {
         .select(CATALOG_COLUMNS)
         .single()
 
-    if (!error && data) return { success: true, exercise: data as CatalogExercise, existed: false }
+    if (!error && data) {
+        const exercise = data as CatalogExercise
+        await addToLibraryAction(exercise.id)
+        return { success: true, exercise, existed: false }
+    }
     if (error?.code === '23503') return { success: false, error: 'Selecciona un bloque válido.' }
 
     // Dos personas creando el mismo nombre a la vez: gana el índice único sobre lower(name).
@@ -83,7 +92,10 @@ export async function createCatalogExerciseAction(input: {
             .ilike('name', name.replace(/[%_\\]/g, '\\$&'))
             .eq('is_active', true)
             .maybeSingle()
-        if (existing) return { success: true, exercise: existing as CatalogExercise, existed: true }
+        if (existing) {
+            await addToLibraryAction((existing as CatalogExercise).id)
+            return { success: true, exercise: existing as CatalogExercise, existed: true }
+        }
     }
 
     return { success: false, error: 'No se pudo crear el ejercicio.' }
