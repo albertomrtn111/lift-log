@@ -28,6 +28,7 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
     const { data: enabled } = await supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'studio_mode' })
     if (!enabled) redirect('/coach/dashboard')
 
+    const { data: { user } } = await supabase.auth.getUser()
     const { cliente, anteriores } = await searchParams
     const today = todayInMadrid()
     const clients = await getStudioClients(coachId, today)
@@ -43,6 +44,7 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
                         key={grid.client.id}
                         data={grid}
                         today={today}
+                        currentUserId={user?.id ?? null}
                         olderPages={Number(anteriores) > 0 ? Number(anteriores) : 0}
                     />
                 ) : (

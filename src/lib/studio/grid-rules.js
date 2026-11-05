@@ -20,6 +20,12 @@ export function normalizeText(text) {
         .trim()
 }
 
+/** «5 nov» a partir de YYYY-MM-DD. */
+export function formatShortDate(date) {
+    return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+        .format(new Date(`${date}T00:00:00.000Z`))
+}
+
 /** Lunes de la semana de una fecha YYYY-MM-DD. */
 function weekOf(date) {
     const day = new Date(`${date}T00:00:00.000Z`)
