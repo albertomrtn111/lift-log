@@ -1,5 +1,6 @@
 import { z } from 'npm:zod@4.3.6'
 import {
+  addDays,
   createToolRunner,
   type Db,
   defaultHelpers,
@@ -133,6 +134,23 @@ const groupSlot = z.object({
   weekday: z.number().int().min(0).max(6).describe('0 es lunes y 6 domingo.'),
   time: z.string().regex(/^\d{2}:\d{2}$/).describe('Hora, HH:MM.'),
 })
+
+/** Una cita para la IA: sin contacto, solo lo que hace falta para trabajar con ella. */
+export function agendaEntry(row: Row) {
+  return {
+    id: row.id,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    status: row.status,
+    attendance: row.attendance,
+    client_id: row.client_id,
+    client: row.clients?.full_name ?? row.external_patients?.full_name ?? null,
+    external_patient_id: row.external_patients?.id ?? null,
+    professional_id: row.professional_id,
+    service: row.agenda_services?.name ?? null,
+    session_id: row.session_id,
+  }
+}
 
 /** Grupos con sus integrantes y su próxima clase. */
 export function groupSummaries(groups: Row[], members: Row[], upcoming: Row[]) {
@@ -485,6 +503,61 @@ export function registerStudioTools(server: Server, db: Db, helpers: ToolHelpers
 
       log.record_id = input.item_id
       return { recorded: true, item: { id: data.id, done: data.is_done, version: data.version } }
+    }),
+  )
+
+  server.registerTool(
+    'get_agenda',
+    {
+      title: 'Ver la agenda de un día',
+      description: 'Citas de un día con su sesión de sala. Las citas conectadas se cambian en el software del centro, no aquí.',
+      inputSchema: z.object({ date: isoDate.optional().describe('Por defecto, hoy.'), coach_id: optionalCoachId }),
+      annotations: readOnlyAnnotations,
+    },
+    (input: any) => run('get_agenda', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido consultar la agenda.',
+    }, async ({ coachId, today, timeZone, log }) => {
+      const date = input.date ?? today
+      const result = await db.from('agenda_appointments')
+        .select('id, starts_at, ends_at, status, attendance, client_id, professional_id, session_id, clients(full_name), agenda_services(name), external_patients(id, full_name)')
+        .eq('coach_id', coachId)
+        .is('deleted_at', null)
+        .gte('starts_at', `${addDays(date, -1)}T12:00:00Z`)
+        .lte('starts_at', `${addDays(date, 1)}T12:00:00Z`)
+        .order('starts_at')
+      // El rango es holgado y aquí se recorta al día del centro, en verano o en invierno.
+      const inDay = new Intl.DateTimeFormat('en-CA', { timeZone })
+      const appointments = rows(result, 'citas', 'No se ha podido consultar la agenda.')
+        .filter((row) => inDay.format(new Date(row.starts_at)) === date)
+      log.result_count = appointments.length
+      return { date, appointments: appointments.map(agendaEntry) }
+    }),
+  )
+
+  server.registerTool(
+    'link_external_patient',
+    {
+      title: 'Vincular un paciente de la agenda',
+      description: 'Asocia un paciente de la agenda externa con un cliente de NexTrain, o lo desvincula sin client_id.',
+      inputSchema: z.object({
+        external_patient_id: z.string().uuid().describe('ID de get_agenda.'),
+        client_id: z.string().uuid().optional(),
+        coach_id: optionalCoachId,
+      }),
+      annotations: writeAnnotations,
+    },
+    (input: any) => run('link_external_patient', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido vincular el paciente.',
+    }, async ({ log }) => {
+      const { error } = await db.rpc('agenda_link_patient', {
+        p_patient_id: input.external_patient_id,
+        p_client_id: input.client_id ?? null,
+      })
+      if (error) throw studioError(error, 'No se ha podido vincular el paciente.')
+      log.record_id = input.external_patient_id
+      return { linked: Boolean(input.client_id), external_patient_id: input.external_patient_id, client_id: input.client_id ?? null }
     }),
   )
 

@@ -67,7 +67,7 @@ Deno.test('tools/list publishes an object outputSchema for every tool', async ()
   const withoutSchema = tools.filter((tool: any) => tool.outputSchema?.type !== 'object').map((tool: any) => tool.name)
   assert.deepEqual(withoutSchema, [])
   // Las herramientas de index.ts no se registran aquí; el resto debe estar completo.
-  const indexTools = ['who_am_i', 'get_client_overview', 'get_athlete_goal', 'set_athlete_goal', 'list_workspace_library', 'add_to_library', 'list_exercise_catalog', 'create_strength_program', 'create_coach_task', 'list_studio_sessions', 'get_studio_session', 'create_studio_session', 'update_studio_session', 'record_studio_sets', 'create_studio_request', 'list_training_groups', 'create_training_group', 'update_training_group', 'create_group_session', 'set_group_attendance']
+  const indexTools = ['who_am_i', 'get_client_overview', 'get_athlete_goal', 'set_athlete_goal', 'list_workspace_library', 'add_to_library', 'list_exercise_catalog', 'create_strength_program', 'create_coach_task', 'list_studio_sessions', 'get_studio_session', 'create_studio_session', 'update_studio_session', 'record_studio_sets', 'create_studio_request', 'list_training_groups', 'create_training_group', 'update_training_group', 'create_group_session', 'set_group_attendance', 'get_agenda', 'link_external_patient']
   assert.equal(tools.length, Object.keys(outputSchemas).length - indexTools.length)
 })
 

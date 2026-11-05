@@ -20,8 +20,7 @@ import {
     Settings2,
     Sparkles,
     User,
-    Users,
-} from 'lucide-react'
+    Users, Plug } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfile } from '@/data/coach-ai-profile'
@@ -37,12 +36,14 @@ import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { CatalogDuplicatesPanel } from '@/components/coach/settings/CatalogDuplicatesPanel'
 import { SalasAdminPanel } from '@/components/coach/settings/SalasAdminPanel'
+import { getActiveCoachId } from '@/lib/auth/active-coach'
+import { IntegrationsSettingsPanel } from '@/components/coach/settings/IntegrationsSettingsPanel'
 import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
 import { BrandingSettingsPanel } from '@/components/coach/settings/BrandingSettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'salas' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'integraciones' | 'salas' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -53,6 +54,8 @@ const PLATFORM_TABS = [
     { id: 'salas' as const, label: 'Salas', description: 'Alta de salas nuevas', icon: Building2 },
     { id: 'catalogo' as const, label: 'Catálogo', description: 'Posibles duplicados', icon: GitMerge },
 ]
+
+const STUDIO_TAB = { id: 'integraciones' as const, label: 'Integraciones', description: 'Agenda del centro', icon: Plug }
 
 const SETTINGS_TABS: Array<{
     id: SettingsTab
@@ -120,8 +123,14 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
     const params = await searchParams
     const supabase = await createClient()
     const { data: isPlatformAdmin } = await supabase.rpc('is_platform_admin')
-    const tabs = isPlatformAdmin === true ? [...SETTINGS_TABS, ...PLATFORM_TABS] : SETTINGS_TABS
-    const activeTab = parseSettingsTab(params.tab, isPlatformAdmin === true)
+    // Las integraciones son de la agenda de sala: solo salen en espacios con sala.
+    const activeCoachId = await getActiveCoachId()
+    const { data: studioEnabled } = activeCoachId
+        ? await supabase.rpc('coach_has_feature', { p_coach_id: activeCoachId, p_feature: 'studio_mode' })
+        : { data: false }
+    const baseTabs = studioEnabled === true ? [...SETTINGS_TABS, STUDIO_TAB] : SETTINGS_TABS
+    const tabs = isPlatformAdmin === true ? [...baseTabs, ...PLATFORM_TABS] : baseTabs
+    const activeTab = parseSettingsTab(params.tab, isPlatformAdmin === true, studioEnabled === true)
     const profileData = await getSettingsProfileData()
 
     return (
@@ -208,6 +217,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'equipo' && <TeamSettingsPanel />}
                         {activeTab === 'biblioteca' && <LibrarySettingsPanel />}
                         {activeTab === 'look-feel' && <BrandingSettingsPanel />}
+                        {activeTab === 'integraciones' && <IntegrationsSettingsPanel />}
                         {activeTab === 'salas' && <SalasAdminPanel />}
                         {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
@@ -271,7 +281,8 @@ async function getSettingsProfileData() {
     }
 }
 
-function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean): SettingsTab {
+function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean, studioEnabled: boolean): SettingsTab {
+    if (tab === 'integraciones' && studioEnabled) return tab
     if ((tab === 'catalogo' || tab === 'salas') && isPlatformAdmin) return tab
     if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'look-feel' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
