@@ -1,9 +1,23 @@
 import type { MuscleGroup } from '@/lib/training/muscle-groups'
 
+// Columnas del catálogo que usan los selectores de ejercicios.
+export const CATALOG_COLUMNS = 'id, name, primary_group, block_key, laterality, equipment, metrics'
+
+export interface CatalogBlock {
+    key: string
+    name: string
+    category: string
+    sort_order: number
+}
+
 export interface CatalogExercise {
     id: string
     name: string
     primary_group: string
+    block_key?: string | null
+    laterality?: string
+    equipment?: string[]
+    metrics?: string[]
     // Nombres históricos ya normalizados (normalizeExerciseName) que apuntan a este ejercicio.
     aliases?: string[]
 }
@@ -39,6 +53,7 @@ export const CATALOG_GROUPS = [
     'Piernas',
     'Cuerpo completo',
     'Cardio',
+    'No aplica',
 ] as const
 
 export function catalogGroupToMuscleGroup(group: string): MuscleGroup {
@@ -83,29 +98,4 @@ export function findCatalogExercise(
     return catalog.find(item => normalizeExerciseName(item.name) === normalizedName)
         ?? catalog.find(item => item.aliases?.includes(normalizedName))
         ?? null
-}
-
-function nameTokens(name: string): string[] {
-    return normalizeExerciseName(name).split(/[^a-z0-9]+/).filter(token => token.length >= 3)
-}
-
-// Ejercicios del catálogo que comparten la mayoría de palabras con `name`, para avisar antes de crear duplicados.
-export function findSimilarCatalogExercises(catalog: CatalogExercise[], name: string, limit = 3): CatalogExercise[] {
-    const exact = findCatalogExercise(catalog, { exercise_name: name })
-    const tokens = nameTokens(name)
-    if (tokens.length === 0) return exact ? [exact] : []
-
-    const scored = catalog
-        .filter(item => item.id !== exact?.id)
-        .map(item => {
-            const itemTokens = nameTokens(item.name)
-            const shared = tokens.filter(token => itemTokens.includes(token)).length
-            return { item, score: shared / Math.max(tokens.length, itemTokens.length, 1) }
-        })
-        .filter(entry => entry.score >= 0.5)
-        .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name, 'es'))
-        .slice(0, exact ? limit - 1 : limit)
-        .map(entry => entry.item)
-
-    return exact ? [exact, ...scored] : scored
 }

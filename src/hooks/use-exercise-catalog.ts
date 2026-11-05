@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { loadExerciseCatalog } from '@/lib/training/exercise-catalog-client'
-import type { CatalogExercise } from '@/lib/training/exercise-catalog'
+import { loadExerciseBlocks, loadExerciseCatalog } from '@/lib/training/exercise-catalog-client'
+import type { CatalogBlock, CatalogExercise } from '@/lib/training/exercise-catalog'
 
 // Catálogo compartido entre todos los selectores de la página: un ejercicio
 // creado en uno aparece al momento en los demás.
@@ -60,4 +60,29 @@ export function useExerciseCatalog() {
     }, [])
 
     return { exercises, loading, error }
+}
+
+let blocksPending: Promise<CatalogBlock[]> | null = null
+
+// Los bloques casi no cambian: se piden una vez por página.
+export function useExerciseBlocks(enabled = true) {
+    const [blocks, setBlocks] = useState<CatalogBlock[]>([])
+
+    useEffect(() => {
+        if (!enabled) return
+        let active = true
+        blocksPending ??= loadExerciseBlocks()
+        blocksPending
+            .then(data => {
+                if (active) setBlocks(data)
+            })
+            .catch(() => {
+                blocksPending = null
+            })
+        return () => {
+            active = false
+        }
+    }, [enabled])
+
+    return blocks
 }
