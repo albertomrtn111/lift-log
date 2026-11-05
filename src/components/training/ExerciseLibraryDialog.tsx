@@ -1,13 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, Loader2, Plus, Search } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, Plus, Search, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { addExerciseToCatalogCache, useExerciseBlocks } from '@/hooks/use-exercise-catalog'
+import {
+    addExerciseToCatalogCache,
+    refreshWorkspaceLibrary,
+    useExerciseBlocks,
+    useWorkspaceLibrary,
+} from '@/hooks/use-exercise-catalog'
 import { createCatalogExerciseAction } from '@/lib/training/exercise-catalog-actions'
 import {
     findSimilarExercises,
@@ -24,6 +29,7 @@ import {
     LATERALITIES,
     LATERALITY_LABELS,
 } from '@/lib/training/exercise-catalog-rules'
+import { addToLibraryAction } from '@/lib/training/workspace-library-actions'
 import { cn } from '@/lib/utils'
 
 interface ExerciseLibraryDialogProps {
@@ -63,13 +69,21 @@ export function ExerciseLibraryDialog({
     const [similar, setSimilar] = useState<SimilarCatalogExercise[]>([])
     const [creating, setCreating] = useState(false)
     const blocks = useExerciseBlocks(open)
+    const library = useWorkspaceLibrary(open)
+    const [onlyLibrary, setOnlyLibrary] = useState(false)
 
     useEffect(() => {
         if (!open) return
         setView('browse')
         setSearch('')
         setGroup(null)
+        setOnlyLibrary(false)
     }, [open])
+
+    const libraryById = useMemo(
+        () => new Map(library.map(entry => [entry.catalog_exercise_id, entry])),
+        [library]
+    )
 
     const blockNames = useMemo(() => new Map(blocks.map(block => [block.key, block.name])), [blocks])
 
@@ -88,15 +102,18 @@ export function ExerciseLibraryDialog({
     const filtered = useMemo(() => {
         const query = normalizeExerciseName(search)
         return exercises.filter(exercise => {
+            const entry = libraryById.get(exercise.id)
             if (group && exercise.primary_group !== group) return false
+            if (onlyLibrary && (!entry || entry.is_hidden)) return false
             if (!query) return true
             return normalizeExerciseName(exercise.name).includes(query)
+                || normalizeExerciseName(entry?.short_name ?? '').includes(query)
                 || normalizeExerciseName(exercise.primary_group).includes(query)
                 || normalizeExerciseName(blockNames.get(exercise.block_key ?? '') ?? '').includes(query)
                 || (exercise.equipment ?? []).some(item => normalizeExerciseName(equipmentLabel(item)).includes(query))
                 || (exercise.aliases ?? []).some(alias => alias.includes(query))
         })
-    }, [exercises, search, group, blockNames])
+    }, [exercises, search, group, blockNames, libraryById, onlyLibrary])
 
     useEffect(() => {
         const name = newName.trim()
@@ -134,6 +151,15 @@ export function ExerciseLibraryDialog({
         choose(exercises.find(exercise => exercise.id === match.id) ?? match)
     }
 
+    async function addToLibrary(exercise: CatalogExercise) {
+        const result = await addToLibraryAction(exercise.id)
+        if (result.success) {
+            await refreshWorkspaceLibrary()
+        } else {
+            toast({ title: 'No se pudo añadir', description: result.error, variant: 'destructive' })
+        }
+    }
+
     function toggleEquipment(item: string) {
         setNewEquipment(current =>
             current.includes(item) ? current.filter(value => value !== item) : [...current, item]
@@ -155,6 +181,7 @@ export function ExerciseLibraryDialog({
             return
         }
         addExerciseToCatalogCache(result.exercise)
+        void refreshWorkspaceLibrary()
         toast({
             title: result.existed ? 'Ese ejercicio ya existía' : 'Ejercicio añadido a la biblioteca',
             description: result.exercise.name,
@@ -186,6 +213,22 @@ export function ExerciseLibraryDialog({
                                 />
                             </div>
                             <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-hide" role="group" aria-label="Filtrar por grupo muscular">
+                                {library.length > 0 && (
+                                    <button
+                                        type="button"
+                                        aria-pressed={onlyLibrary}
+                                        onClick={() => setOnlyLibrary(current => !current)}
+                                        className={cn(
+                                            'flex h-8 shrink-0 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors',
+                                            onlyLibrary
+                                                ? 'border-primary bg-primary text-primary-foreground'
+                                                : 'border-border/70 bg-card text-muted-foreground hover:text-foreground'
+                                        )}
+                                    >
+                                        <Star className="h-3.5 w-3.5" />
+                                        Mi biblioteca
+                                    </button>
+                                )}
                                 {[null, ...groups].map(item => (
                                     <button
                                         key={item ?? 'all'}
@@ -211,7 +254,11 @@ export function ExerciseLibraryDialog({
                             {!loading && !error && filtered.length === 0 && (
                                 <div className="py-8 text-center">
                                     <p className="text-sm text-muted-foreground">
-                                        {search ? `No hay ningún ejercicio con «${search}».` : 'No hay ejercicios en este grupo.'}
+                                        {search
+                                            ? `No hay ningún ejercicio con «${search}».`
+                                            : onlyLibrary
+                                                ? 'Tu biblioteca no tiene ejercicios en este grupo.'
+                                                : 'No hay ejercicios en este grupo.'}
                                     </p>
                                     <Button size="sm" className="mt-3 gap-1.5 rounded-full" onClick={startCreate}>
                                         <Plus className="h-4 w-4" />
@@ -220,20 +267,41 @@ export function ExerciseLibraryDialog({
                                 </div>
                             )}
                             {!loading && !error && filtered.map(exercise => (
-                                <button
+                                <div
                                     key={exercise.id}
-                                    type="button"
-                                    onClick={() => choose(exercise)}
-                                    className="flex min-h-12 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="flex min-h-12 items-stretch rounded-lg border hover:bg-accent focus-within:ring-2 focus-within:ring-ring"
                                 >
-                                    <span className="min-w-0">
-                                        <span className="block break-words text-sm font-medium">{exercise.name}</span>
-                                        <span className="block text-xs text-muted-foreground">
-                                            {[blockNames.get(exercise.block_key ?? ''), exercise.primary_group].filter(Boolean).join(' · ')}
+                                    <button
+                                        type="button"
+                                        onClick={() => choose(exercise)}
+                                        className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left focus-visible:outline-none"
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block break-words text-sm font-medium">{exercise.name}</span>
+                                            <span className="block text-xs text-muted-foreground">
+                                                {[
+                                                    libraryById.get(exercise.id)?.short_name,
+                                                    blockNames.get(exercise.block_key ?? ''),
+                                                    exercise.primary_group,
+                                                ].filter(Boolean).join(' · ')}
+                                            </span>
                                         </span>
-                                    </span>
-                                    {value === exercise.id && <Check className="h-4 w-4 shrink-0 text-primary" />}
-                                </button>
+                                        {value === exercise.id && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={libraryById.has(exercise.id)}
+                                        onClick={() => void addToLibrary(exercise)}
+                                        aria-label={
+                                            libraryById.has(exercise.id)
+                                                ? `${exercise.name} está en tu biblioteca`
+                                                : `Añadir ${exercise.name} a tu biblioteca`
+                                        }
+                                        className="flex w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-primary focus-visible:outline-none disabled:hover:text-muted-foreground"
+                                    >
+                                        <Star className={cn('h-4 w-4', libraryById.has(exercise.id) && 'fill-primary text-primary')} />
+                                    </button>
+                                </div>
                             ))}
                         </div>
 

@@ -34,10 +34,11 @@ import { CoachAvatarUploader } from '@/components/coach/settings/CoachAvatarUplo
 import { McpSettingsPanel } from '@/components/coach/settings/McpSettingsPanel'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { CatalogDuplicatesPanel } from '@/components/coach/settings/CatalogDuplicatesPanel'
+import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -68,6 +69,12 @@ const SETTINGS_TABS: Array<{
         label: 'Equipo',
         description: 'Invita a otros profesionales',
         icon: Users,
+    },
+    {
+        id: 'biblioteca',
+        label: 'Biblioteca',
+        description: 'Tus ejercicios y bloques',
+        icon: Dumbbell,
     },
     {
         id: 'email',
@@ -191,6 +198,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                     <main className="min-w-0">
                         {activeTab === 'perfil' && <ProfileSettingsSection {...profileData} />}
                         {activeTab === 'equipo' && <TeamSettingsPanel />}
+                        {activeTab === 'biblioteca' && <LibrarySettingsPanel />}
                         {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
                         {activeTab === 'notificaciones' && <NotificationSettingsPanel />}
@@ -253,7 +261,7 @@ async function getSettingsProfileData() {
 
 function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean): SettingsTab {
     if (tab === 'catalogo' && isPlatformAdmin) return 'catalogo'
-    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
+    if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
 }
 

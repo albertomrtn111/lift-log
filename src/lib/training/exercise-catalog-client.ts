@@ -63,3 +63,31 @@ export async function findSimilarExercises(name: string, blockKey: string | null
     })
     return error ? [] : ((data ?? []) as SimilarCatalogExercise[])
 }
+
+export interface LibrarySummaryEntry {
+    catalog_exercise_id: string
+    short_name: string | null
+    is_hidden: boolean
+}
+
+// Lo justo de la biblioteca para el selector de ejercicios. Un bloque oculto oculta sus ejercicios.
+export async function loadWorkspaceLibrary(): Promise<LibrarySummaryEntry[]> {
+    const supabase = createClient()
+    const [entries, hiddenBlocks] = await Promise.all([
+        supabase.from('workspace_exercises').select('catalog_exercise_id, short_name, is_hidden'),
+        supabase.from('workspace_blocks').select('block_key').eq('is_hidden', true),
+    ])
+    if (entries.error) throw new Error(entries.error.message)
+    if (!hiddenBlocks.data?.length) return entries.data ?? []
+
+    const { data: hiddenExercises } = await supabase
+        .from('exercise_catalog')
+        .select('id')
+        .in('block_key', hiddenBlocks.data.map(block => block.block_key))
+    const hiddenIds = new Set((hiddenExercises ?? []).map(exercise => exercise.id))
+
+    return (entries.data ?? []).map(entry => ({
+        ...entry,
+        is_hidden: entry.is_hidden || hiddenIds.has(entry.catalog_exercise_id),
+    }))
+}
