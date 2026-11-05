@@ -4,20 +4,18 @@ import { useEffect, useState, useTransition } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { BrandingSettingsPanel } from '@/components/coach/settings/BrandingSettingsPanel'
-import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
+import { LibraryBulkPicker, useLibrarySelection } from '@/components/training/LibraryBulkPicker'
 import { TeamSettingsPanel } from '@/components/coach/settings/TeamSettingsPanel'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-    applyLibraryTemplateAction,
     finishSalaOnboardingAction,
     getSalaSetupAction,
     saveCenterAction,
     type AgendaMode,
 } from '@/lib/onboarding/sala-actions'
-import { LIBRARY_TEMPLATES } from '@/lib/training/workspace-library-rules'
 import { cn } from '@/lib/utils'
 
 const STEPS = ['Datos del centro', 'Logo y colores', 'Ejercicios favoritos', 'Tu equipo', 'Agenda'] as const
@@ -33,7 +31,7 @@ export function SalaOnboardingWizard() {
     const [name, setName] = useState('')
     const [address, setAddress] = useState('')
     const [agendaMode, setAgendaMode] = useState<AgendaMode>('none')
-    const [libraryVersion, setLibraryVersion] = useState(0)
+    const librarySelection = useLibrarySelection({ preselect: true })
     const [pending, startTransition] = useTransition()
 
     useEffect(() => {
@@ -55,6 +53,14 @@ export function SalaOnboardingWizard() {
             })
             return
         }
+        if (step === 2) {
+            startTransition(async () => {
+                const result = await librarySelection.save()
+                if (result.success) setStep(3)
+                else toast.error(result.error)
+            })
+            return
+        }
         if (step < STEPS.length - 1) {
             setStep(step + 1)
             return
@@ -64,18 +70,6 @@ export function SalaOnboardingWizard() {
             if (result.success) {
                 // Recarga completa: el panel tiene que leer ya la sala terminada.
                 window.location.assign('/coach/dashboard')
-            } else {
-                toast.error(result.error)
-            }
-        })
-    }
-
-    function applyTemplate(template: string) {
-        startTransition(async () => {
-            const result = await applyLibraryTemplateAction(template)
-            if (result.success) {
-                toast.success(`${result.data?.added ?? 0} ejercicios en tu biblioteca`)
-                setLibraryVersion(version => version + 1)
             } else {
                 toast.error(result.error)
             }
@@ -113,21 +107,12 @@ export function SalaOnboardingWizard() {
             {step === 1 && <BrandingSettingsPanel />}
 
             {step === 2 && (
-                <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        {Object.entries(LIBRARY_TEMPLATES).map(([key, template]) => (
-                            <Card key={key} className="space-y-3 p-4">
-                                <div>
-                                    <p className="text-sm font-medium">{template.label}</p>
-                                    <p className="text-xs text-muted-foreground">{template.description}</p>
-                                </div>
-                                <Button size="sm" variant="outline" disabled={pending} onClick={() => applyTemplate(key)}>
-                                    Empezar con esta plantilla
-                                </Button>
-                            </Card>
-                        ))}
-                    </div>
-                    <LibrarySettingsPanel key={libraryVersion} />
+                <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                        Ya vienen marcados los predefinidos. Quita lo que no uses, por bloque o uno a uno. Podrás añadir
+                        ejercicios nuevos siempre.
+                    </p>
+                    <LibraryBulkPicker selection={librarySelection} />
                 </div>
             )}
 

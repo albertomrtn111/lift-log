@@ -137,6 +137,23 @@ export async function addToLibraryAction(catalogExerciseId: string): Promise<Act
     }
 }
 
+// Añade varios ejercicios de golpe. Lo que ya estaba no cambia.
+export async function addManyToLibraryAction(catalogExerciseIds: string[]): Promise<ActionResult> {
+    if (catalogExerciseIds.length === 0) return { success: true }
+    try {
+        const { supabase, coachId, userId } = await getCoachActor()
+        const { error } = await supabase
+            .from('workspace_exercises')
+            .upsert(
+                catalogExerciseIds.map(id => ({ coach_id: coachId, catalog_exercise_id: id, added_by: userId })),
+                { onConflict: 'coach_id,catalog_exercise_id', ignoreDuplicates: true }
+            )
+        return error ? { success: false, error: 'No se pudieron añadir los ejercicios.' } : { success: true }
+    } catch (cause) {
+        return failure(cause, 'No se pudieron añadir los ejercicios.')
+    }
+}
+
 export async function updateLibraryEntryAction(entryId: string, fields: LibraryFields): Promise<ActionResult> {
     const parsed = parseLibraryFields(fields)
     if ('error' in parsed) return { success: false, error: parsed.error }

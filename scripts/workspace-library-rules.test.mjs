@@ -7,6 +7,9 @@ import {
     moveInList,
     parseDefaultSets,
     parseLibraryFields,
+    presetIds,
+    selectionState,
+    setManySelected,
     sortEntries,
     sortOrderFor,
     swapInList,
@@ -72,4 +75,27 @@ test('las plantillas no repiten bloques', () => {
     for (const template of Object.values(LIBRARY_TEMPLATES)) {
         assert.equal(new Set(template.blocks).size, template.blocks.length)
     }
+})
+
+test('estado de la selección de un grupo', () => {
+    assert.equal(selectionState(['a', 'b'], new Set()), 'none')
+    assert.equal(selectionState(['a', 'b'], new Set(['a'])), 'some')
+    assert.equal(selectionState(['a', 'b'], new Set(['a', 'b', 'c'])), 'all')
+})
+
+test('marcar y desmarcar un grupo no toca lo demás', () => {
+    const marked = setManySelected(new Set(['x']), ['a', 'b'], true)
+    assert.deepEqual([...marked].sort(), ['a', 'b', 'x'])
+    assert.deepEqual([...setManySelected(marked, ['a', 'b'], false)], ['x'])
+})
+
+test('los atajos solo usan ejercicios predefinidos', () => {
+    const exercises = [
+        { id: 'a', is_predefined: true, block_key: 'biceps' },
+        { id: 'b', is_predefined: true, block_key: 'core_antiextension' },
+        { id: 'c', is_predefined: false, block_key: 'biceps' },
+    ]
+    assert.deepEqual(presetIds(exercises), ['a', 'b'])
+    assert.deepEqual(presetIds(exercises, 'gimnasio'), ['a'])
+    assert.deepEqual(presetIds(exercises, 'funcional'), ['b'])
 })
