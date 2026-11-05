@@ -5,12 +5,12 @@ import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import { StudioClientList } from '@/components/coach/sala/StudioClientList'
 import { StudioGrid } from '@/components/coach/sala/StudioGrid'
 import { Card } from '@/components/ui/card'
-import { getStudioClients, getStudioGrid } from '@/data/studio'
+import { getStudioClients, getStudioGrid, getStudioGroupGrid, getStudioGroups, getStudioTeamList } from '@/data/studio'
 import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { createClient } from '@/lib/supabase/server'
 
 interface SalaPageProps {
-    searchParams: Promise<{ cliente?: string; anteriores?: string }>
+    searchParams: Promise<{ cliente?: string; grupo?: string; anteriores?: string }>
 }
 
 function todayInMadrid() {
@@ -31,22 +31,39 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
     if (!enabled) redirect('/coach/dashboard')
 
     const { data: { user } } = await supabase.auth.getUser()
-    const { cliente, anteriores } = await searchParams
+    const { cliente, grupo, anteriores } = await searchParams
     const today = todayInMadrid()
-    const clients = await getStudioClients(coachId, today)
-    const grid = cliente && /^[0-9a-f-]{36}$/i.test(cliente) ? await getStudioGrid(coachId, cliente) : null
+    const uuid = /^[0-9a-f-]{36}$/i
+    const [clients, groups, team] = await Promise.all([
+        getStudioClients(coachId, today),
+        getStudioGroups(coachId, today),
+        getStudioTeamList(coachId),
+    ])
+    const grid = grupo && uuid.test(grupo)
+        ? await getStudioGroupGrid(coachId, grupo)
+        : cliente && uuid.test(cliente)
+            ? await getStudioGrid(coachId, cliente)
+            : null
 
     return (
         <div className="min-h-screen bg-background pb-24 lg:pb-8">
             <CoachPageHeader eyebrow="Operativa" title="Sala" description="Sesiones presenciales de tus clientes." />
             <div className="grid gap-4 p-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
                 <div className={grid ? 'hidden lg:block' : undefined}>
-                    <StudioClientList clients={clients} selectedId={grid?.client.id ?? null} />
+                    <StudioClientList
+                        coachId={coachId}
+                        clients={clients}
+                        groups={groups}
+                        team={team}
+                        selectedId={grid && !grid.group ? grid.client.id : null}
+                        selectedGroupId={grid?.group?.id ?? null}
+                        currentUserId={user?.id ?? null}
+                    />
                 </div>
                 {grid ? (
                     <div className="min-w-0 space-y-2">
                         <Link href="/coach/sala" className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-primary lg:hidden">
-                            <ChevronLeft className="h-4 w-4" /> Clientes
+                            <ChevronLeft className="h-4 w-4" /> {grid.group ? 'Grupos' : 'Clientes'}
                         </Link>
                         <StudioGrid
                             key={grid.client.id}
@@ -54,6 +71,8 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
                             today={today}
                             currentUserId={user?.id ?? null}
                             olderPages={Number(anteriores) > 0 ? Number(anteriores) : 0}
+                            clients={clients}
+                            allGroups={groups}
                         />
                     </div>
                 ) : (

@@ -149,6 +149,8 @@ export async function saveCellAction(input: {
     fields: Record<string, unknown>
     sets?: Record<string, number | null>[]
     done: boolean
+    /** Valores propios de cada persona, en un ejercicio de grupo. */
+    people?: { clientId: string; fields: Record<string, unknown> }[]
 }): Promise<StudioResult> {
     const supabase = await createClient()
     const batch = randomUUID()
@@ -162,6 +164,18 @@ export async function saveCellAction(input: {
     })
     if (saved.error) return failure(saved.error)
     let item = saved.data
+
+    for (const person of input.people ?? []) {
+        const saved = await supabase.rpc('studio_save_person_values', {
+            p_item_id: item.id,
+            p_client_id: person.clientId,
+            p_version: item.version,
+            p_fields: person.fields,
+            p_batch_id: batch,
+        })
+        if (saved.error) return failure(saved.error)
+        item = saved.data
+    }
 
     if (input.sets) {
         const details = await supabase.rpc('studio_save_sets', {
@@ -455,5 +469,76 @@ export async function saveRelevantNoteAction(clientId: string, version: number |
         p_version: version,
         p_note: note,
     })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function createGroupSessionAction(input: {
+    groupId: string
+    date: string
+    time: string | null
+    professionalId: string | null
+    name: string | null
+}): Promise<StudioResult<{ id: string }>> {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('studio_create_group_session', {
+        p_group_id: input.groupId,
+        p_session_date: input.date,
+        p_start_time: input.time,
+        p_professional_id: input.professionalId,
+        p_name: input.name,
+    })
+    if (error) return failure(error)
+    return { success: true, data: { id: data.id } }
+}
+
+export async function setAttendanceAction(
+    sessionId: string,
+    clientId: string,
+    status: 'unmarked' | 'attended' | 'absent'
+): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_set_attendance', {
+        p_session_id: sessionId,
+        p_client_id: clientId,
+        p_status: status,
+    })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function saveGroupAction(input: {
+    coachId: string
+    groupId: string | null
+    name: string
+    schedule: { weekday: number; time: string }[]
+    professionalIds: string[]
+    memberIds: string[]
+}): Promise<StudioResult<{ id: string }>> {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('studio_save_group', {
+        p_coach_id: input.coachId,
+        p_group_id: input.groupId,
+        p_name: input.name,
+        p_kind: 'schedule',
+        p_schedule: input.schedule,
+        p_professional_ids: input.professionalIds,
+    })
+    if (error) return failure(error)
+    const members = await supabase.rpc('studio_set_group_members', {
+        p_group_id: data.id,
+        p_client_ids: input.memberIds,
+    })
+    if (members.error) return failure(members.error)
+    return { success: true, data: { id: data.id } }
+}
+
+export async function archiveGroupAction(groupId: string, active: boolean): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_archive_group', { p_group_id: groupId, p_active: active })
+    return error ? failure(error) : { success: true, data: undefined }
+}
+
+export async function mergeGroupsAction(sourceId: string, targetId: string): Promise<StudioResult> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_merge_groups', { p_source_id: sourceId, p_target_id: targetId })
     return error ? failure(error) : { success: true, data: undefined }
 }

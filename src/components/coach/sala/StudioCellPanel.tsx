@@ -35,6 +35,7 @@ import {
     timeAgo,
 } from '@/lib/studio/editor-rules'
 import { cellSummary, formatShortDate, normalizeText } from '@/lib/studio/grid-rules'
+import { ATTENDANCE_LABELS, changedPeople, personFields, personForm } from '@/lib/studio/group-rules'
 import { deleteItemAction, getItemSetsAction, saveCellAction } from '@/lib/studio/session-actions'
 import { cn } from '@/lib/utils'
 
@@ -86,6 +87,16 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
     const [wasDetailed, setWasDetailed] = useState(false)
     const [rows, setRows_] = useState<SetRow[]>([])
     const [confirmDelete, setConfirmDelete] = useState(false)
+
+    // En un grupo, cada persona de la sesión con sus valores. Lo vacío hereda lo general.
+    const inGroup = Boolean(data.group)
+    const roster = useMemo(() => data.attendance.filter(entry => entry.session_id === sessionId), [data.attendance, sessionId])
+    const savedPeople = useMemo(() => data.people.filter(person => person.item_id === item?.id), [data.people, item?.id])
+    const memberName = (clientId: string) => data.group?.members.find(member => member.id === clientId)?.name ?? 'Persona'
+    const [personRows, setPersonRows] = useState(() => roster.map(entry => ({
+        clientId: entry.client_id,
+        form: personForm(savedPeople.find(person => person.client_id === entry.client_id)),
+    })))
 
     // Lo detallado no viaja con la cuadrícula: se pide al abrir la celda.
     const itemId = item?.id ?? null
@@ -159,6 +170,12 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
         if (details?.error) return void toast.error(details.error)
 
         const sets = details?.sets ?? (wasDetailed ? [] : undefined)
+        const people: { clientId: string; fields: Record<string, unknown> }[] = []
+        for (const row of changedPeople(personRows, savedPeople)) {
+            const person = personFields(row.form)
+            if (person.error) return void toast.error(`${memberName(row.clientId)}: ${person.error}`)
+            people.push({ clientId: row.clientId, fields: person.fields! })
+        }
         startTransition(async () => {
             const result = await saveCellAction({
                 sessionId,
@@ -166,6 +183,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                 version,
                 fields: item ? cell.fields! : { ...cell.fields!, catalog_exercise_id: catalogExerciseId },
                 sets,
+                people,
                 done: details ? true : form.isDone,
             })
             router.refresh()
@@ -303,7 +321,42 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                         />
                     </div>
 
-                    <div className="space-y-2 rounded-md border p-3">
+                    {inGroup && personRows.length > 0 && (
+                        <div className="space-y-2 rounded-md border p-3">
+                            <span className="text-sm font-medium">Por persona</span>
+                            <p className="text-xs text-muted-foreground">Lo que dejes vacío hereda lo general.</p>
+                            {personRows.map((row, index) => {
+                                const status = roster.find(entry => entry.client_id === row.clientId)?.status ?? 'unmarked'
+                                const change = (key: string, value: string) => setPersonRows(personRows.map((entry, position) => (
+                                    position === index ? { ...entry, form: { ...entry.form, [key]: value } } : entry
+                                )))
+                                return (
+                                    <div key={row.clientId} className="space-y-1">
+                                        <div className="flex items-baseline justify-between gap-2 text-sm">
+                                            <span className="min-w-0 truncate font-medium">{memberName(row.clientId)}</span>
+                                            <span className="shrink-0 text-xs text-muted-foreground">{ATTENDANCE_LABELS[status]}</span>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-1">
+                                            {[['loadKg', 'Kg'], ['reps', 'Reps'], ['rir', 'RIR'], ['rpe', 'RPE']].map(([key, label]) => (
+                                                <Input
+                                                    key={key}
+                                                    value={row.form[key as keyof typeof row.form]}
+                                                    inputMode={key === 'reps' ? undefined : 'decimal'}
+                                                    autoComplete="off"
+                                                    placeholder={label}
+                                                    aria-label={`${label} de ${memberName(row.clientId)}`}
+                                                    className="h-9 px-2 text-center"
+                                                    onChange={event => change(key, event.target.value)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+
+                    {!inGroup && <div className="space-y-2 rounded-md border p-3">
                         <div className="flex items-center justify-between">
                             <Label htmlFor="sala-detail">Por series</Label>
                             <Switch id="sala-detail" checked={detailOn} onCheckedChange={toggleDetail} />
@@ -346,7 +399,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                                 </div>
                             </>
                         )}
-                    </div>
+                    </div>}
 
                     <div className="space-y-1.5">
                         <span className="text-sm font-medium">Próxima sesión</span>
