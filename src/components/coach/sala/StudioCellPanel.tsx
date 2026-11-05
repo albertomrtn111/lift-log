@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { StudioConflict } from '@/components/coach/sala/StudioConflict'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { StudioGridData, StudioItem } from '@/data/studio'
 import {
+    cellDiff,
     cellFields,
     formFromPrevious,
     itemToForm,
@@ -74,6 +76,8 @@ export function StudioCellPanel({ data, target, onClose }: {
     const session = data.sessions.find(entry => entry.id === sessionId)
 
     const [form, setForm] = useState(() => itemToForm(item ?? libraryDefaults(data.entries, data.blocks, catalogExerciseId)))
+    // Lo que había al abrir: si otro lo cambia después, guardar no debe pisarlo sin que lo veas.
+    const [base, setBase] = useState(() => ({ version: item?.version ?? null, form: itemToForm(item) }))
     const [tagText, setTagText] = useState('')
     const [showCircuit, setShowCircuit] = useState((item?.circuit.length ?? 0) > 0)
     const [detailOn, setDetailOn] = useState(false)
@@ -95,6 +99,29 @@ export function StudioCellPanel({ data, target, onClose }: {
         })
         return () => { current = false }
     }, [itemId])
+
+    const latest = useMemo(() => (item ? itemToForm(item) : null), [item])
+    const changedByOther = item !== null && base.version !== null && item.version > base.version
+    const conflictRows = changedByOther ? cellDiff(form, latest) : []
+
+    // Si no habías tocado nada, o acabáis en lo mismo, no hay nada que elegir.
+    useEffect(() => {
+        if (!item || !latest || !changedByOther) return
+        if (cellDiff(form, base.form).length === 0 || cellDiff(form, latest).length === 0) {
+            setForm(latest)
+            setBase({ version: item.version, form: latest })
+        }
+    }, [item, latest, base, form, changedByOther])
+
+    // Otro profesional puede quitar el ejercicio mientras lo tienes abierto.
+    const existed = useRef(item !== null)
+    const removing = useRef(false)
+    useEffect(() => {
+        if (existed.current && !item && !removing.current) {
+            toast.error('Otra persona ha quitado este ejercicio.')
+            onClose()
+        }
+    }, [item, onClose])
 
     const previous = useMemo(
         () => previousItem(data.sessions, data.items, sessionId, catalogExerciseId),
@@ -122,7 +149,7 @@ export function StudioCellPanel({ data, target, onClose }: {
         if (on && rows.length === 0) setRows_(setRows([], Number(form.sets) || 1))
     }
 
-    function save() {
+    function save(version = base.version) {
         const tags = tagText.trim() ? [...form.tags, tagText.trim()] : form.tags
         const cell = cellFields({ ...form, tags })
         if (cell.error) return void toast.error(cell.error)
@@ -134,24 +161,33 @@ export function StudioCellPanel({ data, target, onClose }: {
             const result = await saveCellAction({
                 sessionId,
                 itemId: item?.id ?? null,
-                version: item?.version ?? null,
+                version,
                 fields: item ? cell.fields! : { ...cell.fields!, catalog_exercise_id: catalogExerciseId },
                 sets,
                 done: details ? true : form.isDone,
             })
             router.refresh()
-            if (!result.success) return void toast.error(result.error)
-            onClose()
+            if (result.success) return onClose()
+            // Con conflicto, al llegar lo último aparece la comparación.
+            if (!result.conflict) toast.error(result.error)
         })
+    }
+
+    function useTheirs() {
+        if (!item || !latest) return
+        setForm(latest)
+        setBase({ version: item.version, form: latest })
     }
 
     function remove() {
         if (!item) return
+        removing.current = true
         startTransition(async () => {
             const result = await deleteItemAction(item.id, item.version)
             router.refresh()
-            if (!result.success) return void toast.error(result.error)
-            onClose()
+            if (result.success) return onClose()
+            removing.current = false
+            toast.error(result.error)
         })
     }
 
@@ -166,6 +202,16 @@ export function StudioCellPanel({ data, target, onClose }: {
                 </SheetHeader>
 
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                    {changedByOther && conflictRows.length > 0 && (
+                        <StudioConflict
+                            title={`${(item.updated_by && data.professionals[item.updated_by]) || 'Otra persona'} lo cambió ${timeAgo(item.updated_at)}`}
+                            rows={conflictRows}
+                            disabled={isPending}
+                            onKeepMine={() => save(item.version)}
+                            onUseTheirs={useTheirs}
+                        />
+                    )}
+
                     {previous && (
                         <div className="flex items-center justify-between gap-2 rounded-md bg-muted/60 p-2 text-sm">
                             <span className="min-w-0">
@@ -373,7 +419,7 @@ export function StudioCellPanel({ data, target, onClose }: {
                 </div>
 
                 <div className="flex items-center gap-2 border-t p-4">
-                    <Button type="button" className="flex-1" disabled={isPending} onClick={save}>
+                    <Button type="button" className="flex-1" disabled={isPending} onClick={() => save()}>
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Guardar
                     </Button>

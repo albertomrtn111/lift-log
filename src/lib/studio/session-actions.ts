@@ -78,14 +78,15 @@ export async function updateSessionAction(
     sessionId: string,
     version: number,
     patch: Record<string, unknown>
-): Promise<StudioResult> {
+): Promise<StudioResult<{ version: number }>> {
     const supabase = await createClient()
-    const { error } = await supabase.rpc('studio_update_session', {
+    const { data, error } = await supabase.rpc('studio_update_session', {
         p_session_id: sessionId,
         p_version: version,
         p_patch: patch,
     })
-    return error ? failure(error) : { success: true, data: undefined }
+    if (error) return failure(error)
+    return { success: true, data: { version: data.version } }
 }
 
 export async function deleteSessionAction(sessionId: string, version: number): Promise<StudioResult> {
@@ -173,6 +174,14 @@ export async function deleteItemAction(itemId: string, version: number): Promise
     const supabase = await createClient()
     const { error } = await supabase.rpc('studio_delete_item', { p_item_id: itemId, p_version: version })
     return error ? failure(error) : { success: true, data: undefined }
+}
+
+/** Deshace mi último cambio con este cliente, si nadie lo ha tocado después. */
+export async function undoLastAction(clientId: string): Promise<StudioResult<{ status: 'undone' | 'nothing' | 'blocked' }>> {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('studio_undo_last', { p_client_id: clientId })
+    if (error) return failure(error)
+    return { success: true, data }
 }
 
 export async function getItemSetsAction(itemId: string): Promise<StudioResult<StudioSetRow[]>> {

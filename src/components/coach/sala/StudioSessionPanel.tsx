@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, Check, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { StudioConflict } from '@/components/coach/sala/StudioConflict'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,6 +30,7 @@ import {
     moveEntry,
     parseNumber,
     previousWellness,
+    sessionDiff,
     sessionList,
     sessionLoad,
     sessionPatch,
@@ -190,6 +192,8 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [form, setForm] = useState(() => sessionToForm(session))
+    // Lo que había al abrir: si otro lo cambia después, guardar no debe pisarlo sin que lo veas.
+    const [base, setBase] = useState(() => ({ version: session.version, form: sessionToForm(session) }))
     const [confirm, setConfirm] = useState<{ type: 'session' } | { type: 'item'; item: StudioItem } | null>(null)
     const [query, setQuery] = useState('')
     const [newSection, setNewSection] = useState('')
@@ -208,6 +212,20 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
             ))
             .slice(0, 8)
     }, [data.entries, query])
+
+    const latest = useMemo(() => sessionToForm(session), [session])
+    // Solo cuenta una versión más nueva: tras guardar, la mía llega antes que los datos recargados.
+    const changedByOther = session.version > base.version
+    const conflictRows = changedByOther ? sessionDiff(form, latest, data.professionals) : []
+
+    // Si no habías tocado nada, o acabáis en lo mismo, no hay nada que elegir.
+    useEffect(() => {
+        if (!changedByOther) return
+        if (sessionDiff(form, base.form).length === 0 || sessionDiff(form, latest).length === 0) {
+            setForm(latest)
+            setBase({ version: session.version, form: latest })
+        }
+    }, [changedByOther, session.version, latest, base, form])
 
     const score = wellnessScore(form)
     const earlierScore = previousWellness(data.sessions, session.id)
@@ -230,10 +248,24 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
         run(() => arrangeSessionAction(session.id, layout.sectionIds, layout.items))
     }
 
-    function save() {
+    function save(version = base.version) {
         const { patch, error } = sessionPatch(form, session)
         if (error) return void toast.error(error)
-        run(() => updateSessionAction(session.id, session.version, patch!), () => toast.success('Sesión guardada'))
+        startTransition(async () => {
+            const result = await updateSessionAction(session.id, version, patch!)
+            router.refresh()
+            if (result.success) {
+                setBase({ version: result.data.version, form })
+                toast.success('Sesión guardada')
+            } else if (!result.conflict) {
+                toast.error(result.error)
+            }
+        })
+    }
+
+    function useTheirs() {
+        setForm(latest)
+        setBase({ version: session.version, form: latest })
     }
 
     function removeItem(item: StudioItem) {
@@ -257,6 +289,16 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
                 </SheetHeader>
 
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+                    {conflictRows.length > 0 && (
+                        <StudioConflict
+                            title="Otra persona ha cambiado esta sesión"
+                            rows={conflictRows}
+                            disabled={isPending}
+                            onKeepMine={() => save(session.version)}
+                            onUseTheirs={useTheirs}
+                        />
+                    )}
+
                     <section className="space-y-3" aria-label="Datos de la sesión">
                         <BasicFields
                             form={form}
@@ -503,7 +545,7 @@ export function StudioSessionPanel({ data, session, onClose, onOpenItem, onDupli
                 </div>
 
                 <div className="border-t p-4">
-                    <Button type="button" className="w-full" disabled={isPending} onClick={save}>
+                    <Button type="button" className="w-full" disabled={isPending} onClick={() => save()}>
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Guardar cambios
                     </Button>

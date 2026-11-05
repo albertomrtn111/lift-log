@@ -1,9 +1,9 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronDown, Minus, Plus, Search } from 'lucide-react'
+import { Check, ChevronDown, Minus, Plus, Search, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,8 @@ import { Switch } from '@/components/ui/switch'
 import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
 import { StudioNewSessionPanel, StudioSessionPanel } from '@/components/coach/sala/StudioSessionPanel'
 import type { StudioGridData, StudioItem } from '@/data/studio'
+import { useStudioLive } from '@/hooks/useStudioLive'
+import { initials } from '@/lib/studio/editor-rules'
 import {
     SESSION_STATUS_LABELS,
     STUDIO_PAST_SESSIONS,
@@ -20,7 +22,7 @@ import {
     formatShortDate,
     prepareSessions,
 } from '@/lib/studio/grid-rules'
-import { setItemDoneAction } from '@/lib/studio/session-actions'
+import { setItemDoneAction, undoLastAction } from '@/lib/studio/session-actions'
 import { BLOCK_CATEGORY_LABELS } from '@/lib/training/exercise-catalog-rules'
 import { cn } from '@/lib/utils'
 
@@ -81,6 +83,52 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
         ? data.sessions.find(session => session.id === panel.sessionId) ?? null
         : null
 
+    let openSessionId = openSession?.id ?? null
+    if (panel?.type === 'cell') {
+        const target = panel.target
+        openSessionId = 'itemId' in target
+            ? data.items.find(item => item.id === target.itemId)?.session_id ?? null
+            : target.sessionId
+    }
+
+    const { viewers } = useStudioLive({
+        clientId: data.client.id,
+        userId: currentUserId,
+        userName: (currentUserId && data.professionals[currentUserId]) || 'Otro profesional',
+        openSessionId,
+    })
+
+    function undo() {
+        startMarking(async () => {
+            const result = await undoLastAction(data.client.id)
+            if (!result.success) return void toast.error(result.error)
+            if (result.data.status === 'undone') {
+                router.refresh()
+                toast.success('Deshecho')
+            } else if (result.data.status === 'blocked') {
+                toast.error('Alguien lo ha cambiado después: no se deshace para no pisar su trabajo.')
+            } else {
+                toast('No hay nada que deshacer')
+            }
+        })
+    }
+
+    // Ctrl+Z en la cuadrícula. Dentro de un panel o de un campo, sigue siendo el deshacer del texto.
+    const undoRef = useRef(undo)
+    undoRef.current = undo
+    const panelOpen = panel !== null
+    useEffect(() => {
+        function onKeyDown(event: KeyboardEvent) {
+            if (panelOpen || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return
+            const element = event.target as HTMLElement
+            if (element.closest('input, textarea, select, [contenteditable="true"]')) return
+            event.preventDefault()
+            undoRef.current()
+        }
+        window.addEventListener('keydown', onKeyDown)
+        return () => window.removeEventListener('keydown', onKeyDown)
+    }, [panelOpen])
+
     function toggleDone(item: StudioItem) {
         const done = !(doneShown[item.id] ?? item.is_done)
         setDoneShown(current => ({ ...current, [item.id]: done }))
@@ -113,6 +161,11 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 {data.client.notes && (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{data.client.notes}</p>
                 )}
+                {viewers.length > 0 && (
+                    <p className="mt-1 text-sm text-primary">
+                        También aquí: {viewers.map(viewer => viewer.name).join(', ')}
+                    </p>
+                )}
                 {data.sessions.length === 0 && (
                     <p className="mt-1 text-sm text-muted-foreground">Aún no tiene sesiones. Crea la primera con Nueva sesión.</p>
                 )}
@@ -135,6 +188,9 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                 </label>
                 <Button size="sm" className="h-9" onClick={() => setPanel({ type: 'new-session' })}>
                     <Plus className="mr-1 h-4 w-4" /> Nueva sesión
+                </Button>
+                <Button size="sm" variant="outline" className="h-9" disabled={isMarking} onClick={undo}>
+                    <Undo2 className="mr-1 h-4 w-4" /> Deshacer
                 </Button>
                 <div className="flex items-center" role="group" aria-label="Tamaño de la cuadrícula">
                     <Button
@@ -232,6 +288,15 @@ export function StudioGrid({ data, today, currentUserId, olderPages }: {
                                                         {session.sameWeek} en la semana
                                                     </Badge>
                                                 )}
+                                                {viewers.filter(viewer => viewer.sessionId === session.id).map(viewer => (
+                                                    <span
+                                                        key={viewer.userId}
+                                                        title={`${viewer.name} la tiene abierta`}
+                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
+                                                    >
+                                                        {initials(viewer.name)}
+                                                    </span>
+                                                ))}
                                             </span>
                                         </button>
                                     </th>
