@@ -1,7 +1,7 @@
 import { assertEquals, assertMatch } from 'jsr:@std/assert@1'
 import { outputSchemas } from './output-schemas.ts'
 import { jsonResult, toolError } from './shared.ts'
-import { exerciseFields, registerStudioTools, sessionDetail, sessionSummary, studioError } from './studio.ts'
+import { exerciseFields, groupSummaries, registerStudioTools, sessionDetail, sessionSummary, studioError } from './studio.ts'
 
 const coach = '22222222-2222-4222-8222-222222222222'
 const client = '11111111-1111-4111-8111-111111111111'
@@ -151,4 +151,65 @@ Deno.test('registrar sin series marca como realizado, y con series las guarda', 
   await run('record_studio_sets', { item_id: exercise, version: 2 })
   await run('record_studio_sets', { item_id: exercise, version: 3, sets: [{ load_kg: 40, reps: 10 }] })
   assertEquals(calls, ['studio_set_item_done', 'studio_save_sets'])
+})
+
+Deno.test('un grupo lista sus integrantes y su próxima clase', () => {
+  const [group] = groupSummaries(
+    [{ id: 'g', name: 'TEAM', schedule: [], professional_ids: [], is_active: true }],
+    [{ group_id: 'g', client_id: 'c', clients: { full_name: 'Ana' } }, { group_id: 'otro', client_id: 'd', clients: null }],
+    [{ group_id: 'g', session_date: '2026-11-10' }],
+  )
+  assertEquals(group.members, [{ client_id: 'c', name: 'Ana' }])
+  assertEquals(group.next_session, '2026-11-10')
+  assertEquals(group.archived, false)
+})
+
+Deno.test('una sesión de grupo trae asistencia y valores por persona', () => {
+  const detail = sessionDetail(
+    { id: 's', group_id: 'g', session_date: '2026-11-05', version: 1 }, [],
+    [{ id: 'a', sort_order: 10, section_id: null, exercise_catalog: { name: 'Press' }, is_done: true, version: 2 }],
+    [{ item_id: 'a', client_id: 'c', set_index: 1, load_kg: 30 }],
+    new Map(),
+    [{ client_id: 'c', status: 'attended', origin: 'manual' }],
+    [{ item_id: 'a', client_id: 'c', load_kg: 30 }],
+  )
+  assertEquals(detail.attendance, [{ client_id: 'c', status: 'attended', origin: 'manual' }])
+  assertEquals(detail.exercises[0].people, [{ client_id: 'c', load_kg: 30 }])
+  assertEquals(detail.exercises[0].performed_sets[0].client_id, 'c')
+})
+
+Deno.test('una sesión individual no trae nada de grupos', () => {
+  const detail = sessionDetail({ id: 's', client_id: 'c', session_date: '2026-11-05', version: 1 }, [], [], [], new Map())
+  assertEquals('attendance' in detail, false)
+  assertEquals(detail.group_id, null)
+})
+
+Deno.test('en un grupo, registrar por persona usa sus propias series', async () => {
+  const calls: string[] = []
+  const run = fakeServer(
+    (name) => {
+      calls.push(name)
+      return { data: { id: exercise, is_done: true, version: 3 }, error: null }
+    },
+    { studio_session_items: { data: { id: exercise }, error: null } },
+  )
+  await run('record_studio_sets', { item_id: exercise, version: 2, client_id: client, sets: [{ load_kg: 40 }] })
+  assertEquals(calls, ['studio_save_person_sets'])
+})
+
+Deno.test('pasar lista marca a cada persona', async () => {
+  const marked: string[] = []
+  const run = fakeServer(
+    (name, args) => {
+      if (name === 'studio_set_attendance') marked.push(args.p_status)
+      return { data: null, error: null }
+    },
+    { studio_sessions: { data: { id: session, coach_id: coach }, error: null } },
+  )
+  const result = await run('set_group_attendance', {
+    session_id: session,
+    attendance: [{ client_id: client, status: 'attended' }, { client_id: coach, status: 'absent' }],
+  })
+  assertEquals(result.marked, 2)
+  assertEquals(marked, ['attended', 'absent'])
 })

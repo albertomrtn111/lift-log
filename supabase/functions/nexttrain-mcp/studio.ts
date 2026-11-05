@@ -62,11 +62,21 @@ export function sessionSummary(session: Row, items: Row[]) {
 }
 
 /** Sesión completa, con cada ejercicio bajo su subbloque y lo realizado serie a serie. */
-export function sessionDetail(session: Row, sections: Row[], items: Row[], sets: Row[], tagNames: Map<string, string[]>) {
+export function sessionDetail(
+  session: Row,
+  sections: Row[],
+  items: Row[],
+  sets: Row[],
+  tagNames: Map<string, string[]>,
+  attendance: Row[] = [],
+  people: Row[] = [],
+) {
   const titles = new Map(sections.map((section) => [section.id, section.title]))
   return {
     id: session.id,
     client_id: session.client_id,
+    group_id: session.group_id ?? null,
+    ...(session.group_id ? { attendance } : {}),
     date: session.session_date,
     start_time: session.start_time,
     duration_min: session.duration_min,
@@ -102,6 +112,9 @@ export function sessionDetail(session: Row, sections: Row[], items: Row[], sets:
       tags: tagNames.get(item.id) ?? [],
       done: item.is_done,
       version: item.version,
+      ...(session.group_id
+        ? { people: people.filter((person) => person.item_id === item.id).map(({ item_id: _item, ...person }) => person) }
+        : {}),
       performed_sets: sets
         .filter((set) => set.item_id === item.id)
         .sort((a, b) => a.set_index - b.set_index)
@@ -114,6 +127,26 @@ export function sessionDetail(session: Row, sections: Row[], items: Row[], sets:
 export function exerciseFields(exercise: Row, catalogId: string): Row {
   const { name: _name, section, catalog_exercise_id: _id, ...fields } = exercise
   return { ...fields, catalog_exercise_id: catalogId, ...(section ? { section_title: section } : {}) }
+}
+
+const groupSlot = z.object({
+  weekday: z.number().int().min(0).max(6).describe('0 es lunes y 6 domingo.'),
+  time: z.string().regex(/^\d{2}:\d{2}$/).describe('Hora, HH:MM.'),
+})
+
+/** Grupos con sus integrantes y su próxima clase. */
+export function groupSummaries(groups: Row[], members: Row[], upcoming: Row[]) {
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    schedule: group.schedule,
+    professional_ids: group.professional_ids,
+    archived: !group.is_active,
+    members: members
+      .filter((member) => member.group_id === group.id)
+      .map((member) => ({ client_id: member.client_id, name: member.clients?.full_name ?? null })),
+    next_session: upcoming.find((session) => session.group_id === group.id)?.session_date ?? null,
+  }))
 }
 
 async function resolveExercises(db: Db, exercises: Row[]) {
@@ -205,7 +238,7 @@ export function registerStudioTools(server: Server, db: Db, helpers: ToolHelpers
       const sets = ids.length > 0
         ? rows(
           await db.from('studio_session_sets')
-            .select('item_id, set_index, load_kg, reps, time_seconds, rir, rpe, is_detailed')
+            .select('item_id, client_id, set_index, load_kg, reps, time_seconds, rir, rpe, is_detailed')
             .in('item_id', ids),
           'series',
           error,
@@ -216,8 +249,25 @@ export function registerStudioTools(server: Server, db: Db, helpers: ToolHelpers
         (item.studio_item_tags ?? []).map((link: Row) => link.studio_tags?.name).filter(Boolean) as string[],
       ]))
 
+      const attendance = session.group_id
+        ? rows(
+          await db.from('studio_session_attendance').select('client_id, status, origin').eq('session_id', session.id),
+          'asistencia',
+          error,
+        )
+        : []
+      const people = session.group_id && ids.length > 0
+        ? rows(
+          await db.from('studio_item_people')
+            .select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, next_load')
+            .in('item_id', ids),
+          'valores por persona',
+          error,
+        )
+        : []
+
       log.record_id = session.id
-      return { session: sessionDetail(session, rows(sections, 'subbloques', error), itemRows, sets, tagNames) }
+      return { session: sessionDetail(session, rows(sections, 'subbloques', error), itemRows, sets, tagNames, attendance, people) }
     }),
   )
 
@@ -411,6 +461,7 @@ export function registerStudioTools(server: Server, db: Db, helpers: ToolHelpers
           rpe: z.number().min(0).max(10).nullable().optional(),
         })).min(1).max(30).optional(),
         done: z.boolean().default(true).describe('Solo sin sets: false lo desmarca.'),
+        client_id: z.string().uuid().optional().describe('En una sesión de grupo, la persona cuyas series se registran. Tiene que haber venido.'),
         coach_id: optionalCoachId,
       }),
       annotations: writeAnnotations,
@@ -423,13 +474,206 @@ export function registerStudioTools(server: Server, db: Db, helpers: ToolHelpers
         .select('id').eq('id', input.item_id).eq('coach_id', coachId).maybeSingle()
       if (readError || !owned) throw new Error('Ejercicio no encontrado en este espacio.')
 
-      const { data, error } = input.sets
+      const { data, error } = input.sets && input.client_id
+        ? await db.rpc('studio_save_person_sets', {
+          p_item_id: input.item_id, p_client_id: input.client_id, p_version: input.version, p_sets: input.sets,
+        })
+        : input.sets
         ? await db.rpc('studio_save_sets', { p_item_id: input.item_id, p_version: input.version, p_sets: input.sets })
         : await db.rpc('studio_set_item_done', { p_item_id: input.item_id, p_version: input.version, p_done: input.done })
       if (error) throw studioError(error, 'No se ha podido registrar el ejercicio.')
 
       log.record_id = input.item_id
       return { recorded: true, item: { id: data.id, done: data.is_done, version: data.version } }
+    }),
+  )
+
+  server.registerTool(
+    'list_training_groups',
+    {
+      title: 'Ver los grupos de sala',
+      description: 'Lista los grupos con su horario, sus integrantes y su próxima clase.',
+      inputSchema: z.object({ include_archived: z.boolean().default(false), coach_id: optionalCoachId }),
+      annotations: readOnlyAnnotations,
+    },
+    (input: any) => run('list_training_groups', {
+      coachId: input.coach_id,
+      fallbackError: 'No se han podido consultar los grupos.',
+    }, async ({ coachId, today, log }) => {
+      const failed = 'No se han podido consultar los grupos.'
+      let query = db.from('training_groups').select('id, name, kind, schedule, professional_ids, is_active').eq('coach_id', coachId).order('name')
+      if (!input.include_archived) query = query.eq('is_active', true)
+      const groups = rows(await query, 'grupos', failed)
+      const ids = groups.map((group) => group.id)
+      const [members, upcoming] = ids.length > 0
+        ? await Promise.all([
+          db.from('training_group_members').select('group_id, client_id, clients(full_name)').in('group_id', ids).is('left_on', null),
+          db.from('studio_sessions').select('group_id, session_date').in('group_id', ids).gte('session_date', today).order('session_date'),
+        ])
+        : [{ data: [] }, { data: [] }]
+
+      log.result_count = groups.length
+      return { groups: groupSummaries(groups, rows(members, 'integrantes', failed), rows(upcoming, 'clases', failed)) }
+    }),
+  )
+
+  server.registerTool(
+    'create_training_group',
+    {
+      title: 'Crear un grupo de sala',
+      description: 'Crea un grupo con su horario e integrantes.',
+      inputSchema: z.object({
+        name: z.string().trim().min(1).max(120),
+        schedule: z.array(groupSlot).max(14).default([]),
+        professional_ids: z.array(z.string().uuid()).max(20).default([]),
+        client_ids: z.array(z.string().uuid()).max(100).default([]),
+        coach_id: optionalCoachId,
+      }),
+      annotations: writeAnnotations,
+    },
+    (input: any) => run('create_training_group', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido crear el grupo.',
+    }, async ({ coachId, log }) => {
+      const { data, error } = await db.rpc('studio_save_group', {
+        p_coach_id: coachId, p_group_id: null, p_name: input.name, p_kind: 'schedule',
+        p_schedule: input.schedule, p_professional_ids: input.professional_ids,
+      })
+      if (error) throw studioError(error, 'No se ha podido crear el grupo.')
+      if (input.client_ids.length > 0) {
+        const members = await db.rpc('studio_set_group_members', { p_group_id: data.id, p_client_ids: input.client_ids })
+        if (members.error) throw studioError(members.error, 'El grupo se ha creado, pero sus integrantes no.')
+      }
+      log.record_id = data.id
+      return { created: true, group: { id: data.id, name: data.name } }
+    }),
+  )
+
+  server.registerTool(
+    'update_training_group',
+    {
+      title: 'Cambiar un grupo de sala',
+      description: 'Cambia nombre, horario, profesionales o integrantes de un grupo, lo archiva o lo une con otro. client_ids deja exactamente esos integrantes; quien sale conserva su historial.',
+      inputSchema: z.object({
+        group_id: z.string().uuid(),
+        name: z.string().trim().min(1).max(120).optional(),
+        schedule: z.array(groupSlot).max(14).optional(),
+        professional_ids: z.array(z.string().uuid()).max(20).optional(),
+        client_ids: z.array(z.string().uuid()).max(100).optional(),
+        archived: z.boolean().optional(),
+        merge_into: z.string().uuid().optional().describe('Pasa sus sesiones e integrantes a este otro grupo y lo archiva.'),
+        coach_id: optionalCoachId,
+      }),
+      annotations: writeAnnotations,
+    },
+    (input: any) => run('update_training_group', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido cambiar el grupo.',
+    }, async ({ coachId, log }) => {
+      const failed = 'No se ha podido cambiar el grupo.'
+      const { data: group, error: readError } = await db.from('training_groups')
+        .select('id, name, kind, schedule, professional_ids')
+        .eq('id', input.group_id).eq('coach_id', coachId).maybeSingle()
+      if (readError || !group) throw new Error('Grupo no encontrado en este espacio.')
+
+      if (input.name !== undefined || input.schedule !== undefined || input.professional_ids !== undefined) {
+        const { error } = await db.rpc('studio_save_group', {
+          p_coach_id: coachId, p_group_id: group.id, p_name: input.name ?? group.name, p_kind: group.kind,
+          p_schedule: input.schedule ?? group.schedule, p_professional_ids: input.professional_ids ?? group.professional_ids,
+        })
+        if (error) throw studioError(error, failed)
+      }
+      if (input.client_ids) {
+        const { error } = await db.rpc('studio_set_group_members', { p_group_id: group.id, p_client_ids: input.client_ids })
+        if (error) throw studioError(error, failed)
+      }
+      if (input.archived !== undefined) {
+        const { error } = await db.rpc('studio_archive_group', { p_group_id: group.id, p_active: !input.archived })
+        if (error) throw studioError(error, failed)
+      }
+      if (input.merge_into) {
+        const { error } = await db.rpc('studio_merge_groups', { p_source_id: group.id, p_target_id: input.merge_into })
+        if (error) throw studioError(error, failed)
+      }
+
+      log.record_id = group.id
+      return { updated: true, group: { id: group.id } }
+    }),
+  )
+
+  server.registerTool(
+    'create_group_session',
+    {
+      title: 'Crear una clase de grupo',
+      description: 'Crea una sesión de grupo prevista, con sus ejercicios. La asistencia nace con los integrantes, sin marcar.',
+      inputSchema: z.object({
+        group_id: z.string().uuid(),
+        session_date: isoDate,
+        start_time: z.string().regex(/^\d{2}:\d{2}$/).optional().describe('Hora, HH:MM.'),
+        name: z.string().trim().min(1).max(120).optional(),
+        professional_id: z.string().uuid().optional(),
+        exercises: z.array(newExercise).max(60).default([]),
+        coach_id: optionalCoachId,
+      }),
+      annotations: writeAnnotations,
+    },
+    (input: any) => run('create_group_session', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido crear la clase.',
+    }, async ({ log }) => {
+      const resolved = await resolveExercises(db, input.exercises)
+      const batch = crypto.randomUUID()
+      const { data: session, error } = await db.rpc('studio_create_group_session', {
+        p_group_id: input.group_id,
+        p_session_date: input.session_date,
+        p_start_time: input.start_time ?? null,
+        p_professional_id: input.professional_id ?? null,
+        p_name: input.name ?? null,
+        p_batch_id: batch,
+      })
+      if (error) throw studioError(error, 'No se ha podido crear la clase.')
+      if (resolved.length > 0) {
+        const added = await db.rpc('studio_add_items', {
+          p_session_id: session.id,
+          p_items: resolved.map((exercise) => exercise.fields),
+          p_batch_id: batch,
+        })
+        if (added.error) throw studioError(added.error, 'La clase se ha creado, pero sus ejercicios no.')
+      }
+      log.record_id = session.id
+      return { created: true, session: { id: session.id, date: session.session_date, version: session.version }, exercises: resolved.length }
+    }),
+  )
+
+  server.registerTool(
+    'set_group_attendance',
+    {
+      title: 'Pasar lista en una clase',
+      description: 'Marca quién vino a una sesión de grupo. Lo marcado aquí manda sobre la agenda y recoloca las series de los ejercicios hechos.',
+      inputSchema: z.object({
+        session_id: z.string().uuid(),
+        attendance: z.array(z.object({
+          client_id: z.string().uuid(),
+          status: z.enum(['attended', 'absent', 'unmarked']),
+        })).min(1).max(100),
+        coach_id: optionalCoachId,
+      }),
+      annotations: writeAnnotations,
+    },
+    (input: any) => run('set_group_attendance', {
+      coachId: input.coach_id,
+      fallbackError: 'No se ha podido pasar lista.',
+    }, async ({ coachId, log }) => {
+      const session = await loadSession(db, coachId, input.session_id)
+      for (const entry of input.attendance) {
+        const { error } = await db.rpc('studio_set_attendance', {
+          p_session_id: session.id, p_client_id: entry.client_id, p_status: entry.status,
+        })
+        if (error) throw studioError(error, 'No se ha podido pasar lista.')
+      }
+      log.record_id = session.id
+      log.result_count = input.attendance.length
+      return { updated: true, marked: input.attendance.length }
     }),
   )
 
