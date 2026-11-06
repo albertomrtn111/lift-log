@@ -113,6 +113,55 @@ export function reportMessage(clientName, centerName, url, template) {
     return text.includes('{enlace}') ? filled : `${filled} ${url}`
 }
 
+/** Lo que hace falta de cada sesión de hoy para saber qué informes faltan. */
+export const PENDING_REPORT_COLUMNS = 'id, client_id, group_id, session_date, start_time, duration_min, clients!studio_sessions_client_id_fkey(full_name), studio_session_attendance(client_id, status, clients(full_name)), session_reports(client_id, dismissed_at, report_deliveries(id))'
+
+/**
+ * Una fila por persona: en una clase, quien vino.
+ * @param {any[]} sessions
+ * @param {any[]} snoozes
+ * @param {Date} now
+ */
+export function reportRows(sessions, snoozes, now) {
+    return sessions.flatMap(session => {
+        const reports = session.session_reports ?? []
+        const people = session.group_id
+            ? (session.studio_session_attendance ?? [])
+                .filter(entry => entry.status === 'attended')
+                .map(entry => ({ clientId: entry.client_id, name: entry.clients?.full_name ?? 'Cliente' }))
+            : [{ clientId: session.client_id, name: session.clients?.full_name ?? 'Cliente' }]
+        return people.map(person => {
+            const report = reports.find(entry => entry.client_id === person.clientId)
+            const snoozed = snoozes.find(entry => entry.session_id === session.id && entry.client_id === person.clientId)
+            return {
+                ...person,
+                snooze: snoozed ? (new Date(snoozed.until).getTime() > now.getTime() ? 'active' : 'due') : null,
+                sessionId: session.id,
+                groupId: session.group_id,
+                session_date: session.session_date,
+                start_time: session.start_time,
+                duration_min: session.duration_min,
+                delivered: (report?.report_deliveries?.length ?? 0) > 0,
+                dismissed: Boolean(report?.dismissed_at),
+            }
+        })
+    })
+}
+
+/**
+ * Informes por enviar ahora mismo. Las horas de la sesión son de Madrid, así que «ahora» se
+ * compara en esa misma hora de pared.
+ * @param {any[]} sessions
+ * @param {any[]} snoozes
+ * @param {number | null | undefined} noticeHours
+ * @param {Date} [now]
+ */
+export function pendingReportList(sessions, snoozes, noticeHours, now = new Date()) {
+    const wall = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'medium' }).format(now)
+    return pendingReports(reportRows(sessions, snoozes, now), new Date(`${wall.replace(' ', 'T')}Z`), noticeHours ?? 3)
+        .map(({ sessionId, clientId, groupId, name }) => ({ sessionId, clientId, groupId, name }))
+}
+
 /**
  * Informes por enviar: sesiones hechas dentro de la ventana del aviso, sin envío ni descarte.
  * La sesión termina a su hora más la duración; sin hora, cuenta el final del día.

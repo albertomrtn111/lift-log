@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { itemForPerson } from '@/lib/studio/group-rules'
 import { attachmentImageVisible } from '@/lib/studio/media-rules'
-import { pendingReports } from '@/lib/studio/report-rules'
+import { PENDING_REPORT_COLUMNS, pendingReportList } from '@/lib/studio/report-rules'
 import { createClient } from '@/lib/supabase/server'
 import { getLibraryAction, type LibraryBlock, type LibraryEntry } from '@/lib/training/workspace-library-actions'
 
@@ -369,46 +369,18 @@ export async function getStudioPendingReports(coachId: string, today: string): P
     const [{ data: sessions }, { data: settings }] = await Promise.all([
         supabase
             .from('studio_sessions')
-            .select('id, client_id, group_id, session_date, start_time, duration_min, clients!studio_sessions_client_id_fkey(full_name), studio_session_attendance(client_id, status, clients(full_name)), session_reports(client_id, dismissed_at, report_deliveries(id))')
+            .select(PENDING_REPORT_COLUMNS)
             .eq('coach_id', coachId)
             .eq('session_date', today)
             .eq('status', 'done'),
         supabase.from('report_settings').select('notice_hours').eq('coach_id', coachId).maybeSingle(),
     ])
 
-    const sessionIds = (sessions ?? []).map(session => session.id as string)
+    const sessionIds = (sessions ?? []).map(session => (session as unknown as { id: string }).id)
     const { data: snoozes } = sessionIds.length > 0
         ? await supabase.from('report_snoozes').select('session_id, client_id, until').in('session_id', sessionIds)
         : { data: [] }
-
-    const rows = (sessions ?? []).flatMap(session => {
-        const reports = (session.session_reports ?? []) as unknown as { client_id: string; dismissed_at: string | null; report_deliveries: unknown[] }[]
-        const people = session.group_id
-            ? ((session.studio_session_attendance ?? []) as unknown as { client_id: string; status: string; clients: { full_name: string } | null }[])
-                .filter(entry => entry.status === 'attended')
-                .map(entry => ({ clientId: entry.client_id, name: entry.clients?.full_name ?? 'Cliente' }))
-            : [{ clientId: session.client_id as string, name: (session.clients as unknown as { full_name: string } | null)?.full_name ?? 'Cliente' }]
-        return people.map(person => {
-            const report = reports.find(entry => entry.client_id === person.clientId)
-            const snoozed = (snoozes ?? []).find(entry => entry.session_id === session.id && entry.client_id === person.clientId)
-            return {
-                ...person,
-                snooze: snoozed ? (new Date(snoozed.until).getTime() > Date.now() ? 'active' : 'due') : null,
-                sessionId: session.id,
-                groupId: session.group_id,
-                session_date: session.session_date,
-                start_time: session.start_time,
-                duration_min: session.duration_min,
-                delivered: (report?.report_deliveries.length ?? 0) > 0,
-                dismissed: Boolean(report?.dismissed_at),
-            }
-        })
-    })
-
-    // Las horas de la sesión son de Madrid: «ahora» se compara en la misma hora de pared.
-    const wall = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'medium' }).format(new Date())
-    return (pendingReports(rows, new Date(`${wall.replace(' ', 'T')}Z`), settings?.notice_hours ?? 3) as typeof rows)
-        .map(({ sessionId, clientId, groupId, name }) => ({ sessionId, clientId, groupId, name }))
+    return pendingReportList(sessions ?? [], snoozes ?? [], settings?.notice_hours) as StudioPendingReport[]
 }
 
 /** Carpeta de vídeos: lo de la sala y lo de los clientes que lleva quien mira. */
