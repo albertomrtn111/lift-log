@@ -10,9 +10,11 @@ import { Switch } from '@/components/ui/switch'
 import type { StudioGridData, StudioSession } from '@/data/studio'
 import { formatShortDate } from '@/lib/studio/grid-rules'
 import {
+    emailAllReportsAction,
     emailReportAction,
     getReportPanelAction,
     revokeReportAction,
+    saveAllReportsAction,
     saveReportAction,
     setReportConsentAction,
     whatsappReportAction,
@@ -66,6 +68,43 @@ export function StudioReportPanel({ data, session, onClose }: {
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                     {!rows && <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" aria-label="Cargando" />}
                     {rows?.length === 0 && <p className="text-sm text-muted-foreground">Pasa lista primero: el informe es de quien vino.</p>}
+                    {data.group && rows && rows.length > 0 && (
+                        <div className="space-y-2 rounded-md border p-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                    type="button"
+                                    disabled={isPending}
+                                    onClick={() => run(() => saveAllReportsAction(session.id, clientIds), () => toast.success('Informes listos'))}
+                                >
+                                    Crear todos
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={isPending}
+                                    onClick={() => run(async () => {
+                                        const result = await emailAllReportsAction(session.id, clientIds)
+                                        if (result.success) {
+                                            const left = result.data.skipped.length > 0 ? `. Sin enviar: ${result.data.skipped.join(', ')}` : ''
+                                            toast.success(`${result.data.sent} enviados${left}`)
+                                        }
+                                        return result
+                                    })}
+                                >
+                                    <Mail className="mr-2 h-4 w-4" /> Email a todos
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Para el profesional:</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button type="button" variant="outline" asChild>
+                                    <a href={`/clase-informe/${session.id}`} target="_blank" rel="noreferrer">Con cada persona</a>
+                                </Button>
+                                <Button type="button" variant="outline" asChild>
+                                    <a href={`/clase-informe/${session.id}?solo=1`} target="_blank" rel="noreferrer">Solo la sesión</a>
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     {rows?.map(row => {
                         const report = row.report && !row.report.revoked_at ? row.report : null
                         return (

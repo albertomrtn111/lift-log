@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReport, pendingReports, reportMessage, whatsappNumber, whatsappUrl } from '../src/lib/studio/report-rules.js'
+import { buildReport, fillReportText, pendingReports, reportMessage, reportSections, whatsappNumber, whatsappUrl } from '../src/lib/studio/report-rules.js'
 
 const session = (id, session_date, extra = {}) => ({ id, session_date, status: 'done', sort_order: null, start_time: null, ...extra })
 const item = (id, session_id, extra = {}) => ({
@@ -37,6 +37,38 @@ test('cada ejercicio trae su evolución y sus series', () => {
 
 test('la nota interna de la celda no sale en el informe', () => {
     assert.equal(JSON.stringify(report()).includes('Interna'), false)
+})
+
+test('la sala puede quitar secciones, y por defecto sale todo', () => {
+    assert.deepEqual(reportSections(null), { stats: true, arrival: true, nextLoad: true, evolution: true, closing: true })
+    const result = report({ visible: { stats: false, arrival: false, nextLoad: false, evolution: false, closing: false } })
+    assert.equal(result.stats, null)
+    assert.deepEqual(result.arrival, { score: null, note: null })
+    assert.equal(result.groups[0].exercises[0].nextLoad, '')
+    assert.equal(result.groups[0].exercises[0].evolution, null)
+    assert.equal(result.rpe, null)
+    assert.equal(result.load, null)
+})
+
+test('el informe de clase lleva las cargas de cada persona', () => {
+    const result = report({ peopleOf: () => ['Ana: 20 kg'] })
+    assert.deepEqual(result.groups[0].exercises[0].people, ['Ana: 20 kg'])
+    assert.deepEqual(report().groups[0].exercises[0].people, [])
+})
+
+test('los textos de la sala se rellenan sin interpretar los datos', () => {
+    assert.equal(fillReportText('{nombre} en {centro}', { name: 'Ana Ruiz', center: 'Club$&Ø' }), 'Ana en Club$&Ø')
+    assert.equal(reportMessage('Ana', 'ClubØ', 'https://x', 'Toma, {nombre}: {enlace}'), 'Toma, Ana: https://x')
+    assert.equal(reportMessage('Ana', 'ClubØ', 'https://x', 'Toma, {nombre}'), 'Toma, Ana https://x')
+})
+
+test('lo pospuesto espera a su hora y vuelve aunque pase la ventana', () => {
+    const row = { session_date: '2026-11-05', start_time: '10:00:00', duration_min: 60, delivered: false, dismissed: false }
+    const late = new Date('2026-11-05T20:00:00Z')
+    assert.equal(pendingReports([row], late).length, 0)
+    assert.equal(pendingReports([{ ...row, snooze: 'active' }], new Date('2026-11-05T11:30:00Z')).length, 0)
+    assert.equal(pendingReports([{ ...row, snooze: 'due' }], late).length, 1)
+    assert.equal(pendingReports([{ ...row, snooze: 'due', delivered: true }], late).length, 0)
 })
 
 test('el teléfono español gana su prefijo', () => {

@@ -7,7 +7,7 @@ import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { sendSessionReportEmail } from '@/lib/email/mailer'
 import { sendReportReadyNotification } from '@/lib/notifications/client'
 import { prepareSessions } from '@/lib/studio/grid-rules'
-import { buildReport, reportMessage, whatsappUrl } from '@/lib/studio/report-rules'
+import { buildReport, fillReportText, reportMessage, whatsappUrl } from '@/lib/studio/report-rules'
 import { createClient } from '@/lib/supabase/server'
 
 type Result<T = undefined> = { success: true; data: T } | { success: false; error: string }
@@ -66,6 +66,7 @@ export async function saveReportAction(sessionId: string, clientId: string): Pro
     if (!data || !session) return { success: false, error: 'Esta persona no está en esa sesión.' }
 
     const supabase = await createClient()
+    const { data: settings } = await supabase.from('report_settings').select('sections').eq('coach_id', coachId).maybeSingle()
     const items = data.items.filter(item => item.session_id === sessionId)
     const { data: sets } = items.length > 0
         ? await supabase
@@ -88,6 +89,7 @@ export async function saveReportAction(sessionId: string, clientId: string): Pro
         sessions: data.sessions,
         allItems: data.items,
         clientId,
+        visible: settings?.sections,
     })
 
     const { data: report, error } = await supabase.rpc('studio_save_report', {
@@ -128,11 +130,14 @@ async function notifyReportReady(supabase: Awaited<ReturnType<typeof createClien
 export async function whatsappReportAction(report: { id: string; code: string }, client: { name: string; phone: string | null }): Promise<Result<{ url: string }>> {
     const coachId = await getActiveCoachId()
     if (!coachId) return { success: false, error: 'No hay un espacio activo.' }
-    const brand = await getEmailBrand(coachId)
-    const url = whatsappUrl(client.phone, reportMessage(client.name, brand?.name ?? 'tu centro', `${getAppUrl()}/informe/${report.code}`))
+    const supabase = await createClient()
+    const [brand, { data: settings }] = await Promise.all([
+        getEmailBrand(coachId),
+        supabase.from('report_settings').select('whatsapp_text').eq('coach_id', coachId).maybeSingle(),
+    ])
+    const url = whatsappUrl(client.phone, reportMessage(client.name, brand?.name ?? 'tu centro', `${getAppUrl()}/informe/${report.code}`, settings?.whatsapp_text))
     if (!url) return { success: false, error: 'Este cliente no tiene un teléfono válido.' }
 
-    const supabase = await createClient()
     const { error } = await supabase.rpc('studio_record_delivery', { p_report_id: report.id, p_channel: 'whatsapp', p_recipient: client.phone })
     if (error) return failure(error, 'No se ha podido preparar el envío.')
     await notifyReportReady(supabase, report.id)
@@ -149,11 +154,87 @@ export async function emailReportAction(report: { id: string; code: string }, cl
     const { error } = await supabase.rpc('studio_record_delivery', { p_report_id: report.id, p_channel: 'email', p_recipient: client.email })
     if (error) return failure(error, 'No se ha podido enviar el informe.')
 
-    const sent = await sendSessionReportEmail({ to: client.email, clientName: client.name, url: `${getAppUrl()}/informe/${report.code}`, coachId })
+    const [brand, { data: settings }] = await Promise.all([
+        getEmailBrand(coachId),
+        supabase.from('report_settings').select('email_subject, email_text').eq('coach_id', coachId).maybeSingle(),
+    ])
+    const values = { name: client.name, center: brand?.name ?? 'tu centro' }
+    const sent = await sendSessionReportEmail({
+        to: client.email,
+        clientName: client.name,
+        url: `${getAppUrl()}/informe/${report.code}`,
+        coachId,
+        subject: settings?.email_subject ? fillReportText(settings.email_subject, values) : null,
+        text: settings?.email_text ? fillReportText(settings.email_text, values) : null,
+    })
     if (!sent.ok) {
         await supabase.rpc('studio_record_delivery', { p_report_id: report.id, p_channel: 'email', p_recipient: client.email, p_ok: false })
         return { success: false, error: 'No se ha podido enviar el email.' }
     }
     await notifyReportReady(supabase, report.id)
     return { success: true, data: undefined }
+}
+
+/** Crea o actualiza el informe de cada persona de una clase. */
+export async function saveAllReportsAction(sessionId: string, clientIds: string[]): Promise<Result> {
+    for (const clientId of clientIds) {
+        const result = await saveReportAction(sessionId, clientId)
+        if (!result.success) return result
+    }
+    return { success: true, data: undefined }
+}
+
+/** Manda a cada uno el suyo por email. Quien no tiene email o consentimiento se queda fuera y se dice quién. */
+export async function emailAllReportsAction(sessionId: string, clientIds: string[]): Promise<Result<{ sent: number; skipped: string[] }>> {
+    const panel = await getReportPanelAction(sessionId, clientIds)
+    if (!panel.success) return panel
+
+    let sent = 0
+    const skipped: string[] = []
+    for (const row of panel.data) {
+        if (!row.consent || !row.email) {
+            skipped.push(row.name)
+            continue
+        }
+        const saved = await saveReportAction(sessionId, row.clientId)
+        const report = saved.success ? await findReport(sessionId, row.clientId) : null
+        const result = report ? await emailReportAction(report, { name: row.name, email: row.email }) : null
+        if (result?.success) sent += 1
+        else skipped.push(row.name)
+    }
+    return { success: true, data: { sent, skipped } }
+}
+
+async function findReport(sessionId: string, clientId: string) {
+    const supabase = await createClient()
+    const { data } = await supabase.from('session_reports').select('id, code').eq('session_id', sessionId).eq('client_id', clientId).maybeSingle()
+    return data
+}
+
+/** Envío de un toque desde el aviso: actualiza el informe y lo manda por el canal habitual. */
+export async function sendPendingReportAction(sessionId: string, clientId: string): Promise<Result<{ url: string | null }>> {
+    const coachId = await getActiveCoachId()
+    if (!coachId) return { success: false, error: 'No hay un espacio activo.' }
+
+    const saved = await saveReportAction(sessionId, clientId)
+    if (!saved.success) return saved
+    const supabase = await createClient()
+    const [report, { data: client }, { data: settings }] = await Promise.all([
+        findReport(sessionId, clientId),
+        supabase.from('clients').select('full_name, phone, email').eq('id', clientId).maybeSingle(),
+        supabase.from('report_settings').select('default_channel').eq('coach_id', coachId).maybeSingle(),
+    ])
+    if (!report || !client) return { success: false, error: 'No se ha podido preparar el informe.' }
+
+    if (settings?.default_channel === 'email') {
+        const sent = await emailReportAction(report, { name: client.full_name, email: client.email })
+        return sent.success ? { success: true, data: { url: null } } : sent
+    }
+    return whatsappReportAction(report, { name: client.full_name, phone: client.phone })
+}
+
+export async function snoozeReportAction(sessionId: string, clientId: string, hours: number): Promise<Result> {
+    const supabase = await createClient()
+    const { error } = await supabase.rpc('studio_snooze_report', { p_session_id: sessionId, p_client_id: clientId, p_hours: hours })
+    return error ? failure(error, 'No se ha podido posponer.') : { success: true, data: undefined }
 }
