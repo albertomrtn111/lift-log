@@ -83,8 +83,9 @@ export async function putObject(bucket: string, key: string, body: Uint8Array, c
     }))
 }
 
-export async function getObject(bucket: string, key: string) {
-    return getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+/** `range` es la cabecera Range del navegador: los vídeos se piden a trozos. */
+export async function getObject(bucket: string, key: string, range?: string) {
+    return getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }))
 }
 
 export async function deleteObject(bucket: string, key: string) {

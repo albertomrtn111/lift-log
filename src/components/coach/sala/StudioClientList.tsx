@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Video } from 'lucide-react'
 import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -104,6 +104,12 @@ export function StudioClientList({ coachId, clients, groups, team, selectedId, s
                     </Button>
                 </div>
             )}
+            <Link
+                href="/coach/sala/videos"
+                className="flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+                <Video className="h-4 w-4" /> Vídeos de la sala
+            </Link>
             {creating && (
                 <StudioGroupPanel
                     coachId={coachId}

@@ -10,7 +10,7 @@ Desde noviembre de 2026 las fotos se guardan en Cloudflare R2 y no en Supabase S
 | Logos e iconos de cada espacio | `R2_BUCKET` (público) | `branding/{coachId}/{slot}-{ts}.png` | `workspace_branding.*_url` = URL pública | Directa |
 | Fotos de check-in | `R2_PRIVATE_BUCKET` (privado) | `checkin-media/{coachId}/{clientId}/{checkinId}/{archivo}.webp` | `checkin_media.bucket = 'r2'`, `path` = clave | `/api/media/{clave}`, tras comprobar permisos |
 | Adjuntos del chat | `R2_PRIVATE_BUCKET` (privado) | `chat-media/{coachId}/{clientId}/{uuid}-{nombre}` | `messages.attachment_url` = `r2:` + clave | `/api/media/{clave}`, tras comprobar permisos |
-| Enlaces e imágenes de sala | `R2_PRIVATE_BUCKET` (privado) | `studio-media/{coachId}/{clientId o coachId}/{uuid}.webp` | `exercise_media.storage_key` y `studio_item_attachments.image_key` = clave | `/api/media/{clave}`, tras comprobar permisos y, si es de un cliente, su consentimiento |
+| Imágenes y vídeos de sala | `R2_PRIVATE_BUCKET` (privado) | `studio-media/{coachId}/{clientId o coachId}/{uuid}.{webp, mp4, webm o mov}` | `exercise_media.storage_key`, `studio_item_attachments.image_key` y `media_assets.storage_key` = clave | `/api/media/{clave}`, tras comprobar permisos y, si es de un cliente, su consentimiento |
 | Huérfanos de Supabase | `R2_PRIVATE_BUCKET` | `orphans/{bucket}/{ruta}` | — | No se muestran |
 
 - **Hacen falta dos buckets.** R2 publica el bucket entero (r2.dev o dominio propio), así que en el bucket público cualquier archivo se puede leer conociendo su URL. Las fotos de check-in y del chat van en otro bucket sin acceso público.
