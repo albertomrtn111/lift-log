@@ -21,6 +21,7 @@ import { toWebp } from '@/lib/storage/webp'
 import { toBrandingPng } from '@/lib/storage/branding-image'
 import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { BRANDING_SLOTS } from '@/lib/branding/branding-rules'
+import { MAX_VIDEO_BYTES, sniffVideo } from '@/lib/studio/video-rules'
 import { canManageTeam } from '@/lib/team/team-rules'
 
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,7 @@ export const runtime = 'nodejs'
  * Campos (multipart): kind = avatar | branding | checkin | chat | studio, file, fileName,
  * coachId y clientId (checkin y chat), checkinId (checkin). En studio, coachId y un
  * clientId opcional: sin él, la imagen es de toda la sala. Solo imágenes y solo en R2.
+ * En studio-video, lo mismo con un vídeo, que ya llega aligerado desde el navegador.
  */
 
 const MAX_INPUT_BYTES = {
@@ -45,6 +47,7 @@ const MAX_INPUT_BYTES = {
     checkin: 25 * 1024 * 1024,
     chat: 25 * 1024 * 1024, // límite del bucket chat-media
     studio: 25 * 1024 * 1024,
+    'studio-video': MAX_VIDEO_BYTES,
 } as const
 
 type Kind = keyof typeof MAX_INPUT_BYTES
@@ -88,6 +91,7 @@ export async function POST(request: Request) {
     const input = new Uint8Array(await file.arrayBuffer())
 
     if (kind === 'branding') return uploadBranding(String(form.get('slot') ?? ''), input, originalMime, originalName)
+    if (kind === 'studio-video') return uploadStudioVideo(supabase, form, input)
 
     // Las fotos se guardan siempre en WebP; GIF, audio y documentos, tal cual.
     let body: Uint8Array = input
@@ -116,21 +120,10 @@ export async function POST(request: Request) {
         const clientId = String(form.get('clientId') ?? '')
 
         if (kind === 'studio') {
-            const folderId = clientId || coachId
-            if (!isUuid(coachId) || !isUuid(folderId)) return fail(400, 'Faltan datos de la subida.')
-            const [allowed, { data: enabled }] = await Promise.all([
-                canAccessStudioMedia(supabase, coachId, folderId),
-                supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'studio_mode' }),
-            ])
-            if (!allowed || !enabled) {
-                return fail(403, clientId
-                    ? 'No puedes subir esta imagen: revisa que lleves a este cliente y que conste su consentimiento.'
-                    : 'No puedes subir imágenes a esta sala.')
-            }
-            const bucket = privateBucket()
-            if (!bucket) return fail(503, 'El almacenamiento de imágenes no está disponible.')
-            const key = studioKey({ coachId, folderId, fileName: `${crypto.randomUUID()}.webp` })
-            await putObject(bucket, key, body, mime)
+            const place = await studioPlace(supabase, form)
+            if ('denied' in place) return place.denied
+            const key = studioKey({ ...place, fileName: `${crypto.randomUUID()}.webp` })
+            await putObject(place.bucket, key, body, mime)
             return NextResponse.json({ key, mime, size: body.byteLength })
         }
 
@@ -171,6 +164,45 @@ export async function POST(request: Request) {
     } catch (error) {
         console.error('[media/upload]', kind, error)
         return fail(500, 'No se pudo subir el archivo. Inténtalo de nuevo.')
+    }
+}
+
+/** Carpeta de la sala o del cliente, si quien sube puede usarla. */
+async function studioPlace(supabase: Awaited<ReturnType<typeof createClient>>, form: FormData) {
+    const coachId = String(form.get('coachId') ?? '')
+    const clientId = String(form.get('clientId') ?? '')
+    const folderId = clientId || coachId
+    if (!isUuid(coachId) || !isUuid(folderId)) return { denied: fail(400, 'Faltan datos de la subida.') }
+
+    const [allowed, { data: enabled }] = await Promise.all([
+        canAccessStudioMedia(supabase, coachId, folderId),
+        supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'studio_mode' }),
+    ])
+    if (!allowed || !enabled) {
+        return {
+            denied: fail(403, clientId
+                ? 'No puedes subir este archivo: revisa que lleves a este cliente y que conste su consentimiento.'
+                : 'No puedes subir archivos a esta sala.'),
+        }
+    }
+    const bucket = privateBucket()
+    if (!bucket) return { denied: fail(503, 'El almacenamiento de archivos no está disponible.') }
+    return { coachId, folderId, bucket }
+}
+
+async function uploadStudioVideo(supabase: Awaited<ReturnType<typeof createClient>>, form: FormData, input: Uint8Array) {
+    const video = sniffVideo(input)
+    if (!video) return fail(415, 'Este archivo no es un vídeo que se pueda usar. Prueba con un MP4.')
+
+    try {
+        const place = await studioPlace(supabase, form)
+        if ('denied' in place) return place.denied
+        const key = studioKey({ ...place, fileName: `${crypto.randomUUID()}.${video.ext}` })
+        await putObject(place.bucket, key, input, video.mime)
+        return NextResponse.json({ key, mime: video.mime, size: input.byteLength })
+    } catch (error) {
+        console.error('[media/upload] studio-video', error)
+        return fail(500, 'No se pudo subir el vídeo. Inténtalo de nuevo.')
     }
 }
 

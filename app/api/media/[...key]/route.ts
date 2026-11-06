@@ -36,7 +36,7 @@ async function authorize(params: Params['params']) {
     return { key, bucket, parsed }
 }
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
     const auth = await authorize(params)
     if ('response' in auth) return auth.response
     const { key, bucket, parsed } = auth
@@ -50,7 +50,8 @@ export async function GET(_request: Request, { params }: Params) {
             })
         }
 
-        const object = await getObject(bucket, key)
+        // Sin esto, Safari no reproduce vídeos: los pide siempre a trozos.
+        const object = await getObject(bucket, key, request.headers.get('range') ?? undefined)
         if (!object.Body) return new NextResponse(null, { status: 404 })
 
         const contentType = object.ContentType || 'application/octet-stream'
@@ -58,6 +59,7 @@ export async function GET(_request: Request, { params }: Params) {
             'Content-Type': contentType,
             'Cache-Control': 'private, max-age=3600',
             'X-Content-Type-Options': 'nosniff',
+            'Accept-Ranges': 'bytes',
             // Archivos subidos por usuarios servidos desde el dominio de la app:
             // nunca se ejecutan como página
             'Content-Security-Policy': "default-src 'none'; img-src 'self'; media-src 'self'; sandbox",
@@ -65,11 +67,13 @@ export async function GET(_request: Request, { params }: Params) {
         })
         if (object.ContentLength != null) headers.set('Content-Length', String(object.ContentLength))
         if (object.ETag) headers.set('ETag', object.ETag)
+        if (object.ContentRange) headers.set('Content-Range', object.ContentRange)
 
-        return new NextResponse(object.Body.transformToWebStream(), { status: 200, headers })
+        return new NextResponse(object.Body.transformToWebStream(), { status: object.ContentRange ? 206 : 200, headers })
     } catch (error) {
         const name = (error as { name?: string })?.name
         if (name === 'NoSuchKey' || name === 'NotFound') return new NextResponse(null, { status: 404 })
+        if (name === 'InvalidRange') return new NextResponse(null, { status: 416 })
         console.error('[media] GET', key, error)
         return new NextResponse(null, { status: 502 })
     }

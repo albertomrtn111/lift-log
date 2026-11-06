@@ -84,10 +84,31 @@ export interface StudioExerciseMedia {
     id: string
     catalog_exercise_id: string
     client_id: string | null
-    kind: 'youtube' | 'link' | 'image'
+    kind: 'youtube' | 'link' | 'image' | 'video'
     url: string | null
     storage_key: string | null
     title: string | null
+    video: { title: string; storage_key: string; thumb_key: string | null; duration_seconds: number | null } | null
+}
+
+export interface StudioVideo {
+    id: string
+    client_id: string | null
+    client_name: string | null
+    title: string
+    storage_key: string
+    thumb_key: string | null
+    duration_seconds: number | null
+    size_bytes: number
+    created_by: string | null
+    created_by_name: string | null
+    exercises: { id: string; name: string; client_id: string | null }[]
+}
+
+export interface StudioVideoFolder {
+    videos: StudioVideo[]
+    entries: LibraryEntry[]
+    clients: { id: string; fullName: string; consent: boolean }[]
 }
 
 export interface StudioRoutineItem {
@@ -374,6 +395,38 @@ export async function getStudioPendingReports(coachId: string, today: string): P
         .map(({ sessionId, clientId, groupId, name }) => ({ sessionId, clientId, groupId, name }))
 }
 
+/** Carpeta de vídeos: lo de la sala y lo de los clientes que lleva quien mira. */
+export async function getStudioVideoFolder(coachId: string, today: string): Promise<StudioVideoFolder> {
+    const supabase = await createClient()
+    const [{ data: rows }, library, clients, { names }, { data: consents }] = await Promise.all([
+        supabase
+            .from('media_assets')
+            .select('id, client_id, title, storage_key, thumb_key, duration_seconds, size_bytes, created_by, clients(full_name), exercise_media(id, client_id, exercise_catalog(name))')
+            .eq('coach_id', coachId)
+            .order('created_at', { ascending: false }),
+        getLibraryAction(),
+        getStudioClients(coachId, today),
+        getStudioTeam(coachId),
+        supabase.from('client_consents').select('client_id').eq('kind', 'image').eq('accepted', true),
+    ])
+    const consented = new Set((consents ?? []).map(row => row.client_id as string))
+
+    return {
+        entries: library.success ? library.data?.entries ?? [] : [],
+        clients: clients.map(client => ({ id: client.id, fullName: client.fullName, consent: consented.has(client.id) })),
+        videos: (rows ?? []).map(({ clients: clientEmbed, exercise_media: links, ...row }) => {
+            const client = clientEmbed as unknown as { full_name: string } | null
+            return {
+                ...row,
+                client_name: client?.full_name ?? null,
+                created_by_name: (row.created_by && names[row.created_by]) || null,
+                exercises: ((links ?? []) as unknown as { id: string; client_id: string | null; exercise_catalog: { name: string } | null }[])
+                    .map(link => ({ id: link.id, client_id: link.client_id, name: link.exercise_catalog?.name ?? '' })),
+            }
+        }),
+    }
+}
+
 export async function getStudioTeamList(coachId: string) {
     return (await getStudioTeam(coachId)).team
 }
@@ -389,7 +442,7 @@ async function buildGrid(
 
     const mediaQuery = supabase
         .from('exercise_media')
-        .select('id, catalog_exercise_id, client_id, kind, url, storage_key, title')
+        .select('id, catalog_exercise_id, client_id, kind, url, storage_key, title, video:media_assets(title, storage_key, thumb_key, duration_seconds)')
         .eq('coach_id', coachId)
         .order('created_at')
 
@@ -456,7 +509,7 @@ async function buildGrid(
 
     return {
         coachId,
-        media: (media ?? []) as StudioExerciseMedia[],
+        media: (media ?? []) as unknown as StudioExerciseMedia[],
         imageConsent,
         client: header,
         group,
