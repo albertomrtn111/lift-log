@@ -32,6 +32,7 @@ begin
   v_r := public.agenda_apply(v_space);
   if (v_r->>'classes')::int <> 1 or (v_r->>'sessions')::int <> 1 or (v_r->>'clients')::int <> 3 then raise exception 'recuento %', v_r; end if;
   if (select client_id from public.external_patients where id = v_ana) <> v_client then raise exception 'Ana se vincula por email, sin duplicarse'; end if;
+  if exists (select 1 from public.clients where coach_id = v_space and id <> v_client and status is distinct from 'active') then raise exception 'los clientes de la agenda entran activos'; end if;
   if (select client_id from public.external_patients where id = v_online) is not null then raise exception 'online no da de alta'; end if;
 
   select session_id into v_session from public.agenda_appointments where external_id = 'a1' and coach_id = v_space;
