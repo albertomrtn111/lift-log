@@ -74,6 +74,11 @@ export const outputSchemas: Record<string, z.ZodType> = {
   update_training_group: z.looseObject({ updated: z.boolean(), group: record }),
   create_group_session: z.looseObject({ created: z.boolean(), session: record, exercises: z.number().int() }),
   set_group_attendance: z.looseObject({ updated: z.boolean(), marked: z.number().int() }),
+  list_exercise_media: z.looseObject({ catalog_exercise_id: z.string(), media: records }),
+  attach_exercise_link: z.looseObject({ attached: z.boolean(), media: record }),
+  list_pending_reports: z.looseObject({ date: z.string(), reports: records }),
+  create_session_report: z.looseObject({ created: z.boolean(), url: z.string(), consent: z.boolean() }),
+  send_session_report: z.looseObject({ recorded: z.boolean(), channel: z.string(), url: z.string() }),
 
   get_strength_results: z.looseObject({
     client_id: z.string(), ...range, program_id: z.string().nullable(), ...strengthResults,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReport, fillReportText, pendingReports, reportMessage, reportSections, whatsappNumber, whatsappUrl } from '../src/lib/studio/report-rules.js'
+import { buildReport, fillReportText, pendingReportList, pendingReports, reportMessage, reportRows, reportSections, whatsappNumber, whatsappUrl } from '../src/lib/studio/report-rules.js'
 
 const session = (id, session_date, extra = {}) => ({ id, session_date, status: 'done', sort_order: null, start_time: null, ...extra })
 const item = (id, session_id, extra = {}) => ({
@@ -69,6 +69,22 @@ test('lo pospuesto espera a su hora y vuelve aunque pase la ventana', () => {
     assert.equal(pendingReports([{ ...row, snooze: 'active' }], new Date('2026-11-05T11:30:00Z')).length, 0)
     assert.equal(pendingReports([{ ...row, snooze: 'due' }], late).length, 1)
     assert.equal(pendingReports([{ ...row, snooze: 'due', delivered: true }], late).length, 0)
+})
+
+test('en una clase, cada persona que vino tiene su fila', () => {
+    const sessions = [
+        { id: 's1', client_id: 'c', group_id: null, clients: { full_name: 'Ana' }, session_date: '2026-11-05', start_time: '10:00:00', duration_min: 60, session_reports: [] },
+        {
+            id: 's2', client_id: null, group_id: 'g', session_date: '2026-11-05', start_time: '11:00:00', duration_min: 60,
+            studio_session_attendance: [{ client_id: 'd', status: 'attended', clients: { full_name: 'Luis' } }, { client_id: 'e', status: 'absent', clients: { full_name: 'Eva' } }],
+            session_reports: [{ client_id: 'd', dismissed_at: null, report_deliveries: [{ id: 'x' }] }],
+        },
+    ]
+    const rows = reportRows(sessions, [{ session_id: 's1', client_id: 'c', until: '2026-11-05T12:00:00Z' }], new Date('2026-11-05T11:00:00Z'))
+    assert.deepEqual(rows.map(row => [row.name, row.delivered, row.snooze]), [['Ana', false, 'active'], ['Luis', true, null]])
+    // A las 12:30 de Madrid: Ana sigue sin enviar, y Luis ya lo tiene.
+    const list = pendingReportList(sessions, [], 3, new Date('2026-11-05T11:30:00Z'))
+    assert.deepEqual(list, [{ sessionId: 's1', clientId: 'c', groupId: null, name: 'Ana' }])
 })
 
 test('el teléfono español gana su prefijo', () => {

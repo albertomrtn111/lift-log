@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { outputSchemas, withOutputSchemas } from './output-schemas.ts'
 import { jsonResult } from './shared.ts'
 
-const moduleFiles = ['library.ts', 'studio.ts', 'index.ts', 'clients.ts', 'schedule.ts', 'history.ts', 'nutrition.ts', 'cardio.ts', 'agenda.ts', 'coach-writes.ts', 'season.ts']
+const moduleFiles = ['library.ts', 'studio.ts', 'studio-reports.ts', 'index.ts', 'clients.ts', 'schedule.ts', 'history.ts', 'nutrition.ts', 'cardio.ts', 'agenda.ts', 'coach-writes.ts', 'season.ts']
 
 Deno.test('every registered tool declares an output schema', async () => {
   const names: string[] = []

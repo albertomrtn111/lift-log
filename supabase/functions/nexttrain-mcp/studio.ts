@@ -167,7 +167,7 @@ export function groupSummaries(groups: Row[], members: Row[], upcoming: Row[]) {
   }))
 }
 
-async function resolveExercises(db: Db, exercises: Row[]) {
+export async function resolveExercises(db: Db, exercises: Row[]) {
   return await Promise.all(exercises.map(async (exercise) => {
     const { data } = await db.rpc('resolve_catalog_exercise', {
       p_catalog_exercise_id: exercise.catalog_exercise_id ?? null,
