@@ -7,14 +7,19 @@ import { PushNotificationBanner } from '@/components/push/PushNotificationBanner
 import { StravaPendingFeedback } from '@/components/strava/StravaPendingFeedback'
 import { AnnouncementHost } from '@/components/announcements/AnnouncementHost'
 import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
+import { AthleteAppOff } from '@/components/layout/AthleteAppOff'
+import { getAthleteModules } from '@/data/athlete-modules'
 
 export const generateMetadata = spaceBrandingMetadata
 
-export default function AppLayout({
+export default async function AppLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
+    const modules = await getAthleteModules()
+    if (!modules.app) return <SpaceBranding><AthleteAppOff /></SpaceBranding>
+
     return (
         <SpaceBranding>
             <ClientAppProvider>
@@ -27,7 +32,7 @@ export default function AppLayout({
                         {children}
                     </main>
                     <PwaNavigationFix />
-                    <BottomNav />
+                    <BottomNav modules={modules} />
                     <AnnouncementHost />
                     <DevStalenessGuard />
                 </div>

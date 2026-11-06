@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   ChartNoAxesColumnIncreasing,
+  ClipboardList,
   Dumbbell,
   MessageCircle,
   Salad,
@@ -13,6 +14,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { useClientUnreadMessages } from '@/hooks/useClientUnreadMessages'
+import { ALL_MODULES, athleteTabs } from '@/lib/athlete/module-rules'
 
 interface NavItem {
   href: string
@@ -20,17 +22,18 @@ interface NavItem {
   label: string
 }
 
-const navItems: NavItem[] = [
-  { href: '/routine', icon: Dumbbell, label: 'Fuerza' },
-  { href: '/diet', icon: Salad, label: 'Dieta' },
-  { href: '/planning', icon: CalendarDays, label: 'Plan' },
-  { href: '/summary', icon: ChartNoAxesColumnIncreasing, label: 'Progreso' },
-  { href: '/chat', icon: MessageCircle, label: 'Chat' },
-]
+const navItems: Record<ReturnType<typeof athleteTabs>[number], NavItem> = {
+  routine: { href: '/routine', icon: Dumbbell, label: 'Fuerza' },
+  sessions: { href: '/sesiones', icon: ClipboardList, label: 'Sesiones' },
+  diet: { href: '/diet', icon: Salad, label: 'Dieta' },
+  planning: { href: '/planning', icon: CalendarDays, label: 'Plan' },
+  summary: { href: '/summary', icon: ChartNoAxesColumnIncreasing, label: 'Progreso' },
+  chat: { href: '/chat', icon: MessageCircle, label: 'Chat' },
+}
 
 const DEBUG_NAV = true // Set to false to silence logs
 
-export function BottomNav() {
+export function BottomNav({ modules = ALL_MODULES }: { modules?: typeof ALL_MODULES }) {
   const pathname = usePathname()
   const router = useRouter()
   const isDev = process.env.NODE_ENV === 'development' && DEBUG_NAV
@@ -63,9 +66,15 @@ export function BottomNav() {
     if (isDev) console.log('[BottomNav] router.push called')
   }
 
+  const tabs = athleteTabs(modules)
+
   return (
-    <nav aria-label="Navegación principal" className="client-glass client-tab-bar">
-      {navItems.map((item) => {
+    <nav
+      aria-label="Navegación principal"
+      className="client-glass client-tab-bar"
+      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+    >
+      {tabs.map(tab => navItems[tab]).map((item) => {
         const isActive = pathname === item.href ||
           (item.href !== '/routine' && pathname?.startsWith(item.href))
 

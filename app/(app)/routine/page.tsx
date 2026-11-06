@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getAthleteModules } from '@/data/athlete-modules'
+import { athleteHome } from '@/lib/athlete/module-rules'
 import { getClientId, getActiveClientProgram } from '@/data/client-schedule'
 import { resolveRoutineInitialSelection } from '@/lib/training/routine-defaults'
 import RoutinePageClient from './RoutinePageClient'
@@ -15,6 +18,10 @@ export default async function RoutinePage(
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) return null
+
+    // Es la pantalla de entrada: quien solo va a sala no debe caer en una rutina vacía.
+    const modules = await getAthleteModules()
+    if (!modules.routine) redirect(athleteHome(modules))
 
     const clientId = await getClientId(user.id)
 
