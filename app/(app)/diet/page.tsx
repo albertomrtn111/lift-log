@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getAthleteModules } from '@/data/athlete-modules'
+import { athleteHome } from '@/lib/athlete/module-rules'
 import { getActiveMacroPlan, getActiveDietPlan, getDietPlanMealsWithMacros, toFrontendMacroPlan, type ClientDietMeal } from '@/data/diet'
 import { getClientId } from '@/data/client-schedule'
 import { DietPageClient } from './DietPageClient'
@@ -8,6 +11,9 @@ export default async function DietPage() {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) return null
+
+    const modules = await getAthleteModules()
+    if (!modules.diet) redirect(athleteHome(modules))
 
     const clientId = await getClientId(user.id)
     if (!clientId) {
