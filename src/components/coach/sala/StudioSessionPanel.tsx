@@ -677,6 +677,15 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                             </div>
                         </div>
                         {load !== null && <p className="text-sm text-muted-foreground">Carga de la sesión: <span className="font-semibold text-foreground">{load}</span></p>}
+                        {data.feedback.filter(entry => entry.session_id === session.id).map(entry => (
+                            <div key={entry.client_id} className="rounded-md bg-muted/60 p-2 text-sm">
+                                <span className="font-medium">
+                                    {data.group?.members.find(member => member.id === entry.client_id)?.name ?? data.client.fullName} cuenta
+                                    {entry.rpe !== null ? `: RPE ${entry.rpe}` : ':'}
+                                </span>
+                                {entry.comment && <p className="text-muted-foreground">{entry.comment}</p>}
+                            </div>
+                        ))}
                     </section>
 
                     <div className="space-y-2 border-t pt-4">

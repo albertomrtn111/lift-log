@@ -73,6 +73,16 @@ export async function canAccessStudioMedia(
     return data === true
 }
 
+/** Para ver: además del equipo, el atleta entra en lo de su sala y en lo suyo. */
+async function canReadStudioMedia(supabase: SupabaseClient, coachId: string, folderId: string): Promise<boolean> {
+    const { data, error } = await supabase.rpc('studio_can_read_media', { p_coach_id: coachId, p_folder_id: folderId })
+    if (error) {
+        console.error('[media-access] studio_can_read_media:', error.message)
+        return false
+    }
+    return data === true
+}
+
 export async function canAccessPrivateMedia(
     supabase: SupabaseClient,
     userId: string,
@@ -80,7 +90,7 @@ export async function canAccessPrivateMedia(
     coachId: string,
     clientId: string,
 ): Promise<boolean> {
-    if (area === 'studio-media') return canAccessStudioMedia(supabase, coachId, clientId)
+    if (area === 'studio-media') return canReadStudioMedia(supabase, coachId, clientId)
     return area === 'checkin-media'
         ? canAccessCheckinMedia(supabase, userId, coachId, clientId)
         : canAccessChatMedia(supabase, userId, coachId, clientId)

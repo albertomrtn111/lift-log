@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { ChevronLeft, FileText } from 'lucide-react'
+import { AthleteSessionFeedback } from '@/components/athlete/AthleteSessionFeedback'
+import { AthleteTechnique } from '@/components/athlete/AthleteTechnique'
 import type { AthleteSessionDetail, AthleteSessionItem } from '@/data/athlete-sessions'
 import { sessionDateLabel } from '@/lib/athlete/session-rules'
 import { sessionList } from '@/lib/studio/editor-rules'
@@ -52,6 +54,10 @@ export function AthleteSessionView({ session }: { session: AthleteSessionDetail 
                 {session.items.length === 0 && (
                     <p className="p-2 text-sm text-muted-foreground">Esta sesión no tiene ejercicios apuntados.</p>
                 )}
+
+                <div className="pt-2">
+                    <AthleteSessionFeedback sessionId={session.id} feedback={session.feedback} />
+                </div>
             </div>
         </div>
     )
@@ -66,6 +72,7 @@ function ExerciseRow({ item }: { item: AthleteSessionItem }) {
                 {[summary.volume, summary.load, summary.details].filter(Boolean).join(' · ') || 'Sin datos'}
             </p>
             {item.circuit.length > 0 && <p className="text-[13px] text-muted-foreground">{item.circuit.join(' · ')}</p>}
+            <AthleteTechnique media={item.media} />
         </div>
     )
 }

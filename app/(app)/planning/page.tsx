@@ -5,6 +5,9 @@ import { startOfWeek, endOfWeek } from 'date-fns'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCoachDisplayName } from '@/lib/onboarding/athlete-welcome-data'
 import { PlanInPreparation } from '@/components/planning/PlanInPreparation'
+import { AthleteAppointments } from '@/components/athlete/AthleteAppointments'
+import { getAthleteModules } from '@/data/athlete-modules'
+import { getAthleteAppointments } from '@/data/athlete-sessions'
 
 /** Devuelve el nombre del coach si el atleta aún no tiene ningún plan (entreno, dieta, macros ni cardio) */
 async function getPlanInPreparation(clientId: string): Promise<{ coachName: string } | null> {
@@ -47,20 +50,26 @@ export default async function PlanningPage() {
         )
     }
 
-    // Sin ningún plan todavía: en lugar de un calendario vacío, "plan en preparación"
-    const waiting = await getPlanInPreparation(clientId)
+    // Sin ningún plan todavía: en lugar de un calendario vacío, "plan en preparación".
+    // Un cliente de sala no espera ningún plan online.
+    const modules = await getAthleteModules()
+    const waiting = modules.sessions ? null : await getPlanInPreparation(clientId)
     if (waiting) return <PlanInPreparation coachName={waiting.coachName} />
 
     const today = new Date()
     const weekStart = startOfWeek(today, { weekStartsOn: 1 })
     const weekEnd = endOfWeek(today, { weekStartsOn: 1 })
-    const initialItems = await getClientWeeklySchedule(clientId, toDateStr(weekStart), toDateStr(weekEnd))
+    const [initialItems, appointments] = await Promise.all([
+        getClientWeeklySchedule(clientId, toDateStr(weekStart), toDateStr(weekEnd)),
+        modules.sessions ? getAthleteAppointments(clientId) : [],
+    ])
 
     return (
         <PlanningPageClient
             initialItems={initialItems}
             clientId={clientId}
             initialDate={toDateStr(today)}
+            appointments={<AthleteAppointments appointments={appointments} />}
         />
     )
 }

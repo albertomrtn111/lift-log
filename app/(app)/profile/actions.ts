@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserContext } from '@/lib/auth/get-user-context'
+import { getAthleteModules } from '@/data/athlete-modules'
 import {
     DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
     isMissingPreferencesTable,
@@ -21,6 +22,23 @@ import {
     type ClientDeliverySettings,
 } from '@/lib/notifications/delivery-settings'
 import { revalidatePath } from 'next/cache'
+
+/** Sus consentimientos, solo para clientes de sala. */
+export async function getMyConsentsAction(): Promise<{ image: boolean; reports: boolean } | null> {
+    const modules = await getAthleteModules()
+    if (!modules.sessions) return null
+
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    const { clientId } = await getUserContext(user.id)
+    if (!clientId) return null
+    const [{ data: image }, { data: client }] = await Promise.all([
+        supabase.from('client_consents').select('accepted').eq('client_id', clientId).eq('kind', 'image').maybeSingle(),
+        supabase.from('clients').select('report_consent_at').eq('id', clientId).maybeSingle(),
+    ])
+    return { image: image?.accepted === true, reports: Boolean(client?.report_consent_at) }
+}
 
 export async function updateProfileNameAction(
     newName: string

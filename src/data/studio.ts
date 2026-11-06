@@ -208,6 +208,15 @@ export interface StudioGridData {
     /** Medios de la sala y, en la cuadrícula de un cliente, los suyos. */
     media: StudioExerciseMedia[]
     imageConsent: boolean
+    /** Lo que cuentan los clientes desde su app. */
+    feedback: StudioFeedback[]
+}
+
+export interface StudioFeedback {
+    session_id: string
+    client_id: string
+    rpe: number | null
+    comment: string | null
 }
 
 /** Clientes activos del espacio, con quién tiene sesión hoy. */
@@ -496,12 +505,15 @@ async function buildGrid(
 
     const groupSessionIds = sessions.filter(session => session.group_id).map(session => session.id)
     const groupItemIds = (items ?? []).filter(item => groupSessionIds.includes(item.session_id)).map(item => item.id)
-    const [{ data: attendance }, { data: people }] = await Promise.all([
+    const [{ data: attendance }, { data: people }, { data: feedback }] = await Promise.all([
         groupSessionIds.length > 0
             ? supabase.from('studio_session_attendance').select('session_id, client_id, status, origin').in('session_id', groupSessionIds)
             : Promise.resolve({ data: [] }),
         groupItemIds.length > 0
             ? supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, next_load').in('item_id', groupItemIds)
+            : Promise.resolve({ data: [] }),
+        sessionIds.length > 0
+            ? supabase.from('studio_session_feedback').select('session_id, client_id, rpe, comment').in('session_id', sessionIds)
             : Promise.resolve({ data: [] }),
     ])
 
@@ -510,6 +522,7 @@ async function buildGrid(
     return {
         coachId,
         media: (media ?? []) as unknown as StudioExerciseMedia[],
+        feedback: (feedback ?? []) as StudioFeedback[],
         imageConsent,
         client: header,
         group,
