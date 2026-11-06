@@ -13,6 +13,8 @@ interface ReportExercise {
     tags: string[]
     evolution: string | null
     sets: { load: number | null; reps: number | null }[]
+    /** Solo en el informe de una clase. Los informes antiguos no lo traen. */
+    people?: string[]
 }
 
 export interface ReportPayload {
@@ -20,7 +22,7 @@ export interface ReportPayload {
     snapshot: {
         client: string
         session: { number: number | null; date: string; name: string | null; professional: string | null }
-        stats: { exercises: number; sets: number; blocks: number }
+        stats: { exercises: number; sets: number; blocks: number } | null
         arrival: { score: number | null; note: string | null }
         groups: { title: string | null; parent: string | null; exercises: ReportExercise[] }[]
         rpe: number | null
@@ -63,11 +65,13 @@ export function ReportDocument({ report }: { report: ReportPayload }) {
                         : <p className="shrink-0 font-semibold">{brand.name}</p>}
                 </header>
 
-                <section className="mt-5 grid grid-cols-3 gap-3" aria-label="Resumen">
-                    <Stat label="Ejercicios" value={snapshot.stats.exercises} />
-                    <Stat label="Series" value={snapshot.stats.sets} />
-                    <Stat label="Bloques" value={snapshot.stats.blocks || '—'} />
-                </section>
+                {snapshot.stats && (
+                    <section className="mt-5 grid grid-cols-3 gap-3" aria-label="Resumen">
+                        <Stat label="Ejercicios" value={snapshot.stats.exercises} />
+                        <Stat label="Series" value={snapshot.stats.sets} />
+                        <Stat label="Bloques" value={snapshot.stats.blocks || '—'} />
+                    </section>
+                )}
 
                 {(snapshot.arrival.score !== null || snapshot.arrival.note) && (
                     <section className="mt-5 rounded-lg border p-3 text-sm">
@@ -102,6 +106,7 @@ export function ReportDocument({ report }: { report: ReportPayload }) {
                                             {exercise.sets.map((set, order) => `${order + 1}: ${[set.load !== null ? `${set.load} kg` : null, set.reps !== null ? `${set.reps} reps` : null].filter(Boolean).join(' × ')}`).join('   ')}
                                         </p>
                                     )}
+                                    {exercise.people?.map(line => <p key={line} className="text-slate-600">{line}</p>)}
                                 </li>
                             ))}
                         </ul>

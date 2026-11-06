@@ -261,16 +261,20 @@ export async function sendSessionReportEmail(params: {
     clientName: string
     url: string
     coachId: string
+    /** Textos de la sala. Vacíos, salen los de NexTrain. */
+    subject?: string | null
+    text?: string | null
 }): Promise<EmailResult> {
     const brand = await loadEmailBrand(params.coachId)
     const name = escapeHtml(params.clientName.trim().split(/\s+/)[0] || 'atleta')
+    const text = params.text || 'Aquí tienes el informe de tu sesión de entrenamiento. Se abre en el móvil, sin cuenta ni aplicación.'
     const body = `
         <p>Hola <strong>${name}</strong>,</p>
-        <p>Aquí tienes el informe de tu sesión de entrenamiento. Se abre en el móvil, sin cuenta ni aplicación.</p>`
+        <p>${escapeHtml(text)}</p>`
     return send(
         {
             to: params.to,
-            subject: `Tu informe de sesión${brand?.name ? ` en ${brand.name}` : ''}`,
+            subject: params.subject || `Tu informe de sesión${brand?.name ? ` en ${brand.name}` : ''}`,
             html: layout('Tu informe de sesión', body, 'Ver el informe', params.url, brand),
         },
         params.coachId

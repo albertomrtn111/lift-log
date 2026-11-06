@@ -376,6 +376,11 @@ export async function getStudioPendingReports(coachId: string, today: string): P
         supabase.from('report_settings').select('notice_hours').eq('coach_id', coachId).maybeSingle(),
     ])
 
+    const sessionIds = (sessions ?? []).map(session => session.id as string)
+    const { data: snoozes } = sessionIds.length > 0
+        ? await supabase.from('report_snoozes').select('session_id, client_id, until').in('session_id', sessionIds)
+        : { data: [] }
+
     const rows = (sessions ?? []).flatMap(session => {
         const reports = (session.session_reports ?? []) as unknown as { client_id: string; dismissed_at: string | null; report_deliveries: unknown[] }[]
         const people = session.group_id
@@ -385,8 +390,10 @@ export async function getStudioPendingReports(coachId: string, today: string): P
             : [{ clientId: session.client_id as string, name: (session.clients as unknown as { full_name: string } | null)?.full_name ?? 'Cliente' }]
         return people.map(person => {
             const report = reports.find(entry => entry.client_id === person.clientId)
+            const snoozed = (snoozes ?? []).find(entry => entry.session_id === session.id && entry.client_id === person.clientId)
             return {
                 ...person,
+                snooze: snoozed ? (new Date(snoozed.until).getTime() > Date.now() ? 'active' : 'due') : null,
                 sessionId: session.id,
                 groupId: session.group_id,
                 session_date: session.session_date,

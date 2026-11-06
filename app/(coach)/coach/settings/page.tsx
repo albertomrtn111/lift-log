@@ -20,7 +20,7 @@ import {
     Settings2,
     Sparkles,
     User,
-    Users, Plug, Smartphone } from 'lucide-react'
+    Users, Plug, Smartphone, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfile } from '@/data/coach-ai-profile'
@@ -39,12 +39,13 @@ import { SalasAdminPanel } from '@/components/coach/settings/SalasAdminPanel'
 import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { IntegrationsSettingsPanel } from '@/components/coach/settings/IntegrationsSettingsPanel'
 import { AthleteAppSettingsPanel } from '@/components/coach/settings/AthleteAppSettingsPanel'
+import { ReportSettingsPanel } from '@/components/coach/settings/ReportSettingsPanel'
 import { LibrarySettingsPanel } from '@/components/coach/settings/LibrarySettingsPanel'
 import { BrandingSettingsPanel } from '@/components/coach/settings/BrandingSettingsPanel'
 import { getMcpServerUrl } from '@/lib/mcp-url'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'integraciones' | 'app-atleta' | 'salas' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
+type SettingsTab = 'perfil' | 'equipo' | 'biblioteca' | 'look-feel' | 'integraciones' | 'app-atleta' | 'informes' | 'salas' | 'catalogo' | 'email' | 'notificaciones' | 'asistente-ia' | 'apariencia' | 'soporte'
 
 interface CoachSettingsPageProps {
     searchParams: Promise<{ tab?: string }>
@@ -59,6 +60,7 @@ const PLATFORM_TABS = [
 const STUDIO_TABS = [
     { id: 'integraciones' as const, label: 'Integraciones', description: 'Agenda del centro', icon: Plug },
     { id: 'app-atleta' as const, label: 'App de clientes', description: 'Encender la app y el chat', icon: Smartphone },
+    { id: 'informes' as const, label: 'Informes', description: 'Mensajes, avisos y secciones', icon: FileText },
 ]
 
 const SETTINGS_TABS: Array<{
@@ -223,6 +225,7 @@ export default async function CoachSettingsPage({ searchParams }: CoachSettingsP
                         {activeTab === 'look-feel' && <BrandingSettingsPanel />}
                         {activeTab === 'integraciones' && <IntegrationsSettingsPanel />}
                         {activeTab === 'app-atleta' && <AthleteAppSettingsPanel />}
+                        {activeTab === 'informes' && <ReportSettingsPanel />}
                         {activeTab === 'salas' && <SalasAdminPanel />}
                         {activeTab === 'catalogo' && <CatalogDuplicatesPanel />}
                         {activeTab === 'email' && <EmailSettingsPanel />}
@@ -287,7 +290,7 @@ async function getSettingsProfileData() {
 }
 
 function parseSettingsTab(tab: string | undefined, isPlatformAdmin: boolean, studioEnabled: boolean): SettingsTab {
-    if ((tab === 'integraciones' || tab === 'app-atleta') && studioEnabled) return tab
+    if ((tab === 'integraciones' || tab === 'app-atleta' || tab === 'informes') && studioEnabled) return tab
     if ((tab === 'catalogo' || tab === 'salas') && isPlatformAdmin) return tab
     if (tab === 'apariencia' || tab === 'soporte' || tab === 'perfil' || tab === 'equipo' || tab === 'biblioteca' || tab === 'look-feel' || tab === 'email' || tab === 'notificaciones' || tab === 'asistente-ia') return tab
     return 'perfil'
