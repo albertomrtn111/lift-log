@@ -591,6 +591,17 @@ const PLAN_UPDATE_COPY: Record<PlanUpdateKind, ClientNotificationPayload> = {
 /** Ediciones seguidas del coach no generan un aviso por cada guardado. */
 const PLAN_UPDATE_DEDUPE_HOURS = 12
 
+/** Su informe de sala ya está en la app. */
+export async function sendReportReadyNotification(clientId: string, sessionId: string) {
+    return notifyClient(clientId, 'plan_updated', {
+        title: 'Tu informe está listo',
+        body: 'Ya puedes ver el informe de tu sesión.',
+        url: `/sesiones/${sessionId}`,
+        tag: `report-ready-${sessionId}`,
+        type: 'plan_updated',
+    }, 'plans')
+}
+
 export async function sendPlanUpdatedNotification(clientId: string, kind: PlanUpdateKind) {
     return notifyClient(clientId, 'plan_updated', PLAN_UPDATE_COPY[kind], 'plans', {
         dedupeUnreadWithinHours: PLAN_UPDATE_DEDUPE_HOURS,

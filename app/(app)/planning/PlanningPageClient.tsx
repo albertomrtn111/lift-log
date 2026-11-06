@@ -17,6 +17,7 @@ import { addDays, addMonths, addWeeks, endOfMonth, endOfWeek, format, isSameMont
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
+import type { ReactNode } from 'react'
 import { STRAVA_ACTIVITY_COMPLETED_EVENT, type StravaActivityCompletedDetail } from '@/lib/strava/events'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
 import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
@@ -26,6 +27,8 @@ interface PlanningPageClientProps {
     initialItems: CalendarItem[]
     clientId: string
     initialDate: string
+    /** Próximas citas del centro, si las hay. */
+    appointments?: ReactNode
 }
 
 type ViewMode = 'week' | 'month'
@@ -55,6 +58,7 @@ export default function PlanningPageClient({
     initialItems,
     clientId,
     initialDate,
+    appointments,
 }: PlanningPageClientProps) {
     const router = useRouter()
     const [currentDate, setCurrentDate] = useState(() => parseDateStr(initialDate))
@@ -326,6 +330,8 @@ export default function PlanningPageClient({
                     </div>
                 </div>
             </header>
+
+            {appointments}
 
             <div className="app-mobile-header app-mobile-header--below-title border-b border-border/60">
                 <div className="px-4 pb-3 pt-3">

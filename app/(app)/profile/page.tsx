@@ -33,6 +33,7 @@ import { PushDeviceRow } from '@/components/push/PushDeviceRow'
 import { ClientPageHeader, SettingsGroup, SettingsRow } from '@/components/profile/settings-list'
 import { AvatarCropDialog } from '@/components/profile/AvatarCropDialog'
 import {
+    getMyConsentsAction,
     getNotificationPreferencesAction,
     updateNotificationPreferencesAction,
 } from './actions'
@@ -66,6 +67,7 @@ export default function ProfilePage() {
     const { upload: uploadAvatar, uploading } = useAvatarUpload()
     const [avatarToCrop, setAvatarToCrop] = useState<File | null>(null)
     const [currentMode, setCurrentMode] = useState<AppMode | undefined>(undefined)
+    const [consents, setConsents] = useState<{ image: boolean; reports: boolean } | null>(null)
     const [notificationPreferences, setNotificationPreferences] = useState<ClientNotificationPreferences>({
         messages_enabled: true,
         reviews_enabled: true,
@@ -81,6 +83,7 @@ export default function ProfilePage() {
     useEffect(() => {
         const mode = getCookie(APP_MODE_COOKIE) as AppMode | undefined
         setCurrentMode(mode)
+        void getMyConsentsAction().then(setConsents).catch(() => setConsents(null))
     }, [])
 
     useEffect(() => {
@@ -311,6 +314,13 @@ export default function ProfilePage() {
                 </SettingsGroup>
 
                 <DeliverySettingsGroup />
+
+                {consents && (
+                    <SettingsGroup title="Consentimientos" footer="Para cambiarlos, habla con tu centro.">
+                        <SettingsRow title="Imagen y vídeo" description="Fotos y vídeos tuyos en la sala" trailing={<span className="text-sm text-muted-foreground">{consents.image ? 'Sí' : 'No'}</span>} />
+                        <SettingsRow title="Informes" description="Recibir los informes de tus sesiones" trailing={<span className="text-sm text-muted-foreground">{consents.reports ? 'Sí' : 'No'}</span>} />
+                    </SettingsGroup>
+                )}
 
                 <SettingsGroup title="Cuenta">
                     <SettingsRow icon={UserRound} title="Datos personales" description="Nombre y email" href="/profile/settings" />

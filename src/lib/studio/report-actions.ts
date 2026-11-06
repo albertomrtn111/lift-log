@@ -5,6 +5,7 @@ import { getAppUrl } from '@/lib/app-url'
 import { getEmailBrand } from '@/lib/branding/get-branding'
 import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { sendSessionReportEmail } from '@/lib/email/mailer'
+import { sendReportReadyNotification } from '@/lib/notifications/client'
 import { prepareSessions } from '@/lib/studio/grid-rules'
 import { buildReport, reportMessage, whatsappUrl } from '@/lib/studio/report-rules'
 import { createClient } from '@/lib/supabase/server'
@@ -116,6 +117,13 @@ export async function dismissReportNoticeAction(sessionId: string, clientId: str
     return error ? failure(error, 'No se ha podido descartar el aviso.') : { success: true, data: undefined }
 }
 
+/** Avisa en la app. Si falla, el informe ya está enviado: no se le dice nada al profesional. */
+async function notifyReportReady(supabase: Awaited<ReturnType<typeof createClient>>, reportId: string) {
+    const { data } = await supabase.from('session_reports').select('client_id, session_id').eq('id', reportId).maybeSingle()
+    if (!data) return
+    await sendReportReadyNotification(data.client_id, data.session_id).catch(error => console.warn('[informes] aviso:', error))
+}
+
 /** Devuelve el chat listo para abrir y apunta el envío. Sin consentimiento, se queda en un aviso. */
 export async function whatsappReportAction(report: { id: string; code: string }, client: { name: string; phone: string | null }): Promise<Result<{ url: string }>> {
     const coachId = await getActiveCoachId()
@@ -127,6 +135,7 @@ export async function whatsappReportAction(report: { id: string; code: string },
     const supabase = await createClient()
     const { error } = await supabase.rpc('studio_record_delivery', { p_report_id: report.id, p_channel: 'whatsapp', p_recipient: client.phone })
     if (error) return failure(error, 'No se ha podido preparar el envío.')
+    await notifyReportReady(supabase, report.id)
     return { success: true, data: { url } }
 }
 
@@ -145,5 +154,6 @@ export async function emailReportAction(report: { id: string; code: string }, cl
         await supabase.rpc('studio_record_delivery', { p_report_id: report.id, p_channel: 'email', p_recipient: client.email, p_ok: false })
         return { success: false, error: 'No se ha podido enviar el email.' }
     }
+    await notifyReportReady(supabase, report.id)
     return { success: true, data: undefined }
 }
