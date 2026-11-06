@@ -68,6 +68,15 @@ Si `check` muestra ficheros modificados además de `.env`, alguien editó en el 
 
 Es normal en builds largas y por eso la build va con `nohup`. Si el script se interrumpe, la build sigue en el servidor: consulta `tail /tmp/nexttrain-build.log` o `scripts/deploy-web.sh status`.
 
+## Agenda
+
+`supabase/functions/agenda-sync` baja las citas de los centros con una conexión activa. Se despliega con `npx -y supabase@latest functions deploy agenda-sync --project-ref kqwstdbdocbynvijnpka --no-verify-jwt --yes`: se protege con su propia clave, no con JWT.
+
+- La clave está en el secreto `AGENDA_SYNC_SECRET` de la función y en Vault como `agenda_sync_secret`. Las dos tienen que coincidir.
+- La lanzan las tareas `agenda-sync-quick` (cada 5 minutos) y `agenda-sync-full` (cada hora).
+- Para ver si funciona, mira `external_connections`: `last_sync_at` y `last_error`.
+- Nunca escribe en FisioTrack ni avisa a los clientes.
+
 ## MCP
 
 `scripts/deploy-mcp.sh` despliega la Edge Function `nexttrain-mcp` desde `origin/main`, después de `deno check` y de todas las pruebas. Necesita una sesión de la CLI de Supabase en el Mac (`npx -y supabase@latest login`, la hace el dueño en el navegador). Detalles en `docs/nexttrain-mcp.md`, sección «Despliegue».
