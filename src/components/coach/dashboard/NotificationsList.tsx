@@ -22,14 +22,16 @@ export function NotificationsList({ notifications, coachId }: NotificationsListP
 
     if (notifications.length === 0) {
         return (
-            <div className="p-6 sm:p-8 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <Bell className="h-6 w-6 text-muted-foreground" />
+            <div className="flex items-center gap-3.5 px-4 pb-5 pt-2 sm:px-5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground/[0.05]">
+                    <Bell className="h-[18px] w-[18px] text-muted-foreground" />
                 </div>
-                <p className="font-medium">Sin notificaciones recientes</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    Aquí aparecerán mensajes nuevos, revisiones recibidas y tareas pendientes del día.
-                </p>
+                <div className="min-w-0">
+                    <p className="text-[14px] font-medium">Bandeja vacía</p>
+                    <p className="mt-0.5 text-[13px] text-muted-foreground">
+                        Aquí llegan los mensajes nuevos, las revisiones recibidas y las tareas del día.
+                    </p>
+                </div>
             </div>
         )
     }

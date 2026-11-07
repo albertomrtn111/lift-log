@@ -334,8 +334,9 @@ export function ConversationPanel({
         <AthleteAvatar
             initials={initials}
             avatarUrl={avatarUrl}
+            seed={clientName}
             className="h-7 w-7 ring-1 ring-border/60"
-            fallbackClassName="bg-primary/10 text-[10px] font-bold text-primary"
+            fallbackClassName="text-[10px]"
         />
     )
 
@@ -355,8 +356,9 @@ export function ConversationPanel({
                 <AthleteAvatar
                     initials={initials}
                     avatarUrl={avatarUrl}
+                    seed={clientName}
                     className="h-10 w-10 ring-1 ring-border/60"
-                    fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                    fallbackClassName="text-sm"
                 />
                 <div className="min-w-0 flex-1">
                     <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">{clientName}</h2>

@@ -186,7 +186,7 @@ export function MessagesPageClient({
             />
 
             <div className="min-h-0 flex-1 lg:px-8 lg:pt-6">
-                <div className="h-full min-h-0 overflow-hidden bg-card lg:h-[calc(100dvh-12rem)] lg:min-h-[460px] lg:rounded-2xl lg:border lg:border-border/70 lg:shadow-sm">
+                <div className="nt-card h-full min-h-0 overflow-hidden bg-card lg:h-[calc(100dvh-13rem)] lg:min-h-[460px] lg:rounded-3xl lg:border lg:border-border/70">
                     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)]">
                         <aside
                             aria-label="Conversaciones"
@@ -219,8 +219,8 @@ export function MessagesPageClient({
                             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                                 {filteredConversations.length === 0 ? (
                                     <div className="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
-                                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                                            <MessageCircle className="h-6 w-6 text-muted-foreground" />
+                                        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-foreground/[0.05] ring-1 ring-inset ring-foreground/[0.06]">
+                                            <MessageCircle className="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <p className="text-sm font-semibold">
                                             {filter === 'unread' && !query ? 'Estás al día' : 'Sin resultados'}
@@ -246,16 +246,17 @@ export function MessagesPageClient({
                                                         aria-current={isActive ? 'true' : undefined}
                                                         className={cn(
                                                             'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
-                                                            'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-                                                            isActive && 'bg-primary/[0.07] lg:shadow-[inset_3px_0_0_hsl(var(--primary))]'
+                                                            'hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                                                            isActive && 'bg-foreground/[0.05] lg:shadow-[inset_3px_0_0_hsl(var(--primary))]'
                                                         )}
                                                     >
                                                         <span className="relative shrink-0">
                                                             <AthleteAvatar
                                                                 initials={initialsOf(conversation.clientName, 'A')}
                                                                 avatarUrl={conversation.avatarUrl}
+                                                                seed={conversation.clientName}
                                                                 className="h-11 w-11"
-                                                                fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                                                                fallbackClassName="text-sm"
                                                             />
                                                             {conversation.status === 'active' && (
                                                                 <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
@@ -307,10 +308,10 @@ export function MessagesPageClient({
                                 />
                             ) : (
                                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-                                        <MessageCircle className="h-7 w-7 text-primary" />
+                                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-foreground/[0.05] ring-1 ring-inset ring-foreground/[0.06]">
+                                        <MessageCircle className="h-5 w-5 text-muted-foreground" />
                                     </div>
-                                    <h2 className="text-lg font-semibold">Selecciona una conversación</h2>
+                                    <h2 className="nt-title text-[20px]">Elige una conversación</h2>
                                     <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                                         Elige un atleta del listado para ver el historial y responder desde aquí.
                                     </p>

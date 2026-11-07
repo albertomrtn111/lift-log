@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { addDays, format, isToday, isTomorrow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ArrowRight, CalendarDays, ClipboardCheck } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { CalendarEvent } from '@/types/coach'
 import { cn } from '@/lib/utils'
@@ -19,7 +18,7 @@ function getDayLabel(dateStr: string) {
     const date = toDateAtNoon(dateStr)
     if (isToday(date)) return 'Hoy'
     if (isTomorrow(date)) return 'Mañana'
-    return format(date, 'EEEE d', { locale: es })
+    return format(date, 'EEEE', { locale: es })
 }
 
 /**
@@ -56,41 +55,38 @@ export function WeekAgenda({ events }: WeekAgendaProps) {
 
     return (
         <div className="flex flex-1 flex-col">
-            <div className="flex-1 divide-y">
+            <div className="flex-1 divide-y divide-border/60">
                 {[...byDate.entries()].map(([date, dayEvents]) => {
                     const isTodayGroup = isToday(toDateAtNoon(date))
                     return (
-                        <div key={date} className="px-4 py-3">
-                            <div className="flex items-center gap-2">
+                        <div key={date} className="px-4 py-3.5 sm:px-5">
+                            <div className="flex items-baseline gap-2">
                                 <p className={cn(
-                                    'text-xs font-semibold uppercase tracking-wide',
-                                    isTodayGroup ? 'text-primary' : 'text-muted-foreground'
+                                    'nt-eyebrow',
+                                    isTodayGroup ? 'text-primary' : 'text-foreground'
                                 )}>
                                     {getDayLabel(date)}
                                 </p>
-                                <span className="text-[10px] text-muted-foreground/70">
+                                <span className="nt-eyebrow text-muted-foreground">
                                     {format(toDateAtNoon(date), 'd MMM', { locale: es })}
                                 </span>
-                                <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
-                                    {dayEvents.length}
-                                </Badge>
                             </div>
                             <div className="mt-2 space-y-1.5">
                                 {dayEvents.map((event) => (
                                     <Link
                                         key={event.id}
                                         href={`/coach/clients?client=${event.clientId}`}
-                                        className="flex items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-muted/30"
+                                        className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-foreground/[0.035]"
                                     >
-                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                                            <ClipboardCheck className="h-3.5 w-3.5 text-primary" />
+                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                                            <ClipboardCheck className="h-4 w-4 text-primary" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium leading-tight">
+                                            <p className="truncate text-[14px] font-medium leading-tight">
                                                 {event.clientName}
                                             </p>
                                             {event.reviewTemplateName && (
-                                                <p className="truncate text-[11px] text-muted-foreground">
+                                                <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
                                                     {event.reviewTemplateName}
                                                 </p>
                                             )}
@@ -105,7 +101,7 @@ export function WeekAgenda({ events }: WeekAgendaProps) {
                     )
                 })}
             </div>
-            <div className="border-t p-3">
+            <div className="border-t border-border/60 p-3">
                 <Button variant="ghost" size="sm" asChild className="w-full">
                     <Link href="/coach/calendar">
                         Abrir calendario completo
