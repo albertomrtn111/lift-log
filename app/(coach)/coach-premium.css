@@ -319,6 +319,22 @@ html:has(.coach-shell) .coach-shell :is(.uppercase.tracking-wider, .uppercase.tr
     letter-spacing: 0.12em;
 }
 
+/* En oscuro, los textos de color pensados para fondo claro (ámbar, rojo, verde…
+   de tono 600-800) pasan a su tono claro para que se lean. */
+html.dark:has(.coach-shell) .text-red-600, html.dark:has(.coach-shell) .text-red-700, html.dark:has(.coach-shell) .text-red-800, html.dark:has(.coach-shell) .text-red-900 { color: #f87171; }
+html.dark:has(.coach-shell) .text-amber-600, html.dark:has(.coach-shell) .text-amber-700, html.dark:has(.coach-shell) .text-amber-800, html.dark:has(.coach-shell) .text-amber-900 { color: #fcd34d; }
+html.dark:has(.coach-shell) .text-green-600, html.dark:has(.coach-shell) .text-green-700, html.dark:has(.coach-shell) .text-green-800, html.dark:has(.coach-shell) .text-green-900 { color: #4ade80; }
+html.dark:has(.coach-shell) .text-emerald-600, html.dark:has(.coach-shell) .text-emerald-700, html.dark:has(.coach-shell) .text-emerald-800, html.dark:has(.coach-shell) .text-emerald-900 { color: #34d399; }
+html.dark:has(.coach-shell) .text-blue-600, html.dark:has(.coach-shell) .text-blue-700, html.dark:has(.coach-shell) .text-blue-800, html.dark:has(.coach-shell) .text-blue-900 { color: #60a5fa; }
+html.dark:has(.coach-shell) .text-orange-600, html.dark:has(.coach-shell) .text-orange-700, html.dark:has(.coach-shell) .text-orange-800, html.dark:has(.coach-shell) .text-orange-900 { color: #fb923c; }
+html.dark:has(.coach-shell) .text-yellow-600, html.dark:has(.coach-shell) .text-yellow-700, html.dark:has(.coach-shell) .text-yellow-800, html.dark:has(.coach-shell) .text-yellow-900 { color: #fde047; }
+html.dark:has(.coach-shell) .text-sky-600, html.dark:has(.coach-shell) .text-sky-700, html.dark:has(.coach-shell) .text-sky-800, html.dark:has(.coach-shell) .text-sky-900 { color: #7dd3fc; }
+html.dark:has(.coach-shell) .text-violet-600, html.dark:has(.coach-shell) .text-violet-700, html.dark:has(.coach-shell) .text-violet-800, html.dark:has(.coach-shell) .text-violet-900 { color: #a78bfa; }
+html.dark:has(.coach-shell) .text-purple-600, html.dark:has(.coach-shell) .text-purple-700, html.dark:has(.coach-shell) .text-purple-800, html.dark:has(.coach-shell) .text-purple-900 { color: #c084fc; }
+html.dark:has(.coach-shell) .text-rose-600, html.dark:has(.coach-shell) .text-rose-700, html.dark:has(.coach-shell) .text-rose-800, html.dark:has(.coach-shell) .text-rose-900 { color: #fb7185; }
+html.dark:has(.coach-shell) .text-teal-600, html.dark:has(.coach-shell) .text-teal-700, html.dark:has(.coach-shell) .text-teal-800, html.dark:has(.coach-shell) .text-teal-900 { color: #5eead4; }
+html.dark:has(.coach-shell) .text-indigo-600, html.dark:has(.coach-shell) .text-indigo-700, html.dark:has(.coach-shell) .text-indigo-800, html.dark:has(.coach-shell) .text-indigo-900 { color: #a5b4fc; }
+
 html:has(.coach-shell) ::selection {
     background: hsl(var(--primary) / 0.22);
 }
