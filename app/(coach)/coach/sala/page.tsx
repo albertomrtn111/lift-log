@@ -49,7 +49,7 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
 
     return (
         <div className="min-h-screen bg-background pb-24 lg:pb-8">
-            <CoachPageHeader eyebrow="Operativa" title="Sala" description="Sesiones presenciales de tus clientes." />
+            <CoachPageHeader eyebrow="Sala" title="Sesiones" description="Sesiones presenciales de tus clientes." />
             <div className="grid gap-4 p-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
                 <div className={grid ? 'hidden space-y-3 lg:block' : 'space-y-3'}>
                     <StudioPendingReports reports={pendingReports} />

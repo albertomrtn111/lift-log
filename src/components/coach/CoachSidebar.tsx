@@ -18,6 +18,7 @@ import {
     MessageCircle,
     MoreHorizontal,
     LineChart,
+    Video,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
 import { LogoMark, SpaceLogo } from '@/components/brand/LogoMark'
@@ -41,13 +42,18 @@ import { COACH_BADGES_CHANGED_EVENT, type CoachBadgesChangedDetail } from '@/lib
 import { useResyncOnReturn } from '@/hooks/useResyncOnReturn'
 import { resyncOnResubscribe, uniqueChannelName } from '@/lib/realtime'
 import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
+import { ENVIRONMENT_COOKIE, ENVIRONMENT_HOME, environmentForPath } from '@/lib/coach/environment-rules'
 
 interface NavItem {
     href: string
     icon: React.ComponentType<{ className?: string }>
     label: string
     badgeKey?: 'dashboardPending' | 'membersPendingSignup' | 'messagesUnread'
+    /** Solo activo en su ruta exacta, no en las que cuelgan de ella. */
+    exact?: boolean
 }
+
+type Environment = 'online' | 'sala'
 
 // Mismos grupos en la barra lateral, en el menú «Más» del móvil y en las
 // cabeceras de cada pantalla (CoachPageHeader eyebrow)
@@ -92,11 +98,65 @@ const mobileSecondarySections: Array<{ title: string; items: NavItem[] }> = [
     },
 ]
 
-const mobileSecondaryItems = mobileSecondarySections.flatMap(section => section.items)
+const MESSAGES_ITEM = navSections[0].items[1]
+const MEMBERS_ITEM = navSections[1].items[0]
 
-const STUDIO_NAV_ITEM: NavItem = { href: '/coach/sala', icon: Dumbbell, label: 'Sala' }
+// Sala es un entorno aparte: su propio menú, con lo de clientes compartido con Online.
+const salaSections: Array<{ title: string; items: NavItem[] }> = [
+    {
+        title: 'Sala',
+        items: [
+            { href: '/coach/sala', icon: Dumbbell, label: 'Sesiones', exact: true },
+            { href: '/coach/sala/videos', icon: Video, label: 'Vídeos' },
+        ],
+    },
+    { title: 'Clientes', items: [MESSAGES_ITEM, MEMBERS_ITEM] },
+]
 
-export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Workspace[]; studioEnabled: boolean }) {
+const salaPrimaryItems: NavItem[] = salaSections.flatMap(section => section.items)
+
+const SALA_SETTINGS_HREF = '/coach/settings?tab=integraciones'
+
+function isItemActive(item: NavItem, pathname: string | null) {
+    return item.exact ? pathname === item.href : Boolean(pathname?.startsWith(item.href))
+}
+
+function rememberEnvironment(environment: Environment) {
+    document.cookie = `${ENVIRONMENT_COOKIE}=${environment}; path=/; max-age=31536000; samesite=lax`
+}
+
+/** Online y Sala, a un toque. Solo sale en espacios que tienen las dos cosas. */
+function EnvironmentSwitch({ value, onChange, tone }: { value: Environment; onChange: (environment: Environment) => void; tone: 'dark' | 'light' }) {
+    return (
+        <div
+            role="group"
+            aria-label="Entorno"
+            className={cn('grid grid-cols-2 gap-1 rounded-full p-1', tone === 'dark' ? 'bg-white/[0.06] ring-1 ring-white/10' : 'bg-muted')}
+        >
+            {(['online', 'sala'] as const).map(option => (
+                <button
+                    key={option}
+                    type="button"
+                    aria-pressed={value === option}
+                    onClick={() => onChange(option)}
+                    className={cn(
+                        'h-8 rounded-full text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2',
+                        tone === 'dark'
+                            ? (value === option ? 'bg-white text-[#0B0D12]' : 'text-white/55 hover:text-white focus-visible:ring-white/40')
+                            : (value === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground focus-visible:ring-primary')
+                    )}
+                >
+                    {option === 'online' ? 'Online' : 'Sala'}
+                </button>
+            ))}
+        </div>
+    )
+}
+
+export function CoachSidebar({ workspaces, environment: space }: {
+    workspaces: Workspace[]
+    environment: { environment: Environment; canSwitch: boolean }
+}) {
     const pathname = usePathname()
     const router = useRouter()
     const [loggingOut, setLoggingOut] = useState(false)
@@ -140,11 +200,28 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
     // Get user context from cached provider
     const { coach } = useCoachContext()
     const brand = useSpaceBranding()
-    const desktopSections = studioEnabled
-        ? navSections.map((section, index) => (index === 0 ? { ...section, items: [STUDIO_NAV_ITEM, ...section.items] } : section))
-        : navSections
-    const moreSections = studioEnabled
-        ? [{ title: 'Sala', items: [STUDIO_NAV_ITEM] }, ...mobileSecondarySections]
+    // En qué entorno se está sale de la pantalla; las compartidas mantienen el último.
+    const [lastEnvironment, setLastEnvironment] = useState<Environment>(space.environment)
+    const environment: Environment = !space.canSwitch ? space.environment : environmentForPath(pathname, lastEnvironment)
+    useEffect(() => {
+        if (environment === lastEnvironment) return
+        setLastEnvironment(environment)
+        rememberEnvironment(environment)
+    }, [environment, lastEnvironment])
+
+    function switchEnvironment(target: Environment) {
+        if (target === environment) return
+        rememberEnvironment(target)
+        setLastEnvironment(target)
+        router.push(ENVIRONMENT_HOME[target])
+    }
+
+    const inSala = environment === 'sala'
+    const settingsHref = inSala ? SALA_SETTINGS_HREF : '/coach/settings'
+    const desktopSections = inSala ? salaSections : navSections
+    const primaryItems = inSala ? salaPrimaryItems : mobilePrimaryItems
+    const moreSections: Array<{ title: string; items: NavItem[] }> = inSala
+        ? [{ title: 'Cuenta', items: [{ href: SALA_SETTINGS_HREF, icon: Settings2, label: 'Ajustes' }] }]
         : mobileSecondarySections
     const userRole = coach?.role ?? 'coach'
     const coachId = coach?.coachId ?? null
@@ -194,8 +271,8 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
         }
     }
 
-    const isSecondaryRouteActive = moreSections.flatMap(section => section.items).some(item => pathname?.startsWith(item.href))
-    const secondaryBadgeCount = mobileSecondaryItems.reduce((total, item) => {
+    const isSecondaryRouteActive = moreSections.flatMap(section => section.items).some(item => pathname?.startsWith(item.href.split('?')[0]))
+    const secondaryBadgeCount = moreSections.flatMap(section => section.items).reduce((total, item) => {
         return total + (item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0)
     }, 0)
 
@@ -241,13 +318,19 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                         </div>
                     )}
 
+                    {space.canSwitch && (
+                        <div className="px-3 pb-1 pt-1">
+                            <EnvironmentSwitch value={environment} onChange={switchEnvironment} tone="dark" />
+                        </div>
+                    )}
+
                     <nav aria-label="Navegación del coach" className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
                         {desktopSections.map((section, idx) => (
                             <div key={section.title} className={cn(idx > 0 && 'mt-6')}>
                                 <p className="nt-eyebrow mb-2 px-3 text-[10px] text-white/35">{section.title}</p>
                                 <div className="space-y-0.5">
                                     {section.items.map((item) => {
-                                        const isActive = pathname?.startsWith(item.href)
+                                        const isActive = isItemActive(item, pathname)
                                         const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
 
                                         return (
@@ -286,7 +369,7 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                             </div>
                         )}
                         <Link
-                            href="/coach/settings"
+                            href={settingsHref}
                             prefetch={true}
                             aria-current={pathname?.startsWith('/coach/settings') ? 'page' : undefined}
                             className={cn(
@@ -295,7 +378,7 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                             )}
                         >
                             <Settings2 className="h-[18px] w-[18px]" />
-                            Ajustes
+                            {inSala ? 'Ajustes de sala' : 'Ajustes'}
                         </Link>
                         <button
                             type="button"
@@ -316,8 +399,8 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                 className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(var(--safe-area-bottom)+0.625rem)] pl-[calc(var(--safe-area-left)+0.75rem)] pr-[calc(var(--safe-area-right)+0.75rem)] lg:hidden"
             >
                 <div className="dark mx-auto grid max-w-md grid-cols-5 gap-0.5 rounded-full bg-[#0B0D12]/[0.92] p-1.5 shadow-[0_20px_50px_-12px_rgba(11,13,18,0.65)] ring-1 ring-white/10 backdrop-blur-xl">
-                    {mobilePrimaryItems.map((item) => {
-                        const isActive = pathname?.startsWith(item.href)
+                    {primaryItems.map((item) => {
+                        const isActive = isItemActive(item, pathname)
                         const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
 
                         return (
@@ -372,9 +455,14 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                             className="max-h-[80dvh] overflow-y-auto rounded-t-[28px] pb-[calc(var(--safe-area-bottom)+1.25rem)] pl-[calc(var(--safe-area-left)+1rem)] pr-[calc(var(--safe-area-right)+1rem)] pt-6"
                         >
                             <SheetHeader className="pr-12 text-left">
-                                <p className="nt-eyebrow text-muted-foreground">Portal del coach</p>
+                                <p className="nt-eyebrow text-muted-foreground">{inSala ? 'Sala' : 'Portal del coach'}</p>
                                 <SheetTitle className="nt-display text-[1.75rem]">Más opciones</SheetTitle>
                                 {workspaces.length > 1 && <WorkspaceSwitcher workspaces={workspaces} />}
+                                {space.canSwitch && (
+                                    <div className="pt-2">
+                                        <EnvironmentSwitch value={environment} onChange={switchEnvironment} tone="light" />
+                                    </div>
+                                )}
                                 <SheetDescription className="sr-only">
                                     Accede al resto de herramientas del portal de coach.
                                 </SheetDescription>
@@ -386,7 +474,7 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                                         <h3 className="nt-eyebrow mb-2.5 px-1 text-muted-foreground">{section.title}</h3>
                                         <div className="grid grid-cols-2 gap-2">
                                             {section.items.map(item => {
-                                                const isActive = pathname?.startsWith(item.href)
+                                                const isActive = isItemActive({ ...item, href: item.href.split('?')[0] }, pathname)
                                                 const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
 
                                                 return (
