@@ -279,7 +279,7 @@ html:has(.coach-shell) .nt-sheet :is(h2, [id^="radix-"][id$="-title"]):first-of-
 
 /* ---------------------------------------------------------------- Tablas */
 
-html:has(.coach-shell) .coach-shell table thead th {
+html:has(.coach-shell) .coach-shell table:not([data-nt-plain]) thead th {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 10.5px;
     font-weight: 500;
