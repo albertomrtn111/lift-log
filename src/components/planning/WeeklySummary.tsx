@@ -34,9 +34,9 @@ export function WeeklySummary({
 
     if (sessions.length === 0) {
         return (
-            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-                <p className="mt-1.5 text-sm text-muted-foreground">{emptyText}</p>
+            <section className="dark nt-stage rounded-[24px] p-5 text-foreground">
+                <p className="nt-eyebrow text-white/50">{title}</p>
+                <p className="mt-1.5 text-sm text-white/60">{emptyText}</p>
             </section>
         )
     }
@@ -69,16 +69,17 @@ export function WeeklySummary({
     const ratio = completed / sessions.length
     const pct = Math.round(ratio * 100)
 
+    // Panel de tinta en los dos temas, como el panel del día del coach: `dark` da los colores oscuros por dentro.
     return (
-        <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+        <section className="dark nt-stage nt-rise rounded-[24px] p-5 text-foreground">
             <div className="flex items-center gap-4">
-                <ProgressRing value={ratio}>{pct}%</ProgressRing>
+                <ProgressRing value={ratio} size={76} stroke={7} className="[&_circle:first-child]:stroke-white/10"><span className="nt-number text-[17px] text-white">{pct}%</span></ProgressRing>
                 <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-                    <p className="mt-0.5 text-lg font-semibold leading-tight">
-                        {completed} <span className="font-normal text-muted-foreground">de {sessions.length} sesiones</span>
+                    <p className="nt-eyebrow text-white/50">{title}</p>
+                    <p className="nt-title mt-1.5 text-[21px] leading-tight text-white">
+                        <span className="nt-number">{completed}</span> <span className="font-normal text-white/55">de {sessions.length} sesiones</span>
                     </p>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-white/55 tabular-nums">
                         {plannedKm > 0 && <span>{formatKm(completedKm)} / {formatKm(plannedKm)}</span>}
                         {completedMin > 0 && <span>{formatMinutes(completedMin)} entrenados</span>}
                     </div>
@@ -86,7 +87,7 @@ export function WeeklySummary({
             </div>
 
             {stats.length > 1 || stats[0]?.plannedKm ? (
-                <div className="mt-4 space-y-3 border-t border-border/60 pt-3.5">
+                <div className="mt-5 space-y-3.5 border-t border-white/10 pt-4">
                     {stats.map(s => {
                         const meta = SPORT_SUMMARY[s.sport]
                         const Icon = meta.icon
@@ -99,13 +100,13 @@ export function WeeklySummary({
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-                                        <span className="font-medium text-foreground">{meta.label}</span>
-                                        <span className="tabular-nums text-muted-foreground">
+                                        <span className="text-[13px] font-medium text-white">{meta.label}</span>
+                                        <span className="tabular-nums text-white/55">
                                             {s.completed}/{s.total}
                                             {useKm && ` · ${formatKm(s.completedKm)} de ${formatKm(s.plannedKm)}`}
                                         </span>
                                     </div>
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
                                         <div
                                             className={cn('h-full rounded-full transition-[width] duration-700 ease-out', meta.accent)}
                                             style={{ width: `${Math.min(Math.round(value * 100), 100)}%` }}

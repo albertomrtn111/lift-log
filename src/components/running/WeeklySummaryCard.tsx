@@ -1,4 +1,3 @@
-import { Card } from '@/components/ui/card'
 import { CalendarItem } from '@/data/client-schedule'
 import { TrendingUp, CheckCircle2 } from 'lucide-react'
 
@@ -25,56 +24,60 @@ export function WeeklySummaryCard({ items }: WeeklySummaryCardProps) {
     ? Math.round((completedSessions / totalSessions) * 100)
     : 0
 
+  // Kilómetros en español: «19,3».
+  const km = (value: number) => value.toLocaleString('es-ES', { maximumFractionDigits: 1 })
+
+  // Panel de tinta en los dos temas, como el del Plan: `dark` da los colores oscuros por dentro.
   if (totalSessions === 0) {
     return (
-      <Card className="p-4">
-        <h3 className="text-sm font-medium text-muted-foreground mb-2">Resumen semanal</h3>
-        <p className="text-sm text-muted-foreground">No hay sesiones planificadas esta semana.</p>
-      </Card>
+      <section className="dark nt-stage rounded-[24px] p-5 text-foreground">
+        <p className="nt-eyebrow text-white/50">Resumen semanal</p>
+        <p className="mt-1.5 text-sm text-white/60">No hay sesiones planificadas esta semana.</p>
+      </section>
     )
   }
 
   return (
-    <Card className="p-4">
-      <h3 className="text-sm font-medium text-muted-foreground mb-3">Resumen semanal</h3>
+    <section className="dark nt-stage nt-rise rounded-[24px] p-5 text-foreground">
+      <p className="nt-eyebrow text-white/50">Resumen semanal</p>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="mt-4 grid grid-cols-2 gap-6">
         {plannedDistance > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[13px] text-white/55">
               <TrendingUp className="h-4 w-4 text-primary" />
-              <span className="text-sm text-muted-foreground">Distancia</span>
+              Distancia
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold">{completedDistance.toFixed(1)}</span>
-              <span className="text-muted-foreground">/ {plannedDistance} km</span>
+            <div className="mt-1.5 flex items-baseline gap-1.5">
+              <span className="nt-number text-[2.25rem] leading-none text-white">{km(completedDistance)}</span>
+              <span className="text-[14px] text-white/55">/ {km(plannedDistance)} km</span>
             </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
               <div
-                className="h-full bg-primary rounded-full transition-all"
+                className="h-full rounded-full bg-primary transition-all"
                 style={{ width: `${Math.min(distancePercent, 100)}%` }}
               />
             </div>
           </div>
         )}
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[13px] text-white/55">
             <CheckCircle2 className="h-4 w-4 text-success" />
-            <span className="text-sm text-muted-foreground">Sesiones</span>
+            Sesiones
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold">{completedSessions}</span>
-            <span className="text-muted-foreground">/ {totalSessions}</span>
+          <div className="mt-1.5 flex items-baseline gap-1.5">
+            <span className="nt-number text-[2.25rem] leading-none text-white">{completedSessions}</span>
+            <span className="text-[14px] text-white/55">/ {totalSessions}</span>
           </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
             <div
-              className="h-full bg-success rounded-full transition-all"
+              className="h-full rounded-full bg-success transition-all"
               style={{ width: `${Math.min(sessionsPercent, 100)}%` }}
             />
           </div>
         </div>
       </div>
-    </Card>
+    </section>
   )
 }
