@@ -10,14 +10,9 @@ import { redirect } from 'next/navigation'
 import { canManageTeam } from '@/lib/team/team-rules'
 import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
 import { getMyWorkspaces } from '@/lib/auth/active-coach'
-import { Inter_Tight, JetBrains_Mono } from 'next/font/google'
+import { premiumFontVars } from '@/lib/premium-fonts'
+import '@/styles/nt-premium.css'
 import './coach-premium.css'
-
-// Tipografías de la web comercial, solo para el coach: titulares y etiquetas.
-const display = Inter_Tight({ subsets: ['latin'], weight: ['500', '600', '700'], display: 'swap' })
-const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], display: 'swap' })
-// Como variables en <html>, para que lleguen también a diálogos, hojas y menús.
-const fontVars = `html:has(.coach-shell){--font-display:${display.style.fontFamily};--font-mono:${mono.style.fontFamily}}`
 
 export const generateMetadata = spaceBrandingMetadata
 
@@ -59,7 +54,7 @@ export default async function CoachLayout({
 
     return (
         <SpaceBranding>
-            <style dangerouslySetInnerHTML={{ __html: fontVars }} />
+            <style dangerouslySetInnerHTML={{ __html: premiumFontVars }} />
             <CoachProvider>
                 <CoachNotificationsProvider>
                     <div className="coach-shell coach-mobile-shell flex min-h-screen min-w-0 overflow-x-hidden bg-background pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] lg:px-0">
