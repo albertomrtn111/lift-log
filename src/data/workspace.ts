@@ -213,7 +213,7 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
     const clientIds = data.map(c => c.id)
 
     // Get latest checkin per client to check pending review
-    const [{ data: checkins }, avatarsByClient] = await Promise.all([
+    const [{ data: checkins }, avatarsByClient, { data: schedules }] = await Promise.all([
         supabase
             .from('checkins')
             .select('id, client_id')
@@ -222,7 +222,21 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
             .not('submitted_at', 'is', null)
             .order('submitted_at', { ascending: false }),
         getAthleteAvatarUrls(data),
+        // Próxima revisión efectiva: la del calendario de revisiones (modelo nuevo);
+        // el campo antiguo next_checkin_date solo cuenta si el atleta no tiene ninguno.
+        supabase
+            .from('client_review_schedules')
+            .select('client_id, next_due_date')
+            .in('client_id', clientIds)
+            .eq('is_active', true)
+            .not('next_due_date', 'is', null)
+            .order('next_due_date', { ascending: true }),
     ])
+
+    const earliestDueByClient = new Map<string, string>()
+    for (const row of (schedules ?? []) as { client_id: string; next_due_date: string }[]) {
+        if (!earliestDueByClient.has(row.client_id)) earliestDueByClient.set(row.client_id, row.next_due_date)
+    }
 
     const latestCheckinByClient = new Map<string, string>()
     for (const c of (checkins || [])) {
@@ -245,7 +259,8 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
     }
 
     return data.map(c => {
-        const nextCheckin = c.next_checkin_date ? new Date(c.next_checkin_date + 'T00:00:00') : null
+        const effectiveDate = earliestDueByClient.get(c.id) ?? c.next_checkin_date
+        const nextCheckin = effectiveDate ? new Date(effectiveDate + 'T00:00:00') : null
         const daysUntil = nextCheckin
             ? Math.ceil((nextCheckin.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
             : null

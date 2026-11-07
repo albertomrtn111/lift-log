@@ -46,6 +46,7 @@ import { ReviewScheduleSelectorDialog } from '../ReviewScheduleSelectorDialog'
 import type { ReviewTemplate } from '@/data/review-templates'
 import type { ClientReviewScheduleWithTemplate } from '@/data/review-schedules'
 import { useToast } from '@/hooks/use-toast'
+import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { parseLocalDate } from '@/lib/date-utils'
@@ -59,9 +60,17 @@ interface WorkspaceHeaderProps {
     formTemplates: FormTemplate[]
     reviewTemplates?: ReviewTemplate[]
     onClientUpdated: () => void
+    /** Con selector, la cabecera es una barra fija: el atleta es el botón para cambiar */
+    selector?: (subline: React.ReactNode) => React.ReactNode
+    /** Anterior / siguiente atleta, a la derecha del selector */
+    navigation?: React.ReactNode
+    /** Pestañas del Workspace, dentro de la barra fija */
+    tabs?: React.ReactNode
+    /** «Workspace · 3 de 10»: en el móvil va encima, junto a las flechas */
+    eyebrow?: string
 }
 
-export function WorkspaceHeader({ client, avatarUrl, clientStatus, coachId, formTemplates, reviewTemplates, onClientUpdated }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ client, avatarUrl, clientStatus, coachId, formTemplates, reviewTemplates, onClientUpdated, selector, navigation, tabs, eyebrow }: WorkspaceHeaderProps) {
     const [isPending, startTransition] = useTransition()
     const [editModalOpen, setEditModalOpen] = useState(false)
     const [onboardingLinkModal, setOnboardingLinkModal] = useState<{ url: string } | null>(null)
@@ -184,6 +193,212 @@ export function WorkspaceHeader({ client, avatarUrl, clientStatus, coachId, form
     const formattedCheckinDate = effectiveCheckinDate
         ? format(parseLocalDate(effectiveCheckinDate), "EEE d 'de' MMM", { locale: es })
         : null
+
+    // Editar y el menú de acciones del atleta
+    const actionsMenu = (
+        <div className="flex shrink-0 items-center gap-1 self-start sm:gap-2 xl:self-center">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditModalOpen(true)}
+                className="hidden sm:inline-flex"
+            >
+                <Edit className="h-4 w-4 mr-2" />
+                Editar
+            </Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" aria-label="Acciones del cliente">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditModalOpen(true)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Editar cliente
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={handleSendOnboarding}
+                        disabled={isPending}
+                    >
+                        {isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <ClipboardList className="h-4 w-4 mr-2" />
+                        )}
+                        Enviar onboarding
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        onClick={handleSendReview}
+                        disabled={isPending}
+                    >
+                        {isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+                        Enviar revisión
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={handleToggleStatus}
+                        disabled={isPending}
+                        className={cn(
+                            client.status === 'active' && 'text-destructive focus:text-destructive',
+                            client.status === 'inactive' && 'text-success focus:text-success'
+                        )}
+                    >
+                        {client.status === 'active' ? (
+                            <UserX className="h-4 w-4 mr-2" />
+                        ) : (
+                            <UserCheck className="h-4 w-4 mr-2" />
+                        )}
+                        {client.status === 'active' ? 'Dar de baja' : 'Reactivar'}
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    )
+
+    const subline = (
+        <>
+            <span className="sm:hidden">{client.status === 'active' ? 'Activo' : client.status === 'inactive' ? 'Inactivo' : 'Sin estado'}{formattedCheckinDate && <> · revisión <span className="capitalize">{formattedCheckinDate}</span></>}</span>
+            <span className="hidden sm:inline">{client.email}{formattedCheckinDate && <> · Revisión <span className="capitalize">{formattedCheckinDate}</span></>}</span>
+            {isPendingSignup && <span className="ml-2 rounded-full bg-amber-500/[0.12] px-2 py-0.5 text-[11.5px] font-semibold text-amber-700 dark:text-amber-300">Registro pendiente</span>}
+        </>
+    )
+
+    if (selector) {
+        return (
+            <>
+                {/* Barra fija: el atleta, cambiar de atleta y las secciones siempre a mano */}
+                <div className="nt-glass sticky top-[var(--safe-area-top)] z-30 -mx-3 border-b border-border/60 px-3 pt-3 sm:-mx-4 sm:px-4 lg:top-0 lg:-mx-8 lg:px-8 lg:pt-6">
+                    {/* Móvil: posición, flechas, acciones y avisos en una fila fina */}
+                    <div className="mb-2.5 flex items-center gap-1.5 sm:hidden">
+                        <p className="nt-eyebrow min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{eyebrow}</p>
+                        {navigation}
+                        {actionsMenu}
+                        <CoachNotificationsBell />
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="min-w-0 flex-1">{selector(subline)}</div>
+                        <div className="hidden items-center gap-2 sm:flex">
+                            {navigation}
+                            {actionsMenu}
+                        </div>
+                    </div>
+                    {tabs && <div className="-mx-3 mt-3 sm:mx-0 lg:mt-5">{tabs}</div>}
+                </div>
+                {/* Pending Signup Banner */}
+                {isPendingSignup && (
+                    <Card className="mt-4 border-amber-500/30 bg-amber-500/[0.06] p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                            <div className="flex items-start sm:items-center gap-3">
+                                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+                                <div>
+                                    <p className="font-medium text-amber-500">Este cliente aún no se ha registrado</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Ya puedes preparar su objetivo, sus datos, el plan y los eventos. Revisiones y Progreso se activarán cuando cree su cuenta con la invitación.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full shrink-0 gap-2 border-amber-500/30 text-amber-500 hover:bg-amber-500/10 sm:w-auto"
+                                onClick={handleResendInvite}
+                                disabled={isPending}
+                            >
+                                {isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Send className="h-4 w-4" />
+                                )}
+                                Reenviar invitación
+                            </Button>
+                        </div>
+                    </Card>
+                )}
+
+                <ReviewScheduleSelectorDialog
+                    open={!!scheduleSelector}
+                    onOpenChange={(v) => { if (!v) setScheduleSelector(null) }}
+                    clientName={client.full_name}
+                    schedules={scheduleSelector ?? []}
+                    onSelect={(scheduleId) => performSendReview(scheduleId)}
+                    isSending={isPending}
+                />
+
+                <EditClientModal
+                    client={client}
+                    formTemplates={formTemplates}
+                    reviewTemplates={reviewTemplates}
+                    open={editModalOpen}
+                    onOpenChange={setEditModalOpen}
+                    onSuccess={onClientUpdated}
+                />
+
+                {/* Onboarding Link Modal */}
+                <Dialog open={!!onboardingLinkModal} onOpenChange={(v) => { if (!v) { setOnboardingLinkModal(null); setCopied(false) } }}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Onboarding creado</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                                Comparte este enlace con el cliente para que complete su onboarding:
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    readOnly
+                                    value={onboardingLinkModal?.url ?? ''}
+                                    className="text-xs font-mono"
+                                />
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={handleCopyOnboardingLink}
+                                    className="shrink-0"
+                                >
+                                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Review Link Modal */}
+                <Dialog open={!!reviewLinkModal} onOpenChange={(v) => { if (!v) { setReviewLinkModal(null); setCopied(false) } }}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Revisión creada</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                                Comparte este enlace con el cliente para que complete su revisión:
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    readOnly
+                                    value={reviewLinkModal?.url ?? ''}
+                                    className="text-xs font-mono"
+                                />
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={handleCopyReviewLink}
+                                    className="shrink-0"
+                                >
+                                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </>
+        )
+    }
 
     return (
         <>
