@@ -33,7 +33,7 @@ function Kpi({ result, height }: { result: Extract<WidgetResult, { kind: 'kpi' }
     const detail = formatSetDetail(result.detail)
     return (
         <div className="flex flex-col justify-center" style={{ minHeight: Math.min(height, 72) }}>
-            <p className={cn('text-2xl font-bold tabular-nums tracking-tight sm:text-3xl', TONE_TEXT[toneOf(result.metric, result.value)])}>
+            <p className={cn('nt-number text-[1.75rem] leading-none sm:text-[2.1rem]', TONE_TEXT[toneOf(result.metric, result.value)])}>
                 {formatMetric(result.metric, result.value)}
             </p>
             {delta && (
