@@ -199,52 +199,47 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
         return total + (item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0)
     }, 0)
 
+    const countLabel = (count: number) => (count > 99 ? '99+' : String(count))
+
     return (
         <>
-            {/* Sidebar */}
+            {/* Barra lateral: tinta en los dos temas, como la web. `dark` hace que
+                todo lo de dentro (campana, selector de espacio) use sus colores oscuros. */}
             <aside
-                className={cn(
-                    'fixed left-0 top-0 z-50 h-full border-r border-sidebar-border/80 bg-sidebar/95 text-sidebar-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.28)] backdrop-blur-xl transition-all duration-300 dark:border-white/10 dark:shadow-[0_28px_70px_-36px_rgba(2,6,23,0.95)]',
-                    'hidden w-64 lg:block'
-                )}
+                className="dark fixed left-0 top-0 z-50 hidden h-full w-64 border-r border-white/[0.07] bg-[#0B0D12] text-white lg:block"
             >
                 <div className="flex h-full flex-col">
-                    {/* Logo */}
-                    <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
+                    <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
                         {brand?.logoLightUrl ? (
                             <SpaceLogo
-                                lightUrl={brand.logoLightUrl}
+                                lightUrl={brand.logoDarkUrl ?? brand.logoLightUrl}
                                 darkUrl={brand.logoDarkUrl}
                                 alt=""
-                                className="h-8 max-w-[96px] shrink-0"
+                                className="h-7 max-w-[96px] shrink-0"
                             />
                         ) : (
-                            <LogoMark className="h-8 text-foreground" />
+                            <LogoMark className="h-7 text-white" arrowClassName="fill-brand-light stroke-brand-light" />
                         )}
                         <div className="min-w-0 leading-none">
-                            <h1 className="truncate text-[1.0625rem] font-bold tracking-tight text-foreground">
-                                {brand?.displayName ?? 'NexTrain'}
-                            </h1>
-                            <p className="mt-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground/90">
-                                {brand ? 'con NexTrain' : 'Coach Portal'}
+                            <p className="nt-title truncate text-[1.15rem] text-white">
+                                {brand?.displayName ?? <>Nex<span className="text-white/55">Train</span></>}
                             </p>
+                            {brand && <p className="nt-eyebrow mt-1.5 text-[9.5px] text-white/40">con NexTrain</p>}
                         </div>
-                        <CoachNotificationsBell className="ml-auto" />
+                        <CoachNotificationsBell className="ml-auto border-white/10 bg-white/[0.04] hover:bg-white/10" />
                     </div>
+
                     {workspaces.length > 1 && (
-                        <div className="border-b border-border p-3">
+                        <div className="px-3 pb-2">
                             <WorkspaceSwitcher workspaces={workspaces} />
                         </div>
                     )}
 
-                    {/* Navigation - Scrollable Area */}
-                    <div className="flex-1 overflow-y-auto py-4">
+                    <nav aria-label="Navegación del coach" className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
                         {desktopSections.map((section, idx) => (
-                            <div key={section.title} className={cn('px-3', idx > 0 ? 'mt-6 border-t border-border/50 pt-4' : '')}>
-                                <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    {section.title}
-                                </h3>
-                                <nav className="space-y-1">
+                            <div key={section.title} className={cn(idx > 0 && 'mt-6')}>
+                                <p className="nt-eyebrow mb-2 px-3 text-[10px] text-white/35">{section.title}</p>
+                                <div className="space-y-0.5">
                                     {section.items.map((item) => {
                                         const isActive = pathname?.startsWith(item.href)
                                         const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
@@ -254,70 +249,67 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                                                 key={item.href}
                                                 href={item.href}
                                                 prefetch={true}
+                                                aria-current={isActive ? 'page' : undefined}
                                                 className={cn(
-                                                    'flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50',
-                                                    isActive && 'bg-primary/10 font-medium text-primary'
+                                                    'group flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium text-white/60 transition-colors duration-200 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+                                                    isActive && 'bg-white text-[#0B0D12] hover:bg-white hover:text-[#0B0D12]'
                                                 )}
                                             >
-                                                <div className="relative shrink-0">
-                                                    <item.icon className={cn('h-5 w-5', isActive && 'text-primary')} />
-                                                    {badgeCount > 0 && (
-                                                        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                                                            {badgeCount > 99 ? '99+' : badgeCount}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <span>{item.label}</span>
+                                                <item.icon className={cn('h-[18px] w-[18px] shrink-0', isActive ? 'text-[#0058D8]' : 'text-white/45 group-hover:text-white/80')} />
+                                                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                                                {badgeCount > 0 && (
+                                                    <span className={cn(
+                                                        'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                                                        isActive ? 'bg-[#0B0D12] text-white' : 'bg-destructive text-white'
+                                                    )}>
+                                                        {countLabel(badgeCount)}
+                                                    </span>
+                                                )}
                                             </Link>
                                         )
                                     })}
-                                </nav>
+                                </div>
                             </div>
                         ))}
-                    </div>
+                    </nav>
 
-                    {/* Account Section & Bottom Actions (Sticky) */}
-                    <div className="mt-auto border-t border-sidebar-border/70 bg-sidebar/90 px-3 pb-2 pt-4 backdrop-blur-xl">
+                    <div className="border-t border-white/[0.07] px-3 pb-4 pt-3">
                         {userRole === 'both' && (
-                            <div className="mb-2 border-b border-border/50 pb-2">
+                            <div className="mb-2 border-b border-white/[0.07] pb-2">
                                 <ModeSwitch role={userRole} currentMode="coach" variant="toggle" />
                             </div>
                         )}
-
-                        <div className="flex flex-col gap-1">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn('w-full justify-start', pathname?.startsWith('/coach/settings') && 'bg-primary/10 text-primary')}
-                                asChild
-                            >
-                                <Link href="/coach/settings" prefetch={true}>
-                                    <Settings2 className="mr-2 h-4 w-4" />
-                                    Ajustes
-                                </Link>
-                            </Button>
-
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={handleLogout}
-                                disabled={loggingOut}
-                            >
-                                <LogOut className="mr-2 h-4 w-4" />
-                                {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
-                            </Button>
-                        </div>
+                        <Link
+                            href="/coach/settings"
+                            prefetch={true}
+                            aria-current={pathname?.startsWith('/coach/settings') ? 'page' : undefined}
+                            className={cn(
+                                'flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium text-white/60 transition-colors hover:bg-white/[0.06] hover:text-white',
+                                pathname?.startsWith('/coach/settings') && 'bg-white text-[#0B0D12] hover:bg-white hover:text-[#0B0D12]'
+                            )}
+                        >
+                            <Settings2 className="h-[18px] w-[18px]" />
+                            Ajustes
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            disabled={loggingOut}
+                            className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[14px] font-medium text-white/45 transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-60"
+                        >
+                            <LogOut className="h-[18px] w-[18px]" />
+                            {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+                        </button>
                     </div>
                 </div>
             </aside>
 
-            {/* Mobile bottom navigation: four primary actions and one overflow menu. */}
+            {/* Móvil: dock flotante de tinta con cuatro accesos y «Más», como el de la web. */}
             <nav
                 aria-label="Navegación principal del coach"
-                className="fixed inset-x-0 bottom-0 z-50 border-t border-border/70 bg-card/95 shadow-[0_-16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:hidden"
+                className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(var(--safe-area-bottom)+0.625rem)] pl-[calc(var(--safe-area-left)+0.75rem)] pr-[calc(var(--safe-area-right)+0.75rem)] lg:hidden"
             >
-                <div className="grid grid-cols-5 items-stretch pb-[var(--safe-area-bottom)] pl-[calc(var(--safe-area-left)+0.25rem)] pr-[calc(var(--safe-area-right)+0.25rem)] pt-1">
+                <div className="dark mx-auto grid max-w-md grid-cols-5 gap-0.5 rounded-full bg-[#0B0D12]/[0.92] p-1.5 shadow-[0_20px_50px_-12px_rgba(11,13,18,0.65)] ring-1 ring-white/10 backdrop-blur-xl">
                     {mobilePrimaryItems.map((item) => {
                         const isActive = pathname?.startsWith(item.href)
                         const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
@@ -329,24 +321,19 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                                 prefetch={true}
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(
-                                    'relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-2 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                                    isActive && 'text-primary'
+                                    'relative flex h-[52px] min-w-0 flex-col items-center justify-center gap-1 rounded-full px-0.5 text-white/55 transition-[color,background-color,transform] duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+                                    isActive && 'bg-white text-[#0B0D12]'
                                 )}
                             >
-                                <span className={cn(
-                                    'relative flex h-7 w-10 items-center justify-center rounded-full transition-colors',
-                                    isActive && 'bg-primary/10'
-                                )}>
-                                    <item.icon className="h-[21px] w-[21px]" />
+                                <span className="relative">
+                                    <item.icon className={cn('h-5 w-5', isActive && 'text-[#0058D8]')} />
                                     {badgeCount > 0 && (
-                                        <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-none text-destructive-foreground">
-                                            {badgeCount > 99 ? '99+' : badgeCount}
+                                        <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9.5px] font-bold leading-none text-white ring-2 ring-[#0B0D12]">
+                                            {countLabel(badgeCount)}
                                         </span>
                                     )}
                                 </span>
-                                <span className="max-w-full truncate text-[10px] font-semibold leading-none">
-                                    {item.label}
-                                </span>
+                                <span className="max-w-full truncate text-[10.5px] font-semibold leading-none">{item.label}</span>
                             </Link>
                         )
                     })}
@@ -358,43 +345,39 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                                 aria-label="Abrir más opciones"
                                 aria-current={isSecondaryRouteActive ? 'page' : undefined}
                                 className={cn(
-                                    'relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-2 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                                    (isSecondaryRouteActive || mobileMenuOpen) && 'text-primary'
+                                    'relative flex h-[52px] min-w-0 flex-col items-center justify-center gap-1 rounded-full px-0.5 text-white/55 transition-[color,background-color,transform] duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+                                    (isSecondaryRouteActive || mobileMenuOpen) && 'bg-white text-[#0B0D12]'
                                 )}
                             >
-                                <span className={cn(
-                                    'relative flex h-7 w-10 items-center justify-center rounded-full transition-colors',
-                                    (isSecondaryRouteActive || mobileMenuOpen) && 'bg-primary/10'
-                                )}>
-                                    <MoreHorizontal className="h-[22px] w-[22px]" />
+                                <span className="relative">
+                                    <MoreHorizontal className="h-5 w-5" />
                                     {secondaryBadgeCount > 0 && (
-                                        <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-none text-destructive-foreground">
-                                            {secondaryBadgeCount > 99 ? '99+' : secondaryBadgeCount}
+                                        <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9.5px] font-bold leading-none text-white ring-2 ring-[#0B0D12]">
+                                            {countLabel(secondaryBadgeCount)}
                                         </span>
                                     )}
                                 </span>
-                                <span className="text-[10px] font-semibold leading-none">Más</span>
+                                <span className="text-[10.5px] font-semibold leading-none">Más</span>
                             </button>
                         </SheetTrigger>
 
                         <SheetContent
                             side="bottom"
-                            className="max-h-[78dvh] overflow-y-auto rounded-t-3xl pb-[calc(var(--safe-area-bottom)+1.25rem)] pl-[calc(var(--safe-area-left)+1rem)] pr-[calc(var(--safe-area-right)+1rem)] pt-5"
+                            className="max-h-[80dvh] overflow-y-auto rounded-t-[28px] pb-[calc(var(--safe-area-bottom)+1.25rem)] pl-[calc(var(--safe-area-left)+1rem)] pr-[calc(var(--safe-area-right)+1rem)] pt-6"
                         >
                             <SheetHeader className="pr-12 text-left">
-                                <SheetTitle>Más opciones</SheetTitle>
+                                <p className="nt-eyebrow text-muted-foreground">Portal del coach</p>
+                                <SheetTitle className="nt-display text-[1.75rem]">Más opciones</SheetTitle>
                                 {workspaces.length > 1 && <WorkspaceSwitcher workspaces={workspaces} />}
-                                <SheetDescription>
+                                <SheetDescription className="sr-only">
                                     Accede al resto de herramientas del portal de coach.
                                 </SheetDescription>
                             </SheetHeader>
 
-                            <div className="mt-5 space-y-5">
+                            <div className="mt-5 space-y-6">
                                 {moreSections.map(section => (
                                     <section key={section.title}>
-                                        <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                            {section.title}
-                                        </h3>
+                                        <h3 className="nt-eyebrow mb-2.5 px-1 text-muted-foreground">{section.title}</h3>
                                         <div className="grid grid-cols-2 gap-2">
                                             {section.items.map(item => {
                                                 const isActive = pathname?.startsWith(item.href)
@@ -407,15 +390,15 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                                                             prefetch={true}
                                                             aria-current={isActive ? 'page' : undefined}
                                                             className={cn(
-                                                                'flex min-h-14 items-center gap-3 rounded-2xl border border-border/70 bg-card px-3 py-3 text-sm font-medium transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                                                                isActive && 'border-primary/30 bg-primary/10 text-primary'
+                                                                'flex min-h-[3.75rem] items-center gap-3 rounded-2xl border border-border/80 bg-card px-3 py-3 text-[15px] font-medium transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                                                                isActive && 'border-foreground bg-foreground text-background'
                                                             )}
                                                         >
-                                                            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted">
-                                                                <item.icon className="h-5 w-5" />
+                                                            <span className={cn('relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted', isActive && 'bg-background/15')}>
+                                                                <item.icon className="h-[18px] w-[18px]" />
                                                                 {badgeCount > 0 && (
-                                                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
-                                                                        {badgeCount > 99 ? '99+' : badgeCount}
+                                                                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9.5px] font-bold text-white">
+                                                                        {countLabel(badgeCount)}
                                                                     </span>
                                                                 )}
                                                             </span>
@@ -436,7 +419,7 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
 
                                 <Button
                                     variant="ghost"
-                                    className="h-12 w-full justify-start rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    className="h-12 w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
                                     onClick={handleLogout}
                                     disabled={loggingOut}
                                 >
