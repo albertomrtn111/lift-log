@@ -2,6 +2,8 @@
 
 import { useEffect, useLayoutEffect, useState } from 'react'
 import Link from 'next/link'
+import * as TooltipPrimitive from '@radix-ui/react-tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import { cn } from '@/lib/utils'
 
@@ -23,10 +25,10 @@ const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayout
 
 // Tamaño de cada atleta según cuántos haya: con pocos se ven grandes, con muchos caben todos.
 function layout(count: number) {
-    if (count <= 12) return { size: 'h-10 w-10 text-[13px] sm:h-12 sm:w-12 sm:text-[15px]', cols: 'grid-cols-6', ring: '-inset-[4px] sm:-inset-[5px]' }
-    if (count <= 24) return { size: 'h-8 w-8 text-[11px] sm:h-11 sm:w-11 sm:text-[14px]', cols: 'grid-cols-8', ring: '-inset-[3px] sm:-inset-[4px]' }
-    if (count <= 40) return { size: 'h-9 w-9 text-[12px]', cols: 'grid-cols-8', ring: '-inset-[4px]' }
-    return { size: 'h-7 w-7 text-[10px]', cols: 'grid-cols-10 sm:grid-cols-12', ring: '-inset-[3px]' }
+    if (count <= 12) return { size: 'h-10 w-10 text-[13px] sm:h-12 sm:w-12 sm:text-[15px]', cols: 'grid-cols-6', ring: '-inset-[4px] sm:-inset-[5px]', perRow: 6 }
+    if (count <= 24) return { size: 'h-8 w-8 text-[11px] sm:h-11 sm:w-11 sm:text-[14px]', cols: 'grid-cols-8', ring: '-inset-[3px] sm:-inset-[4px]', perRow: 8 }
+    if (count <= 40) return { size: 'h-9 w-9 text-[12px]', cols: 'grid-cols-8', ring: '-inset-[4px]', perRow: 8 }
+    return { size: 'h-7 w-7 text-[10px]', cols: 'grid-cols-10 sm:grid-cols-12', ring: '-inset-[3px]', perRow: 12 }
 }
 
 /**
@@ -58,7 +60,7 @@ export function AthleteWall({ athletes }: { athletes: WallAthlete[] }) {
 
     const shown = athletes.slice(0, MAX_TILES)
     const hidden = athletes.length - shown.length
-    const { size, cols, ring } = layout(shown.length)
+    const { size, cols, ring, perRow } = layout(shown.length)
 
     return (
         <div className={cn('w-full', play && 'nt-wall-play', pulse && 'nt-wall-pulse')}>
@@ -69,36 +71,52 @@ export function AthleteWall({ athletes }: { athletes: WallAthlete[] }) {
                     const delay = `${Math.min(index, 30) * 28}ms`
                     return (
                         <li key={athlete.id} className="relative">
-                            <Link
-                                href={`/coach/clients?client=${athlete.id}`}
-                                aria-label={lit ? `${athlete.name}: ${athlete.reason}` : athlete.name}
-                                className={cn(
-                                    'group relative block rounded-full focus-visible:outline-none',
-                                    lit ? 'nt-wall-lit z-10' : 'nt-wall-tile'
-                                )}
-                                style={{ animationDelay: lit ? `${delay}, 1200ms` : `${delay}, 1100ms` }}
-                            >
-                                {lit && (
-                                    <span
-                                        aria-hidden
-                                        className={cn('nt-wall-ring absolute rounded-full border-2', ring)}
-                                        style={{ color: RING[athlete.severity!], borderColor: RING[athlete.severity!] }}
-                                    />
-                                )}
-                                <AthleteAvatar
-                                    initials={athlete.initials}
-                                    avatarUrl={athlete.avatarUrl}
-                                    seed={athlete.name}
-                                    className={cn(size, 'ring-1 ring-white/10')}
-                                />
-                                <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute left-1/2 top-full z-20 mt-2.5 hidden -translate-x-1/2 whitespace-nowrap rounded-xl bg-[#1F2433] px-3 py-2 text-left opacity-0 shadow-[0_18px_40px_-10px_rgba(0,0,0,0.9)] ring-1 ring-white/15 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 sm:block"
-                                >
-                                    <span className="block text-[13px] font-semibold text-white">{athlete.name}</span>
-                                    {athlete.reason && <span className="mt-0.5 block text-[12px] text-white/60">{athlete.reason}</span>}
-                                </span>
-                            </Link>
+                            {/* La ficha va en un portal: el panel recorta lo que se sale y la fila
+                                de abajo la tapaba. */}
+                            <Tooltip delayDuration={60} disableHoverableContent>
+                                <TooltipTrigger asChild>
+                                    <Link
+                                        href={`/coach/clients?client=${athlete.id}`}
+                                        aria-label={lit ? `${athlete.name}: ${athlete.reason}` : athlete.name}
+                                        className={cn(
+                                            'group relative block rounded-full focus-visible:outline-none',
+                                            lit ? 'nt-wall-lit z-10' : 'nt-wall-tile'
+                                        )}
+                                        style={{ animationDelay: lit ? `${delay}, 1200ms` : `${delay}, 1100ms` }}
+                                    >
+                                        {lit && (
+                                            <span
+                                                aria-hidden
+                                                className={cn('nt-wall-ring absolute rounded-full border-2', ring)}
+                                                style={{ color: RING[athlete.severity!], borderColor: RING[athlete.severity!] }}
+                                            />
+                                        )}
+                                        <AthleteAvatar
+                                            initials={athlete.initials}
+                                            avatarUrl={athlete.avatarUrl}
+                                            seed={athlete.name}
+                                            className={cn(size, 'ring-1 ring-white/10')}
+                                        />
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipPrimitive.Portal>
+                                    <TooltipContent
+                                        // Primera fila: encima, para no tapar la de abajo; el resto, debajo.
+                                        side={index < perRow ? 'top' : 'bottom'}
+                                        sideOffset={10}
+                                        collisionPadding={12}
+                                        className="dark pointer-events-none z-[60] max-w-[280px] rounded-xl border-white/15 bg-[#1F2433] px-3.5 py-2.5 text-left text-white shadow-[0_18px_40px_-10px_rgba(0,0,0,0.9)]"
+                                    >
+                                        <p className="flex items-center gap-2 text-[13.5px] font-semibold leading-tight">
+                                            {athlete.severity && (
+                                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: RING[athlete.severity] }} />
+                                            )}
+                                            {athlete.name}
+                                        </p>
+                                        {athlete.reason && <p className="mt-1 text-[12.5px] leading-snug text-white/65">{athlete.reason}</p>}
+                                    </TooltipContent>
+                                </TooltipPrimitive.Portal>
+                            </Tooltip>
                         </li>
                     )
                 })}
