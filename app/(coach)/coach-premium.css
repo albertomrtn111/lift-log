@@ -10,10 +10,6 @@ html:has(.coach-shell) .coach-mobile-main > .overflow-x-hidden {
     overflow-x: clip;
 }
 
-html.dark:has(.coach-shell) .coach-mobile-main {
-    background-image: radial-gradient(70% 420px at 78% -120px, hsl(var(--primary) / 0.16), transparent);
-    background-repeat: no-repeat;
-}
 
 /* En el móvil, el botón del calendario se queda en icono para que quepa junto al principal. */
 @media (max-width: 420px) {
