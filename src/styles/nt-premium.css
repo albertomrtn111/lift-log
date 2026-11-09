@@ -137,14 +137,17 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
     overflow: hidden;
     background-color: #0b0d12;
     color: #fff;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 30px 80px -40px rgb(0 88 216 / 0.45);
+    /* Solo el filo de luz de arriba: el resplandor azul de fuera se desbordaba
+       por los lados y por debajo y se veía como un difuminado. */
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 0 0 1px rgb(255 255 255 / 0.05);
 }
+/* Brillo azul pequeño, pegado a la esquina de arriba: no pasa por detrás del texto. */
 .nt-stage::before {
     content: "";
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: radial-gradient(60% 90% at 85% 0%, hsl(var(--primary-fill, var(--primary)) / 0.42), transparent 70%);
+    background: radial-gradient(38% 55% at 100% 0%, hsl(var(--primary-fill, var(--primary)) / 0.3), transparent 72%);
 }
 .nt-stage::after {
     content: "";
@@ -152,12 +155,11 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
     inset: 0;
     z-index: -1;
     background-image:
-        linear-gradient(to right, rgb(255 255 255 / 0.045) 1px, transparent 1px),
-        linear-gradient(to bottom, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+        linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 56px 56px;
-    mask-image: radial-gradient(ellipse 70% 90% at 75% 30%, black, transparent);
+    mask-image: radial-gradient(ellipse 45% 60% at 100% 0%, black, transparent);
 }
-
 
 /* Barra para cabeceras fijas: fondo sólido. Con uno translúcido y desenfoque, el
    contenido se transparenta al hacer scroll y se ve emborronado (NXT-31). */
