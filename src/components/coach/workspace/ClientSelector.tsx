@@ -150,13 +150,13 @@ export function ClientSelector({ clients, selectedClientId, onClientChange, isSw
                 initials={getClientDisplayIdentity(selectedClient).initials}
                 avatarUrl={selectedClient.avatar_url}
                 seed={getClientDisplayIdentity(selectedClient).displayName}
-                className="h-11 w-11 shrink-0 ring-1 ring-border sm:h-14 sm:w-14"
+                className="h-10 w-10 shrink-0 ring-1 ring-border sm:h-14 sm:w-14"
                 fallbackClassName="text-[15px] sm:text-[18px]"
             />
             <span className="min-w-0 flex-1">
                 {eyebrow && <span className="nt-eyebrow hidden truncate text-[10.5px] text-muted-foreground sm:block">{eyebrow}</span>}
                 <span className="mt-0.5 flex min-w-0 items-center gap-2">
-                    <span className="nt-display truncate text-[1.35rem] text-foreground sm:text-[1.9rem]">
+                    <span className="nt-display truncate text-[1.25rem] text-foreground sm:text-[1.9rem]">
                         {getClientDisplayIdentity(selectedClient).displayName}
                     </span>
                     <span className={cn(

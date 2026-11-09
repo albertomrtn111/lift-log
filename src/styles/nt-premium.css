@@ -159,11 +159,10 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
 }
 
 
-/* Barra con desenfoque para cabeceras fijas. */
+/* Barra para cabeceras fijas: fondo sólido. Con uno translúcido y desenfoque, el
+   contenido se transparenta al hacer scroll y se ve emborronado (NXT-31). */
 .nt-glass {
-    background-color: hsl(var(--background) / 0.82);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
-    backdrop-filter: blur(18px) saturate(160%);
+    background-color: hsl(var(--background));
 }
 
 /* ---------------------------------------------------------------- Botones */

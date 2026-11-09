@@ -58,6 +58,8 @@ export default async function CoachLayout({
             <CoachProvider>
                 <CoachNotificationsProvider>
                     <div className="coach-shell coach-mobile-shell flex min-h-screen min-w-0 overflow-x-hidden bg-background pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] lg:px-0">
+                        {/* Tapa la barra de estado del iPhone: el contenido pasa por debajo sin verse */}
+                        <div className="app-mobile-statusbar lg:hidden" aria-hidden="true" />
                         <CoachSidebar workspaces={await getMyWorkspaces()} studioEnabled={studioEnabled} />
                         <main className="coach-mobile-main min-w-0 flex-1 overflow-x-hidden pt-[var(--safe-area-top)] max-lg:[&>*>header.sticky]:top-[var(--safe-area-top)] lg:pl-64 lg:pt-0">
                             {children}
