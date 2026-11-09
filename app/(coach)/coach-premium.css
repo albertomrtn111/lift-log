@@ -279,7 +279,7 @@ html:has(.coach-shell) .nt-sheet :is(h2, [id^="radix-"][id$="-title"]):first-of-
 
 /* ---------------------------------------------------------------- Tablas */
 
-html:has(.coach-shell) .coach-shell table thead th {
+html:has(.coach-shell) .coach-shell table:not([data-nt-plain]) thead th {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 10.5px;
     font-weight: 500;
@@ -309,8 +309,9 @@ html:has(.coach-shell) .coach-shell .animate-pulse.rounded-md:not([class*="bg-"]
 /* ---------------------------------------------------------------- Lectura */
 
 /* Nada por debajo de 11 px: la web no baja de ahí y en el móvil no se leía. */
-html:has(.coach-shell) .coach-shell .text-\[9px\] { font-size: 10.5px; }
-html:has(.coach-shell) .coach-shell .text-\[10px\] { font-size: 11px; }
+/* Sin tocar el texto de los dibujos (SVG) ni las iniciales en círculos de 16-20 px. */
+html:has(.coach-shell) .coach-shell .text-\[9px\]:not(text, .h-4, .h-5) { font-size: 10.5px; }
+html:has(.coach-shell) .coach-shell .text-\[10px\]:not(text, .h-4, .h-5) { font-size: 11px; }
 
 /* Las etiquetas en versalitas de toda la app pasan a la mono de la web. */
 html:has(.coach-shell) .coach-shell :is(.uppercase.tracking-wider, .uppercase.tracking-widest, .uppercase.tracking-wide, .uppercase.tracking-\[0\.08em\]):not(.nt-eyebrow) {

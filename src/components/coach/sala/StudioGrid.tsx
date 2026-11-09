@@ -412,7 +412,8 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                     )}
 
                     <div className="max-h-[calc(100dvh-13rem)] overflow-auto rounded-lg border">
-                        <table className={cn('border-separate border-spacing-0', level.text)}>
+                        {/* data-nt-plain: sus cabeceras llevan sesión, fecha y entrenador; no van en el estilo de rótulo de la base */}
+                        <table data-nt-plain="" className={cn('border-separate border-spacing-0', level.text)}>
                             <thead>
                                 <tr>
                                     <th

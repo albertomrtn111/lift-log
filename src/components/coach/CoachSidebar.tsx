@@ -211,22 +211,28 @@ export function CoachSidebar({ workspaces, studioEnabled }: { workspaces: Worksp
                 <div className="flex h-full flex-col">
                     <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
                         {brand?.logoLightUrl ? (
-                            <SpaceLogo
-                                lightUrl={brand.logoDarkUrl ?? brand.logoLightUrl}
-                                darkUrl={brand.logoDarkUrl}
-                                alt=""
-                                className="h-7 max-w-[96px] shrink-0"
-                            />
+                            // Con logo del espacio, el logo ya dice el nombre: no se repite en texto.
+                            <div className="min-w-0 flex-1">
+                                <SpaceLogo
+                                    lightUrl={brand.logoDarkUrl ?? brand.logoLightUrl}
+                                    darkUrl={brand.logoDarkUrl}
+                                    alt={brand.displayName ?? ''}
+                                    className="h-8 max-w-[150px]"
+                                />
+                                <p className="nt-eyebrow mt-2 whitespace-nowrap text-[9.5px] text-white/40">con NexTrain</p>
+                            </div>
                         ) : (
-                            <LogoMark className="h-7 text-white" arrowClassName="fill-brand-light stroke-brand-light" />
+                            <>
+                                <LogoMark className="h-7 text-white" arrowClassName="fill-brand-light stroke-brand-light" />
+                                <div className="min-w-0 flex-1 leading-none">
+                                    <p className="nt-title truncate text-[1.15rem] text-white">
+                                        {brand?.displayName ?? <>Nex<span className="text-white/55">Train</span></>}
+                                    </p>
+                                    {brand && <p className="nt-eyebrow mt-1.5 whitespace-nowrap text-[9.5px] text-white/40">con NexTrain</p>}
+                                </div>
+                            </>
                         )}
-                        <div className="min-w-0 leading-none">
-                            <p className="nt-title truncate text-[1.15rem] text-white">
-                                {brand?.displayName ?? <>Nex<span className="text-white/55">Train</span></>}
-                            </p>
-                            {brand && <p className="nt-eyebrow mt-1.5 text-[9.5px] text-white/40">con NexTrain</p>}
-                        </div>
-                        <CoachNotificationsBell className="ml-auto border-white/10 bg-white/[0.04] hover:bg-white/10" />
+                        <CoachNotificationsBell className="ml-auto shrink-0 border-white/10 bg-white/[0.04] hover:bg-white/10" />
                     </div>
 
                     {workspaces.length > 1 && (
