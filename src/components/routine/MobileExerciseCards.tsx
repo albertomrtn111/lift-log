@@ -254,16 +254,17 @@ export function MobileExerciseCards({
     <div className="space-y-3 px-4">
       {/* Resumen de la sesión */}
       {exercises.length > 0 && (
-        <section className="flex items-center gap-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-          <ProgressRing value={ratio} size={60} stroke={6}>
-            <span className="text-xs">{completedCount}/{exercises.length}</span>
+        // Panel de tinta en los dos temas, como el del Plan: `dark` da los colores oscuros por dentro.
+        <section className="dark nt-stage nt-rise flex items-center gap-4 rounded-[24px] p-5 text-foreground">
+          <ProgressRing value={ratio} size={64} stroke={6} className="[&_circle:first-child]:stroke-white/10">
+            <span className="nt-number text-[14px] text-white">{completedCount}/{exercises.length}</span>
           </ProgressRing>
           <div className="min-w-0 flex-1">
             {sessionDateLabel && (
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{sessionDateLabel}</p>
+              <p className="nt-eyebrow text-white/50">{sessionDateLabel}</p>
             )}
-            <h2 className="truncate text-lg font-semibold leading-tight">{dayName || 'Sesión'}</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <h2 className="nt-title mt-1 truncate text-[19px] leading-tight text-white">{dayName || 'Sesión'}</h2>
+            <p className="mt-1 text-[13px] text-white/55">
               {exercises.length} ejercicio{exercises.length === 1 ? '' : 's'}
               {plannedSeries > 0 && ` · ${plannedSeries} series`}
               {completedCount === exercises.length ? ' · ¡Sesión completa!' : ''}
