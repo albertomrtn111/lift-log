@@ -372,26 +372,26 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
                 )}
             </section>
 
-            {/* Resumen del día */}
-            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+            {/* Resumen del día: panel de tinta en los dos temas, como el del Plan (`dark` da los colores oscuros por dentro) */}
+            <section className="dark nt-stage nt-rise rounded-[24px] p-5 text-foreground">
                 <div className="flex items-center gap-4">
-                    <ProgressRing value={kcalRatio} size={96} stroke={8} className={cn(kcalLeft < 0 && '[&_circle:last-child]:stroke-destructive')}>
+                    <ProgressRing value={kcalRatio} size={96} stroke={8} className={cn('[&_circle:first-child]:stroke-white/10', kcalLeft < 0 && '[&_circle:last-child]:stroke-destructive')}>
                         <span className="flex flex-col items-center leading-none">
-                            <span className={cn('text-xl font-bold tabular-nums', kcalLeft < 0 && 'text-destructive')}>
+                            <span className={cn('nt-number text-[22px] text-white', kcalLeft < 0 && 'text-destructive')}>
                                 {Math.abs(kcalLeft).toLocaleString('es-ES')}
                             </span>
-                            <span className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            <span className="nt-eyebrow mt-1 text-[9.5px] text-white/50">
                                 {kcalLeft < 0 ? 'de más' : 'restantes'}
                             </span>
                         </span>
                     </ProgressRing>
                     <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Calorías</p>
-                        <p className="mt-0.5 text-lg font-semibold tabular-nums">
-                            {Math.round(totals.kcal).toLocaleString('es-ES')}
-                            <span className="text-sm font-normal text-muted-foreground"> / {Math.round(targets.kcal).toLocaleString('es-ES')} kcal</span>
+                        <p className="nt-eyebrow text-white/50">Calorías</p>
+                        <p className="nt-title mt-1 text-[21px] leading-tight text-white">
+                            <span className="nt-number">{Math.round(totals.kcal).toLocaleString('es-ES')}</span>
+                            <span className="text-[14px] font-normal text-white/55"> / {Math.round(targets.kcal).toLocaleString('es-ES')} kcal</span>
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-0.5 text-[13px] text-white/55">
                             {loading ? (
                                 <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Cargando…</span>
                             ) : entries.length === 0 ? 'Aún no has registrado nada este día' : `${entries.length} ${entries.length === 1 ? 'alimento registrado' : 'alimentos registrados'}`}
@@ -399,7 +399,7 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
                     </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border/60 pt-3">
+                <div className="mt-5 grid grid-cols-3 gap-3 border-t border-white/10 pt-4">
                     <MacroColumn label="Proteína" consumed={totals.protein} target={targets.protein} colorText="text-rose-600 dark:text-rose-400" colorBar="bg-rose-500" />
                     <MacroColumn label="Hidratos" consumed={totals.carbs} target={targets.carbs} colorText="text-amber-600 dark:text-amber-400" colorBar="bg-amber-500" />
                     <MacroColumn label="Grasa" consumed={totals.fat} target={targets.fat} colorText="text-sky-600 dark:text-sky-400" colorBar="bg-sky-500" />

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
     AlertCircle,
@@ -147,27 +146,26 @@ function SummaryOverview({
 
     return (
         <div className="space-y-4">
-            <Card className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+            {/* Programa activo: panel de tinta en los dos temas, como el del Plan (`dark` da los colores oscuros por dentro) */}
+            <Card className={program ? 'dark nt-stage nt-rise rounded-[24px] border-0 p-5 text-foreground' : 'p-4'}>
                 {program ? (
                     <>
                         <div className="flex items-start justify-between">
                             <div>
-                                <Badge variant="secondary" className="mb-2 bg-primary/20 text-primary border-0">
-                                    Programa activo
-                                </Badge>
-                                <h2 className="font-bold text-lg">{program.name}</h2>
-                                <p className="text-sm text-muted-foreground mt-1">
+                                <p className="nt-eyebrow text-white/50">Programa activo</p>
+                                <h2 className="nt-title mt-1.5 text-[20px] leading-tight text-white">{program.name}</h2>
+                                <p className="mt-1 text-[13px] text-white/55">
                                     Semana {program.currentWeek} de {program.totalWeeks}
                                 </p>
                             </div>
-                            <Dumbbell className="h-8 w-8 text-primary/40" />
+                            <Dumbbell className="h-7 w-7 shrink-0 text-primary/70" />
                         </div>
                         <div className="mt-4">
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-muted-foreground">Progreso semanal</span>
-                                <span className="font-medium">{program.progressPercent}%</span>
+                            <div className="mb-1.5 flex justify-between text-[13px]">
+                                <span className="text-white/55">Progreso semanal</span>
+                                <span className="nt-number text-white">{program.progressPercent}%</span>
                             </div>
-                            <div className="h-2 w-full bg-primary/20 rounded-full overflow-hidden">
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
                                 <div
                                     className="h-full bg-primary transition-all duration-500"
                                     style={{ width: `${program.progressPercent}%` }}
