@@ -73,7 +73,7 @@ export function ClientChat() {
     const pendingPayloads = useRef(new Map<string, PendingPayload>())
     const knownIds = useRef(new Set<string>())
 
-    const recorder = useVoiceRecorder()
+    const recorder = useVoiceRecorder({ onError: (message) => toast.error(message) })
 
     const coachId = chatSession?.coachId ?? client?.coachId
     const clientId = chatSession?.clientId ?? client?.clientId
@@ -332,8 +332,7 @@ export function ClientChat() {
     }
 
     const handleStartRecording = async () => {
-        const ok = await recorder.start()
-        if (!ok && recorder.error) toast.error(recorder.error)
+        await recorder.start()
     }
 
     const handleSendRecording = async () => {
@@ -508,6 +507,7 @@ export function ClientChat() {
                 onCancelRecording={recorder.cancel}
                 onSendRecording={handleSendRecording}
                 isRecording={recorder.isRecording}
+                isStartingRecording={recorder.isStarting}
                 recordingSeconds={recorder.elapsedSeconds}
                 uploading={uploading}
                 uploadProgress={uploadProgress}

@@ -18,6 +18,8 @@ import {
 import { canAccessChatMedia, canAccessCheckinMedia, canAccessStudioMedia } from '@/lib/storage/media-access'
 import { deleteObject, privateBucket, publicBucket, putObject } from '@/lib/storage/r2'
 import { toWebp } from '@/lib/storage/webp'
+import { audioToM4a } from '@/lib/storage/audio'
+import { isAudioFile } from '@/lib/voice-note-rules'
 import { toBrandingPng } from '@/lib/storage/branding-image'
 import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { BRANDING_SLOTS } from '@/lib/branding/branding-rules'
@@ -39,6 +41,9 @@ export const runtime = 'nodejs'
  * coachId y clientId (checkin y chat), checkinId (checkin). En studio, coachId y un
  * clientId opcional: sin él, la imagen es de toda la sala. Solo imágenes y solo en R2.
  * En studio-video, lo mismo con un vídeo, que ya llega aligerado desde el navegador.
+ *
+ * Los audios del chat (notas de voz y archivos de audio) se convierten a M4A (AAC)
+ * para que se oigan en cualquier móvil; si no se pueden leer, no se guardan.
  */
 
 const MAX_INPUT_BYTES = {
@@ -93,7 +98,8 @@ export async function POST(request: Request) {
     if (kind === 'branding') return uploadBranding(String(form.get('slot') ?? ''), input, originalMime, originalName)
     if (kind === 'studio-video') return uploadStudioVideo(supabase, form, input)
 
-    // Las fotos se guardan siempre en WebP; GIF, audio y documentos, tal cual.
+    // Las fotos se guardan siempre en WebP; los audios del chat, en M4A (más abajo,
+    // tras comprobar permisos); GIF y documentos, tal cual.
     let body: Uint8Array = input
     let mime = originalMime
     let fileName = sanitizeFileName(originalName)
@@ -151,16 +157,31 @@ export async function POST(request: Request) {
         if (!(await canAccessChatMedia(supabase, user.id, coachId, clientId))) {
             return fail(403, 'No puedes enviar archivos a esta conversación.')
         }
+
+        let duration: number | null = null
+        if (isAudioFile(originalMime, originalName)) {
+            const audio = await audioToM4a(input)
+            if (audio.ok) {
+                body = audio.body
+                mime = 'audio/mp4'
+                fileName = sanitizeFileName(withExtension(originalName, 'm4a'))
+                duration = audio.duration
+            } else if (audio.reason === 'unreadable') {
+                return fail(415, 'No se ha podido leer el audio. Si es una nota de voz, vuelve a grabarla.')
+            }
+        }
+
         const name = `${crypto.randomUUID()}-${fileName}`
+        const displayName = fileNameForDisplay(originalName, mime)
         const bucket = privateBucket()
         if (bucket) {
             const key = chatKey({ coachId, clientId, fileName: name })
             await putObject(bucket, key, body, mime)
-            return NextResponse.json({ url: `${R2_REF_PREFIX}${key}`, name: fileNameForDisplay(originalName, mime), mime, size: body.byteLength })
+            return NextResponse.json({ url: `${R2_REF_PREFIX}${key}`, name: displayName, mime, size: body.byteLength, duration })
         }
         const path = `${coachId}/${clientId}/${name}`
         await uploadToSupabase('chat-media', path, body, mime)
-        return NextResponse.json({ url: path, name: fileNameForDisplay(originalName, mime), mime, size: body.byteLength })
+        return NextResponse.json({ url: path, name: displayName, mime, size: body.byteLength, duration })
     } catch (error) {
         console.error('[media/upload]', kind, error)
         return fail(500, 'No se pudo subir el archivo. Inténtalo de nuevo.')
@@ -207,7 +228,9 @@ async function uploadStudioVideo(supabase: Awaited<ReturnType<typeof createClien
 }
 
 function fileNameForDisplay(originalName: string, mime: string) {
-    return mime === 'image/webp' ? withExtension(originalName, 'webp') : originalName
+    if (mime === 'image/webp') return withExtension(originalName, 'webp')
+    if (mime === 'audio/mp4') return withExtension(originalName, 'm4a')
+    return originalName
 }
 
 async function uploadToSupabase(bucket: string, path: string, body: Uint8Array, mime: string) {

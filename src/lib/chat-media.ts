@@ -30,7 +30,8 @@ export function formatAudioDuration(seconds: number | null | undefined): string 
 
 /**
  * Sube un adjunto del chat. El servidor comprueba que quien sube pertenece a la
- * conversación, convierte las fotos a WebP y lo guarda en el bucket privado de R2
+ * conversación, convierte las fotos a WebP y los audios a M4A (AAC, se oye en
+ * cualquier móvil) y lo guarda en el bucket privado de R2
  * (`url` = «r2:chat-media/{coachId}/{clientId}/…») o, si R2 no está configurado,
  * en el bucket chat-media de Supabase (`url` = «{coachId}/{clientId}/…»).
  */
@@ -50,7 +51,7 @@ export async function uploadChatAttachment(params: {
     }
 
     const blob = file.type ? file : new Blob([file], { type: mime })
-    const { data, error } = await uploadMedia<{ url: string; name: string; mime: string; size: number }>(
+    const { data, error } = await uploadMedia<{ url: string; name: string; mime: string; size: number; duration?: number | null }>(
         { kind: 'chat', coachId, clientId },
         blob,
         fileName,
@@ -65,7 +66,8 @@ export async function uploadChatAttachment(params: {
             name: data.name,
             size: data.size,
             mime: data.mime,
-            duration: duration ?? null,
+            // La que mide el servidor al convertir es exacta; la del cronómetro, aproximada
+            duration: data.duration ?? duration ?? null,
         },
     }
 }

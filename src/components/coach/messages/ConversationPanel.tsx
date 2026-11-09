@@ -82,7 +82,7 @@ export function ConversationPanel({
     const activeClientId = useRef(clientId)
     activeClientId.current = clientId
 
-    const recorder = useVoiceRecorder()
+    const recorder = useVoiceRecorder({ onError: (message) => toast.error(message) })
 
     // Carga al cambiar de conversación
     useEffect(() => {
@@ -313,8 +313,7 @@ export function ConversationPanel({
 
     const handleStartRecording = async () => {
         if (isBlocked) return
-        const ok = await recorder.start()
-        if (!ok && recorder.error) toast.error(recorder.error)
+        await recorder.start()
     }
 
     const handleSendRecording = async () => {
@@ -479,6 +478,7 @@ export function ConversationPanel({
                     onCancelRecording={recorder.cancel}
                     onSendRecording={handleSendRecording}
                     isRecording={recorder.isRecording}
+                    isStartingRecording={recorder.isStarting}
                     recordingSeconds={recorder.elapsedSeconds}
                     uploading={uploading}
                     uploadProgress={uploadProgress}

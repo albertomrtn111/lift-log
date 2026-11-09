@@ -19,7 +19,9 @@ Desde noviembre de 2026 las fotos se guardan en Cloudflare R2 y no en Supabase S
      La foto de perfil pasa antes por el encuadre (`AvatarCropDialog`, geometría en `src/lib/avatar-crop-rules.js`): el usuario elige el círculo y se sube ese cuadrado.
   2. El servidor comprueba la sesión y los permisos, convierte la foto a WebP de 1600 px como máximo (calidad 80, sin metadatos ni ubicación) con `sharp` y la guarda en R2.
   - La conversión a WebP la hace el servidor porque Safari no genera WebP desde un canvas.
-  - GIF, audio y documentos del chat se guardan tal cual.
+  - Los audios del chat (notas de voz y archivos de audio) se convierten a M4A (AAC, 96 kbps) con `ffmpeg` (`src/lib/storage/audio.ts`), con el índice al principio. Se oyen en cualquier móvil (los iPhone anteriores a iOS 17.4 no reproducen el WebM/Opus que graba Chrome) y el servidor guarda la duración real. Si ffmpeg no puede leer el archivo, la subida se rechaza con un aviso: es un audio dañado. El Dockerfile instala ffmpeg; sin él, el audio se guarda tal cual.
+  - Las notas de voz se graban en AAC/MP4 si el navegador sabe (`src/lib/voice-note-rules.js`) y nunca hay dos grabaciones a la vez (`useVoiceRecorder`): un doble toque en el micrófono mezclaba dos grabaciones en un archivo que no se podía escuchar.
+  - GIF y documentos del chat se guardan tal cual.
 - **Las lecturas privadas también pasan por el servidor** (`GET /api/media/{clave}`). Comprueba la sesión y los mismos permisos que las políticas de Supabase (`src/lib/storage/media-access.ts`) y entrega el archivo con `Cache-Control: private, max-age=3600`:
   - Check-ins: coach activo del espacio (`is_coach_member`) o el propio atleta.
   - Chat: coach activo del espacio, o el atleta de esa conversación.
