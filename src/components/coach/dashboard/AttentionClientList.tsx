@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { AlertTriangle, ChevronRight, Dumbbell, FileWarning, Scale, Sparkles } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
 import type { AttentionClient, AttentionReasonCode } from '@/data/dashboard'
 import { getClientDisplayIdentity } from '@/lib/client-utils'
@@ -21,9 +20,14 @@ const reasonIcons: Record<AttentionReasonCode, typeof AlertTriangle> = {
     stale_weight: Scale,
 }
 
-const severityBadgeClass = {
-    high: 'bg-destructive/10 text-destructive border-destructive/20',
-    medium: 'bg-warning/10 text-warning border-warning/20',
+const severityChip = {
+    high: 'bg-red-500/[0.12] text-red-600 dark:text-red-400',
+    medium: 'bg-amber-400/15 text-amber-700 dark:text-amber-300',
+} as const
+
+const severityRing = {
+    high: 'ring-[#F87171]',
+    medium: 'ring-[#FBBF24]',
 } as const
 
 export function AttentionClientList({ clients }: AttentionClientListProps) {
@@ -42,7 +46,7 @@ export function AttentionClientList({ clients }: AttentionClientListProps) {
     }
 
     return (
-        <ul className="divide-y divide-border/60">
+        <ul className="px-2 pb-2 sm:px-3">
             {clients.map((client) => {
                 const { displayName, initials } = getClientDisplayIdentity(client)
                 const PrimaryIcon = reasonIcons[client.attentionReasons[0]?.code ?? 'overdue_checkin']
@@ -52,36 +56,32 @@ export function AttentionClientList({ clients }: AttentionClientListProps) {
                     <li key={client.id}>
                         <Link
                             href={`/coach/clients?client=${client.id}`}
-                            className="flex items-center gap-3 px-4 py-3 text-foreground no-underline transition-colors hover:bg-muted/40"
+                            className="group flex items-center gap-3.5 rounded-2xl px-2 py-2.5 text-foreground no-underline transition-colors hover:bg-foreground/[0.035] sm:px-3"
                         >
                             <span className="relative shrink-0">
                                 <AthleteAvatar
                                     initials={initials}
                                     avatarUrl={client.avatar_url}
-                                    className="h-10 w-10"
-                                    fallbackClassName="bg-primary/10 text-sm font-bold text-primary"
+                                    seed={displayName}
+                                    className={cn('h-11 w-11 ring-2 ring-offset-2 ring-offset-card', severityRing[client.primarySeverity])}
+                                    fallbackClassName="text-[14px]"
                                 />
-                                <span className={cn(
-                                    'absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-card',
-                                    isHigh ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-white'
-                                )}>
-                                    <PrimaryIcon className="h-2.5 w-2.5" />
-                                </span>
+                                <span className="sr-only"><PrimaryIcon /></span>
                             </span>
 
                             <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-2">
-                                    <span className="truncate text-[15px] font-semibold">{displayName}</span>
-                                    <Badge variant="outline" className={cn('shrink-0 px-1.5 py-0 text-[10px]', severityBadgeClass[client.primarySeverity])}>
+                                    <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{displayName}</span>
+                                    <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11.5px] font-semibold', severityChip[client.primarySeverity])}>
                                         {isHigh ? 'Alta' : 'Media'}
-                                    </Badge>
+                                    </span>
                                 </span>
                                 <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">
                                     {[client.primaryReason, ...client.attentionReasons.slice(1, 3).map(reason => reason.label)].join(' · ')}
                                 </span>
                             </span>
 
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-foreground" />
                         </Link>
                     </li>
                 )
