@@ -1018,7 +1018,7 @@ function ReviewCard({
                         <div>
                             <div className="flex items-center gap-2">
                                 <Sparkles className="h-4 w-4 text-primary" />
-                                <p className="text-sm font-semibold">Assistant IA del coach</p>
+                                <p className="text-sm font-semibold">Asistente IA del coach</p>
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 Lectura rápida de la revisión para acelerar el feedback.
