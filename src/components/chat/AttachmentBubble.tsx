@@ -110,8 +110,11 @@ function VoiceNotePlayer({ url, duration, isOwn }: { url: string | null; duratio
     const [playing, setPlaying] = useState(false)
     const [current, setCurrent] = useState(0)
     const [total, setTotal] = useState<number>(duration ?? 0)
+    // El navegador no puede abrir el archivo (dañado o en un formato que no conoce)
+    const [unplayable, setUnplayable] = useState(false)
 
     useEffect(() => {
+        setUnplayable(false)
         const audio = audioRef.current
         if (!audio) return
         const onTime = () => setCurrent(audio.currentTime)
@@ -122,7 +125,9 @@ function VoiceNotePlayer({ url, duration, isOwn }: { url: string | null; duratio
         const onEnd = () => { setPlaying(false); setCurrent(0) }
         const onPause = () => setPlaying(false)
         const onPlay = () => setPlaying(true)
+        const onError = () => { setPlaying(false); setUnplayable(true) }
         audio.addEventListener('timeupdate', onTime)
+        audio.addEventListener('error', onError)
         audio.addEventListener('loadedmetadata', onMeta)
         audio.addEventListener('ended', onEnd)
         audio.addEventListener('pause', onPause)
@@ -133,6 +138,7 @@ function VoiceNotePlayer({ url, duration, isOwn }: { url: string | null; duratio
             audio.removeEventListener('ended', onEnd)
             audio.removeEventListener('pause', onPause)
             audio.removeEventListener('play', onPlay)
+            audio.removeEventListener('error', onError)
         }
     }, [url])
 
@@ -142,7 +148,11 @@ function VoiceNotePlayer({ url, duration, isOwn }: { url: string | null; duratio
         if (audio.paused) {
             // Solo una nota sonando a la vez
             document.querySelectorAll('audio').forEach(other => { if (other !== audio) other.pause() })
-            audio.play().catch(() => setPlaying(false))
+            audio.play().catch((error: unknown) => {
+                setPlaying(false)
+                // NotAllowedError es el bloqueo de reproducción automática, no un archivo roto
+                if ((error as { name?: string })?.name === 'NotSupportedError') setUnplayable(true)
+            })
         } else {
             audio.pause()
         }
@@ -159,6 +169,14 @@ function VoiceNotePlayer({ url, duration, isOwn }: { url: string | null; duratio
 
     const progress = total > 0 ? Math.min(1, current / total) : 0
     const shown = playing || current > 0 ? current : total
+
+    if (unplayable) {
+        return (
+            <p className={cn('max-w-[260px] text-xs italic', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                No se puede reproducir esta nota de voz. {isOwn ? 'Vuelve a grabarla y envíala otra vez.' : 'Pide que te la vuelvan a enviar.'}
+            </p>
+        )
+    }
 
     return (
         <div className="flex w-[220px] items-center gap-2.5 sm:w-[260px]">

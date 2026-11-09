@@ -19,6 +19,8 @@ interface ChatComposerProps {
     onCancelRecording: () => void
     onSendRecording: () => void
     isRecording: boolean
+    /** Mientras el navegador pide el micrófono: el botón no admite un segundo toque */
+    isStartingRecording?: boolean
     recordingSeconds: number
     uploading: string | null
     /** 0-1 mientras se sube el adjunto; null mientras se prepara */
@@ -37,6 +39,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     onCancelRecording,
     onSendRecording,
     isRecording,
+    isStartingRecording = false,
     recordingSeconds,
     uploading,
     uploadProgress = null,
@@ -177,7 +180,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                         <button
                             type="button"
                             onClick={onStartRecording}
-                            disabled={!!uploading}
+                            disabled={!!uploading || isStartingRecording}
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all active:scale-95 disabled:opacity-50"
                             aria-label="Grabar nota de voz"
                         >
