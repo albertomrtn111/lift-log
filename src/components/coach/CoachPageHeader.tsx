@@ -36,34 +36,34 @@ export function CoachPageHeader({
     return (
         <header
             className={cn(
-                'z-40 shrink-0 border-b border-border/60 bg-background/90 backdrop-blur-xl',
+                'nt-glass z-40 shrink-0 border-b border-border/60',
                 !isStatic && 'sticky top-0',
                 className
             )}
         >
-            <div className="px-4 pb-3 pt-4 lg:px-8 lg:pb-5 lg:pt-6">
+            <div className="px-4 pb-4 pt-4 lg:px-8 lg:pb-6 lg:pt-8">
                 <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
                     {backHref && (
                         <Link
                             href={backHref}
                             aria-label="Volver"
-                            className="-ml-1 mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-card shadow-sm transition-colors hover:bg-muted"
+                            className="-ml-1 mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-foreground/15 transition-colors hover:border-foreground/40"
                         >
                             <ChevronLeft className="h-5 w-5" />
                         </Link>
                     )}
                     <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{eyebrow}</p>
-                        <h1 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground lg:text-[1.75rem]">{title}</h1>
+                        <p className="nt-eyebrow nt-eyebrow-line text-muted-foreground">{eyebrow}</p>
+                        <h1 className="nt-display mt-2 truncate text-[1.75rem] text-foreground lg:text-[2.5rem]">{title}</h1>
                         {description && (
-                            <p className="mt-1 hidden max-w-2xl text-sm text-muted-foreground sm:block">{description}</p>
+                            <p className="mt-2 hidden max-w-2xl text-[15px] leading-relaxed text-muted-foreground sm:block">{description}</p>
                         )}
                     </div>
                     {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
                     {/* En móvil no hay barra lateral: la campana vive en la cabecera */}
                     <CoachNotificationsBell className="self-start lg:hidden" />
                 </div>
-                {children && <div className="mt-3 lg:mt-4">{children}</div>}
+                {children && <div className="mt-4 lg:mt-5">{children}</div>}
             </div>
         </header>
     )
