@@ -312,6 +312,13 @@ html:has(.coach-shell) .coach-shell .animate-pulse.rounded-md:not([class*="bg-"]
 html:has(.coach-shell) .coach-shell .text-\[9px\] { font-size: 10.5px; }
 html:has(.coach-shell) .coach-shell .text-\[10px\] { font-size: 11px; }
 
+/* Las etiquetas en versalitas de toda la app pasan a la mono de la web. */
+html:has(.coach-shell) .coach-shell :is(.uppercase.tracking-wider, .uppercase.tracking-widest, .uppercase.tracking-wide, .uppercase.tracking-\[0\.08em\]):not(.nt-eyebrow) {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+}
+
 html:has(.coach-shell) ::selection {
     background: hsl(var(--primary) / 0.22);
 }

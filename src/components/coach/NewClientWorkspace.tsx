@@ -148,6 +148,11 @@ export function NewClientWorkspace({
         setActiveTab(prev => (prev === nextTab ? prev : nextTab))
     }, [searchParams])
 
+    useEffect(() => {
+        const active = document.querySelector<HTMLElement>('[data-workspace-tab][data-state="active"]')
+        active?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+    }, [activeTab])
+
     const handleRefresh = useCallback(() => {
         router.refresh()
     }, [router])
@@ -229,50 +234,65 @@ export function NewClientWorkspace({
         return completed[1] ?? null  // [0] es latestCheckin, [1] es el anterior
     }, [checkins])
 
+    const positionLabel = currentIndex >= 0
+        ? `Workspace · ${currentIndex + 1} de ${activeClients.length}`
+        : 'Workspace'
+
+    // Anterior / siguiente atleta activo (también con Alt+← y Alt+→)
+    const navigation = (
+        <div className="flex shrink-0 items-center gap-1">
+            <Button
+                variant="outline"
+                size="icon"
+                onClick={handlePrevClient}
+                disabled={!canGoPrev || isSwitchingClient}
+                title="Atleta anterior (Alt+←)"
+                aria-label="Atleta anterior"
+                className="h-9 w-9"
+            >
+                <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+                variant="outline"
+                size="icon"
+                onClick={handleNextClient}
+                disabled={!canGoNext || isSwitchingClient}
+                title="Siguiente atleta (Alt+→)"
+                aria-label="Siguiente atleta"
+                className="h-9 w-9"
+            >
+                <ChevronRight className="h-4 w-4" />
+            </Button>
+        </div>
+    )
+
+    // Secciones como píldoras: en el móvil se deslizan y se ven todas, sin desplegable.
+    const tabsBar = (
+        <div className="nt-scroll-x px-3 pb-3 sm:px-0 lg:pb-4">
+            <TabsList className="nt-pills inline-flex h-auto w-max min-w-0 justify-start gap-1 rounded-full bg-foreground/[0.05] p-1 ring-1 ring-inset ring-foreground/[0.06]">
+                {WORKSPACE_TABS.map(tab => {
+                    const Icon = tab.icon
+                    const disabled = tab.gated && isPendingSignup
+                    return (
+                        <TabsTrigger
+                            key={tab.value}
+                            value={tab.value}
+                            disabled={disabled}
+                            data-workspace-tab=""
+                            className="h-9 gap-1.5 rounded-full px-3.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
+                        >
+                            <Icon className="h-4 w-4 max-xl:hidden" />
+                            <span>{tab.label}</span>
+                            {disabled && <Lock className="h-3 w-3" />}
+                        </TabsTrigger>
+                    )
+                })}
+            </TabsList>
+        </div>
+    )
+
     return (
-        <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
-            {/* Client Selector + Prev/Next Navigation */}
-            <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handlePrevClient}
-                    disabled={!canGoPrev || isSwitchingClient}
-                    title="Cliente anterior (Alt+←)"
-                    aria-label="Cliente anterior"
-                    className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-
-                <div className="min-w-0 flex-1 sm:flex-initial">
-                    <ClientSelector
-                        clients={clients}
-                        selectedClientId={selectedClientId}
-                        onClientChange={handleClientChange}
-                        isSwitching={isSwitchingClient}
-                    />
-                </div>
-
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleNextClient}
-                    disabled={!canGoNext || isSwitchingClient}
-                    title="Siguiente cliente (Alt+→)"
-                    aria-label="Siguiente cliente"
-                    className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
-                >
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
-
-                {currentIndex >= 0 && (
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {currentIndex + 1}/{activeClients.length}
-                    </span>
-                )}
-            </div>
-
+        <div className="min-w-0 max-w-full space-y-4 overflow-x-clip">
             {/* Debug Panel (dev only) */}
             {process.env.NODE_ENV !== 'production' && (
                 <CoachDebugPanel coachId={coachId} clientId={selectedClientId} />
@@ -299,6 +319,8 @@ export function NewClientWorkspace({
                             clientName={selectedClient.full_name || 'Lucía'}
                         />
                     )}
+                    {/* NEW TAB STRUCTURE */}
+                    <Tabs value={activeTab} onValueChange={handleSwitchTab} className="min-w-0 max-w-full">
                     <WorkspaceHeader
                         client={selectedClient}
                         avatarUrl={clients.find(c => c.id === selectedClient.id)?.avatar_url}
@@ -307,56 +329,22 @@ export function NewClientWorkspace({
                         formTemplates={formTemplates}
                         reviewTemplates={reviewTemplates}
                         onClientUpdated={handleRefresh}
+                        eyebrow={positionLabel}
+                        selector={(subline) => (
+                            <ClientSelector
+                                variant="identity"
+                                clients={clients}
+                                selectedClientId={selectedClientId}
+                                onClientChange={handleClientChange}
+                                isSwitching={isSwitchingClient}
+                                eyebrow={positionLabel}
+                                subline={subline}
+                            />
+                        )}
+                        navigation={navigation}
+                        tabs={tabsBar}
                     />
-
-                    {/* NEW TAB STRUCTURE */}
-                    <Tabs value={activeTab} onValueChange={handleSwitchTab} className="min-w-0 max-w-full overflow-hidden">
-                        <div className="mb-4 lg:hidden">
-                            <Select value={activeTab} onValueChange={handleSwitchTab}>
-                                <SelectTrigger className="h-12 w-full rounded-xl" aria-label="Sección de Workspace">
-                                    <SelectValue placeholder="Selecciona una sección" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {WORKSPACE_TABS.map(tab => {
-                                        const Icon = tab.icon
-                                        const disabled = tab.gated && isPendingSignup
-                                        return (
-                                            <SelectItem key={tab.value} value={tab.value} disabled={disabled}>
-                                                <span className="flex items-center gap-2">
-                                                    <Icon className="h-4 w-4" />
-                                                    <span>{tab.label}</span>
-                                                    {disabled && <Lock className="ml-1 h-3 w-3" />}
-                                                </span>
-                                            </SelectItem>
-                                        )
-                                    })}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="hidden lg:block">
-                            {/* Sin justify-center ni scroll: si no caben en una fila pasan a la siguiente y siempre se ven todas */}
-                            <TabsList className="workspace-tabs-list h-auto max-w-full flex-wrap justify-start gap-1">
-                                {WORKSPACE_TABS.map(tab => {
-                                    const Icon = tab.icon
-                                    const disabled = tab.gated && isPendingSignup
-                                    return (
-                                        <TabsTrigger
-                                            key={tab.value}
-                                            value={tab.value}
-                                            disabled={disabled}
-                                            className="workspace-tab-trigger min-w-fit grow shrink-0 sm:min-w-fit sm:px-3 xl:px-5 disabled:cursor-not-allowed disabled:opacity-40"
-                                        >
-                                            <Icon className="h-4 w-4 max-xl:hidden" />
-                                            <span>{tab.label}</span>
-                                            {disabled && <Lock className="ml-1 h-3 w-3" />}
-                                        </TabsTrigger>
-                                    )
-                                })}
-                            </TabsList>
-                        </div>
-
-                        <div className="min-w-0 max-w-full overflow-x-hidden lg:min-h-[500px]">
+                        <div className="min-w-0 max-w-full overflow-x-clip pt-4 lg:min-h-[500px] lg:pt-6">
                             <TabsContent value="athlete-profile" className="mt-0 min-w-0 space-y-6">
                                 <AthleteCurrentGoalCard
                                     key={`goal-${selectedClient.id}`}

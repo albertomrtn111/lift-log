@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
-import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import {
     getAthleteAIProfile,
 } from '@/data/athlete-ai-profile'
@@ -130,14 +129,9 @@ export default async function CoachClientsPage({ searchParams }: PageProps) {
         currentGoal = currentGoalData
     }
     return (
-        <div className="min-h-screen min-w-0 overflow-x-hidden pb-28 lg:pb-4">
-            <CoachPageHeader
-                eyebrow="Operativa"
-                title="Workspace"
-                description="Centro operativo de cada atleta: plan, revisiones y progreso."
-            />
-
-            <div className="min-w-0 px-3 pt-3 sm:px-4 sm:pt-5 lg:px-8 lg:pt-6">
+        <div className="min-h-screen min-w-0 overflow-x-clip pb-28 lg:pb-8">
+            <h1 className="sr-only">Workspace</h1>
+            <div className="min-w-0 px-3 sm:px-4 lg:px-8">
                 <NewClientWorkspace
                     clients={clients}
                     selectedClient={selectedClient}
