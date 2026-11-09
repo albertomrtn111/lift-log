@@ -37,7 +37,8 @@ export function CoachPageHeader({
         <header
             className={cn(
                 'nt-glass z-40 shrink-0 border-b border-border/60',
-                !isStatic && 'sticky top-0',
+                // En el móvil el título se va con el scroll: fijo ocupaba media pantalla
+                !isStatic && 'lg:sticky lg:top-0',
                 className
             )}
         >

@@ -272,15 +272,15 @@ export function WorkspaceHeader({ client, avatarUrl, clientStatus, coachId, form
     if (selector) {
         return (
             <>
+                {/* Móvil: posición, flechas, acciones y avisos en una fila fina que se va con el scroll */}
+                <div className="flex items-center gap-1.5 pb-1 pt-3 sm:hidden">
+                    <p className="nt-eyebrow min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{eyebrow}</p>
+                    {navigation}
+                    {actionsMenu}
+                    <CoachNotificationsBell />
+                </div>
                 {/* Barra fija: el atleta, cambiar de atleta y las secciones siempre a mano */}
-                <div className="nt-glass sticky top-[var(--safe-area-top)] z-30 -mx-3 border-b border-border/60 px-3 pt-3 sm:-mx-4 sm:px-4 lg:top-0 lg:-mx-8 lg:px-8 lg:pt-6">
-                    {/* Móvil: posición, flechas, acciones y avisos en una fila fina */}
-                    <div className="mb-2.5 flex items-center gap-1.5 sm:hidden">
-                        <p className="nt-eyebrow min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{eyebrow}</p>
-                        {navigation}
-                        {actionsMenu}
-                        <CoachNotificationsBell />
-                    </div>
+                <div className="nt-glass sticky top-[var(--safe-area-top)] z-30 -mx-3 border-b border-border/60 px-3 pt-2 sm:-mx-4 sm:px-4 sm:pt-3 lg:top-0 lg:-mx-8 lg:px-8 lg:pt-6">
                     <div className="flex items-center gap-2 sm:gap-3">
                         <div className="min-w-0 flex-1">{selector(subline)}</div>
                         <div className="hidden items-center gap-2 sm:flex">
