@@ -1,0 +1,79 @@
+/*
+ * Lo propio del atleta sobre el sistema común (src/styles/nt-premium.css).
+ * Todo cuelga de `.app-mobile-shell`, que solo pinta el layout del atleta.
+ */
+
+/* Barra de pestañas: tinta en los dos temas, con la activa en blanco, como el
+   dock de la web y el del coach. */
+html:has(.app-mobile-shell) .client-tab-bar.client-glass {
+    background-color: rgb(11 13 18 / 0.92);
+    border-color: rgb(255 255 255 / 0.1);
+    box-shadow: 0 20px 50px -12px rgb(11 13 18 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+html:has(.app-mobile-shell) .client-tab {
+    color: rgb(255 255 255 / 0.55);
+}
+html:has(.app-mobile-shell) .client-tab:hover {
+    color: #fff;
+}
+html:has(.app-mobile-shell) .client-tab-active,
+html:has(.app-mobile-shell) .client-tab-active:hover {
+    background-color: #fff;
+    color: #0b0d12;
+}
+html:has(.app-mobile-shell) .client-tab-active svg {
+    color: #0058d8;
+}
+html:has(.app-mobile-shell) .client-tab .ring-card {
+    --tw-ring-color: #0b0d12;
+}
+
+/* Titulares de cada pantalla en Inter Tight, apretados como en la web. */
+html:has(.app-mobile-shell) .app-mobile-main h1 {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+}
+html:has(.app-mobile-shell) .app-mobile-main h1.text-2xl {
+    font-size: 1.75rem;
+    line-height: 1.08;
+}
+
+/* Cifras destacadas (calorías, kilos, distancia…) con la letra de números de la web. */
+html:has(.app-mobile-shell) .app-mobile-main :is(.text-lg, .text-xl, .text-2xl, .text-3xl).tabular-nums:is(.font-bold, .font-semibold) {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+/* Los botones redondos de arriba (avisos y perfil) en el mismo cristal que la barra. */
+html.dark:has(.app-mobile-shell) .client-glass:not(.client-tab-bar) {
+    background-color: rgb(255 255 255 / 0.06);
+    border-color: rgb(255 255 255 / 0.1);
+}
+
+/* En escritorio la app no se estira a todo el ancho: columna centrada.
+   Las pantallas con tabla (Fuerza en escritorio) tienen más sitio. */
+@media (min-width: 1024px) {
+    html:has(.app-mobile-shell) .app-mobile-main {
+        max-width: 1000px;
+        margin-inline: auto;
+    }
+    html:has(.app-mobile-shell) .app-mobile-main:has(table) {
+        max-width: 1320px;
+    }
+}
+
+/* Tarjetas del atleta: blanco con borde fino en claro y filo de luz en oscuro,
+   como las superficies de la web. (Las tarjetas de shadcn ya van por .nt-card.) */
+html:has(.app-mobile-shell) .app-mobile-main :is(.bg-card.border, .bg-card.rounded-2xl):not(.nt-stage, .client-glass) {
+    box-shadow: 0 1px 2px hsl(var(--nt-ink) / 0.04);
+}
+html.dark:has(.app-mobile-shell) .app-mobile-main :is(.bg-card.border, .bg-card.rounded-2xl):not(.nt-stage, .client-glass) {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
+}
+
+/* Cabecera fija: una línea finísima al separarse del contenido. */
+html:has(.app-mobile-shell) .app-mobile-header {
+    border-bottom-color: hsl(var(--border) / 0.7);
+}

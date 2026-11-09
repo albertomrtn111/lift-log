@@ -9,6 +9,9 @@ import { AnnouncementHost } from '@/components/announcements/AnnouncementHost'
 import { SpaceBranding, spaceBrandingMetadata } from '@/components/brand/SpaceBranding'
 import { AthleteAppOff } from '@/components/layout/AthleteAppOff'
 import { getAthleteModules } from '@/data/athlete-modules'
+import { premiumFontVars } from '@/lib/premium-fonts'
+import '@/styles/nt-premium.css'
+import './athlete-premium.css'
 
 export const generateMetadata = spaceBrandingMetadata
 
@@ -22,6 +25,7 @@ export default async function AppLayout({
 
     return (
         <SpaceBranding>
+            <style dangerouslySetInnerHTML={{ __html: premiumFontVars }} />
             <ClientAppProvider>
                 <div className="app-mobile-shell bg-background">
                     <div className="app-mobile-statusbar" aria-hidden="true" />
