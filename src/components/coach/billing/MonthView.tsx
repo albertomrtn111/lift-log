@@ -158,7 +158,7 @@ export function MonthView({ ledger, month, onChanged, onOpenRecord, onOpenFee }:
                 {isFuture ? (
                     <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Previsión · {MONTH_LONG[month - 1]}</p>
-                        <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{money(forecast)}</p>
+                        <p className="nt-number mt-1.5 text-[2.5rem] leading-none">{money(forecast)}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
                             Según las cuotas actuales. Los cobros se generan al empezar el mes.
                         </p>
@@ -170,7 +170,7 @@ export function MonthView({ ledger, month, onChanged, onOpenRecord, onOpenFee }:
                                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                     Cobrado · {MONTH_LONG[month - 1]}
                                 </p>
-                                <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{money(summary.collected)}</p>
+                                <p className="nt-number mt-1.5 text-[2.5rem] leading-none">{money(summary.collected)}</p>
                                 <p className="mt-0.5 text-sm text-muted-foreground">
                                     de <span className="font-medium text-foreground tabular-nums">{money(summary.expected)}</span> previstos
                                 </p>

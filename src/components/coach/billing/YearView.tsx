@@ -271,7 +271,7 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?
     return (
         <div className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-sm sm:p-4">
             <p className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-            <p className={cn('mt-1 truncate text-xl font-bold tracking-tight tabular-nums sm:text-2xl', tone === 'warning' && 'text-amber-600 dark:text-warning')}>{value}</p>
+            <p className={cn('nt-number mt-1.5 truncate text-[1.6rem] leading-none sm:text-[2rem]', tone === 'warning' && 'text-amber-600 dark:text-warning')}>{value}</p>
             {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
         </div>
     )

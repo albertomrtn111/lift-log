@@ -657,7 +657,7 @@ export function CalendarView({
             <Card className="p-3 sm:px-4">
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
                     <div className="flex min-w-0 items-center gap-1.5">
-                        <div className="flex items-center rounded-lg border">
+                        <div className="flex items-center overflow-hidden rounded-full border border-foreground/15">
                             <button
                                 onClick={viewMode === 'month' ? goToPrevMonth : goToPrevWeek}
                                 className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
@@ -685,7 +685,7 @@ export function CalendarView({
                                 <ChevronRight className="h-4 w-4" />
                             </button>
                         </div>
-                        <h2 className="ml-2 min-w-0 truncate text-base font-semibold capitalize sm:text-lg">
+                        <h2 className="nt-title ml-2 min-w-0 truncate text-[17px] first-letter:uppercase sm:text-[1.35rem]">
                             {rangeTitle}
                         </h2>
                         {loading && <Loader2 className="ml-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
@@ -1080,7 +1080,7 @@ export function CalendarView({
                         <SheetHeader className="space-y-3">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <SheetTitle className="capitalize">
+                                    <SheetTitle className="first-letter:uppercase">
                                         {selectedDate ? formatLongDate(selectedDate) : ''}
                                     </SheetTitle>
                                     <p className="mt-1 text-sm text-muted-foreground">

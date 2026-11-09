@@ -119,7 +119,7 @@ export function MembersTable({ clients, statusFilter, coachId, formTemplates, re
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Cliente</TableHead>
+                            <TableHead>Atleta</TableHead>
                             <TableHead>Estado</TableHead>
                             <TableHead>Registro</TableHead>
                             <TableHead>Próxima revisión</TableHead>
@@ -145,6 +145,16 @@ export function MembersTable({ clients, statusFilter, coachId, formTemplates, re
             </Card>
         </>
     )
+}
+
+/** «1 mar 2026»: la fecha de inicio, legible. */
+function formatShortDate(date: string | null | undefined) {
+    if (!date) return '—'
+    try {
+        return format(parseLocalDate(date), 'd MMM yyyy', { locale: es })
+    } catch {
+        return date
+    }
 }
 
 function formatCheckinDate(date: string | null | undefined) {
@@ -298,13 +308,13 @@ function ClientRow({
 
         if (client.daysUntilCheckin < 0) {
             const overdue = Math.abs(client.daysUntilCheckin)
-            return <Badge variant="destructive">{overdue === 1 ? 'Ayer' : `Hace ${overdue}d`}</Badge>
+            return <Badge className="bg-red-500/[0.12] text-red-600 hover:bg-red-500/[0.12] dark:text-red-400">{overdue === 1 ? 'Ayer' : `Hace ${overdue}d`}</Badge>
         } else if (client.daysUntilCheckin === 0) {
-            return <Badge variant="destructive">Hoy</Badge>
+            return <Badge className="bg-red-500/[0.12] text-red-600 hover:bg-red-500/[0.12] dark:text-red-400">Hoy</Badge>
         } else if (client.daysUntilCheckin <= 2) {
-            return <Badge className="bg-warning text-warning-foreground">{client.daysUntilCheckin}d</Badge>
+            return <Badge className="bg-amber-400/15 text-amber-700 hover:bg-amber-400/15 dark:text-amber-300">{client.daysUntilCheckin}d</Badge>
         } else if (client.daysUntilCheckin <= 7) {
-            return <Badge variant="secondary">{client.daysUntilCheckin}d</Badge>
+            return <Badge className="bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.06]">{client.daysUntilCheckin}d</Badge>
         }
         return <span className="text-muted-foreground">{client.daysUntilCheckin}d</span>
     }
@@ -327,7 +337,7 @@ function ClientRow({
             Ejemplo
         </Badge>
     ) : isPendingSignup ? (
-        <Badge className="bg-amber-500/10 text-amber-500 border-0">
+        <Badge className="bg-amber-400/15 text-amber-700 border-0 dark:text-amber-300">
             Registro pendiente
         </Badge>
     ) : (
@@ -422,17 +432,19 @@ function ClientRow({
     )
 
     const { initials } = getClientDisplayIdentity(client)
-    const avatarColors = client.status === 'active' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+    const avatarColors = client.status === 'active' ? 'text-white' : 'bg-muted text-muted-foreground'
+    const avatarSeed = client.status === 'active' ? (client.full_name || client.email) : undefined
 
     return (
         <>
             {variant === 'card' ? (
-                <Card className={cn('p-3 transition-opacity', isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
+                <Card className={cn('p-3.5 transition-opacity', isPending && 'opacity-50', client.status === 'inactive' && 'opacity-70')}>
                     <div className="flex items-start gap-2">
                         <Link href={workspaceHref} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg">
                             <AthleteAvatar
                                 initials={initials}
                                 avatarUrl={client.avatar_url}
+                                seed={avatarSeed}
                                 className="h-10 w-10"
                                 fallbackClassName={cn('text-sm font-bold', avatarColors)}
                             />
@@ -444,9 +456,9 @@ function ClientRow({
                                     {(isPendingSignup || client.is_sample) && signupBadge}
                                 </div>
                                 {client.status === 'active' && (
-                                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                        <span>Próxima revisión:</span>
-                                        <span className="capitalize text-foreground">{formatCheckinDate(nextCheckinDate) ?? '—'}</span>
+                                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+                                        <span className="whitespace-nowrap">Próxima revisión</span>
+                                        <span className="whitespace-nowrap capitalize text-foreground">{formatCheckinDate(nextCheckinDate) ?? '—'}</span>
                                         {getCheckinBadge()}
                                     </div>
                                 )}
@@ -463,6 +475,7 @@ function ClientRow({
                             <AthleteAvatar
                                 initials={initials}
                                 avatarUrl={client.avatar_url}
+                                seed={avatarSeed}
                                 className="h-9 w-9"
                                 fallbackClassName={cn('text-xs font-bold', avatarColors)}
                             />
@@ -477,7 +490,7 @@ function ClientRow({
                     <TableCell>
                         {client.status === 'active' ? (
                             <div className="flex items-center gap-2">
-                                <span className="text-sm">{nextCheckinDate}</span>
+                                <span className="text-sm capitalize">{formatCheckinDate(nextCheckinDate) ?? '—'}</span>
                                 {getCheckinBadge()}
                             </div>
                         ) : (
@@ -490,7 +503,7 @@ function ClientRow({
                         </span>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                        <span className="text-sm text-muted-foreground">{client.start_date}</span>
+                        <span className="text-sm text-muted-foreground">{formatShortDate(client.start_date)}</span>
                     </TableCell>
                     <TableCell>{actionsMenu}</TableCell>
                 </TableRow>
