@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ChevronDown, ClipboardList, ListChecks, Minus, Paperclip, Plus, Search, Undo2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronsLeftRight, ChevronsRightLeft, ClipboardList, ListChecks, Minus, Paperclip, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
 import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
 import { birthdayInfo } from '@/lib/studio/client-rules'
+import { toggleNarrow } from '@/lib/studio/session-text-rules'
 import { StudioReportPanel } from '@/components/coach/sala/StudioReportPanel'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
@@ -82,6 +83,21 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
     const isMobile = useIsMobile()
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
     const [doneShown, setDoneShown] = useState<Record<string, boolean>>({})
+    // Sesiones estrechadas a mano: se recuerdan en este navegador, por cliente o grupo.
+    const [narrowSaved, setNarrowSaved] = useState<Record<string, string[]>>({})
+    useEffect(() => {
+        try {
+            setNarrowSaved(JSON.parse(localStorage.getItem(NARROW_KEY) ?? '{}') ?? {})
+        } catch {
+            setNarrowSaved({})
+        }
+    }, [])
+    const narrowIds = new Set(narrowSaved[data.client.id] ?? [])
+    function toggleNarrowSession(sessionId: string) {
+        const next = toggleNarrow(narrowSaved, data.client.id, sessionId)
+        setNarrowSaved(next)
+        try { localStorage.setItem(NARROW_KEY, JSON.stringify(next)) } catch { /* sin almacenamiento, solo para esta visita */ }
+    }
     const [isMarking, startMarking] = useTransition()
     const [clip, setClipState] = useState<StudioClip | null>(null)
 
@@ -433,17 +449,29 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                                         Ejercicio
                                     </th>
                                     {sessions.map(session => {
-                                        const narrow = session.status === 'cancelled' || session.status === 'no_show'
+                                        const off = session.status === 'cancelled' || session.status === 'no_show'
+                                        const narrow = off || narrowIds.has(session.id)
                                         return (
                                             <th
                                                 key={session.id}
                                                 scope="col"
                                                 className={cn(
                                                     'sticky top-0 z-20 border-b border-r bg-card p-0 text-left align-top font-normal',
-                                                    narrow ? 'w-[64px] min-w-[64px]' : level.column,
+                                                    narrow ? 'w-[64px] min-w-[64px] max-w-[64px]' : level.column,
                                                     session.isToday && 'bg-primary/10'
                                                 )}
                                             >
+                                                {!off && (
+                                                    <button
+                                                        type="button"
+                                                        className="absolute right-0.5 top-0.5 z-10 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        aria-label={narrow ? `Ensanchar la sesión del ${formatShortDate(session.session_date)}` : `Estrechar la sesión del ${formatShortDate(session.session_date)}`}
+                                                        title={narrow ? 'Ensanchar' : 'Estrechar'}
+                                                        onClick={() => toggleNarrowSession(session.id)}
+                                                    >
+                                                        {narrow ? <ChevronsLeftRight className="h-3 w-3" /> : <ChevronsRightLeft className="h-3 w-3" />}
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     className="block h-full w-full p-2 text-left hover:bg-muted/60"
@@ -598,6 +626,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                                                         </th>
                                                         {sessions.map(session => {
                                                             const off = session.status === 'cancelled' || session.status === 'no_show'
+                                                            const narrow = off || narrowIds.has(session.id)
                                                             const cellItems: StudioItem[] = row.items.filter((item: StudioItem) => item.session_id === session.id)
                                                             // Una clase se cambia en su grupo: aquí solo se ve lo de esta persona.
                                                             const fromGroup = Boolean(session.group_id) && !data.group
@@ -606,6 +635,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                                                                     key={session.id}
                                                                     className={cn(
                                                                         'border-b border-r p-1 align-top',
+                                                                        narrow && 'max-w-[64px] overflow-hidden',
                                                                         session.isToday && 'bg-primary/5',
                                                                         off && 'bg-muted/40'
                                                                     )}
@@ -613,6 +643,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                                                                     {cellItems.map(item => (
                                                                         <Cell
                                                                             key={item.id}
+                                                                            compact={narrow}
                                                                             item={item}
                                                                             done={doneShown[item.id] ?? item.is_done}
                                                                             busy={isMarking}
@@ -749,8 +780,10 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
     )
 }
 
-function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleDone }: {
+function Cell({ item, compact = false, done, busy, readOnly, groupLine, people, onOpen, onToggleDone }: {
     item: StudioItem
+    /** En una sesión estrecha solo se ve el volumen. */
+    compact?: boolean
     done: boolean
     busy: boolean
     readOnly: boolean
@@ -771,7 +804,8 @@ function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleD
                 onClick={onOpen}
                 aria-label={`Editar ${item.exercise_name}: ${summary.volume || 'sin valores'}`}
             >
-                <span className="block font-semibold">{summary.volume || '—'}</span>
+                <span className={cn('block font-semibold', compact && 'truncate')}>{summary.volume || '—'}</span>
+                {!compact && <>
                 {groupLine && <span className="block">{groupLine}</span>}
                 {!groupLine && summary.load && (
                     <span className="block">
@@ -791,6 +825,7 @@ function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleD
                         <Paperclip className="inline h-3 w-3" aria-hidden /> adjunto
                     </span>
                 )}
+                </>}
             </button>
             {!readOnly && <button
                 type="button"
@@ -809,6 +844,8 @@ function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleD
         </div>
     )
 }
+
+const NARROW_KEY = 'nt.sala.estrechas'
 
 /** Edad, cumpleaños y objetivos del cliente, debajo de su nombre. */
 function ClientFacts({ birthday, objectives, today }: { birthday: string | null; objectives: string[]; today: string }) {
