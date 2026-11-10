@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { StudioExerciseSearch } from '@/components/coach/sala/StudioExerciseSearch'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ClipboardPaste, Copy, CopyPlus, FileText, Loader2, Save, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ClipboardCopy, ClipboardPaste, Copy, CopyPlus, FileText, Loader2, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,
@@ -41,6 +41,7 @@ import {
     wellnessScore,
 } from '@/lib/studio/editor-rules'
 import { clipItemFields, routineItemFields, routinesForClient } from '@/lib/studio/copy-rules'
+import { blockItems, blockOptions, sessionText } from '@/lib/studio/session-text-rules'
 import type { StudioClip } from '@/lib/studio/clipboard'
 import { cellSummary, formatShortDate } from '@/lib/studio/grid-rules'
 import {
@@ -252,6 +253,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
     const [templateName, setTemplateName] = useState<string | null>(null)
     const [newSection, setNewSection] = useState('')
     const [addTo, setAddTo] = useState(NO_SECTION)
+    const [blockKey, setBlockKey] = useState('')
 
     const items = useMemo(() => data.items.filter(item => item.session_id === session.id), [data.items, session.id])
     const sections = useMemo(() => data.sections.filter(section => section.session_id === session.id), [data.sections, session.id])
@@ -331,6 +333,30 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                 setSkipped(new Set())
             }
         )
+    }
+
+    const packs = useMemo(() => blockOptions(data.entries, data.blocks), [data.entries, data.blocks])
+    const packItems = blockKey
+        ? blockItems(data.entries, data.blocks, blockKey, new Set(items.map(item => item.catalog_exercise_id)))
+        : []
+
+    function addBlock() {
+        if (packItems.length === 0) return void toast.error('Ese bloque ya está entero en la sesión.')
+        const sectionId = addTo === NO_SECTION ? null : addTo
+        run(
+            () => addItemsAction(session.id, packItems.map(item => ({ ...item, section_id: sectionId }))),
+            () => setBlockKey('')
+        )
+    }
+
+    async function copySummary() {
+        const text = sessionText({ personName: data.client.fullName, session, entries })
+        try {
+            await navigator.clipboard.writeText(text)
+            toast.success('Resumen copiado: pégalo donde quieras.')
+        } catch {
+            toast.error('No se ha podido copiar. Prueba otra vez.')
+        }
     }
 
     function paste() {
@@ -530,6 +556,29 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                             />
                         </div>
 
+                        {packs.length > 0 && (
+                            <div className="space-y-2 rounded-md border p-3">
+                                <Label htmlFor="sesion-bloque">Añadir un bloque entero</Label>
+                                <div className="flex gap-2">
+                                    <select
+                                        id="sesion-bloque"
+                                        className="flex h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm"
+                                        value={blockKey}
+                                        onChange={event => setBlockKey(event.target.value)}
+                                    >
+                                        <option value="">Elige un bloque de la biblioteca</option>
+                                        {packs.map(option => (
+                                            <option key={option.key} value={option.key}>{option.name} · {option.count} ej.</option>
+                                        ))}
+                                    </select>
+                                    <Button type="button" size="sm" className="h-9 shrink-0" disabled={!blockKey || isPending} onClick={addBlock}>
+                                        {blockKey && packItems.length > 0 ? `Añadir ${packItems.length}` : 'Añadir'}
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Con las series y repeticiones de la biblioteca. Lo que ya está en la sesión no se repite.</p>
+                            </div>
+                        )}
+
                         {routines.length > 0 && (
                             <div className="space-y-2 rounded-md border p-3">
                                 <Label>Añadir una rutina</Label>
@@ -689,9 +738,14 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                     </section>
 
                     <div className="space-y-2 border-t pt-4">
-                        <Button type="button" variant="outline" className="w-full" disabled={isPending} onClick={onReport}>
-                            <FileText className="mr-2 h-4 w-4" /> Informe
-                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button type="button" variant="outline" disabled={isPending} onClick={onReport}>
+                                <FileText className="mr-2 h-4 w-4" /> Informe
+                            </Button>
+                            <Button type="button" variant="outline" disabled={isPending || items.length === 0} onClick={() => void copySummary()}>
+                                <ClipboardCopy className="mr-2 h-4 w-4" /> Copiar resumen
+                            </Button>
+                        </div>
                         {canPaste && (
                             <Button type="button" className="w-full" disabled={isPending} onClick={paste}>
                                 <ClipboardPaste className="mr-2 h-4 w-4" /> Pegar aquí: {clip.label}
