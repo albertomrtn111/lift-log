@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
-import { ExternalLink, Link2, Loader2, Mail, MessageCircle, RefreshCw, Trash2 } from 'lucide-react'
+import { ExternalLink, Link2, Loader2, Mail, MessageCircle, Presentation, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { formatShortDate } from '@/lib/studio/grid-rules'
 import {
     emailAllReportsAction,
     emailReportAction,
+    emailReportTestAction,
     getReportPanelAction,
     revokeReportAction,
     saveAllReportsAction,
@@ -172,6 +173,20 @@ export function StudioReportPanel({ data, session, onClose }: {
                                             </Button>
                                             <Button type="button" variant="outline" asChild>
                                                 <a href={link(report.code)} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" /> Ver</a>
+                                            </Button>
+                                            <Button type="button" variant="outline" asChild>
+                                                <a href={`${link(report.code)}?formato=presentacion`} target="_blank" rel="noreferrer"><Presentation className="mr-2 h-4 w-4" /> Presentación</a>
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={isPending}
+                                                onClick={() => run(
+                                                    () => emailReportTestAction(report, row.name),
+                                                    () => toast.success('Prueba enviada a tu email')
+                                                )}
+                                            >
+                                                <Send className="mr-2 h-4 w-4" /> Enviarme una prueba
                                             </Button>
                                         </div>
                                         <div className="flex items-center justify-between gap-2">

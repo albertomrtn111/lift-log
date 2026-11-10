@@ -175,6 +175,38 @@ export async function emailReportAction(report: { id: string; code: string }, cl
     return { success: true, data: undefined }
 }
 
+/**
+ * «Enviarme una prueba»: el mismo email del informe, a quien lo pulsa. No cuenta como envío
+ * ni avisa al cliente.
+ */
+export async function emailReportTestAction(report: { id: string; code: string }, clientName: string): Promise<Result<{ to: string }>> {
+    const coachId = await getActiveCoachId()
+    if (!coachId) return { success: false, error: 'No hay un espacio activo.' }
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.email) return { success: false, error: 'Tu cuenta no tiene email.' }
+    // Solo se prueba un informe que puedes ver.
+    const { data: visible } = await supabase.from('session_reports').select('id').eq('id', report.id).maybeSingle()
+    if (!visible) return { success: false, error: 'No tienes acceso a este informe.' }
+
+    const [brand, { data: settings }] = await Promise.all([
+        getEmailBrand(coachId),
+        supabase.from('report_settings').select('email_subject, email_text').eq('coach_id', coachId).maybeSingle(),
+    ])
+    const values = { name: clientName, center: brand?.name ?? 'tu centro' }
+    const subject = settings?.email_subject ? fillReportText(settings.email_subject, values) : `Tu informe de sesión${brand?.name ? ` en ${brand.name}` : ''}`
+    const sent = await sendSessionReportEmail({
+        to: user.email,
+        clientName,
+        url: `${getAppUrl()}/informe/${report.code}`,
+        coachId,
+        subject: `[Prueba] ${subject}`,
+        text: settings?.email_text ? fillReportText(settings.email_text, values) : null,
+    })
+    if (!sent.ok) return { success: false, error: 'No se ha podido enviar el email de prueba.' }
+    return { success: true, data: { to: user.email } }
+}
+
 /** Crea o actualiza el informe de cada persona de una clase. */
 export async function saveAllReportsAction(sessionId: string, clientIds: string[]): Promise<Result> {
     for (const clientId of clientIds) {

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { ReportDocument, type ReportPayload } from '@/components/reports/ReportDocument'
+import { ReportSlides } from '@/components/reports/ReportSlides'
 import { getStudioGroupGrid } from '@/data/studio'
 import { getActiveCoachId } from '@/lib/auth/active-coach'
 import { prepareSessions } from '@/lib/studio/grid-rules'
@@ -13,10 +14,10 @@ export const metadata: Metadata = { title: 'Informe de la clase', robots: { inde
 /** Informe de una clase para el profesional. Va con su sesión, sin enlace público. */
 export default async function ClassReportPage({ params, searchParams }: {
     params: Promise<{ sessionId: string }>
-    searchParams: Promise<{ solo?: string }>
+    searchParams: Promise<{ solo?: string; formato?: string }>
 }) {
     const { sessionId } = await params
-    const { solo } = await searchParams
+    const { solo, formato } = await searchParams
     const coachId = await getActiveCoachId()
     if (!coachId || !/^[0-9a-f-]{36}$/i.test(sessionId)) notFound()
 
@@ -59,5 +60,9 @@ export default async function ClassReportPage({ params, searchParams }: {
             footer: branding?.report_footer ?? null,
         },
     } as ReportPayload
-    return <ReportDocument report={report} />
+    const base = `/clase-informe/${sessionId}`
+    const soloQuery = solo ? `solo=${encodeURIComponent(solo)}` : ''
+    return formato === 'presentacion'
+        ? <ReportSlides report={report} documentHref={soloQuery ? `${base}?${soloQuery}` : base} />
+        : <ReportDocument report={report} presentationHref={`${base}?formato=presentacion${soloQuery ? `&${soloQuery}` : ''}`} />
 }
