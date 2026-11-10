@@ -14,6 +14,7 @@ import {
     ClipboardList,
     BarChart2,
     Dumbbell,
+    Gauge,
     Receipt,
     MessageCircle,
     MoreHorizontal,
@@ -102,18 +103,22 @@ const MESSAGES_ITEM = navSections[0].items[1]
 const MEMBERS_ITEM = navSections[1].items[0]
 
 // Sala es un entorno aparte: su propio menú, con lo de clientes compartido con Online.
+const EVALUATIONS_ITEM: NavItem = { href: '/coach/sala/evaluaciones', icon: Gauge, label: 'Evaluaciones' }
+
 const salaSections: Array<{ title: string; items: NavItem[] }> = [
     {
         title: 'Sala',
         items: [
             { href: '/coach/sala', icon: Dumbbell, label: 'Sesiones', exact: true },
             { href: '/coach/sala/videos', icon: Video, label: 'Vídeos' },
+            EVALUATIONS_ITEM,
         ],
     },
     { title: 'Clientes', items: [MESSAGES_ITEM, MEMBERS_ITEM] },
 ]
 
-const salaPrimaryItems: NavItem[] = salaSections.flatMap(section => section.items)
+// En el móvil caben cuatro accesos y «Más»: Evaluaciones va en «Más».
+const salaPrimaryItems: NavItem[] = salaSections.flatMap(section => section.items).filter(item => item !== EVALUATIONS_ITEM)
 
 const SALA_SETTINGS_HREF = '/coach/settings?tab=integraciones'
 
@@ -221,7 +226,10 @@ export function CoachSidebar({ workspaces, environment: space }: {
     const desktopSections = inSala ? salaSections : navSections
     const primaryItems = inSala ? salaPrimaryItems : mobilePrimaryItems
     const moreSections: Array<{ title: string; items: NavItem[] }> = inSala
-        ? [{ title: 'Cuenta', items: [{ href: SALA_SETTINGS_HREF, icon: Settings2, label: 'Ajustes' }] }]
+        ? [
+            { title: 'Sala', items: [EVALUATIONS_ITEM] },
+            { title: 'Cuenta', items: [{ href: SALA_SETTINGS_HREF, icon: Settings2, label: 'Ajustes' }] },
+        ]
         : mobileSecondarySections
     const userRole = coach?.role ?? 'coach'
     const coachId = coach?.coachId ?? null
