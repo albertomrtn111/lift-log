@@ -1,5 +1,7 @@
 /** Reglas de la cuadrícula de sala, sin dependencias para poder probarlas con node --test. */
 
+import { formatVelocity } from './vbt-rules.js'
+
 /** Sesiones pasadas que se ven al abrir a un cliente. Las anteriores se piden con «Ver anteriores». */
 export const STUDIO_PAST_SESSIONS = 12
 
@@ -111,6 +113,7 @@ export function cellSummary(item) {
     const details = []
     if (item.rir !== null && item.rir !== undefined) details.push(`RIR ${item.rir}`)
     if (item.rpe !== null && item.rpe !== undefined) details.push(`RPE ${item.rpe}`)
+    if (item.velocity_ms !== null && item.velocity_ms !== undefined) details.push(`${formatVelocity(item.velocity_ms)} m/s`)
     return {
         volume,
         load: item.load_kg !== null && item.load_kg !== undefined ? `${Number(item.load_kg)} kg` : '',

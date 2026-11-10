@@ -13,6 +13,7 @@ import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/Studio
 import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFilePanel'
 import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
+import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
 import { StudioReportPanel } from '@/components/coach/sala/StudioReportPanel'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
@@ -324,6 +325,13 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                         <Button size="sm" variant="outline" className="h-9" disabled={isMarking} onClick={undo}>
                             <Undo2 className="mr-1 h-4 w-4" /> Deshacer
                         </Button>
+                        {!data.group && (
+                            <StudioMyJumpImport
+                                clients={[{ id: data.client.id, name: data.client.fullName }]}
+                                fixedClientId={data.client.id}
+                                library={data.entries}
+                            />
+                        )}
                         <div className="flex items-center" role="group" aria-label="Tamaño de la cuadrícula">
                             <Button
                                 size="icon"

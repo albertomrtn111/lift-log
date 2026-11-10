@@ -41,8 +41,18 @@ test('solo salen las personas con valores propios', () => {
 
 test('lo vacío de una persona hereda lo general', () => {
     const { fields } = personFields({ loadKg: '32,5', reps: '', rir: '', rpe: '' })
-    assert.deepEqual(fields, { load_kg: 32.5, reps: null, rir: null, rpe: null })
+    assert.deepEqual(fields, { load_kg: 32.5, reps: null, rir: null, rpe: null, velocity_ms: null })
     assert.match(personFields({ loadKg: '', reps: '', rir: '11', rpe: '' }).error, /RIR/)
+})
+
+test('cada persona puede llevar su velocidad', () => {
+    assert.equal(personFields({ loadKg: '', reps: '', rir: '', rpe: '', velocityMs: '0,8' }).fields.velocity_ms, 0.8)
+    assert.match(personFields({ loadKg: '', reps: '', rir: '', rpe: '', velocityMs: '0' }).error, /velocidad/)
+    assert.equal(personForm({ velocity_ms: '0.80' }).velocityMs, '0,80')
+    const rows = [{ clientId: 'b', form: { ...personForm(people[0]), velocityMs: '0,8' } }]
+    assert.deepEqual(changedPeople(rows, people).map(row => row.clientId), ['b'])
+    assert.equal(itemForPerson({ velocity_ms: 0.5 }, { velocity_ms: 0.7 }).velocity_ms, 0.7)
+    assert.equal(itemForPerson({ velocity_ms: 0.5 }, { velocity_ms: null }).velocity_ms, 0.5)
 })
 
 test('solo se guarda a quien ha cambiado', () => {

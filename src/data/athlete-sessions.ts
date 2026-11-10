@@ -44,6 +44,7 @@ export interface AthleteSessionItem {
     load_kg: number | null
     rir: number | null
     rpe: number | null
+    velocity_ms: number | null
     next_load: string | null
     tags: string[]
     circuit: string[]
@@ -120,11 +121,11 @@ export async function getAthleteSession(clientId: string, sessionId: string): Pr
         supabase.from('studio_session_sections').select('id, title, parent_title, sort_order').eq('session_id', sessionId).order('sort_order'),
         supabase
             .from('studio_session_items')
-            .select('id, catalog_exercise_id, section_id, sort_order, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, exercise_catalog(name)')
+            .select('id, catalog_exercise_id, section_id, sort_order, sets, reps, time_seconds, load_kg, rir, rpe, velocity_ms, next_load, circuit, exercise_catalog(name)')
             .eq('session_id', sessionId)
             .eq('is_done', true)
             .order('sort_order'),
-        supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, next_load').eq('client_id', clientId),
+        supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, velocity_ms, next_load').eq('client_id', clientId),
         supabase
             .from('exercise_media')
             .select('id, catalog_exercise_id, client_id, kind, url, storage_key, title, video:media_assets(title, storage_key, thumb_key)')

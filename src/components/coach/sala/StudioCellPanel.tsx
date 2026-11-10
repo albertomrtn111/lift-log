@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, X } from 'lucide-react'
+import { FileUp, Loader2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     AlertDialog,
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { StudioConflict } from '@/components/coach/sala/StudioConflict'
 import { StudioTechnique } from '@/components/coach/sala/StudioTechnique'
+import { StudioDayProfile, StudioVelocity } from '@/components/coach/sala/StudioVelocity'
 import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ import type { StudioGridData, StudioItem } from '@/data/studio'
 import {
     cellDiff,
     cellFields,
+    emptySetRow,
     formFromPrevious,
     itemToForm,
     libraryDefaults,
@@ -37,6 +39,8 @@ import {
 } from '@/lib/studio/editor-rules'
 import { cellSummary, formatShortDate, normalizeText } from '@/lib/studio/grid-rules'
 import { ATTENDANCE_LABELS, changedPeople, personFields, personForm } from '@/lib/studio/group-rules'
+import { analyzeMyJump, guessClient, myJumpCell, myJumpRows, parseMyJumpName } from '@/lib/studio/my-jump-rules'
+import { formatVelocity } from '@/lib/studio/vbt-rules'
 import { deleteItemAction, getItemSetsAction, saveCellAction } from '@/lib/studio/session-actions'
 import { cn } from '@/lib/utils'
 
@@ -56,9 +60,10 @@ const SET_COLUMNS = [
     { key: 'timeSeconds', label: 'Seg' },
     { key: 'rir', label: 'RIR' },
     { key: 'rpe', label: 'RPE' },
+    { key: 'velocityMs', label: 'm/s' },
 ] as const
 
-type SetRow = Record<(typeof SET_COLUMNS)[number]['key'], string>
+type SetRow = ReturnType<typeof emptySetRow>
 
 function previousText(item: StudioItem) {
     const summary = cellSummary(item)
@@ -78,6 +83,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
     const catalogExerciseId = item?.catalog_exercise_id ?? ('catalogExerciseId' in target ? target.catalogExerciseId : '')
     const exerciseName = item?.exercise_name ?? ('exerciseName' in target ? target.exerciseName : '')
     const session = data.sessions.find(entry => entry.id === sessionId)
+    const equation = data.equations.find(entry => entry.catalog_exercise_id === catalogExerciseId) ?? null
 
     const [form, setForm] = useState(() => itemToForm(item ?? libraryDefaults(data.entries, data.blocks, catalogExerciseId)))
     // Lo que había al abrir: si otro lo cambia después, guardar no debe pisarlo sin que lo veas.
@@ -88,6 +94,9 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
     const [wasDetailed, setWasDetailed] = useState(false)
     const [rows, setRows_] = useState<SetRow[]>([])
     const [confirmDelete, setConfirmDelete] = useState(false)
+    const myJumpInput = useRef<HTMLInputElement>(null)
+    /** En un grupo, las series de My Jump de cada persona hasta guardar. */
+    const [personSets, setPersonSets] = useState<Record<string, SetRow[]>>({})
 
     // En un grupo, cada persona de la sesión con sus valores. Lo vacío hereda lo general.
     const inGroup = Boolean(data.group)
@@ -177,6 +186,12 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
             if (person.error) return void toast.error(`${memberName(row.clientId)}: ${person.error}`)
             people.push({ clientId: row.clientId, fields: person.fields! })
         }
+        const measured: { clientId: string; sets: Record<string, unknown>[] }[] = []
+        for (const [clientId, list] of Object.entries(personSets)) {
+            const person = setsFields(list)
+            if (person.error) return void toast.error(`${memberName(clientId)}: ${person.error}`)
+            measured.push({ clientId, sets: person.sets! })
+        }
         startTransition(async () => {
             const result = await saveCellAction({
                 sessionId,
@@ -185,13 +200,63 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                 fields: item ? cell.fields! : { ...cell.fields!, catalog_exercise_id: catalogExerciseId },
                 sets,
                 people,
-                done: details ? true : form.isDone,
+                personSets: measured,
+                done: details || measured.length > 0 ? true : form.isDone,
             })
             router.refresh()
             if (result.success) return onClose()
             // Con conflicto, al llegar lo último aparece la comparación.
             if (!result.conflict) toast.error(result.error)
         })
+    }
+
+    /** Series de My Jump: en un cliente van a Por series; en un grupo, cada archivo a su persona. */
+    async function importMyJump(files: File[]) {
+        const read = await Promise.all(files.map(async file => ({
+            name: file.name,
+            loadKg: parseMyJumpName(file.name).loadKg,
+            analysis: /\.csv$/i.test(file.name) ? analyzeMyJump(await file.text()) : null,
+        })))
+        const unreadable = read.filter(entry => !entry.analysis).map(entry => entry.name)
+        const good = read.filter(entry => entry.analysis)
+        let imported = 0
+        const unmatched: string[] = []
+
+        if (!inGroup) {
+            const added = myJumpRows(good, equation)
+            if (added.length > 0) {
+                const filled = (row: SetRow) => [row.loadKg, row.reps, row.timeSeconds, row.rir, row.rpe, row.velocityMs].some(value => value.trim() !== '')
+                const next = [...(detailOn ? rows.filter(filled) : []), ...added]
+                const cell = myJumpCell(next)!
+                setRows_(next)
+                setDetailOn(true)
+                setForm({ ...form, sets: cell.sets, reps: cell.reps, loadKg: cell.loadKg, velocityMs: cell.velocityMs })
+                imported = added.length
+            }
+        } else {
+            const members = roster.map(entry => ({ id: entry.client_id, name: memberName(entry.client_id) }))
+            const byPerson = new Map<string, typeof good>()
+            for (const entry of good) {
+                const person = guessClient(entry.name, members)
+                if (!person) unmatched.push(entry.name)
+                else byPerson.set(person.id, [...(byPerson.get(person.id) ?? []), entry])
+            }
+            const nextSets = { ...personSets }
+            setPersonRows(personRows.map(row => {
+                const list = byPerson.get(row.clientId)
+                if (!list) return row
+                const added = myJumpRows(list, equation)
+                imported += added.length
+                nextSets[row.clientId] = [...(nextSets[row.clientId] ?? []), ...added]
+                const cell = myJumpCell(nextSets[row.clientId])!
+                return { ...row, form: { ...row.form, loadKg: cell.loadKg, reps: cell.reps, velocityMs: cell.velocityMs } }
+            }))
+            setPersonSets(nextSets)
+        }
+
+        if (imported > 0) toast.success(`${imported === 1 ? '1 serie' : `${imported} series`} de My Jump. Revisa y guarda.`)
+        if (unmatched.length > 0) toast.error(`No sé de quién es: ${unmatched.join(', ')}`)
+        if (unreadable.length > 0) toast.error(`Sin repeticiones: ${unreadable.join(', ')}`)
     }
 
     function useTheirs() {
@@ -314,6 +379,14 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                         <Field id="sala-rpe" label="RPE" value={form.rpe} onChange={rpe => setForm({ ...form, rpe })} numeric />
                     </div>
 
+                    <StudioVelocity
+                        equation={equation}
+                        value={form.velocityMs}
+                        onChange={velocityMs => setForm({ ...form, velocityMs })}
+                        loadKg={form.loadKg}
+                        reps={form.reps}
+                    />
+
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <Label htmlFor="sala-done">Realizado</Label>
                         <Switch
@@ -324,10 +397,26 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                         />
                     </div>
 
+                    <input
+                        ref={myJumpInput}
+                        type="file"
+                        accept=".csv,text/csv"
+                        multiple
+                        hidden
+                        onChange={event => {
+                            const files = Array.from(event.target.files ?? [])
+                            event.target.value = ''
+                            if (files.length > 0) void importMyJump(files)
+                        }}
+                    />
+
                     {inGroup && personRows.length > 0 && (
                         <div className="space-y-2 rounded-md border p-3">
-                            <span className="text-sm font-medium">Por persona</span>
-                            <p className="text-xs text-muted-foreground">Lo que dejes vacío hereda lo general.</p>
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium">Por persona</span>
+                                <MyJumpButton onClick={() => myJumpInput.current?.click()} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Lo que dejes vacío hereda lo general. Cada CSV de My Jump va a quien diga su nombre.</p>
                             {personRows.map((row, index) => {
                                 const status = roster.find(entry => entry.client_id === row.clientId)?.status ?? 'unmarked'
                                 const change = (key: string, value: string) => setPersonRows(personRows.map((entry, position) => (
@@ -337,10 +426,15 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                                     <div key={row.clientId} className="space-y-1">
                                         <div className="flex items-baseline justify-between gap-2 text-sm">
                                             <span className="min-w-0 truncate font-medium">{memberName(row.clientId)}</span>
-                                            <span className="shrink-0 text-xs text-muted-foreground">{ATTENDANCE_LABELS[status]}</span>
+                                            <span className="shrink-0 text-xs text-muted-foreground">
+                                                {personSets[row.clientId]?.length
+                                                    ? `${personSets[row.clientId].length} series de My Jump · `
+                                                    : ''}
+                                                {ATTENDANCE_LABELS[status]}
+                                            </span>
                                         </div>
-                                        <div className="grid grid-cols-4 gap-1">
-                                            {[['loadKg', 'Kg'], ['reps', 'Reps'], ['rir', 'RIR'], ['rpe', 'RPE']].map(([key, label]) => (
+                                        <div className="grid grid-cols-5 gap-1">
+                                            {[['loadKg', 'Kg'], ['reps', 'Reps'], ['rir', 'RIR'], ['rpe', 'RPE'], ['velocityMs', 'm/s']].map(([key, label]) => (
                                                 <Input
                                                     key={key}
                                                     value={row.form[key as keyof typeof row.form]}
@@ -360,14 +454,17 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                     )}
 
                     {!inGroup && <div className="space-y-2 rounded-md border p-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                             <Label htmlFor="sala-detail">Por series</Label>
-                            <Switch id="sala-detail" checked={detailOn} onCheckedChange={toggleDetail} />
+                            <div className="flex items-center gap-2">
+                                <MyJumpButton onClick={() => myJumpInput.current?.click()} />
+                                <Switch id="sala-detail" checked={detailOn} onCheckedChange={toggleDetail} />
+                            </div>
                         </div>
                         {detailOn && (
                             <>
                                 <p className="text-xs text-muted-foreground">Lo que dejes vacío hereda lo general.</p>
-                                <div className="grid grid-cols-[1.5rem_repeat(5,minmax(0,1fr))] items-center gap-1 text-xs">
+                                <div className="grid grid-cols-[1.5rem_repeat(6,minmax(0,1fr))] items-center gap-1 text-xs">
                                     <span />
                                     {SET_COLUMNS.map(column => (
                                         <span key={column.key} className="text-center text-muted-foreground">{column.label}</span>
@@ -386,7 +483,7 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                                         type="button"
                                         size="sm"
                                         variant="ghost"
-                                        onClick={() => setRows_([...rows, { loadKg: '', reps: '', timeSeconds: '', rir: '', rpe: '' }])}
+                                        onClick={() => setRows_([...rows, emptySetRow()])}
                                     >
                                         <Plus className="mr-1 h-3.5 w-3.5" /> Serie
                                     </Button>
@@ -400,6 +497,16 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                                         Quitar la última
                                     </Button>
                                 </div>
+                                {rows.some(row => row.repDetail?.length) && (
+                                    <ul className="space-y-0.5 text-xs text-muted-foreground">
+                                        {rows.map((row, index) => row.repDetail?.length ? (
+                                            <li key={index}>
+                                                {`Serie ${index + 1} · VMP por repetición: ${row.repDetail.map(rep => formatVelocity(rep.mpv)).join(' · ')} m/s`}
+                                            </li>
+                                        ) : null)}
+                                    </ul>
+                                )}
+                                <StudioDayProfile equation={equation} rows={rows} />
                             </>
                         )}
                     </div>}
@@ -518,6 +625,14 @@ export function StudioCellPanel({ data, target, onClose, onCopy }: {
                 </AlertDialog>
             </SheetContent>
         </Sheet>
+    )
+}
+
+function MyJumpButton({ onClick }: { onClick: () => void }) {
+    return (
+        <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onClick} title="Importar series de My Jump Lab (CSV)">
+            <FileUp className="mr-1 h-3.5 w-3.5" /> My Jump
+        </Button>
     )
 }
 

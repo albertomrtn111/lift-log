@@ -67,6 +67,8 @@ export interface StudioItem {
     load_kg: number | null
     rir: number | null
     rpe: number | null
+    /** Velocidad de la barra en m/s. */
+    velocity_ms: number | null
     next_load: string | null
     circuit: string[]
     note: string | null
@@ -163,7 +165,18 @@ export interface StudioItemPerson {
     time_seconds: number | null
     rir: number | null
     rpe: number | null
+    velocity_ms: number | null
     next_load: string | null
+}
+
+/** %1RM = a·V² + b·V + c, con la velocidad con la que se hizo. */
+export interface StudioVbtEquation {
+    catalog_exercise_id: string
+    a: number
+    b: number
+    c: number
+    velocity_type: 'mpv' | 'mv'
+    source: string
 }
 
 export interface StudioGroupSummary {
@@ -210,6 +223,8 @@ export interface StudioGridData {
     imageConsent: boolean
     /** Lo que cuentan los clientes desde su app. */
     feedback: StudioFeedback[]
+    /** Ecuaciones carga-velocidad de los ejercicios que tienen. */
+    equations: StudioVbtEquation[]
 }
 
 export interface StudioFeedback {
@@ -471,7 +486,7 @@ async function buildGrid(
         ? await Promise.all([
             supabase
                 .from('studio_session_items')
-                .select('id, session_id, section_id, sort_order, catalog_exercise_id, routine_id, sets, reps, time_seconds, load_kg, rir, rpe, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name)), studio_item_attachments(image_key, link_url)')
+                .select('id, session_id, section_id, sort_order, catalog_exercise_id, routine_id, sets, reps, time_seconds, load_kg, rir, rpe, velocity_ms, next_load, circuit, note, is_done, version, updated_by, updated_at, exercise_catalog(name, block_key), studio_item_tags(studio_tags(name)), studio_item_attachments(image_key, link_url)')
                 .in('session_id', sessionIds)
                 .order('sort_order', { ascending: true }),
             supabase
@@ -484,16 +499,18 @@ async function buildGrid(
 
     const groupSessionIds = sessions.filter(session => session.group_id).map(session => session.id)
     const groupItemIds = (items ?? []).filter(item => groupSessionIds.includes(item.session_id)).map(item => item.id)
-    const [{ data: attendance }, { data: people }, { data: feedback }] = await Promise.all([
+    const [{ data: attendance }, { data: people }, { data: feedback }, { data: equations }] = await Promise.all([
         groupSessionIds.length > 0
             ? supabase.from('studio_session_attendance').select('session_id, client_id, status, origin').in('session_id', groupSessionIds)
             : Promise.resolve({ data: [] }),
         groupItemIds.length > 0
-            ? supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, next_load').in('item_id', groupItemIds)
+            ? supabase.from('studio_item_people').select('item_id, client_id, load_kg, reps, time_seconds, rir, rpe, velocity_ms, next_load').in('item_id', groupItemIds)
             : Promise.resolve({ data: [] }),
         sessionIds.length > 0
             ? supabase.from('studio_session_feedback').select('session_id, client_id, rpe, comment').in('session_id', sessionIds)
             : Promise.resolve({ data: [] }),
+        // Son pocas y de todos: se piden enteras.
+        supabase.from('exercise_vbt_equations').select('catalog_exercise_id, a, b, c, velocity_type, source'),
     ])
 
     const imageConsent = consent?.accepted === true
@@ -502,6 +519,12 @@ async function buildGrid(
         coachId,
         media: (media ?? []) as unknown as StudioExerciseMedia[],
         feedback: (feedback ?? []) as StudioFeedback[],
+        equations: ((equations ?? []) as StudioVbtEquation[]).map(equation => ({
+            ...equation,
+            a: Number(equation.a),
+            b: Number(equation.b),
+            c: Number(equation.c),
+        })),
         imageConsent,
         client: header,
         group,

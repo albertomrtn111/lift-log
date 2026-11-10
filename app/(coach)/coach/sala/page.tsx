@@ -4,6 +4,7 @@ import { ChevronLeft } from 'lucide-react'
 import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 import { StudioClientList } from '@/components/coach/sala/StudioClientList'
 import { StudioGrid } from '@/components/coach/sala/StudioGrid'
+import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
 import { StudioPendingReports } from '@/components/coach/sala/StudioPendingReports'
 import { Card } from '@/components/ui/card'
 import { getStudioClients, getStudioGrid, getStudioGroupGrid, getStudioGroups, getStudioPendingReports, getStudioTeamList } from '@/data/studio'
@@ -53,6 +54,10 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
             <div className="grid gap-4 p-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
                 <div className={grid ? 'hidden space-y-3 lg:block' : 'space-y-3'}>
                     <StudioPendingReports reports={pendingReports} />
+                    <StudioMyJumpImport
+                        className="w-full"
+                        clients={clients.map(client => ({ id: client.id, name: client.fullName }))}
+                    />
                     <StudioClientList
                         coachId={coachId}
                         clients={clients}

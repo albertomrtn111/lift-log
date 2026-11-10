@@ -57,6 +57,20 @@ test('la celda avisa de lo que no vale', () => {
     assert.match(cellFields(form({ sets: '2,5' })).error, /series/)
     assert.match(cellFields(form({ rpe: '11' })).error, /RPE/)
     assert.match(cellFields(form({ loadKg: 'x' })).error, /carga/)
+    assert.match(cellFields(form({ velocityMs: '0' })).error, /velocidad/)
+    assert.match(cellFields(form({ velocityMs: '16' })).error, /velocidad/)
+})
+
+test('la velocidad se guarda con coma o punto y se enseña con coma', () => {
+    assert.equal(cellFields(form({ velocityMs: '0,62' })).fields.velocity_ms, 0.62)
+    assert.equal(cellFields(form()).fields.velocity_ms, null)
+    assert.equal(itemToForm({ velocity_ms: '0.60' }).velocityMs, '0,60')
+    assert.equal(itemToForm(null).velocityMs, '')
+})
+
+test('Usar no copia la velocidad medida otro día', () => {
+    const result = formFromPrevious(form({ velocityMs: '' }), { sets: 3, velocity_ms: 0.7 })
+    assert.equal(result.velocityMs, '')
 })
 
 test('Usar copia la prescripción, no la nota ni el realizado', () => {
@@ -82,11 +96,16 @@ test('Por series nace con tantas filas como series y respeta lo guardado', () =>
     assert.equal(setRows([], 3).length, 3)
     assert.equal(setRows([], 0).length, 1)
     assert.equal(setRows([{ load_kg: '40.00', reps: 10, time_seconds: null, rir: null, rpe: null }], 3)[0].loadKg, '40')
+    const measured = setRows([{ load_kg: 60, reps: 5, time_seconds: null, rir: null, rpe: null, velocity_ms: 0.9, rep_detail: [{ mpv: 0.9 }], source: 'my_jump' }], 1)[0]
+    assert.deepEqual([measured.velocityMs, measured.repDetail, measured.source], ['0,90', [{ mpv: 0.9 }], 'my_jump'])
 })
 
 test('Por series deja vacío lo que hereda', () => {
     const { sets } = setsFields([{ loadKg: '40', reps: '', timeSeconds: '', rir: '', rpe: '8' }])
-    assert.deepEqual(sets, [{ load_kg: 40, reps: null, time_seconds: null, rir: null, rpe: 8 }])
+    assert.deepEqual(sets, [{ load_kg: 40, reps: null, time_seconds: null, rir: null, rpe: 8, velocity_ms: null, rep_detail: null, source: null }])
+    const measured = setsFields([{ loadKg: '60', reps: '5', timeSeconds: '', rir: '', rpe: '', velocityMs: '0,91', repDetail: [{ mpv: 0.91 }], source: 'my_jump' }])
+    assert.deepEqual(measured.sets[0], { load_kg: 60, reps: 5, time_seconds: null, rir: null, rpe: null, velocity_ms: 0.91, rep_detail: [{ mpv: 0.91 }], source: 'my_jump' })
+    assert.match(setsFields([{ loadKg: '', reps: '', timeSeconds: '', rir: '', rpe: '', velocityMs: 'rápido' }]).error, /velocidad/)
     assert.match(setsFields([{ loadKg: '', reps: '1,5', timeSeconds: '', rir: '', rpe: '' }]).error, /Serie 1/)
     assert.ok(setsFields([]).error)
 })
