@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronsLeftRight, ChevronsRightLeft, ClipboardList, ListChecks, Minus, Paperclip, Plus, Search, Undo2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronsLeftRight, ChevronsRightLeft, ClipboardList, Gauge, ListChecks, Minus, Paperclip, Plus, Search, Undo2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { StudioCellPanel, type CellTarget } from '@/components/coach/sala/StudioCellPanel'
 import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFilePanel'
+import { StudioEvaluationsPanel } from '@/components/coach/sala/StudioEvaluationsPanel'
 import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
 import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
@@ -62,6 +63,7 @@ type Panel =
     | { type: 'requests'; sessionId: string }
     | { type: 'routines' }
     | { type: 'file' }
+    | { type: 'evaluations' }
     | { type: 'group' }
     | { type: 'report'; sessionId: string }
 
@@ -288,9 +290,14 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                             <ClipboardList className="mr-1 h-3.5 w-3.5" /> Gestionar
                         </Button>
                     ) : (
-                        <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'file' })}>
-                            <ClipboardList className="mr-1 h-3.5 w-3.5" /> Ficha
-                        </Button>
+                        <>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'file' })}>
+                                <ClipboardList className="mr-1 h-3.5 w-3.5" /> Ficha
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => setPanel({ type: 'evaluations' })}>
+                                <Gauge className="mr-1 h-3.5 w-3.5" /> Evaluaciones
+                            </Button>
+                        </>
                     )}
                     {data.activeInjuries > 0 && (
                         <Badge variant="destructive" className="px-2 py-0.5 text-xs">
@@ -749,6 +756,9 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
             )}
             {panel?.type === 'routines' && <StudioRoutinesPanel data={data} onClose={() => setPanel(null)} />}
             {panel?.type === 'file' && <StudioClientFilePanel data={data} onClose={() => setPanel(null)} />}
+            {panel?.type === 'evaluations' && (
+                <StudioEvaluationsPanel clientId={data.client.id} clientName={data.client.fullName} onClose={() => setPanel(null)} />
+            )}
             {panel?.type === 'group' && data.group && (
                 <StudioGroupPanel
                     coachId={data.coachId}
