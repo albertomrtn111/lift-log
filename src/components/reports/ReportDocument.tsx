@@ -1,6 +1,6 @@
 'use client'
 
-import { Download } from 'lucide-react'
+import { Download, Presentation } from 'lucide-react'
 import { isReadablePrimary, NEXTRAIN_PRIMARY } from '@/lib/branding/branding-rules'
 import { formatShortDate } from '@/lib/studio/grid-rules'
 
@@ -41,7 +41,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 /** La página y el PDF son lo mismo: se imprime esta misma página. Siempre en claro, como un documento. */
-export function ReportDocument({ report }: { report: ReportPayload }) {
+export function ReportDocument({ report, presentationHref = '?formato=presentacion' }: { report: ReportPayload; presentationHref?: string }) {
     const { brand, snapshot } = report
     const color = brand.color && isReadablePrimary(brand.color) ? brand.color : NEXTRAIN_PRIMARY
     const { session } = snapshot
@@ -126,7 +126,7 @@ export function ReportDocument({ report }: { report: ReportPayload }) {
                 </footer>
             </main>
 
-            <div className="mx-auto max-w-[210mm] p-4 text-center print:hidden">
+            <div className="mx-auto flex max-w-[210mm] flex-wrap justify-center gap-3 p-4 print:hidden">
                 <button
                     type="button"
                     onClick={() => window.print()}
@@ -135,6 +135,9 @@ export function ReportDocument({ report }: { report: ReportPayload }) {
                 >
                     <Download className="h-4 w-4" /> Descargar PDF
                 </button>
+                <a href={presentationHref} className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-slate-700">
+                    <Presentation className="h-4 w-4" /> Ver como presentación
+                </a>
             </div>
         </div>
     )

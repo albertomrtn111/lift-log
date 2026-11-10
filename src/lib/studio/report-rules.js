@@ -178,3 +178,27 @@ export function pendingReports(rows, now, noticeHours = 3) {
         return now.getTime() - end <= limit
     })
 }
+
+/**
+ * Diapositivas del informe en formato presentación: cada subbloque en las que hagan falta,
+ * con `perSlide` ejercicios como mucho en cada una.
+ * @param {{ title: string | null, parent: string | null, exercises: any[] }[]} groups
+ * @returns {{ title: string | null, parent: string | null, exercises: any[], part: number, parts: number }[]}
+ */
+export function presentationSlides(groups, perSlide = 5) {
+    const slides = []
+    for (const group of groups ?? []) {
+        const exercises = group.exercises ?? []
+        const parts = Math.max(1, Math.ceil(exercises.length / perSlide))
+        for (let part = 0; part < parts; part++) {
+            slides.push({
+                title: group.title ?? null,
+                parent: group.parent ?? null,
+                exercises: exercises.slice(part * perSlide, (part + 1) * perSlide),
+                part: part + 1,
+                parts,
+            })
+        }
+    }
+    return slides.filter(slide => slide.exercises.length > 0)
+}

@@ -1,11 +1,15 @@
 import type { Metadata } from 'next'
 import { ReportDocument, type ReportPayload } from '@/components/reports/ReportDocument'
+import { ReportSlides } from '@/components/reports/ReportSlides'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = { title: 'Informe de sesión', robots: { index: false, follow: false } }
 
-export default async function ReportPage({ params }: { params: Promise<{ code: string }> }) {
-    const { code } = await params
+export default async function ReportPage({ params, searchParams }: {
+    params: Promise<{ code: string }>
+    searchParams: Promise<{ formato?: string }>
+}) {
+    const [{ code }, { formato }] = await Promise.all([params, searchParams])
     const supabase = await createClient()
     const { data } = /^[0-9a-f]{40,}$/.test(code)
         ? await supabase.rpc('report_by_code', { p_code: code })
@@ -18,5 +22,7 @@ export default async function ReportPage({ params }: { params: Promise<{ code: s
             </main>
         )
     }
-    return <ReportDocument report={data as ReportPayload} />
+    return formato === 'presentacion'
+        ? <ReportSlides report={data as ReportPayload} documentHref={`/informe/${code}`} />
+        : <ReportDocument report={data as ReportPayload} />
 }

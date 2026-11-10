@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReport, fillReportText, pendingReportList, pendingReports, reportMessage, reportRows, reportSections, whatsappNumber, whatsappUrl } from '../src/lib/studio/report-rules.js'
+import {
+    buildReport,
+    fillReportText,
+    pendingReportList,
+    pendingReports,
+    presentationSlides,
+    reportMessage,
+    reportRows,
+    reportSections,
+    whatsappNumber,
+    whatsappUrl,
+} from '../src/lib/studio/report-rules.js'
 
 const session = (id, session_date, extra = {}) => ({ id, session_date, status: 'done', sort_order: null, start_time: null, ...extra })
 const item = (id, session_id, extra = {}) => ({
@@ -105,4 +116,20 @@ test('el aviso dura la ventana y se va al enviar o descartar', () => {
     assert.equal(pendingReports([base], new Date('2026-11-05T15:00:00Z')).length, 0)
     assert.equal(pendingReports([{ ...base, delivered: true }], new Date('2026-11-05T12:00:00Z')).length, 0)
     assert.equal(pendingReports([{ ...base, dismissed: true }], new Date('2026-11-05T12:00:00Z')).length, 0)
+})
+
+test('el informe en diapositivas: cada subbloque en las que hagan falta', () => {
+    const exercise = name => ({ name })
+    const slides = presentationSlides([
+        { title: null, parent: null, exercises: [exercise('a'), exercise('b')] },
+        { title: 'Fuerza', parent: 'Bloque A', exercises: ['c', 'd', 'e', 'f', 'g', 'h', 'i'].map(exercise) },
+        { title: 'Vacío', parent: null, exercises: [] },
+    ], 5)
+    assert.deepEqual(slides.map(slide => [slide.title, slide.exercises.length, slide.part, slide.parts]), [
+        [null, 2, 1, 1],
+        ['Fuerza', 5, 1, 2],
+        ['Fuerza', 2, 2, 2],
+    ])
+    assert.equal(slides[1].parent, 'Bloque A')
+    assert.deepEqual(presentationSlides([]), [])
 })
