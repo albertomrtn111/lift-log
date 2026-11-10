@@ -14,6 +14,7 @@ import { StudioClientFilePanel } from '@/components/coach/sala/StudioClientFileP
 import { StudioGroupPanel } from '@/components/coach/sala/StudioGroupPanel'
 import { StudioMobileSession } from '@/components/coach/sala/StudioMobileSession'
 import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
+import { birthdayInfo } from '@/lib/studio/client-rules'
 import { StudioReportPanel } from '@/components/coach/sala/StudioReportPanel'
 import { StudioRequestPanel } from '@/components/coach/sala/StudioRequestPanel'
 import { StudioRoutinesPanel } from '@/components/coach/sala/StudioRoutinesPanel'
@@ -281,6 +282,7 @@ export function StudioGrid({ data, today, currentUserId, olderPages, clients, al
                         </Badge>
                     )}
                 </div>
+                {!data.group && <ClientFacts birthday={data.client.birthday} objectives={data.client.objectives} today={today} />}
                 {data.client.notes && (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{data.client.notes}</p>
                 )}
@@ -804,6 +806,31 @@ function Cell({ item, done, busy, readOnly, groupLine, people, onOpen, onToggleD
             >
                 <Check className="h-3.5 w-3.5" />
             </button>}
+        </div>
+    )
+}
+
+/** Edad, cumpleaños y objetivos del cliente, debajo de su nombre. */
+function ClientFacts({ birthday, objectives, today }: { birthday: string | null; objectives: string[]; today: string }) {
+    const info = birthdayInfo(birthday, today)
+    if (!info && objectives.length === 0) return null
+    return (
+        <div className="mt-0.5 space-y-1">
+            {info && (
+                <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                    <span>{info.age} años · cumple el {info.label}</span>
+                    {info.soon && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{info.soon}</span>
+                    )}
+                </p>
+            )}
+            {objectives.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5" aria-label="Objetivos">
+                    {objectives.map(point => (
+                        <li key={point} className="rounded-md border px-2 py-0.5 text-xs">{point}</li>
+                    ))}
+                </ul>
+            )}
         </div>
     )
 }

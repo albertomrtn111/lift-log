@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { StudioClientProfile } from '@/components/coach/sala/StudioClientProfile'
 import { keepKeyboardClosed } from '@/components/coach/sala/panel-focus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -172,7 +173,7 @@ export function StudioClientFilePanel({ data, onClose }: { data: StudioGridData;
             <SheetContent side="right" className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-lg" onOpenAutoFocus={keepKeyboardClosed}>
                 <SheetHeader className="border-b p-4 pr-10 text-left">
                     <SheetTitle className="text-base">Ficha de {data.client.fullName}</SheetTitle>
-                    <SheetDescription>Datos de salud. No salen en informes ni los ve el atleta.</SheetDescription>
+                    <SheetDescription>Objetivos, datos y salud. No salen en informes ni los ve el atleta.</SheetDescription>
                 </SheetHeader>
 
                 {!file ? (
@@ -181,6 +182,8 @@ export function StudioClientFilePanel({ data, onClose }: { data: StudioGridData;
                     </div>
                 ) : (
                     <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+                        <StudioClientProfile data={data} />
+
                         <section className="space-y-2" aria-labelledby="ficha-relevante">
                             <Label id="ficha-relevante" htmlFor="ficha-nota">Aspectos relevantes</Label>
                             <Textarea

@@ -9,6 +9,8 @@ export interface StudioClientSummary {
     id: string
     fullName: string
     sessionToday: string | null
+    /** Profesionales que lo llevan. */
+    professionalIds: string[]
 }
 
 export interface StudioClientHeader {
@@ -16,6 +18,8 @@ export interface StudioClientHeader {
     fullName: string
     birthday: string | null
     notes: string | null
+    /** Objetivos por puntos. */
+    objectives: string[]
 }
 
 export interface StudioSession {
@@ -247,10 +251,19 @@ export async function getStudioClients(coachId: string, today: string): Promise<
             .neq('status', 'cancelled'),
     ])
     const todayByClient = new Map((sessions ?? []).map(session => [session.client_id, session.start_time as string | null]))
+    const ids = (clients ?? []).map(client => client.id as string)
+    const { data: assigned } = ids.length > 0
+        ? await supabase.from('client_professionals').select('client_id, user_id').in('client_id', ids)
+        : { data: [] }
+    const professionals = new Map<string, string[]>()
+    for (const row of assigned ?? []) {
+        professionals.set(row.client_id, [...(professionals.get(row.client_id) ?? []), row.user_id])
+    }
     return (clients ?? []).map(client => ({
         id: client.id,
         fullName: client.full_name,
         sessionToday: todayByClient.has(client.id) ? (todayByClient.get(client.id) ?? '') : null,
+        professionalIds: professionals.get(client.id) ?? [],
     }))
 }
 
@@ -287,7 +300,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
     const supabase = await createClient()
     const { data: client } = await supabase
         .from('clients')
-        .select('id, full_name, birthday, notes')
+        .select('id, full_name, birthday, notes, objectives')
         .eq('id', clientId)
         .eq('coach_id', coachId)
         .maybeSingle()
@@ -308,7 +321,7 @@ export async function getStudioGrid(coachId: string, clientId: string): Promise<
 
     return buildGrid(
         coachId,
-        { id: client.id, fullName: client.full_name, birthday: client.birthday, notes: client.notes },
+        { id: client.id, fullName: client.full_name, birthday: client.birthday, notes: client.notes, objectives: client.objectives ?? [] },
         withGroupName(sessions),
         { clientId }
     )
@@ -340,7 +353,7 @@ export async function getStudioGroupGrid(coachId: string, groupId: string): Prom
 
     return buildGrid(
         coachId,
-        { id: group.id, fullName: group.name, birthday: null, notes: null },
+        { id: group.id, fullName: group.name, birthday: null, notes: null, objectives: [] },
         withGroupName(sessions),
         { group: { ...group, members: people } as StudioGroupDetail }
     )
