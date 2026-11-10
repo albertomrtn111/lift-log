@@ -1,12 +1,12 @@
 -- Prueba del alta y la ficha de clientes de la sala con un espacio temporal.
--- Requiere 20261110100000_studio_client_intake.sql.
+-- Requiere 20261110100000_studio_client_intake.sql y 20261110101000_studio_intake_reception_link.sql.
 -- La transacción termina con ROLLBACK explícito: no deja datos de prueba.
 begin;
 do $tests$
 declare
   v_space uuid := gen_random_uuid();
   v_pro uuid; v_other uuid; v_reception uuid; v_outsider uuid;
-  v_ana uuid; v_luis uuid; v_marta_patient uuid; v_r jsonb; v_client uuid; v_pedro uuid; v_failed boolean;
+  v_ana uuid; v_luis uuid; v_marta_patient uuid; v_pilar_patient uuid; v_r jsonb; v_client uuid; v_pedro uuid; v_failed boolean;
 begin
   select (array_agg(id))[1], (array_agg(id))[2], (array_agg(id))[3], (array_agg(id))[4]
   into v_pro, v_other, v_reception, v_outsider
@@ -22,6 +22,8 @@ begin
   insert into public.clients (coach_id, full_name, email, phone, status) values (v_space, 'Luis Pérez', 'luis@rollback.example', '+34 600 111 222', 'inactive') returning id into v_luis;
   insert into public.external_patients (coach_id, provider, external_id, full_name, birth_date, email)
     values (v_space, 'fisiotrack', 'm1', 'Marta Ruiz', date '1990-03-14', 'marta@rollback.example') returning id into v_marta_patient;
+  insert into public.external_patients (coach_id, provider, external_id, full_name)
+    values (v_space, 'fisiotrack', 'p1', 'Pilar Vela') returning id into v_pilar_patient;
 
   execute 'set local role authenticated';
   perform set_config('request.jwt.claims', json_build_object('sub', v_pro, 'role', 'authenticated')::text, true);
@@ -88,6 +90,8 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_reception, 'role', 'authenticated')::text, true);
   v_r := public.studio_create_client(v_space, 'Rosa Recepción');
   if exists (select 1 from public.client_professionals where client_id = (v_r->>'client_id')::uuid) then raise exception 'recepción no se asigna'; end if;
+  v_r := public.studio_create_client(v_space, 'Pilar Vela', null, null, null, v_pilar_patient);
+  if (select client_id from public.external_patients where id = v_pilar_patient) <> (v_r->>'client_id')::uuid then raise exception 'recepción da de alta desde FisioTrack'; end if;
 
   -- Quien no es del espacio no busca ni crea.
   perform set_config('request.jwt.claims', json_build_object('sub', v_outsider, 'role', 'authenticated')::text, true);
