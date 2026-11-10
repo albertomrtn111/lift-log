@@ -52,6 +52,9 @@ export function personForm(person) {
         reps: text(person?.reps),
         rir: person?.rir === null || person?.rir === undefined ? '' : String(Number(person.rir)),
         rpe: person?.rpe === null || person?.rpe === undefined ? '' : String(Number(person.rpe)),
+        velocityMs: person?.velocity_ms === null || person?.velocity_ms === undefined
+            ? ''
+            : Number(person.velocity_ms).toFixed(2).replace('.', ','),
     }
 }
 
@@ -60,18 +63,22 @@ export function personFields(form) {
     const load = parseNumber(form.loadKg)
     const rir = parseNumber(form.rir)
     const rpe = parseNumber(form.rpe)
+    const velocity = parseNumber(form.velocityMs ?? '')
     if (load !== null && (Number.isNaN(load) || load < 0 || load > 9999)) return { error: 'La carga no es válida.' }
     if (rir !== null && (Number.isNaN(rir) || rir < 0 || rir > 10)) return { error: 'El RIR tiene que estar entre 0 y 10.' }
     if (rpe !== null && (Number.isNaN(rpe) || rpe < 0 || rpe > 10)) return { error: 'El RPE tiene que estar entre 0 y 10.' }
+    if (velocity !== null && (Number.isNaN(velocity) || velocity <= 0 || velocity > 15)) {
+        return { error: 'La velocidad tiene que estar entre 0,01 y 15 m/s.' }
+    }
     if (form.reps.trim().length > 40) return { error: 'Las repeticiones son demasiado largas.' }
-    return { fields: { load_kg: load, reps: form.reps.trim() || null, rir, rpe } }
+    return { fields: { load_kg: load, reps: form.reps.trim() || null, rir, rpe, velocity_ms: velocity } }
 }
 
 /** Lo que cambió respecto a lo que había, para no guardar a quien no se ha tocado. */
 export function changedPeople(rows, saved) {
     return rows.filter(row => {
         const before = personForm(saved.find(person => person.client_id === row.clientId))
-        return ['loadKg', 'reps', 'rir', 'rpe'].some(key => row.form[key].trim() !== before[key])
+        return ['loadKg', 'reps', 'rir', 'rpe', 'velocityMs'].some(key => (row.form[key] ?? '').trim() !== before[key])
     })
 }
 
@@ -85,6 +92,7 @@ export function itemForPerson(item, person) {
         time_seconds: person.time_seconds ?? item.time_seconds,
         rir: person.rir ?? item.rir,
         rpe: person.rpe ?? item.rpe,
+        velocity_ms: person.velocity_ms ?? item.velocity_ms,
         next_load: person.next_load ?? item.next_load,
     }
 }

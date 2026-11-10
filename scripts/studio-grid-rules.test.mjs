@@ -37,6 +37,7 @@ test('resume la celda', () => {
         volume: '3×10', load: '40 kg', details: 'RIR 2', nextLoad: '↑',
     })
     assert.equal(cellSummary({ sets: 2, time_seconds: 30 }).volume, '2×30 s')
+    assert.equal(cellSummary({ sets: 3, reps: '5', velocity_ms: '0.62' }).details, '0,62 m/s')
     assert.equal(cellSummary({}).volume, '')
 })
 

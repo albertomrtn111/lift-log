@@ -41,6 +41,10 @@ export interface StudioSetRow {
     time_seconds: number | null
     rir: number | null
     rpe: number | null
+    velocity_ms: number | null
+    /** Repeticiones medidas (My Jump): velocidades en m/s y recorrido en cm. */
+    rep_detail: { mpv: number; mv: number; pv: number; rom: number }[] | null
+    source: 'my_jump' | 'my_jump_image' | null
     is_detailed: boolean
 }
 
@@ -147,10 +151,12 @@ export async function saveCellAction(input: {
     itemId: string | null
     version: number | null
     fields: Record<string, unknown>
-    sets?: Record<string, number | null>[]
+    sets?: Record<string, unknown>[]
     done: boolean
     /** Valores propios de cada persona, en un ejercicio de grupo. */
     people?: { clientId: string; fields: Record<string, unknown> }[]
+    /** Series de cada persona de un grupo (las que llegan de My Jump). */
+    personSets?: { clientId: string; sets: Record<string, unknown>[] }[]
 }): Promise<StudioResult> {
     const supabase = await createClient()
     const batch = randomUUID()
@@ -171,6 +177,18 @@ export async function saveCellAction(input: {
             p_client_id: person.clientId,
             p_version: item.version,
             p_fields: person.fields,
+            p_batch_id: batch,
+        })
+        if (saved.error) return failure(saved.error)
+        item = saved.data
+    }
+
+    for (const person of input.personSets ?? []) {
+        const saved = await supabase.rpc('studio_save_person_sets', {
+            p_item_id: item.id,
+            p_client_id: person.clientId,
+            p_version: item.version,
+            p_sets: person.sets,
             p_batch_id: batch,
         })
         if (saved.error) return failure(saved.error)
@@ -229,7 +247,7 @@ export async function getItemSetsAction(itemId: string): Promise<StudioResult<St
     const supabase = await createClient()
     const { data, error } = await supabase
         .from('studio_session_sets')
-        .select('set_index, load_kg, reps, time_seconds, rir, rpe, is_detailed')
+        .select('set_index, load_kg, reps, time_seconds, rir, rpe, velocity_ms, rep_detail, source, is_detailed')
         .eq('item_id', itemId)
         .order('set_index')
     if (error) return failure(error)

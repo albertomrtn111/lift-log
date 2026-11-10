@@ -22,6 +22,17 @@ function text(value) {
     return value === null || value === undefined ? '' : String(value)
 }
 
+/** «0.62» guardado se enseña como «0,62». */
+function velocityToText(value) {
+    return value === null || value === undefined || value === '' ? '' : Number(value).toFixed(2).replace('.', ',')
+}
+
+/** La velocidad, en m/s: mayor que cero y como mucho 15. */
+function checkVelocity(value) {
+    if (value === null) return null
+    return Number.isNaN(value) || value <= 0 || value > 15 ? 'La velocidad tiene que estar entre 0,01 y 15 m/s.' : null
+}
+
 function checkNumber(value, label, { min = 0, max = Infinity, integer = false } = {}) {
     if (value === null) return null
     if (Number.isNaN(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
@@ -32,7 +43,7 @@ function checkNumber(value, label, { min = 0, max = Infinity, integer = false } 
 
 /**
  * @param {any} item
- * @returns {{ tags: string[], sets: string, reps: string, timeSeconds: string, loadKg: string, rir: string, rpe: string, nextLoad: string | null, circuit: string[], note: string, isDone: boolean }}
+ * @returns {{ tags: string[], sets: string, reps: string, timeSeconds: string, loadKg: string, rir: string, rpe: string, velocityMs: string, nextLoad: string | null, circuit: string[], note: string, isDone: boolean }}
  */
 export function itemToForm(item) {
     return {
@@ -43,6 +54,7 @@ export function itemToForm(item) {
         loadKg: text(item?.load_kg === null || item?.load_kg === undefined ? '' : Number(item.load_kg)),
         rir: text(item?.rir === null || item?.rir === undefined ? '' : Number(item.rir)),
         rpe: text(item?.rpe === null || item?.rpe === undefined ? '' : Number(item.rpe)),
+        velocityMs: velocityToText(item?.velocity_ms),
         nextLoad: item?.next_load ?? null,
         circuit: item?.circuit ?? [],
         note: text(item?.note),
@@ -60,10 +72,10 @@ export function libraryDefaults(entries, blocks, catalogExerciseId) {
     }
 }
 
-/** Valores de una sesión anterior para el botón Usar. La nota y lo realizado no se heredan. */
+/** Valores de una sesión anterior para el botón Usar. La nota, lo realizado y la velocidad medida no se heredan. */
 export function formFromPrevious(form, previous) {
     const values = itemToForm(previous)
-    return { ...values, note: form.note, isDone: form.isDone, nextLoad: form.nextLoad }
+    return { ...values, note: form.note, isDone: form.isDone, nextLoad: form.nextLoad, velocityMs: form.velocityMs ?? '' }
 }
 
 /** Campos para studio_save_item, o el error que hay que enseñar. */
@@ -73,11 +85,13 @@ export function cellFields(form) {
     const loadKg = parseNumber(form.loadKg)
     const rir = parseNumber(form.rir)
     const rpe = parseNumber(form.rpe)
+    const velocity = parseNumber(form.velocityMs ?? '')
     const error = checkNumber(sets, 'Las series', { min: 1, max: 30, integer: true })
         ?? checkNumber(timeSeconds, 'El tiempo', { integer: true })
         ?? checkNumber(loadKg, 'La carga', { max: 9999 })
         ?? checkNumber(rir, 'El RIR', { max: 10 })
         ?? checkNumber(rpe, 'El RPE', { max: 10 })
+        ?? checkVelocity(velocity)
     if (error) return { error }
     if (form.reps.trim().length > 40) return { error: 'Las repeticiones son demasiado largas.' }
     if (form.note.length > 2000) return { error: 'La nota es demasiado larga.' }
@@ -89,6 +103,7 @@ export function cellFields(form) {
             load_kg: loadKg,
             rir,
             rpe,
+            velocity_ms: velocity,
             next_load: form.nextLoad,
             circuit: form.circuit.map(name => name.trim()).filter(Boolean),
             note: form.note.trim() || null,
@@ -97,7 +112,25 @@ export function cellFields(form) {
     }
 }
 
-/** Filas de Por series a partir de lo guardado, o vacías (heredan lo general). */
+/**
+ * @typedef {{ loadKg: string, reps: string, timeSeconds: string, rir: string, rpe: string, velocityMs: string, repDetail: any[] | null, source: string | null }} SetRow
+ */
+
+/**
+ * Fila vacía de Por series: hereda lo general.
+ * @returns {SetRow}
+ */
+export function emptySetRow() {
+    return { loadKg: '', reps: '', timeSeconds: '', rir: '', rpe: '', velocityMs: '', repDetail: null, source: null }
+}
+
+/**
+ * Filas de Por series a partir de lo guardado, o vacías (heredan lo general).
+ * Las repeticiones medidas y su origen viajan con la fila aunque no se enseñen.
+ * @param {any[]} savedSets
+ * @param {number} count
+ * @returns {SetRow[]}
+ */
 export function setRows(savedSets, count) {
     if (savedSets.length > 0) {
         return savedSets.map(set => ({
@@ -106,9 +139,12 @@ export function setRows(savedSets, count) {
             timeSeconds: text(set.time_seconds),
             rir: text(set.rir === null ? '' : Number(set.rir)),
             rpe: text(set.rpe === null ? '' : Number(set.rpe)),
+            velocityMs: velocityToText(set.velocity_ms),
+            repDetail: set.rep_detail ?? null,
+            source: set.source ?? null,
         }))
     }
-    return Array.from({ length: Math.max(count || 1, 1) }, () => ({ loadKg: '', reps: '', timeSeconds: '', rir: '', rpe: '' }))
+    return Array.from({ length: Math.max(count || 1, 1) }, emptySetRow)
 }
 
 /** Series para studio_save_sets. Lo vacío va como null y hereda lo general. */
@@ -122,12 +158,16 @@ export function setsFields(rows) {
             time_seconds: parseNumber(row.timeSeconds),
             rir: parseNumber(row.rir),
             rpe: parseNumber(row.rpe),
+            velocity_ms: parseNumber(row.velocityMs ?? ''),
+            rep_detail: row.repDetail ?? null,
+            source: row.source ?? null,
         }
         const error = checkNumber(set.load_kg, 'La carga', { max: 9999 })
             ?? checkNumber(set.reps, 'Las repeticiones', { integer: true })
             ?? checkNumber(set.time_seconds, 'El tiempo', { integer: true })
             ?? checkNumber(set.rir, 'El RIR', { max: 10 })
             ?? checkNumber(set.rpe, 'El RPE', { max: 10 })
+            ?? checkVelocity(set.velocity_ms)
         if (error) return { error: `Serie ${index + 1}: ${error}` }
         sets.push(set)
     }
@@ -344,6 +384,7 @@ export function cellDiff(mine, theirs) {
         ...differs('Carga (kg)', sameNumberText(mine.loadKg), sameNumberText(theirs.loadKg)),
         ...differs('RIR', sameNumberText(mine.rir), sameNumberText(theirs.rir)),
         ...differs('RPE', sameNumberText(mine.rpe), sameNumberText(theirs.rpe)),
+        ...differs('Velocidad (m/s)', sameNumberText(mine.velocityMs ?? ''), sameNumberText(theirs.velocityMs ?? '')),
         ...differs('Próxima sesión', NEXT_LOAD_MARKS[mine.nextLoad] ?? '', NEXT_LOAD_MARKS[theirs.nextLoad] ?? ''),
         ...differs('Circuito', list(mine.circuit), list(theirs.circuit)),
         ...differs('Nota', mine.note.trim(), theirs.note.trim()),
