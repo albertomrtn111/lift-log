@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { LogoMark } from '@/components/brand/LogoMark'
+import { premiumFontVars } from '@/lib/premium-fonts'
+import '@/styles/nt-premium.css'
 import { BrandPanel } from './BrandPanel'
 
 export const SUPPORT_EMAIL = 'soporte@ascentechlabs.com'
@@ -9,7 +11,7 @@ export function AuthLogo({ className }: { className?: string }) {
     return (
         <Link href="/login" className={cn('flex items-center gap-2.5', className)} aria-label="NexTrain">
             <LogoMark className="h-7" />
-            <span className="text-[17px] font-bold tracking-tight">NexTrain</span>
+            <span className="nt-title text-[1.15rem]">Nex<span className="text-muted-foreground">Train</span></span>
         </Link>
     )
 }
@@ -22,15 +24,19 @@ interface AuthShellProps {
     wide?: boolean
     panelTitle?: React.ReactNode
     panelText?: string
+    /** «athlete»: el panel enseña solo el móvil del atleta (bienvenida del atleta) */
+    panelFocus?: 'coach' | 'athlete'
 }
 
 /**
  * Estructura común de las pantallas de acceso: formulario a la izquierda y
  * panel de marca a la derecha en escritorio; solo el formulario en móvil.
  */
-export function AuthShell({ children, topRight, wide, panelTitle, panelText }: AuthShellProps) {
+export function AuthShell({ children, topRight, wide, panelTitle, panelText, panelFocus }: AuthShellProps) {
     return (
-        <div className="flex min-h-dvh bg-background">
+        // .auth-shell: el sistema visual de la app (src/styles/nt-premium.css) también aquí
+        <div className="auth-shell flex min-h-dvh bg-background">
+            <style dangerouslySetInnerHTML={{ __html: premiumFontVars }} />
             <div className="flex min-h-dvh min-w-0 flex-1 flex-col px-5 pb-[max(1rem,var(--safe-area-bottom))] pt-[max(0.75rem,var(--safe-area-top))] sm:px-8 lg:px-12">
                 <header className="flex h-14 shrink-0 items-center justify-between gap-4">
                     <AuthLogo />
@@ -47,7 +53,7 @@ export function AuthShell({ children, topRight, wide, panelTitle, panelText }: A
                 </footer>
             </div>
 
-            {!wide && <BrandPanel title={panelTitle} text={panelText} />}
+            {!wide && <BrandPanel title={panelTitle} text={panelText} focus={panelFocus} />}
         </div>
     )
 }
@@ -62,7 +68,7 @@ export function AuthHeading({ eyebrow, title, description, className }: {
     return (
         <div className={cn('mb-8', className)}>
             {eyebrow && <div className="mb-3">{eyebrow}</div>}
-            <h1 className="text-[1.75rem] font-bold leading-tight tracking-tight sm:text-[2rem]">{title}</h1>
+            <h1 className="nt-display text-[1.9rem] sm:text-[2.25rem]">{title}</h1>
             {description && <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{description}</p>}
         </div>
     )
@@ -88,7 +94,7 @@ export function AuthStatus({ icon: Icon, tone = 'primary', title, children, acti
             <div className={cn('mb-6 flex h-14 w-14 items-center justify-center rounded-2xl ring-1', tones[tone])}>
                 <Icon className={cn('h-6 w-6', spin && 'animate-spin')} />
             </div>
-            <h1 className="text-[1.75rem] font-bold leading-tight tracking-tight">{title}</h1>
+            <h1 className="nt-display text-[1.9rem]">{title}</h1>
             {children && <div className="mt-2 space-y-3 text-[15px] leading-relaxed text-muted-foreground">{children}</div>}
             {actions && <div className="mt-8 flex flex-col gap-2.5">{actions}</div>}
         </div>

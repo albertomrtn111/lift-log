@@ -110,7 +110,7 @@ export default function ForgotPasswordPage() {
     return (
         <AuthShell
             topRight={<Link href="/login" className="font-medium text-foreground hover:text-primary">Iniciar sesión</Link>}
-            panelTitle={<>Vuelve a tu entreno<br /><span className="text-white/50">en un minuto.</span></>}
+            panelTitle={<>Vuelve a tu entreno <span className="text-[#3D8CFF]">en un minuto.</span></>}
         >
             <Suspense fallback={<div className="flex h-[140px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
                 <ForgotPasswordForm />

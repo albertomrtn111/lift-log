@@ -8,4 +8,4 @@ const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], displa
 
 /** Variables en <html>, para que lleguen también a diálogos, hojas y menús. */
 export const premiumFontVars =
-    `html:has(:is(.coach-shell, .app-mobile-shell)){--font-display:${display.style.fontFamily};--font-mono:${mono.style.fontFamily}}`
+    `html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)){--font-display:${display.style.fontFamily};--font-mono:${mono.style.fontFamily}}`
