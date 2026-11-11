@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
-import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
+import { CoachNotificationsBell } from '@/components/coach/notifications/CoachNotificationsBell'
 import { StudioClientList } from '@/components/coach/sala/StudioClientList'
 import { StudioGrid } from '@/components/coach/sala/StudioGrid'
 import { StudioMyJumpImport } from '@/components/coach/sala/StudioMyJumpImport'
@@ -50,7 +50,11 @@ export default async function SalaPage({ searchParams }: SalaPageProps) {
 
     return (
         <div className="min-h-screen bg-background pb-24 lg:pb-8">
-            <CoachPageHeader eyebrow="Sala" title="Sesiones" description="Sesiones presenciales de tus clientes." />
+            {/* Sin cabecera: la sala empieza arriba. En el móvil la campana de avisos se queda aquí. */}
+            <h1 className="sr-only">Sesiones de la sala</h1>
+            <div className="flex justify-end px-4 pt-3 lg:hidden">
+                <CoachNotificationsBell />
+            </div>
             <div className="grid gap-4 p-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-6">
                 <div className={grid ? 'hidden space-y-3 lg:block' : 'space-y-3'}>
                     <StudioPendingReports reports={pendingReports} />

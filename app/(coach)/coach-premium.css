@@ -16,3 +16,13 @@ html:has(.coach-shell) .coach-mobile-main > .overflow-x-hidden {
     .nt-stage-ctas a:last-child { padding-inline: 0.75rem; font-size: 0; gap: 0; }
     .nt-stage-ctas a:last-child svg { width: 1.125rem; height: 1.125rem; }
 }
+
+/* Barra lateral recogida en Sala: el contenido usa el sitio que deja. */
+@media (min-width: 1024px) {
+    html:has(.coach-shell) .coach-mobile-main {
+        transition: padding-left 200ms ease;
+    }
+    html[data-nt-sidebar='compact'] .coach-mobile-main {
+        padding-left: 4.5rem;
+    }
+}
