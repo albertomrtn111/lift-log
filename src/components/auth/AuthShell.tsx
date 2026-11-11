@@ -25,7 +25,7 @@ interface AuthShellProps {
     panelTitle?: React.ReactNode
     panelText?: string
     /** «athlete»: el panel enseña solo el móvil del atleta (bienvenida del atleta) */
-    panelFocus?: 'both' | 'athlete'
+    panelFocus?: 'coach' | 'athlete'
 }
 
 /**

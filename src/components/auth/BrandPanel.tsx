@@ -1,283 +1,367 @@
 'use client'
 
 import { useLayoutEffect, useRef, useState } from 'react'
-import {
-    ArrowRight,
-    CalendarDays,
-    ChartNoAxesColumnIncreasing,
-    Dumbbell,
-    Footprints,
-    MessageCircle,
-    Salad,
-} from 'lucide-react'
-import { AthleteAvatar } from '@/components/coach/AthleteAvatar'
-import { ProgressRing } from '@/components/ui/progress-ring'
+import { CalendarDays, ChartNoAxesColumnIncreasing, Dumbbell, MessageCircle, Salad } from 'lucide-react'
+import { athleteGradient } from '@/components/coach/AthleteAvatar'
 import { cn } from '@/lib/utils'
 
 /*
  * Panel de marca de las pantallas de acceso (solo escritorio). Siempre en tinta,
- * como la web comercial, y con dos pantallas reales de la app tal y como son
- * tras el rediseño: el panel del día del entrenador y el Plan en el móvil del
- * atleta. Se dibujan a tamaño fijo y se escalan al hueco que haya, para que no
- * se corten en ninguna resolución. Los datos son de ejemplo.
+ * como la web comercial. Enseña cuatro piezas de la app tal y como son tras el
+ * rediseño: cómo va un atleta, su volumen semanal, la facturación del mes y la
+ * app del móvil. Se dibujan a tamaño fijo (texto de 12 px o más) y se escalan
+ * al hueco libre, así que nada se corta en ninguna resolución. Datos de ejemplo.
  */
 
-type Focus = 'both' | 'athlete'
+type Focus = 'coach' | 'athlete'
+type Layout = 'full' | 'compact' | 'phone'
 
-const STAGE = {
-    both: { w: 604, h: 548 },
-    athlete: { w: 254, h: 504 },
-} as const
+const SIZE: Record<Layout, { w: number; h: number }> = {
+    full: { w: 664, h: 480 },
+    compact: { w: 420, h: 480 },
+    phone: { w: 248, h: 480 },
+}
 
-export function BrandPanel({ title, text, focus = 'both' }: { title?: React.ReactNode; text?: string; focus?: Focus }) {
+export function BrandPanel({ title, text, focus = 'coach' }: { title?: React.ReactNode; text?: string; focus?: Focus }) {
     return (
         <aside className="hidden p-3 lg:flex lg:w-[48%] xl:w-[52%]" aria-hidden>
-            <div className="nt-stage flex w-full flex-col rounded-[28px] px-10 pb-8 pt-10 xl:px-14 xl:pt-12">
+            <div className="nt-stage flex w-full flex-col rounded-[28px] px-10 pb-7 pt-10 xl:px-12 xl:pt-12 [@media(max-height:780px)]:pt-8">
                 <div className="shrink-0">
                     <p className="nt-eyebrow nt-eyebrow-line text-white/50">
                         {focus === 'athlete' ? 'Tu app de entrenamiento' : 'Panel del entrenador y app del atleta'}
                     </p>
-                    <h2 className="nt-display mt-5 max-w-[30rem] text-[2.4rem] text-white xl:text-[2.85rem]">
+                    <h2 className="nt-display mt-5 max-w-[32rem] text-[2.4rem] text-white xl:text-[2.75rem] [@media(max-height:780px)]:mt-4 [@media(max-height:780px)]:text-[2.1rem]">
                         {title ?? <>Entrena a cada atleta como si fuera <span className="text-[#3D8CFF]">el único.</span></>}
                     </h2>
-                    <p className="mt-4 max-w-[30rem] text-[15px] leading-relaxed text-white/60 [@media(max-height:820px)]:hidden">
-                        {text ?? 'Tú ves cada día a quién atender. Tu atleta tiene su plan, su dieta y su chat en el móvil. Todo conectado.'}
+                    <p className="mt-4 max-w-[32rem] text-[15px] leading-relaxed text-white/60 [@media(max-height:860px)]:hidden">
+                        {text ?? 'Su progreso, el volumen de cada semana y lo que has cobrado, en tu panel. Su plan y sus series, en su móvil.'}
                     </p>
                 </div>
 
-                <FitStage w={STAGE[focus].w} h={STAGE[focus].h}>
-                    {focus === 'athlete' ? (
-                        <div className="absolute left-0 top-0">
-                            <AthletePhone />
-                        </div>
-                    ) : (
-                        <>
-                            <div className="absolute left-0 top-0">
-                                <CoachDayPanel />
-                            </div>
-                            {/* El móvil solo pisa el marco del panel: no tapa nada de lo que enseña */}
-                            <div className="absolute left-[362px] top-[44px]">
-                                <AthletePhone />
-                            </div>
-                        </>
-                    )}
+                <FitStage focus={focus}>
+                    {layout => (layout === 'phone' ? <Phone /> : <Board withPhone={layout === 'full'} />)}
                 </FitStage>
 
-                <p className="nt-eyebrow shrink-0 text-[10px] text-white/35">Pantallas reales de NexTrain · datos de ejemplo</p>
+                <p className="nt-eyebrow shrink-0 text-[10.5px] text-white/35">NexTrain · datos de ejemplo</p>
             </div>
         </aside>
     )
 }
 
-/** Encaja un dibujo de tamaño fijo en el hueco libre (ancho y alto), sin pasar de 1,15×. */
-function FitStage({ w, h, children }: { w: number; h: number; children: React.ReactNode }) {
+/** Elige el dibujo según el hueco libre y lo escala para que quepa entero (sin pasar de 1,1×). */
+function FitStage({ focus, children }: { focus: Focus; children: (layout: Layout) => React.ReactNode }) {
     const box = useRef<HTMLDivElement>(null)
-    const [scale, setScale] = useState<number | null>(null)
+    const [state, setState] = useState<{ layout: Layout; scale: number } | null>(null)
 
     useLayoutEffect(() => {
         const el = box.current
         if (!el) return
         const update = () => {
-            const next = Math.min(el.clientWidth / w, el.clientHeight / h, 1.15)
-            setScale(next > 0 ? next : null)
+            const layout: Layout = focus === 'athlete' ? 'phone' : el.clientWidth >= 500 ? 'full' : 'compact'
+            const { w, h } = SIZE[layout]
+            const scale = Math.min(el.clientWidth / w, el.clientHeight / h, focus === 'athlete' ? 1.25 : 1.1)
+            setState(scale > 0 ? { layout, scale } : null)
         }
         update()
         const observer = new ResizeObserver(update)
         observer.observe(el)
         return () => observer.disconnect()
-    }, [w, h])
+    }, [focus])
 
+    const size = state ? SIZE[state.layout] : SIZE.full
     return (
-        <div ref={box} className="relative my-6 min-h-0 flex-1">
-            <div
-                className="absolute left-1/2 top-1/2 transition-opacity duration-500"
-                style={{
-                    width: w,
-                    height: h,
-                    transform: `translate(-50%, -50%) scale(${scale ?? 0.8})`,
-                    opacity: scale ? 1 : 0,
-                }}
-            >
-                {children}
-            </div>
+        <div ref={box} className="relative my-7 min-h-0 flex-1 [@media(max-height:780px)]:my-5">
+            {state && (
+                <div
+                    className={cn('absolute top-1/2', focus === 'athlete' ? 'left-1/2' : 'left-0')}
+                    style={{
+                        width: size.w,
+                        height: size.h,
+                        transformOrigin: focus === 'athlete' ? 'center' : 'left center',
+                        transform: `${focus === 'athlete' ? 'translate(-50%, -50%)' : 'translateY(-50%)'} scale(${state.scale})`,
+                    }}
+                >
+                    {children(state.layout)}
+                </div>
+            )}
         </div>
     )
 }
 
-// ------------------------------------------------------------- Entrenador
+// ------------------------------------------------------------- Piezas
 
-const WALL: Array<{ name: string; severity?: 'high' | 'medium' }> = [
-    { name: 'Laura Benítez', severity: 'high' },
-    { name: 'Hugo Navarro' },
-    { name: 'Clara Vidal' },
-    { name: 'Rubén Soto', severity: 'medium' },
-    { name: 'Alba Ferrer' },
-    { name: 'Teo Campos' },
-    { name: 'Elena Marín' },
-    { name: 'Iván Torres', severity: 'high' },
-    { name: 'Sara Prieto' },
-    { name: 'Nerea Castro' },
-    { name: 'Marcos Ruiz' },
-    { name: 'Irene Mora' },
-]
-
-const RING = { high: '#F87171', medium: '#FBBF24' } as const
-
-function initials(name: string) {
-    return name.split(' ').map(part => part[0]).slice(0, 2).join('')
+/** Superficie de la app en oscuro: tarjeta con filo de luz. */
+function Tile({ className, delay = 0, children }: { className?: string; delay?: number; children: React.ReactNode }) {
+    return (
+        <div
+            className={cn('nt-rise rounded-[20px] bg-[#131826] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ring-1 ring-white/[0.08]', className)}
+            style={{ animationDelay: `${delay}ms` }}
+        >
+            {children}
+        </div>
+    )
 }
 
-/** El panel del día del Dashboard del entrenador, en su versión apilada. */
-function CoachDayPanel() {
-    const pulse = [
-        { label: 'Bandeja de hoy', value: 3, helper: 'Mensajes y revisiones', dot: null },
-        { label: 'Prioridad alta', value: 2, helper: 'Atiéndelos hoy', dot: RING.high },
-        { label: 'Prioridad media', value: 1, helper: 'Esta semana', dot: RING.medium },
-        { label: 'Próximos 7 días', value: 5, helper: 'Revisiones en agenda', dot: null },
-    ]
+function Eyebrow({ children, className }: { children: React.ReactNode; className?: string }) {
+    return <p className={cn('nt-eyebrow text-[10.5px] text-white/50', className)}>{children}</p>
+}
+
+/** Panel del entrenador: progreso de un atleta, volumen semanal y facturación; con el móvil al lado. */
+function Board({ withPhone }: { withPhone: boolean }) {
     return (
-        <div className="w-[372px] rounded-[24px] bg-[#090E1A] p-3 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)] ring-1 ring-white/[0.12]">
-            <div className="nt-stage rounded-[20px] p-5">
-                <p className="nt-eyebrow text-[10.5px] text-white/50">Miércoles 11 de noviembre</p>
-                <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4">
-                    {pulse.map(item => (
-                        <div key={item.label} className="min-w-0">
-                            <p className="nt-eyebrow flex items-center gap-1.5 text-[10px] text-white/50">
-                                {item.dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: item.dot }} />}
-                                <span className="truncate">{item.label}</span>
-                            </p>
-                            <p className="nt-number mt-1 text-[32px] leading-none text-white" style={item.dot ? { color: item.dot } : undefined}>
-                                {item.value}
-                            </p>
-                            <p className="mt-1 truncate text-[12px] text-white/55">{item.helper}</p>
-                        </div>
-                    ))}
+        <div className="flex h-full gap-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-3.5">
+                <AthleteProgress />
+                <div className="grid min-h-0 flex-1 grid-cols-2 gap-3.5">
+                    <WeeklyVolume />
+                    <Billing />
                 </div>
-
-                <div className="mt-5 border-t border-white/10 pt-4">
-                    <div className="flex items-baseline justify-between">
-                        <p className="nt-eyebrow text-[10px] text-white/50">Atletas activos</p>
-                        <p className="text-[12px] text-white/55">
-                            <span className="nt-number text-[17px] text-white">12</span> · todos con seguimiento
-                        </p>
-                    </div>
-                    <div className="mt-3.5 grid grid-cols-6 justify-items-center gap-y-3">
-                        {WALL.map(athlete => (
-                            <span key={athlete.name} className={cn('relative block rounded-full', athlete.severity ? 'scale-110' : 'opacity-25 grayscale')}>
-                                {athlete.severity && (
-                                    <span className="absolute -inset-[4px] rounded-full border-2" style={{ borderColor: RING[athlete.severity] }} />
-                                )}
-                                <AthleteAvatar initials={initials(athlete.name)} seed={athlete.name} className="h-9 w-9 ring-1 ring-white/10" fallbackClassName="text-[12px]" />
-                            </span>
-                        ))}
-                    </div>
+            </div>
+            {withPhone && (
+                <div className="w-[248px] shrink-0">
+                    <Phone />
                 </div>
+            )}
+        </div>
+    )
+}
 
-                <span className="mt-5 inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-4 text-[12.5px] font-semibold text-[#0B0D12]">
-                    Empezar por Laura <ArrowRight className="h-3.5 w-3.5" />
+// Peso medio de las últimas 8 semanas: baja sin perder fuerza.
+const WEIGHT = [73.9, 73.6, 73.7, 73.2, 73.0, 72.9, 72.6, 72.4]
+
+function smoothPath(values: number[], width: number, height: number, pad = 6) {
+    const min = Math.min(...values) - 0.2
+    const max = Math.max(...values) + 0.2
+    const xs = values.map((_, i) => pad + (i * (width - pad * 2)) / (values.length - 1))
+    const ys = values.map(v => pad + ((max - v) / (max - min)) * (height - pad * 2))
+    let d = `M ${xs[0]} ${ys[0]}`
+    for (let i = 1; i < values.length; i++) {
+        const cx = (xs[i - 1] + xs[i]) / 2
+        d += ` C ${cx} ${ys[i - 1]}, ${cx} ${ys[i]}, ${xs[i]} ${ys[i]}`
+    }
+    return { d, end: { x: xs[xs.length - 1], y: ys[ys.length - 1] } }
+}
+
+function AthleteProgress() {
+    const W = 200
+    const H = 72
+    const { d, end } = smoothPath(WEIGHT, W, H)
+    return (
+        <Tile className="shrink-0">
+            <div className="flex items-center gap-3">
+                <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold text-white ring-1 ring-white/10"
+                    style={{ backgroundImage: athleteGradient('Iván Torres') }}
+                >
+                    IT
                 </span>
+                <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-[15.5px] font-semibold leading-tight text-white">
+                        Iván Torres
+                        <span className="rounded-full bg-emerald-500/[0.15] px-2 py-0.5 text-[11.5px] font-semibold text-emerald-300">Activo</span>
+                    </p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-white/55">Maratón · semana 8 de 12</p>
+                </div>
+                <div className="shrink-0 text-right">
+                    <Eyebrow>Adherencia</Eyebrow>
+                    <p className="mt-1 text-white">
+                        <span className="nt-number text-[20px] leading-none">92</span>
+                        <span className="ml-0.5 text-[13px] text-white/55">%</span>
+                    </p>
+                </div>
             </div>
-        </div>
+
+            <div className="mt-3.5 flex items-end gap-4">
+                <div className="shrink-0">
+                    <Eyebrow>Peso medio 7 días</Eyebrow>
+                    <p className="mt-1 text-white">
+                        <span className="nt-number text-[30px] leading-none">72,4</span>
+                        <span className="ml-1 text-[13px] text-white/55">kg</span>
+                    </p>
+                    <p className="mt-1 text-[12px] font-medium text-emerald-300">−1,5 kg en 8 semanas</p>
+                </div>
+
+                <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="ml-auto shrink-0 overflow-visible" aria-hidden>
+                    <defs>
+                        <linearGradient id="bp-weight" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#3D8CFF" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#3D8CFF" stopOpacity="0" />
+                        </linearGradient>
+                    </defs>
+                    {[0.33, 0.66].map(f => (
+                        <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="rgba(255,255,255,0.06)" strokeDasharray="3 5" />
+                    ))}
+                    <path d={`${d} L ${end.x} ${H} L 6 ${H} Z`} fill="url(#bp-weight)" className="nt-fade" style={{ animationDelay: '700ms' }} />
+                    <path d={d} pathLength={1} fill="none" stroke="#3D8CFF" strokeWidth="2.5" strokeLinecap="round" className="nt-draw" style={{ animationDelay: '250ms' }} />
+                    <circle cx={end.x} cy={end.y} r="4.5" fill="#3D8CFF" stroke="#131826" strokeWidth="2" className="nt-pop-in" style={{ animationDelay: '1500ms', transformOrigin: `${end.x}px ${end.y}px` }} />
+                </svg>
+            </div>
+        </Tile>
     )
 }
 
-// ------------------------------------------------------------- Atleta
-
-const DAYS = [
-    { d: 'L', n: 9, dots: ['#14B8A6'] },
-    { d: 'M', n: 10, dots: ['#EF4444'] },
-    { d: 'X', n: 11, dots: ['#14B8A6', '#F59E0B'], today: true },
-    { d: 'J', n: 12, dots: ['#EF4444'] },
-    { d: 'V', n: 13, dots: [] },
-    { d: 'S', n: 14, dots: ['#14B8A6'] },
-    { d: 'D', n: 15, dots: ['#F59E0B'] },
+const VOLUME = [
+    { label: 'Pierna', sets: 18 },
+    { label: 'Espalda', sets: 16 },
+    { label: 'Pecho', sets: 14 },
+    { label: 'Hombro', sets: 10 },
 ]
+
+function WeeklyVolume() {
+    return (
+        <Tile delay={120} className="flex flex-col">
+            <Eyebrow>Volumen semanal</Eyebrow>
+            <p className="mt-2 text-white">
+                <span className="nt-number text-[32px] leading-none">58</span>
+                <span className="ml-1.5 text-[15px] text-white/55">series</span>
+            </p>
+            <p className="mt-1 text-[12.5px] text-white/55">+6 frente a la anterior</p>
+            <div className="mt-auto space-y-2.5 pt-3">
+                {VOLUME.map((row, i) => (
+                    <div key={row.label}>
+                        <div className="flex items-baseline justify-between text-[12.5px]">
+                            <span className="font-medium text-white">{row.label}</span>
+                            <span className="tabular-nums text-white/55">{row.sets}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                            <div
+                                className="nt-grow h-full rounded-full bg-[#3D8CFF]"
+                                style={{ width: `${(row.sets / 20) * 100}%`, animationDelay: `${350 + i * 90}ms` }}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Tile>
+    )
+}
+
+const MONTHS = [
+    { label: 'jun', pct: 62 },
+    { label: 'jul', pct: 70 },
+    { label: 'ago', pct: 55 },
+    { label: 'sep', pct: 78 },
+    { label: 'oct', pct: 88 },
+    { label: 'nov', pct: 100, current: true },
+]
+
+function Billing() {
+    return (
+        <Tile delay={220} className="flex flex-col">
+            <Eyebrow>Cobrado · noviembre</Eyebrow>
+            <p className="mt-2 text-white">
+                <span className="nt-number text-[32px] leading-none">1.230</span>
+                <span className="ml-1 text-[15px] text-white/55">€</span>
+            </p>
+            <p className="mt-1 text-[12.5px] text-white/55">de 1.560 € previstos</p>
+
+            {/* Lo cobrado en los últimos seis meses, como la vista anual de Facturación */}
+            <div className="mt-4 flex h-[62px] gap-1.5">
+                {MONTHS.map((month, i) => (
+                    <div key={month.label} className="flex flex-1 flex-col items-center gap-1">
+                        <div className="flex w-full flex-1 items-end">
+                            <div
+                                className={cn('nt-rise w-full rounded-[5px]', month.current ? 'bg-emerald-400' : 'bg-white/[0.14]')}
+                                style={{ height: `${month.pct}%`, animationDelay: `${400 + i * 70}ms` }}
+                            />
+                        </div>
+                        <span className={cn('text-[10.5px] leading-none', month.current ? 'font-semibold text-white' : 'text-white/45')}>{month.label}</span>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-auto pt-3">
+                <p className="mb-2 text-[12px] text-white/55"><span className="nt-number text-[14px] text-white">79 %</span> del mes</p>
+                <div className="flex h-1.5 gap-[3px] overflow-hidden rounded-full">
+                    <div className="nt-grow h-full rounded-full bg-emerald-400" style={{ width: '79%', animationDelay: '450ms' }} />
+                    <div className="nt-grow h-full rounded-full bg-amber-400" style={{ width: '21%', animationDelay: '750ms' }} />
+                </div>
+                <div className="mt-3 space-y-1.5 text-[12.5px]">
+                    <p className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-white/70"><span className="h-2 w-2 rounded-full bg-emerald-400" />Cobrado</span>
+                        <span className="tabular-nums text-white">12 atletas</span>
+                    </p>
+                    <p className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-white/70"><span className="h-2 w-2 rounded-full bg-amber-400" />Pendiente</span>
+                        <span className="tabular-nums text-white">3 atletas</span>
+                    </p>
+                </div>
+            </div>
+        </Tile>
+    )
+}
+
+// ------------------------------------------------------------- Móvil del atleta
 
 const TABS = [
-    { icon: Dumbbell, label: 'Fuerza' },
+    { icon: Dumbbell, label: 'Fuerza', active: true },
     { icon: Salad, label: 'Dieta' },
-    { icon: CalendarDays, label: 'Plan', active: true },
+    { icon: CalendarDays, label: 'Plan' },
     { icon: ChartNoAxesColumnIncreasing, label: 'Progreso' },
     { icon: MessageCircle, label: 'Chat' },
 ]
 
-/** La pantalla Plan de la app del atleta, en el móvil. */
-function AthletePhone() {
+const SETS: Array<[number, string, string, boolean]> = [
+    [1, '80', '10', true],
+    [2, '80', '9', true],
+    [3, '80', '8', false],
+]
+
+/** La pestaña Fuerza de la app del atleta: registra sus series mientras entrena. */
+function Phone() {
     return (
-        <div className="w-[242px] rounded-[38px] bg-[#1A1D24] p-[6px] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.95)] ring-1 ring-white/15">
-            <div className="relative h-[492px] overflow-hidden rounded-[32px] bg-[#090E1A] px-3.5 pt-9 text-white">
-                <span className="absolute left-1/2 top-2.5 h-[18px] w-[72px] -translate-x-1/2 rounded-full bg-black" />
+        <div className="nt-rise h-full rounded-[38px] bg-[#1A1D24] p-[6px] shadow-[0_40px_90px_-30px_rgba(0,0,0,0.95)] ring-1 ring-white/15" style={{ animationDelay: '320ms' }}>
+            <div className="relative h-full overflow-hidden rounded-[32px] bg-[#090E1A] px-3.5 pt-9 text-white">
+                <span className="absolute left-1/2 top-2.5 h-[18px] w-[70px] -translate-x-1/2 rounded-full bg-black" />
 
-                <p className="nt-eyebrow text-[9.5px] text-white/50">Esta semana</p>
-                <p className="nt-display mt-0.5 text-[24px] text-white">Plan</p>
+                <Eyebrow className="text-[10px]">Miércoles 11 nov</Eyebrow>
+                <p className="nt-display mt-1 text-[21px] leading-tight text-white">Día 2 · Torso A</p>
 
-                <div className="mt-3 grid grid-cols-7 text-center">
-                    {DAYS.map(day => (
-                        <div key={day.d} className={cn('mx-0.5 rounded-xl py-1.5', day.today && 'bg-[#0058D8]')}>
-                            <p className={cn('text-[9.5px]', day.today ? 'text-white/80' : 'text-white/45')}>{day.d}</p>
-                            <p className="mt-0.5 text-[13px] font-semibold">{day.n}</p>
-                            <p className="mt-1 flex h-1 justify-center gap-0.5">
-                                {day.dots.map((color, i) => (
-                                    <span key={i} className="h-1 w-1 rounded-full" style={{ backgroundColor: day.today ? '#fff' : color }} />
-                                ))}
-                            </p>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="nt-stage mt-3.5 rounded-[18px] p-3.5">
-                    <div className="flex items-center gap-2.5">
-                        <ProgressRing value={3 / 7} size={44} stroke={4.5} className="[&_circle:first-child]:stroke-white/10">
-                            <span className="nt-number text-[11px] text-white">43%</span>
-                        </ProgressRing>
-                        <div className="min-w-0 flex-1">
-                            <p className="nt-eyebrow text-[8.5px] leading-snug text-white/50">Progreso semanal</p>
-                            <p className="nt-title text-[15px] leading-tight text-white">
-                                <span className="nt-number">3</span> <span className="font-normal text-white/55">de 7 sesiones</span>
-                            </p>
-                            <p className="text-[10.5px] text-white/55">21,4 km / 38 km</p>
-                        </div>
+                <div className="mt-3 rounded-[18px] bg-[#131826] p-3 ring-1 ring-[#3D8CFF]/40">
+                    <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0058D8] text-[12px] font-bold">1</span>
+                        <p className="text-[15px] font-semibold">Press banca</p>
                     </div>
-                    <div className="mt-3 space-y-2.5 border-t border-white/10 pt-3">
-                        {[
-                            { label: 'Running', value: '2/4', pct: 56, color: 'bg-emerald-500' },
-                            { label: 'Fuerza', value: '1/3', pct: 33, color: 'bg-orange-500' },
-                        ].map(sport => (
-                            <div key={sport.label}>
-                                <div className="flex justify-between text-[10.5px]">
-                                    <span className="font-medium text-white">{sport.label}</span>
-                                    <span className="text-white/55">{sport.value}</span>
-                                </div>
-                                <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.08]">
-                                    <div className={cn('h-full rounded-full', sport.color)} style={{ width: `${sport.pct}%` }} />
-                                </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                        {['3 series', '8-10 reps', 'RIR 2'].map(chip => (
+                            <span key={chip} className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[11px] text-white/75">{chip}</span>
+                        ))}
+                    </div>
+                    <div className="mt-3 grid grid-cols-[22px_1fr_1fr] gap-x-1.5 text-center">
+                        <span />
+                        <span className="nt-eyebrow text-[10px] text-white/45">Kg</span>
+                        <span className="nt-eyebrow text-[10px] text-white/45">Reps</span>
+                    </div>
+                    <div className="mt-1 space-y-1.5">
+                        {SETS.map(([n, kg, reps, done], i) => (
+                            <div
+                                key={n}
+                                className="nt-fade grid grid-cols-[22px_1fr_1fr] items-center gap-x-1.5 text-center"
+                                style={{ animationDelay: `${900 + i * 220}ms` }}
+                            >
+                                <span className="text-[12px] font-semibold text-white/45">{n}</span>
+                                <span className={cn('rounded-lg py-1 text-[15px] font-bold', done ? 'bg-emerald-400/[0.14] text-emerald-300' : 'bg-white/[0.08]')}>{kg}</span>
+                                <span className={cn('rounded-lg py-1 text-[15px] font-bold', done ? 'bg-emerald-400/[0.14] text-emerald-300' : 'bg-[#3D8CFF]/25 text-[#8AB9FF]')}>{reps}</span>
                             </div>
                         ))}
                     </div>
                 </div>
 
-                <p className="mt-3.5 text-[12px] font-semibold text-[#3D8CFF]">Hoy <span className="font-normal text-white/50">11 nov</span></p>
-                <div className="mt-1.5 flex items-center gap-2.5 rounded-2xl border border-white/10 bg-[#131826] p-2.5 shadow-[inset_3px_0_0_#14B8A6]">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-500/15">
-                        <Footprints className="h-4 w-4 text-teal-300" />
-                    </span>
-                    <div className="min-w-0">
-                        <p className="nt-eyebrow text-[8.5px] text-white/50">Rodaje</p>
-                        <p className="truncate text-[12.5px] font-semibold">Rodaje suave 8 km</p>
+                {['Remo con barra', 'Press militar'].map((name, i) => (
+                    <div key={name} className="mt-2 flex items-center gap-2 rounded-[14px] bg-[#131826] px-3 py-2.5 ring-1 ring-white/[0.08]">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[12px] font-bold text-white/60">{i + 2}</span>
+                        <p className="truncate text-[13.5px] font-semibold">{name}</p>
                     </div>
-                </div>
+                ))}
 
-                <div className="absolute inset-x-2.5 bottom-3 grid grid-cols-5 gap-0.5 rounded-full bg-[#0B0D12]/95 p-1 ring-1 ring-white/10">
+                <div className="absolute inset-x-2 bottom-2.5 grid grid-cols-5 gap-0.5 rounded-full bg-[#0B0D12] p-1 ring-1 ring-white/10">
                     {TABS.map(tab => (
                         <span
                             key={tab.label}
-                            className={cn(
-                                'flex h-[42px] flex-col items-center justify-center gap-0.5 rounded-full',
-                                tab.active ? 'bg-white text-[#0B0D12]' : 'text-white/55',
-                            )}
+                            className={cn('flex h-[40px] flex-col items-center justify-center gap-0.5 rounded-full', tab.active ? 'bg-white text-[#0B0D12]' : 'text-white/55')}
                         >
-                            <tab.icon className={cn('h-4 w-4', tab.active && 'text-[#0058D8]')} />
-                            <span className="text-[8.5px] font-semibold">{tab.label}</span>
+                            <tab.icon className={cn('h-[15px] w-[15px]', tab.active && 'text-[#0058D8]')} />
+                            <span className="text-[9.5px] font-semibold leading-none">{tab.label}</span>
                         </span>
                     ))}
                 </div>
