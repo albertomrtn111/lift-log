@@ -27,7 +27,7 @@ export default function SignupPlanPage() {
             {/* Cabecera */}
             <div className="flex flex-col items-center text-center">
                 <SignupSteps current={1} />
-                <h1 className="mt-6 text-[2rem] font-bold leading-[1.1] tracking-tight sm:text-[2.75rem]">
+                <h1 className="nt-display mt-6 text-[2.15rem] sm:text-[3rem]">
                     Elige tu plan
                 </h1>
                 <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-muted-foreground">

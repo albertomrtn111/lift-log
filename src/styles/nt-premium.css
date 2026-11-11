@@ -4,14 +4,14 @@
  * JetBrains Mono en etiquetas, superficies con filo de luz y la misma curva de
  * movimiento).
  *
- * Todo cuelga de `.coach-shell` (layout del coach) o `.app-mobile-shell` (layout
- * del atleta). `html:has(...)` alcanza también lo que Radix pinta fuera del árbol
+ * Todo cuelga de `.coach-shell` (layout del coach), `.app-mobile-shell` (layout
+ * del atleta) o `.auth-shell` (pantallas de acceso). `html:has(...)` alcanza también lo que Radix pinta fuera del árbol
  * (diálogos, hojas y menús). No se toca --primary: cada espacio puede tener su
  * color (SpaceBranding). Lo propio de cada app va en su archivo:
  * app/(coach)/coach-premium.css y app/(app)/athlete-premium.css.
  */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) {
     --nt-ink: 225 24% 6%;
     --nt-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -33,7 +33,7 @@ html:has(:is(.coach-shell, .app-mobile-shell)) {
 }
 
 /* Oscuro: el de la app (la web lo copia), con líneas más finas. */
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) {
     --background: 222 47% 7%;
     --foreground: 214 32% 93%;
     --card: 223 34% 11%;
@@ -52,7 +52,7 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell)) {
 
 /* Las piezas que llevan `dark` dentro de la página (barra lateral, dock) usan
    siempre los colores oscuros, también con la app en claro. */
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .dark {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .dark {
     --foreground: 214 32% 93%;
     --card: 223 34% 11%;
     --card-foreground: 214 30% 94%;
@@ -68,7 +68,7 @@ html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-she
 }
 
 /* El cuerpo pedía «Inter» por su nombre y caía en la letra del sistema. */
-html:has(:is(.coach-shell, .app-mobile-shell)) body {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) body {
     font-family: var(--font-inter), system-ui, sans-serif;
     font-feature-settings: "cv11", "ss03";
     background-image: none;
@@ -122,10 +122,10 @@ html:has(:is(.coach-shell, .app-mobile-shell)) body {
 
 /* ---------------------------------------------------------------- Superficies */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-card {
     box-shadow: 0 1px 2px hsl(var(--nt-ink) / 0.04);
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-card {
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
 }
 
@@ -169,24 +169,24 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-card {
 
 /* ---------------------------------------------------------------- Botones */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn:not(.rounded-none, .rounded-l-none, .rounded-r-none, .rounded-t-none, .rounded-b-none) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn:not(.rounded-none, .rounded-l-none, .rounded-r-none, .rounded-t-none, .rounded-b-none) {
     border-radius: 9999px;
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn {
     transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.3s ease, transform 0.3s var(--nt-ease);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn:active:not(:disabled) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn:active:not(:disabled) {
     transform: scale(0.97);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn-primary {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn-primary {
     box-shadow: 0 8px 22px -12px hsl(var(--primary-fill, var(--primary)) / 0.95);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn-outline {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn-outline {
     background-color: transparent;
     border-color: hsl(var(--foreground) / 0.15);
     box-shadow: none;
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn-outline:hover {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-btn-outline:hover {
     background-color: hsl(var(--foreground) / 0.03);
     border-color: hsl(var(--foreground) / 0.4);
     color: hsl(var(--foreground));
@@ -194,78 +194,78 @@ html:has(:is(.coach-shell, .app-mobile-shell)) .nt-btn-outline:hover {
 
 /* ---------------------------------------------------------------- Campos */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-field {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field {
     background-color: hsl(var(--card));
     border-color: hsl(var(--input));
     box-shadow: none;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-field:hover:not(:disabled) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field:hover:not(:disabled) {
     border-color: hsl(var(--foreground) / 0.28);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-field:focus,
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-field:focus-visible,
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-field[data-state="open"] {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field:focus,
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field:focus-visible,
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field[data-state="open"] {
     border-color: hsl(var(--primary));
     box-shadow: 0 0 0 4px hsl(var(--primary) / 0.14);
     --tw-ring-shadow: 0 0 #0000;
     --tw-ring-offset-shadow: 0 0 #0000;
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-field {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-field {
     background-color: rgb(255 255 255 / 0.03);
 }
 
 /* ---------------------------------------------------------------- Insignias */
 
 /* Sin borde y en semibold, como los chips de la web. */
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-badge {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-badge {
     border-color: transparent;
     letter-spacing: -0.005em;
 }
 
 /* ---------------------------------------------------------------- Capas */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-overlay {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-overlay {
     background-color: rgb(11 13 18 / 0.45);
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-overlay {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-overlay {
     background-color: rgb(5 8 15 / 0.72);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-dialog {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-dialog {
     border-radius: 24px;
     border-color: hsl(var(--border));
     background-color: hsl(var(--card));
     box-shadow: 0 40px 100px -40px rgb(11 13 18 / 0.45);
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-dialog {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-dialog {
     border-color: rgb(255 255 255 / 0.08);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 40px 100px -30px rgb(0 0 0 / 0.9);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-sheet {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-sheet {
     background-color: hsl(var(--card));
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-sheet {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-sheet {
     border-color: rgb(255 255 255 / 0.08);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-pop {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-pop {
     border-radius: 16px;
     border-color: hsl(var(--border));
     background-color: hsl(var(--popover));
     box-shadow: 0 24px 60px -24px rgb(11 13 18 / 0.35);
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-pop {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-pop {
     border-color: rgb(255 255 255 / 0.1);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 28px 70px -28px rgb(0 0 0 / 0.95);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-dialog :is(h2, [id^="radix-"][id$="-title"]):first-of-type,
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-sheet :is(h2, [id^="radix-"][id$="-title"]):first-of-type {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-dialog :is(h2, [id^="radix-"][id$="-title"]):first-of-type,
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-sheet :is(h2, [id^="radix-"][id$="-title"]):first-of-type {
     font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
     letter-spacing: -0.02em;
 }
 
 /* ---------------------------------------------------------------- Tablas */
 
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) table:not([data-nt-plain]) thead th {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) table:not([data-nt-plain]) thead th {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 10.5px;
     font-weight: 500;
@@ -273,7 +273,7 @@ html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-she
     text-transform: uppercase;
     color: hsl(var(--muted-foreground));
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) table tbody tr {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) table tbody tr {
     transition: background-color 0.15s ease;
 }
 
@@ -281,26 +281,26 @@ html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-she
 
 /* Los esqueletos brillan de lado a lado en lugar de parpadear. */
 @keyframes nt-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .animate-pulse.bg-muted,
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .animate-pulse.rounded-md:not([class*="bg-"]) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .animate-pulse.bg-muted,
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .animate-pulse.rounded-md:not([class*="bg-"]) {
     animation: nt-shimmer 1.6s ease-in-out infinite;
     background-color: hsl(var(--foreground) / 0.06);
     background-image: linear-gradient(90deg, transparent 0%, hsl(var(--foreground) / 0.07) 50%, transparent 100%);
     background-size: 200% 100%;
 }
 @media (prefers-reduced-motion: reduce) {
-    html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .animate-pulse.bg-muted { animation: none; }
+    html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .animate-pulse.bg-muted { animation: none; }
 }
 
 /* ---------------------------------------------------------------- Lectura */
 
 /* Nada por debajo de 11 px: la web no baja de ahí y en el móvil no se leía. */
 /* Sin tocar el texto de los dibujos (SVG) ni las iniciales en círculos de 16-20 px. */
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .text-\[9px\]:not(text, .h-4, .h-5) { font-size: 10.5px; }
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) .text-\[10px\]:not(text, .h-4, .h-5) { font-size: 11px; }
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .text-\[9px\]:not(text, .h-4, .h-5) { font-size: 10.5px; }
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) .text-\[10px\]:not(text, .h-4, .h-5) { font-size: 11px; }
 
 /* Las etiquetas en versalitas de toda la app pasan a la mono de la web. */
-html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-shell) :is(.uppercase.tracking-wider, .uppercase.tracking-widest, .uppercase.tracking-wide, .uppercase.tracking-\[0\.08em\]):not(.nt-eyebrow) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) :is(.coach-shell, .app-mobile-shell, .auth-shell) :is(.uppercase.tracking-wider, .uppercase.tracking-widest, .uppercase.tracking-wide, .uppercase.tracking-\[0\.08em\]):not(.nt-eyebrow) {
     font-family: var(--font-mono), ui-monospace, monospace;
     font-weight: 500;
     letter-spacing: 0.12em;
@@ -308,21 +308,21 @@ html:has(:is(.coach-shell, .app-mobile-shell)) :is(.coach-shell, .app-mobile-she
 
 /* En oscuro, los textos de color pensados para fondo claro (ámbar, rojo, verde…
    de tono 600-800) pasan a su tono claro para que se lean. */
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-red-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-red-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-red-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-red-900 { color: #f87171; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-amber-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-amber-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-amber-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-amber-900 { color: #fcd34d; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-green-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-green-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-green-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-green-900 { color: #4ade80; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-emerald-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-emerald-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-emerald-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-emerald-900 { color: #34d399; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-blue-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-blue-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-blue-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-blue-900 { color: #60a5fa; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-orange-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-orange-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-orange-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-orange-900 { color: #fb923c; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-yellow-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-yellow-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-yellow-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-yellow-900 { color: #fde047; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-sky-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-sky-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-sky-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-sky-900 { color: #7dd3fc; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-violet-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-violet-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-violet-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-violet-900 { color: #a78bfa; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-purple-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-purple-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-purple-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-purple-900 { color: #c084fc; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-rose-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-rose-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-rose-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-rose-900 { color: #fb7185; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-teal-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-teal-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-teal-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-teal-900 { color: #5eead4; }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-indigo-600, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-indigo-700, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-indigo-800, html.dark:has(:is(.coach-shell, .app-mobile-shell)) .text-indigo-900 { color: #a5b4fc; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-red-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-red-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-red-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-red-900 { color: #f87171; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-amber-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-amber-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-amber-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-amber-900 { color: #fcd34d; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-green-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-green-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-green-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-green-900 { color: #4ade80; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-emerald-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-emerald-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-emerald-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-emerald-900 { color: #34d399; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-blue-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-blue-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-blue-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-blue-900 { color: #60a5fa; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-orange-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-orange-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-orange-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-orange-900 { color: #fb923c; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-yellow-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-yellow-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-yellow-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-yellow-900 { color: #fde047; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-sky-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-sky-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-sky-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-sky-900 { color: #7dd3fc; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-violet-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-violet-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-violet-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-violet-900 { color: #a78bfa; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-purple-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-purple-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-purple-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-purple-900 { color: #c084fc; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-rose-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-rose-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-rose-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-rose-900 { color: #fb7185; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-teal-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-teal-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-teal-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-teal-900 { color: #5eead4; }
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-indigo-600, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-indigo-700, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-indigo-800, html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .text-indigo-900 { color: #a5b4fc; }
 
-html:has(:is(.coach-shell, .app-mobile-shell)) ::selection {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) ::selection {
     background: hsl(var(--primary) / 0.22);
 }
 
@@ -330,21 +330,21 @@ html:has(:is(.coach-shell, .app-mobile-shell)) ::selection {
 
 /* Pestañas internas: carril redondo y la elegida como una pieza que flota,
    como el selector de la web. Las principales del Workspace van en tinta. */
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) {
     border-radius: 9999px;
     background-color: hsl(var(--foreground) / 0.05);
     box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.06);
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab {
     border-radius: 9999px;
     transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
-html:has(:is(.coach-shell, .app-mobile-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab[data-state="active"] {
+html:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab[data-state="active"] {
     background-color: hsl(var(--card));
     color: hsl(var(--foreground));
     box-shadow: 0 1px 2px hsl(var(--nt-ink) / 0.1), 0 0 0 1px hsl(var(--foreground) / 0.06);
 }
-html.dark:has(:is(.coach-shell, .app-mobile-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab[data-state="active"] {
+html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.workspace-tabs-list, .nt-pills) .nt-tab[data-state="active"] {
     background-color: rgb(255 255 255 / 0.12);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
