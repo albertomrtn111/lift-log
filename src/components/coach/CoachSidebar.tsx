@@ -19,6 +19,8 @@ import {
     MessageCircle,
     MoreHorizontal,
     LineChart,
+    PanelLeftClose,
+    PanelLeftOpen,
     Video,
 } from 'lucide-react'
 import { useCallback, useState, useEffect } from 'react'
@@ -222,6 +224,30 @@ export function CoachSidebar({ workspaces, environment: space }: {
     }
 
     const inSala = environment === 'sala'
+
+    // En Sala, al pulsar en la pantalla la barra se queda en iconos para dejar sitio a la cuadrícula.
+    // Se abre pulsando la barra o su botón. En Online se queda como estaba.
+    const [compact, setCompact] = useState(false)
+    useEffect(() => {
+        if (!inSala) {
+            setCompact(false)
+            return
+        }
+        const collapse = (event: PointerEvent) => {
+            if (window.innerWidth < 1024) return
+            const target = event.target as Element | null
+            if (target?.closest('main')) setCompact(true)
+        }
+        document.addEventListener('pointerdown', collapse)
+        return () => document.removeEventListener('pointerdown', collapse)
+    }, [inSala])
+    useEffect(() => {
+        const root = document.documentElement
+        if (compact) root.dataset.ntSidebar = 'compact'
+        else delete root.dataset.ntSidebar
+        return () => { delete root.dataset.ntSidebar }
+    }, [compact])
+
     const settingsHref = inSala ? SALA_SETTINGS_HREF : '/coach/settings'
     const desktopSections = inSala ? salaSections : navSections
     const primaryItems = inSala ? salaPrimaryItems : mobilePrimaryItems
@@ -291,8 +317,27 @@ export function CoachSidebar({ workspaces, environment: space }: {
             {/* Barra lateral: tinta en los dos temas, como la web. `dark` hace que
                 todo lo de dentro (campana, selector de espacio) use sus colores oscuros. */}
             <aside
-                className="dark fixed left-0 top-0 z-50 hidden h-full w-64 border-r border-white/[0.07] bg-[#0B0D12] text-white lg:block"
+                className={cn(
+                    'dark fixed left-0 top-0 z-50 hidden h-full border-r border-white/[0.07] bg-[#0B0D12] text-white transition-[width] duration-200 lg:block',
+                    compact ? 'w-[4.5rem]' : 'w-64'
+                )}
+                onClick={event => {
+                    // Recogida, pulsar en un hueco de la barra la abre; los enlaces y botones van a lo suyo.
+                    if (compact && !(event.target as Element).closest('a, button')) setCompact(false)
+                }}
             >
+                {compact ? (
+                    <CompactSidebar
+                        sections={desktopSections}
+                        pathname={pathname}
+                        badges={badges}
+                        settingsHref={settingsHref}
+                        settingsLabel={inSala ? 'Ajustes de sala' : 'Ajustes'}
+                        loggingOut={loggingOut}
+                        onLogout={handleLogout}
+                        onExpand={() => setCompact(false)}
+                    />
+                ) : (
                 <div className="flex h-full flex-col">
                     <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
                         {brand?.logoLightUrl ? (
@@ -318,6 +363,17 @@ export function CoachSidebar({ workspaces, environment: space }: {
                             </>
                         )}
                         <CoachNotificationsBell className="ml-auto shrink-0 border-white/10 bg-white/[0.04] hover:bg-white/10" />
+                        {inSala && (
+                            <button
+                                type="button"
+                                onClick={() => setCompact(true)}
+                                aria-label="Recoger la barra"
+                                title="Recoger la barra"
+                                className="-mr-2 shrink-0 rounded-lg p-1.5 text-white/45 hover:bg-white/[0.06] hover:text-white"
+                            >
+                                <PanelLeftClose className="h-4 w-4" />
+                            </button>
+                        )}
                     </div>
 
                     {workspaces.length > 1 && (
@@ -399,6 +455,7 @@ export function CoachSidebar({ workspaces, environment: space }: {
                         </button>
                     </div>
                 </div>
+                )}
             </aside>
 
             {/* Móvil: dock flotante de tinta con cuatro accesos y «Más», como el de la web. */}
@@ -534,5 +591,77 @@ export function CoachSidebar({ workspaces, environment: space }: {
                 </div>
             </nav>
         </>
+    )
+}
+
+/** La barra recogida: solo iconos, con el nombre al pasar por encima. */
+function CompactSidebar({ sections, pathname, badges, settingsHref, settingsLabel, loggingOut, onLogout, onExpand }: {
+    sections: Array<{ title: string; items: NavItem[] }>
+    pathname: string | null
+    badges: Record<string, number>
+    settingsHref: string
+    settingsLabel: string
+    loggingOut: boolean
+    onLogout: () => void
+    onExpand: () => void
+}) {
+    const icon = 'flex h-10 w-10 items-center justify-center rounded-xl text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
+    return (
+        <div className="flex h-full flex-col items-center">
+            <div className="flex flex-col items-center gap-2 pb-3 pt-5">
+                <button type="button" onClick={onExpand} aria-label="Abrir la barra" title="Abrir la barra" className={icon}>
+                    <PanelLeftOpen className="h-[18px] w-[18px]" />
+                </button>
+                <CoachNotificationsBell className="shrink-0 border-white/10 bg-white/[0.04] hover:bg-white/10" />
+            </div>
+            <nav aria-label="Navegación del coach" className="flex w-full flex-1 flex-col items-center overflow-y-auto pb-4 pt-2">
+                {sections.map((section, idx) => (
+                    <div key={section.title} className={cn('flex flex-col items-center gap-1', idx > 0 && 'mt-3 border-t border-white/[0.07] pt-3')}>
+                        {section.items.map(item => {
+                            const isActive = isItemActive(item, pathname)
+                            const badgeCount = item.badgeKey ? (badges[item.badgeKey] ?? 0) : 0
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    prefetch={true}
+                                    title={item.label}
+                                    aria-label={item.label}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    className={cn(icon, 'relative', isActive && 'bg-white hover:bg-white')}
+                                >
+                                    <item.icon className={cn('h-[18px] w-[18px]', isActive ? 'text-[#0058D8]' : 'text-white/55')} />
+                                    {badgeCount > 0 && (
+                                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />
+                                    )}
+                                </Link>
+                            )
+                        })}
+                    </div>
+                ))}
+            </nav>
+            <div className="flex w-full flex-col items-center gap-1 border-t border-white/[0.07] pb-4 pt-3">
+                <Link
+                    href={settingsHref}
+                    prefetch={true}
+                    title={settingsLabel}
+                    aria-label={settingsLabel}
+                    aria-current={pathname?.startsWith('/coach/settings') ? 'page' : undefined}
+                    className={cn(icon, pathname?.startsWith('/coach/settings') && 'bg-white text-[#0B0D12] hover:bg-white')}
+                >
+                    <Settings2 className="h-[18px] w-[18px]" />
+                </Link>
+                <button
+                    type="button"
+                    onClick={onLogout}
+                    disabled={loggingOut}
+                    title="Cerrar sesión"
+                    aria-label="Cerrar sesión"
+                    className={cn(icon, 'text-white/45 hover:text-red-300 disabled:opacity-60')}
+                >
+                    <LogOut className="h-[18px] w-[18px]" />
+                </button>
+            </div>
+        </div>
     )
 }
