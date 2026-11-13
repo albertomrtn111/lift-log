@@ -1,12 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BOARD_TEMPLATES, type BoardTemplate } from '@/lib/analytics/templates'
 import { DIMENSIONS, METRICS, PERIODS, VISUALS, type Dimension, type Visual } from '@/lib/analytics/catalog'
-import type { AnalyticsPage, AnalyticsWidget, BoardFilterState, WidgetHeight, WidgetWidth } from '@/types/analytics'
+import type { AnalyticsEnvironment, AnalyticsPage, AnalyticsWidget, BoardFilterState, WidgetHeight, WidgetWidth } from '@/types/analytics'
 
 // Lectura, normalización y siembra de tableros. Lo usan la página (servidor)
 // y las acciones; las filas de la base de datos nunca llegan tal cual al cliente.
 
-export const PAGE_COLUMNS = 'id, name, scope, is_system, is_home, default_filters, sort_order'
+export const PAGE_COLUMNS = 'id, name, scope, environment, is_system, is_home, default_filters, sort_order'
 export const WIDGET_COLUMNS = 'id, page_id, title, metric_key, visual, dimensions, filters, options, layout, sort_order'
 
 const WIDTHS: WidgetWidth[] = [3, 4, 6, 8, 12]
@@ -33,6 +33,7 @@ export function toPage(row: any): AnalyticsPage {
         id: row.id,
         name: row.name,
         scope: row.scope,
+        environment: row.environment === 'sala' ? 'sala' : 'online',
         isSystem: !!row.is_system,
         isHome: !!row.is_home,
         filters: normalizeFilters(row.default_filters),
@@ -85,11 +86,12 @@ export function templateWidgetRows(template: BoardTemplate, pageId: string, coac
     }))
 }
 
-async function listBoards(supabase: SupabaseClient, coachId: string) {
+async function listBoards(supabase: SupabaseClient, coachId: string, environment: AnalyticsEnvironment) {
     const { data, error } = await supabase
         .from('analytics_pages')
         .select(PAGE_COLUMNS)
         .eq('coach_id', coachId)
+        .eq('environment', environment)
         .order('sort_order')
         .order('created_at')
     if (error) throw new Error(error.message)
@@ -97,13 +99,32 @@ async function listBoards(supabase: SupabaseClient, coachId: string) {
 }
 
 /**
+ * La primera vez que se abre Analítica en Sala hay un solo tablero, vacío, para armarlo a medida.
+ * El índice de un solo inicio por entorno hace que, si llegan dos peticiones, solo una lo cree.
+ */
+async function ensureSalaBoard(supabase: SupabaseClient, coachId: string) {
+    const { error } = await supabase.from('analytics_pages').insert({
+        coach_id: coachId,
+        name: 'Sala',
+        scope: 'custom',
+        environment: 'sala',
+        is_home: true,
+        default_filters: {},
+        sort_order: 0,
+    })
+    if (error && error.code !== '23505') throw new Error(error.message)
+    return listBoards(supabase, coachId, 'sala')
+}
+
+/**
  * La primera vez que el coach abre Analítica se crean los tableros de ejemplo.
  * Van en una sola sentencia: si dos peticiones llegan a la vez, el índice de un
  * solo tablero de inicio hace que solo una los cree y la otra lee los suyos.
  */
-export async function ensureBoards(supabase: SupabaseClient, coachId: string) {
-    const existing = await listBoards(supabase, coachId)
+export async function ensureBoards(supabase: SupabaseClient, coachId: string, environment: AnalyticsEnvironment = 'online') {
+    const existing = await listBoards(supabase, coachId, environment)
     if (existing.length > 0) return existing
+    if (environment === 'sala') return ensureSalaBoard(supabase, coachId)
 
     const { data: pages, error } = await supabase
         .from('analytics_pages')
@@ -117,7 +138,7 @@ export async function ensureBoards(supabase: SupabaseClient, coachId: string) {
             sort_order: index,
         })))
         .select('id, scope')
-    if (error?.code === '23505') return listBoards(supabase, coachId)
+    if (error?.code === '23505') return listBoards(supabase, coachId, 'online')
     if (error || !pages) throw new Error(error?.message ?? 'No se pudieron crear los tableros de ejemplo.')
 
     const widgets = BOARD_TEMPLATES.flatMap(template => {
@@ -126,7 +147,7 @@ export async function ensureBoards(supabase: SupabaseClient, coachId: string) {
     })
     const { error: widgetsError } = await supabase.from('analytics_widgets').insert(widgets)
     if (widgetsError) throw new Error(widgetsError.message)
-    return listBoards(supabase, coachId)
+    return listBoards(supabase, coachId, 'online')
 }
 
 export async function loadWidgets(supabase: SupabaseClient, pageId: string) {

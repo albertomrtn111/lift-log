@@ -75,16 +75,18 @@ export async function fetchBoardWidgets(pageId: string): Promise<Result<Analytic
     }
 }
 
-export async function createBoard(name: string, filters: BoardFilterState): Promise<Result<AnalyticsPage>> {
+export async function createBoard(name: string, filters: BoardFilterState, environment: 'online' | 'sala' = 'online'): Promise<Result<AnalyticsPage>> {
     try {
         const { supabase, coachId } = await requireActiveCoachId()
-        const { count } = await supabase.from('analytics_pages').select('id', { count: 'exact', head: true }).eq('coach_id', coachId)
+        const place = environment === 'sala' ? 'sala' : 'online'
+        const { count } = await supabase.from('analytics_pages').select('id', { count: 'exact', head: true }).eq('coach_id', coachId).eq('environment', place)
         const { data, error } = await supabase
             .from('analytics_pages')
             .insert({
                 coach_id: coachId,
                 name: z.string().trim().min(1, 'Pon un nombre al tablero').max(80).parse(name),
                 scope: filters.athleteMode === 'single' ? 'athlete' : 'custom',
+                environment: place,
                 default_filters: filtersSchema.parse(filters),
                 sort_order: count ?? 0,
             })
@@ -115,7 +117,10 @@ export async function setHomeBoard(pageId: string): Promise<Result<null>> {
     try {
         const { supabase, coachId } = await requireActiveCoachId()
         const id = idSchema.parse(pageId)
-        const cleared = await supabase.from('analytics_pages').update({ is_home: false }).eq('coach_id', coachId).eq('is_home', true)
+        // Cada entorno tiene su inicio: solo se quita el del entorno de este tablero.
+        const { data: page } = await supabase.from('analytics_pages').select('environment').eq('id', id).single()
+        const cleared = await supabase.from('analytics_pages').update({ is_home: false })
+            .eq('coach_id', coachId).eq('environment', page?.environment ?? 'online').eq('is_home', true)
         if (cleared.error) throw new Error(cleared.error.message)
         const { error } = await supabase.from('analytics_pages').update({ is_home: true }).eq('id', id)
         if (error) throw new Error(error.message)
@@ -146,7 +151,7 @@ export async function duplicateBoard(pageId: string): Promise<Result<AnalyticsPa
         const { count } = await supabase.from('analytics_pages').select('id', { count: 'exact', head: true }).eq('coach_id', coachId)
         const { data: copy, error: copyError } = await supabase
             .from('analytics_pages')
-            .insert({ coach_id: coachId, name: `${source.name} (copia)`, scope: source.scope, default_filters: source.default_filters, sort_order: count ?? 0 })
+            .insert({ coach_id: coachId, name: `${source.name} (copia)`, scope: source.scope, environment: source.environment, default_filters: source.default_filters, sort_order: count ?? 0 })
             .select(PAGE_COLUMNS)
             .single()
         if (copyError || !copy) throw new Error(copyError?.message ?? 'No se pudo duplicar')
