@@ -171,12 +171,14 @@ function BoardNameDialog({ open, onOpenChange, title, initialName, withMode, onS
     )
 }
 
-export function BoardView({ initialPages, initialPageId, initialWidgets, initialFacts, initialAthleteId }: {
+export function BoardView({ initialPages, initialPageId, initialWidgets, initialFacts, initialAthleteId, environment = 'online' }: {
     initialPages: AnalyticsPage[]
     initialPageId: string
     initialWidgets: AnalyticsWidget[]
     initialFacts: AnalyticsFacts
     initialAthleteId: string | null
+    /** Los tableros nuevos son del entorno en el que se está. */
+    environment?: 'online' | 'sala'
 }) {
     const [pages, setPages] = useState(initialPages)
     const [pageId, setPageId] = useState(initialPageId)
@@ -232,8 +234,8 @@ export function BoardView({ initialPages, initialPageId, initialWidgets, initial
     useEffect(() => {
         const params = new URLSearchParams({ board: pageId })
         if (singleAthleteId) params.set('athlete', singleAthleteId)
-        window.history.replaceState(null, '', `/coach/analytics?${params}`)
-    }, [pageId, singleAthleteId])
+        window.history.replaceState(null, '', `${environment === 'sala' ? '/coach/sala/analitica' : '/coach/analytics'}?${params}`)
+    }, [pageId, singleAthleteId, environment])
 
     const selectAthlete = useCallback((id: string) => setFilters(current => ({ ...current, athleteIds: [id] })), [])
 
@@ -334,7 +336,7 @@ export function BoardView({ initialPages, initialPageId, initialWidgets, initial
             if (!result.success) return void toast.error(result.error)
             replacePage(result.data)
         } else {
-            const result = await createBoard(name, { ...NEW_BOARD_FILTERS, athleteMode: mode })
+            const result = await createBoard(name, { ...NEW_BOARD_FILTERS, athleteMode: mode }, environment)
             if (!result.success) return void toast.error(result.error)
             setPages(current => [...current, result.data])
             setPageId(result.data.id)

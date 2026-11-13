@@ -106,6 +106,7 @@ const MEMBERS_ITEM = navSections[1].items[0]
 
 // Sala es un entorno aparte: su propio menú, con lo de clientes compartido con Online.
 const EVALUATIONS_ITEM: NavItem = { href: '/coach/sala/evaluaciones', icon: Gauge, label: 'Evaluaciones' }
+const SALA_ANALYTICS_ITEM: NavItem = { href: '/coach/sala/analitica', icon: LineChart, label: 'Analítica' }
 
 const salaSections: Array<{ title: string; items: NavItem[] }> = [
     {
@@ -114,13 +115,15 @@ const salaSections: Array<{ title: string; items: NavItem[] }> = [
             { href: '/coach/sala', icon: Dumbbell, label: 'Sesiones', exact: true },
             { href: '/coach/sala/videos', icon: Video, label: 'Vídeos' },
             EVALUATIONS_ITEM,
+            SALA_ANALYTICS_ITEM,
         ],
     },
     { title: 'Clientes', items: [MESSAGES_ITEM, MEMBERS_ITEM] },
 ]
 
-// En el móvil caben cuatro accesos y «Más»: Evaluaciones va en «Más».
-const salaPrimaryItems: NavItem[] = salaSections.flatMap(section => section.items).filter(item => item !== EVALUATIONS_ITEM)
+// En el móvil caben cuatro accesos y «Más»: Evaluaciones y Analítica van en «Más».
+const salaPrimaryItems: NavItem[] = salaSections.flatMap(section => section.items)
+    .filter(item => item !== EVALUATIONS_ITEM && item !== SALA_ANALYTICS_ITEM)
 
 const SALA_SETTINGS_HREF = '/coach/settings?tab=integraciones'
 
@@ -253,7 +256,7 @@ export function CoachSidebar({ workspaces, environment: space }: {
     const primaryItems = inSala ? salaPrimaryItems : mobilePrimaryItems
     const moreSections: Array<{ title: string; items: NavItem[] }> = inSala
         ? [
-            { title: 'Sala', items: [EVALUATIONS_ITEM] },
+            { title: 'Sala', items: [EVALUATIONS_ITEM, SALA_ANALYTICS_ITEM] },
             { title: 'Cuenta', items: [{ href: SALA_SETTINGS_HREF, icon: Settings2, label: 'Ajustes' }] },
         ]
         : mobileSecondarySections

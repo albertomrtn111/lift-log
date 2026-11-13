@@ -14,10 +14,14 @@ export interface BoardFilterState {
     athleteMode: 'all' | 'single'
 }
 
+export type AnalyticsEnvironment = 'online' | 'sala'
+
 export interface AnalyticsPage {
     id: string
     name: string
     scope: 'portfolio' | 'athlete' | 'custom'
+    /** Online o Sala: cada entorno tiene sus tableros. */
+    environment: AnalyticsEnvironment
     isSystem: boolean
     isHome: boolean
     filters: BoardFilterState
