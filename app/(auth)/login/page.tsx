@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight, Loader2, UserRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -39,7 +39,6 @@ function markAutoContinue() {
  * viva), se continúa con ella en vez de pedir la contraseña otra vez.
  */
 function useExistingSession(redirectTo: string) {
-    const router = useRouter()
     const [state, setState] = useState<ExistingSession>({ status: 'checking' })
 
     useEffect(() => {
@@ -66,14 +65,15 @@ function useExistingSession(redirectTo: string) {
 
             if (!recentlyTried) {
                 markAutoContinue()
-                router.replace(redirectTo)
-                router.refresh()
+                // Carga completa: con navegación del cliente el móvil se quedaba en blanco
+                // tras las redirecciones de la raíz y el layout del coach.
+                window.location.replace(redirectTo)
             }
         }).catch(() => {
             if (!cancelled) setState({ status: 'none' })
         })
         return () => { cancelled = true }
-    }, [redirectTo, router])
+    }, [redirectTo])
 
     const signOutExisting = async () => {
         await createClient().auth.signOut({ scope: 'local' })
@@ -85,7 +85,6 @@ function useExistingSession(redirectTo: string) {
 
 // useSearchParams() tiene que estar dentro de un Suspense (Next.js 14)
 function LoginForm() {
-    const router = useRouter()
     const searchParams = useSearchParams()
     const redirectTo = safeRedirectPath(searchParams.get('redirect'))
     const { state: existing, signOutExisting } = useExistingSession(redirectTo)
@@ -116,7 +115,7 @@ function LoginForm() {
                         <Button
                             size="lg"
                             className="h-11 w-full rounded-xl text-[15px] font-semibold"
-                            onClick={() => { router.replace(redirectTo); router.refresh() }}
+                            onClick={() => window.location.replace(redirectTo)}
                         >
                             Continuar
                         </Button>
@@ -150,9 +149,9 @@ function LoginForm() {
                 return
             }
 
-            // Con ?redirect= (p. ej. /forms/[id]) volvemos allí; si no, la raíz decide según el rol
-            router.push(redirectTo)
-            router.refresh()
+            // Con ?redirect= (p. ej. /forms/[id]) volvemos allí; si no, la raíz decide según el rol.
+            // Carga completa para que el servidor pinte la app con la sesión nueva (sin pantalla en blanco).
+            window.location.assign(redirectTo)
         } catch (err) {
             setError({ kind: 'unknown', message: authErrorMessage(err) })
             setLoading(false)

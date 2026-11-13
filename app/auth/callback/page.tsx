@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Link2Off, Loader2 } from 'lucide-react'
@@ -33,7 +33,6 @@ function LoadingUI() {
 }
 
 function AuthCallbackInner() {
-    const router = useRouter()
     const searchParams = useSearchParams()
     const next = safeRedirectPath(searchParams.get('next'))
 
@@ -53,7 +52,7 @@ function AuthCallbackInner() {
                     const { error: initError } = await supabase.auth.initialize()
                     if (!initError && !new URL(window.location.href).searchParams.has('code')) {
                         console.log('[auth/callback] PKCE code exchanged on init, redirecting to', next)
-                        router.replace(next)
+                        window.location.replace(next)
                         return
                     }
 
@@ -65,7 +64,7 @@ function AuthCallbackInner() {
                         return
                     }
                     console.log('[auth/callback] PKCE session established, redirecting to', next)
-                    router.replace(next)
+                    window.location.replace(next)
                     return
                 }
 
@@ -107,7 +106,7 @@ function AuthCallbackInner() {
                         }
 
                         console.log('[auth/callback] Session established from tokens, redirecting to', next)
-                        router.replace(next)
+                        window.location.replace(next)
                         return
                     }
                 }
@@ -116,7 +115,7 @@ function AuthCallbackInner() {
                 const { data: { session } } = await supabase.auth.getSession()
                 if (session) {
                     console.log('[auth/callback] Session already exists, redirecting to', next)
-                    router.replace(next)
+                    window.location.replace(next)
                     return
                 }
 
@@ -130,7 +129,7 @@ function AuthCallbackInner() {
         }
 
         handleCallback()
-    }, [searchParams, next, router])
+    }, [searchParams, next])
 
     if (error) {
         return (
