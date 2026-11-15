@@ -88,6 +88,8 @@ export interface MacroPlan {
   cardioGoal?: string;
   effectiveFrom: string;
   effectiveTo?: string;
+  /** Día planificado en el calendario del coach (etiqueta o nombre del bloque) */
+  plannedLabel?: string | null;
   day_type_config?: {
     training: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
     rest: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };

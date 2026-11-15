@@ -56,8 +56,11 @@ interface DietPageClientProps {
 }
 
 /** Objetivos de un día del calendario con la forma que usa el contador de macros. */
-function macroPlanForDay(day: CalendarDay): MacroPlan | null {
+function macroPlanForDay(day: CalendarDay, current: MacroPlan | null): MacroPlan | null {
     if (day.source === 'none') return null
+    const planned = day.source === 'planned'
+    // Del plan base solo se sabe desde cuándo vale si es el plan de hoy
+    const effectiveFrom = planned ? day.day : (current && current.id === day.macro_plan_id ? current.effectiveFrom : '')
     return {
         id: day.planned_day_id ?? day.macro_plan_id ?? day.day,
         kcal: day.kcal,
@@ -65,7 +68,8 @@ function macroPlanForDay(day: CalendarDay): MacroPlan | null {
         carbs: day.carbs_g,
         fat: day.fat_g,
         stepsGoal: day.steps ?? undefined,
-        effectiveFrom: day.day,
+        effectiveFrom,
+        plannedLabel: planned ? (day.label || day.block_name || 'Día planificado') : null,
         day_type_config: day.day_type_config,
     }
 }
@@ -117,7 +121,7 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements, ca
     const calendarByDate = useMemo(() => new Map(calendar.map(day => [day.day, day])), [calendar])
     const selectedKey = format(date, 'yyyy-MM-dd')
     const selectedDay = calendarByDate.get(selectedKey)
-    const macroPlanForDate = selectedDay ? macroPlanForDay(selectedDay) : macroPlan
+    const macroPlanForDate = selectedDay ? macroPlanForDay(selectedDay, macroPlan) : macroPlan
 
     return (
         <div className="app-mobile-page min-h-screen pb-4">
