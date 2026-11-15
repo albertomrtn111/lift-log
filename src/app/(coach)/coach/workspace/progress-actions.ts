@@ -333,6 +333,7 @@ export async function getDietProgressData(
             { data: entries, error: entriesError },
             { data: daySettings, error: daySettingsError },
             { data: macroPlans, error: macroPlansError },
+            { data: dayTargets, error: dayTargetsError },
         ] = await Promise.all([
             supabase
                 .from('nutrition_log_entries')
@@ -375,16 +376,21 @@ export async function getDietProgressData(
                 .or(`effective_to.is.null,effective_to.gte.${dateFrom}`)
                 .order('effective_from', { ascending: false })
                 .order('created_at', { ascending: false }),
+            // Regla única del calendario: días planificados por el coach o plan base
+            supabase.rpc('nutrition_targets_for', { p_client_id: clientId, p_from: dateFrom, p_to: dateTo }),
         ])
 
         if (entriesError) throw new Error(entriesError.message)
         if (daySettingsError) throw new Error(daySettingsError.message)
         if (macroPlansError) throw new Error(macroPlansError.message)
+        // Sin la regla del calendario se sigue con los planes de macros, como antes
+        if (dayTargetsError) console.warn('[getDietProgressData] nutrition_targets_for:', dayTargetsError.message)
 
         const data = buildDietProgressData({
             entries: (entries || []) as any[],
             daySettings: (daySettings || []) as any[],
             macroPlans: (macroPlans || []) as any[],
+            dayTargets: (dayTargets || []) as any[],
             dateFrom,
             dateTo,
         }) as DietProgressData

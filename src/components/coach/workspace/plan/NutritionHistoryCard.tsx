@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { AlertCircle, ArrowRight, ChevronDown, ChevronUp, Eye, History, Scale } from 'lucide-react'
+import { AlertCircle, ArrowRight, ChevronDown, ChevronUp, Eye, History, Layers, Loader2, Scale } from 'lucide-react'
 import {
     CartesianGrid,
     Line,
@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useNutritionHistory } from '@/hooks/useNutritionHistory'
 import type { NutritionHistoryEntry, WeightPoint } from '@/data/nutrition/history'
+import { getBlockDays, type PlannedDayRow } from '@/data/nutrition/calendar'
 import { DietPlanViewerModal } from './DietPlanViewerModal'
 
 interface NutritionHistoryCardProps {
@@ -28,13 +29,20 @@ interface NutritionHistoryCardProps {
     clientId: string
 }
 
-type KindFilter = 'all' | 'macros' | 'options'
+type KindFilter = 'all' | 'macros' | 'options' | 'block'
 
 const FILTERS: { value: KindFilter; label: string }[] = [
     { value: 'all', label: 'Todo' },
     { value: 'macros', label: 'Macros' },
     { value: 'options', label: 'Dietas' },
+    { value: 'block', label: 'Bloques' },
 ]
+
+const KIND_LABEL: Record<NutritionHistoryEntry['kind'], string> = {
+    macros: 'Macros',
+    options: 'Dieta',
+    block: 'Bloque',
+}
 
 const STATUS_LABEL: Record<NutritionHistoryEntry['status'], string> = {
     active: 'Vigente',
@@ -231,8 +239,8 @@ function WeightWithChanges({ weights, plans }: { weights: WeightPoint[]; plans: 
                             <ReferenceLine
                                 key={`${p.kind}-${p.id}`}
                                 x={toTime(p.effective_from)}
-                                stroke={p.kind === 'macros' ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))'}
-                                strokeDasharray="4 3"
+                                stroke={p.kind === 'options' ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary))'}
+                                strokeDasharray={p.kind === 'block' ? '1 3' : '4 3'}
                                 strokeOpacity={0.7}
                             />
                         ))}
@@ -285,7 +293,7 @@ function HistoryItem({ plan, onViewDiet }: { plan: NutritionHistoryEntry; onView
             />
             <div className="rounded-xl border border-border/70 p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">{isMacros ? 'Macros' : 'Dieta'}</Badge>
+                    <Badge variant="secondary" className="text-xs">{KIND_LABEL[plan.kind]}</Badge>
                     <Badge variant={plan.status === 'archived' ? 'outline' : 'default'} className="text-xs">
                         {STATUS_LABEL[plan.status]}
                     </Badge>
@@ -298,7 +306,7 @@ function HistoryItem({ plan, onViewDiet }: { plan: NutritionHistoryEntry; onView
                 </div>
 
                 <div className="mt-2 text-sm">
-                    {isMacros ? <MacroSummary plan={plan} /> : (
+                    {plan.kind === 'block' ? <BlockSummary plan={plan} /> : isMacros ? <MacroSummary plan={plan} /> : (
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-medium">
                                 {plan.name || 'Dieta sin nombre'}
@@ -362,6 +370,54 @@ function MacroSummary({ plan }: { plan: NutritionHistoryEntry }) {
             {plan.steps ? (
                 <div className="text-xs text-muted-foreground">{fmtInt(plan.steps)} pasos/día</div>
             ) : null}
+        </div>
+    )
+}
+
+function BlockSummary({ plan }: { plan: NutritionHistoryEntry }) {
+    const [open, setOpen] = useState(false)
+    const [days, setDays] = useState<PlannedDayRow[] | null>(null)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+        if (!open || days) return
+        getBlockDays(plan.id).then(setDays).catch(() => setError(true))
+    }, [open, days, plan.id])
+
+    return (
+        <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 font-medium">
+                    <Layers className="h-4 w-4 text-primary" />
+                    {plan.name || 'Bloque'}
+                    {plan.planned_days ? (
+                        <span className="font-normal text-muted-foreground">· {plan.planned_days} días planificados</span>
+                    ) : null}
+                </span>
+                <Button variant="outline" size="sm" className="h-7 rounded-full px-2.5 text-xs" onClick={() => setOpen(o => !o)}>
+                    {open ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}
+                    {open ? 'Ocultar días' : 'Ver días'}
+                </Button>
+            </div>
+            {open && (
+                error ? <p className="text-xs text-destructive">No se han podido cargar los días.</p>
+                : !days ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                : (
+                    <ul className="divide-y divide-border/60 rounded-lg border border-border/60 text-xs">
+                        {days.map(d => (
+                            <li key={d.plan_date} className={cn('flex flex-wrap items-center gap-x-3 gap-y-0.5 px-2.5 py-1.5 tabular-nums', d.archived_at && 'text-muted-foreground line-through')}>
+                                <span className="w-20 shrink-0">{format(parseISO(d.plan_date), 'EEE d MMM', { locale: es })}</span>
+                                {d.day_type_config ? (
+                                    <span>E {fmtInt(d.day_type_config.training.kcal)} · D {fmtInt(d.day_type_config.rest.kcal)} kcal</span>
+                                ) : (
+                                    <span><span className="font-medium">{fmtInt(d.kcal)} kcal</span> · P {d.protein_g} · HC {d.carbs_g} · G {d.fat_g}</span>
+                                )}
+                                {d.label && <span className="text-primary">{d.label}</span>}
+                            </li>
+                        ))}
+                    </ul>
+                )
+            )}
         </div>
     )
 }
