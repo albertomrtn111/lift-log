@@ -26,7 +26,10 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas. Cada actividad trae `discipline` (`running`, `bicicleta`, `natacion` o `hibrido`); en bicicleta la intensidad es `speed_kmh` y `pace` es `null`.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
 - `get_diet_plan`: detalle completo de una dieta por ID, también archivada o borrador; devuelve `updated_at` para editar.
-- `get_nutrition_history`: historial paginado de cada cambio de nutrición. `timeline` mezcla macros y dietas con fechas, duración, motivo del cambio (`change_note`) y peso al empezar y al terminar; `macro_plans` y `diet_plans` dan el detalle.
+- `get_nutrition_calendar`: qué toca cada día entre dos fechas (máx. 62): objetivo, etiqueta y dieta, y si sale de un día planificado (`planned`) o del plan base (`base`).
+- `plan_nutrition_days`: planifica días concretos sobre el plan base, con `days` (cada día su objetivo) o `generate` (de `start` a `end`, desde el plan base o un objetivo, con progresión `weekly` o `within_week`). `dry_run` calcula sin guardar; no toca días pasados; si pisa días ya planificados pide `replace_conflicts`.
+- `clear_nutrition_days`: devuelve esas fechas al plan base.
+- `get_nutrition_history`: historial paginado de cada cambio de nutrición. `timeline` mezcla macros, dietas y bloques del calendario con fechas, duración, motivo del cambio (`change_note`) y peso al empezar y al terminar; `macro_plans` y `diet_plans` dan el detalle.
 - `search_foods`: catálogo de alimentos accesibles, macros por ración y peso por unidad.
 - `preview_diet_plan`: calcula y ajusta una dieta por opciones sin guardarla.
 - `create_macro_plan` / `update_macro_plan`: fija o edita los objetivos nutricionales (kcal y macros), simples o diferentes en entreno y descanso, con fecha de inicio y notas. Al crear uno, el anterior se cierra el día previo y queda en el historial; `change_note` guarda el motivo del cambio.
