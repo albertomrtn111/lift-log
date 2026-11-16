@@ -39,6 +39,13 @@ export async function POST(request: Request) {
         : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true })
 
     if (result.error || !result.data?.redirect_url) {
+        // Ya respondida (doble clic o pestaña repetida): una página clara en vez del error en crudo.
+        if (/no longer pending/i.test(result.error?.message ?? '')) {
+            const used = new URL('/oauth/consent', request.url)
+            used.searchParams.set('authorization_id', authorizationId)
+            used.searchParams.set('aviso', 'usada')
+            return NextResponse.redirect(used, 303)
+        }
         return NextResponse.json({ error: result.error?.message ?? 'No se ha podido completar la autorización.' }, { status: 400 })
     }
 
