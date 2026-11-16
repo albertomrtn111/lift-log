@@ -23,6 +23,7 @@ import type {
 } from '@/data/nutrition/types'
 import { formatSupabaseError, logSupabaseError, formatSupabaseErrorVerbose, isRlsError } from '@/lib/supabase/helpers'
 import { nutritionHistoryKeys } from './useNutritionHistory'
+import { nutritionCalendarKeys } from './useNutritionCalendar'
 
 // ============================================================================
 // QUERY KEYS
@@ -103,6 +104,7 @@ export function useCreateDietPlan(coachId: string, clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -139,6 +141,7 @@ export function useUpdateDietPlan(clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             queryClient.invalidateQueries({
                 queryKey: dietPlanKeys.structure(variables.planId),
             })
@@ -190,6 +193,7 @@ export function useDuplicateDietPlan(clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -222,6 +226,7 @@ export function useArchiveDietPlan(clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -257,6 +262,7 @@ export function useSetDietPlanStatus(clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -288,6 +294,7 @@ export function useActivateDietPlan(coachId: string, clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })
@@ -318,6 +325,7 @@ export function useDeleteDietPlan(clientId: string) {
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: dietPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             // Force immediate refetch
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.active(clientId) })
             await queryClient.refetchQueries({ queryKey: dietPlanKeys.list(clientId) })

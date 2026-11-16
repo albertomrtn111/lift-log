@@ -7,7 +7,7 @@ import type { MacroDayTypeConfig } from './types'
  * al empezar y al terminar. Sale de la vista nutrition_plan_history.
  */
 export interface NutritionHistoryEntry {
-    kind: 'macros' | 'options'
+    kind: 'macros' | 'options' | 'block'
     id: string
     name: string | null
     effective_from: string
@@ -23,6 +23,8 @@ export interface NutritionHistoryEntry {
     steps: number | null
     day_type_config: MacroDayTypeConfig | null
     meals_count: number | null
+    /** Solo bloques: días planificados vigentes */
+    planned_days: number | null
     days: number
     start_weight_kg: number | null
     end_weight_kg: number | null
@@ -68,6 +70,7 @@ export async function getNutritionHistory(coachId: string, clientId: string): Pr
         carbs_g: toNumber(row.carbs_g),
         fat_g: toNumber(row.fat_g),
         steps: toNumber(row.steps),
+        planned_days: toNumber(row.planned_days),
         days: toNumber(row.days) ?? 0,
         start_weight_kg: toNumber(row.start_weight_kg),
         end_weight_kg: toNumber(row.end_weight_kg),

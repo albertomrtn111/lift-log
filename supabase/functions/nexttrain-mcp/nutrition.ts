@@ -1,5 +1,6 @@
 import { z } from 'npm:zod@4.3.6'
 import { buildLegacyDiet, describeMeals, historyEntry, legacyMeals, macroPayload, normalizeMacroPlan, prepareDiet } from './nutrition-model.js'
+import { buildBlockDays, daysBetween } from '../../../src/lib/nutrition/planning.js'
 import {
   addDays,
   allRows as allRowsBase,
@@ -17,7 +18,7 @@ import {
 const FOOD_FIELDS = 'id, name, brand, kcal, protein_g, carbs_g, fat_g, serving_size_g, unit_weight_g, unit_label, food_group, is_generic'
 const PLAN_FIELDS = 'id, name, type, status, effective_from, effective_to, notes, created_at, updated_at, meals'
 const MACRO_FIELDS = 'id, name, kcal, protein_g, carbs_g, fat_g, steps, cardio_target, day_type_config, effective_from, effective_to, notes, archived_at, change_note, created_at'
-const HISTORY_FIELDS = 'kind, id, name, status, effective_from, effective_to, days, archived_at, change_note, notes, kcal, protein_g, carbs_g, fat_g, steps, day_type_config, meals_count, start_weight_kg, end_weight_kg, created_at'
+const HISTORY_FIELDS = 'kind, id, name, status, effective_from, effective_to, days, archived_at, change_note, notes, kcal, protein_g, carbs_g, fat_g, steps, day_type_config, meals_count, planned_days, start_weight_kg, end_weight_kg, created_at'
 const scope = {
   client_id: z.string().uuid(), coach_id: z.string().uuid().optional(),
 }
@@ -120,6 +121,22 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     return new Error(`Ya hay un plan de macros desde ${plan.effective_from} (plan_id ${plan.id}). Para cambiar sus objetivos usa update_macro_plan con ese plan_id, o elige otra fecha de inicio.`)
   }
 
+  // Calendario: la regla única de la base de datos (día planificado > plan base vigente).
+  async function calendarRows(clientId: string, from: string, to: string): Promise<Row[]> {
+    const { data, error } = await db.rpc('nutrition_targets_for', { p_client_id: clientId, p_from: from, p_to: to })
+    if (error) throw new Error('No se ha podido leer el calendario de nutrición.')
+    return Array.isArray(data) ? data : []
+  }
+  const calendarDay = (row: Row) => {
+    const macro = row.source === 'none' ? null : normalizeMacroPlan({ ...row, id: row.planned_day_id ?? row.macro_plan_id })
+    return {
+      date: row.day, source: row.source, block_id: row.block_id ?? null, block_name: row.block_name ?? null, label: row.label ?? null,
+      macro_plan_id: row.macro_plan_id ?? null, diet_plan_id: row.diet_plan_id ?? null,
+      mode: macro?.mode ?? null, target: macro ? { kcal: macro.kcal, protein_g: macro.protein_g, carbs_g: macro.carbs_g, fat_g: macro.fat_g } : null,
+      day_type_config: macro?.day_type_config ?? null, steps: row.steps ?? null,
+    }
+  }
+
   async function prepare(input: Row) {
     const ids = [...new Set<string>(input.meals.flatMap((meal: Row) => meal.options.flatMap((option: Row) => option.items.map((item: Row) => item.food_id))).filter(Boolean))]
     const foods: Row[] = []
@@ -142,7 +159,7 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
 
   server.registerTool('get_current_nutrition', {
     title: 'Nutrición vigente completa',
-    description: 'Objetivos nutricionales vigentes (kcal, proteína, hidratos y grasas; distintos en entreno y descanso si los hay) con el ID del plan de macros, y dieta completa con comidas, opciones, cantidades, alternativas y totales. Los alimentos sin macros se señalan, no se inventan.',
+    description: 'Objetivos nutricionales vigentes en una fecha (kcal, proteína, hidratos y grasas; distintos en entreno y descanso si los hay). Si ese día está planificado en el calendario, manda el día planificado (planned_day) sobre el plan de macros base. Incluye la dieta completa con comidas, opciones, cantidades, alternativas y totales. Los alimentos sin macros se señalan, no se inventan.',
     inputSchema: z.strictObject({ ...scope, on_date: date.optional(), day_type: z.enum(['default', 'training', 'rest']).optional() }), annotations,
   }, (input: Row) => scoped('get_current_nutrition', input, async (coachId, today) => {
     const onDate = input.on_date ?? today
@@ -152,9 +169,17 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
       db.from('diet_plans').select(PLAN_FIELDS).eq('coach_id', coachId).eq('client_id', input.client_id).eq('status', 'active')
         .order('created_at', { ascending: false }).limit(1),
     ])
-    const macro = normalizeMacroPlan(rows(macrosResult, 'los macros')[0] ?? null)
+    const baseMacro = normalizeMacroPlan(rows(macrosResult, 'los macros')[0] ?? null)
     const appActive = rows(dietsResult, 'la dieta activa')[0] ?? null
-    const dietHeader = appActive && appActive.effective_from <= onDate && (!appActive.effective_to || appActive.effective_to >= onDate) ? appActive : null
+    // Un día planificado en el calendario manda sobre el plan base (y puede traer su propia dieta).
+    const planned = (await calendarRows(input.client_id, onDate, onDate)).find(row => row.source === 'planned') ?? null
+    const macro = planned
+      ? { ...normalizeMacroPlan({ ...planned, id: planned.planned_day_id }), source: 'planned', block_id: planned.block_id, block_name: planned.block_name, label: planned.label, base_macro_plan_id: baseMacro?.id ?? null }
+      : baseMacro
+    const activeOnDate = appActive && appActive.effective_from <= onDate && (!appActive.effective_to || appActive.effective_to >= onDate) ? appActive : null
+    const dietHeader = planned?.diet_plan_id && planned.diet_plan_id !== activeOnDate?.id
+      ? await planById(coachId, input.client_id, planned.diet_plan_id)
+      : activeOnDate
     const diet = dietHeader ? await loadDiet(db, coachId, input.client_id, dietHeader) : null
     const targets = macro?.day_type_config ?? (macro ? { default: macro } : {})
     if (diet) Object.assign(diet, describeMeals(diet.meals, targets))
@@ -162,6 +187,7 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
       selected_day_type: input.day_type ?? null,
       selected_macro_target: input.day_type ? (macro?.day_type_config?.[input.day_type] ?? (macro?.mode === 'simple' ? macro : null)) : null,
       app_active_diet_plan: appActive ? { id: appActive.id, name: appActive.name, effective_from: appActive.effective_from, effective_to: appActive.effective_to } : null,
+      planned_day: planned ? { block_id: planned.block_id, block_name: planned.block_name, label: planned.label } : null,
       note: appActive && !dietHeader ? 'La app tiene una dieta activa por estado, pero no está vigente en la fecha consultada. Usa get_diet_plan para leerla.'
         : !macro ? 'No hay un objetivo de macros vigente. Los totales de alimentos se muestran sin inferir un objetivo.' : null }
   }))
@@ -189,6 +215,94 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
       has_more: hasMore, next_offset: hasMore ? input.offset + input.limit : null }
   }))
 
+  const changeNote = z.string().trim().max(500).nullable().optional()
+    .describe('Motivo del cambio respecto al plan anterior, p. ej. «+150 kcal: peso estancado 3 semanas». Se ve en el historial del coach.')
+
+  server.registerTool('get_nutrition_calendar', {
+    title: 'Calendario de nutrición',
+    description: 'Qué toca cada día entre dos fechas (máx. 62 días): objetivo de kcal y macros (o entreno/descanso), etiqueta y dieta por opciones. source = planned (día planificado en un bloque del calendario), base (plan de macros base) o none. Úsalo antes de planificar días.',
+    inputSchema: z.strictObject({ ...scope, from: date, to: date }), annotations,
+  }, (input: Row) => scoped('get_nutrition_calendar', input, async () => {
+    if (input.to < input.from || daysBetween(input.from, input.to) > 61) throw new Error('Indica un rango de como mucho 62 días.')
+    return { client_id: input.client_id, from: input.from, to: input.to, days: (await calendarRows(input.client_id, input.from, input.to)).map(calendarDay) }
+  }))
+
+  const plannedTarget = { target: target.optional().describe('Objetivo único del día.'), day_type_config: config.optional().describe('Objetivos de entreno y descanso del día.') }
+  server.registerTool('plan_nutrition_days', {
+    title: 'Planificar días de nutrición (semana, días o bloque con progresión)',
+    description: 'Planifica días concretos en el calendario del atleta sin tocar su plan base: mandan solo esas fechas y luego vuelve solo al plan base. Dos formas: days (cada día con su objetivo, p. ej. carga de hidratos de jueves a sábado) o generate (de start a end, partiendo del plan base o de un objetivo, con progresión weekly = sube cada semana, within_week = sube cada día y el lunes vuelve al inicio; las kcal van a hidratos salvo que digas otra cosa; la proteína no cambia). Usa dry_run para ver los días antes de guardar. No planifica días pasados. Si pisa días ya planificados, falla salvo replace_conflicts = true.',
+    inputSchema: z.strictObject({
+      ...scope,
+      name: z.string().trim().min(1).max(160).describe('Nombre del bloque, p. ej. «Semana maratón».'),
+      change_note: changeNote, notes: z.string().trim().max(3000).nullable().optional(),
+      days: z.array(z.strictObject({
+        date, ...plannedTarget, label: z.string().trim().max(60).optional().describe('Etiqueta corta del día, p. ej. «Carga HC 1/3».'),
+        diet_plan_id: z.string().uuid().optional().describe('Dieta por opciones de ese día (get_nutrition_history o get_diet_plan).'),
+        steps: z.number().int().min(0).max(100000).optional(),
+      })).min(1).max(62).optional(),
+      generate: z.strictObject({
+        start: date, end: date, from_plan_base: z.boolean().default(true).describe('Partir del objetivo vigente al empezar. false = usa target o day_type_config.'),
+        ...plannedTarget,
+        progression: z.strictObject({
+          type: z.enum(['none', 'weekly', 'within_week']).default('none'),
+          step_kcal: z.number().int().min(-1000).max(1000).default(0).describe('Cuánto sube cada semana (weekly) o cada día (within_week).'),
+          start_kcal: z.number().int().min(-2000).max(2000).default(0).describe('Lo que se suma ya el primer día; p. ej. 100 para empezar 100 kcal por encima.'),
+          to: z.enum(['carbs', 'fat', 'carbs_fat']).default('carbs').describe('A qué macro van las kcal.'),
+        }).optional(),
+        weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional().describe('Solo estos días de la semana (0 = lunes … 6 = domingo).'),
+        label: z.string().trim().max(60).optional(), diet_plan_id: z.string().uuid().optional(),
+      }).optional(),
+      replace_conflicts: z.boolean().default(false),
+      dry_run: z.boolean().default(false).describe('true = calcula y devuelve los días sin guardar.'),
+    }), annotations: write,
+  }, (input: Row) => scoped('plan_nutrition_days', input, async (coachId, today) => {
+    if (!!input.days === !!input.generate) throw new Error('Envía days o generate (uno de los dos).')
+    const fromTarget = (day: Row) => {
+      const payload = macroPayload({ target: day.target, day_type_config: day.day_type_config ?? null })
+      return { kcal: payload.kcal, protein_g: payload.protein_g, carbs_g: payload.carbs_g, fat_g: payload.fat_g, day_type_config: payload.day_type_config }
+    }
+    let days: Row[]
+    let progression: Row | null = null
+    if (input.days) {
+      days = input.days.map((day: Row) => ({ date: day.date, ...fromTarget(day), label: day.label ?? null, diet_plan_id: day.diet_plan_id ?? null, steps: day.steps ?? null }))
+    } else {
+      const g = input.generate
+      let base: Row
+      if (g.target || g.day_type_config) base = fromTarget(g)
+      else if (g.from_plan_base) {
+        const [row] = await calendarRows(input.client_id, g.start, g.start)
+        if (!row || row.source === 'none') throw new Error('El atleta no tiene objetivo vigente al empezar: indica target o day_type_config.')
+        base = row
+      } else throw new Error('Indica target o day_type_config, o from_plan_base = true.')
+      progression = { type: 'none', ...(g.progression ?? {}) }
+      days = buildBlockDays({ start: g.start, end: g.end, base, progression, weekdays: g.weekdays, label: g.label, dietPlanId: g.diet_plan_id })
+    }
+    if (days.some(day => day.date < today)) throw new Error('No se pueden planificar días pasados.')
+    const kind = input.generate ? 'block' : 'days'
+    if (input.dry_run) return { saved: false, client_id: input.client_id, block: null, days }
+    const { data, error } = await db.rpc('save_nutrition_block', {
+      p_coach_id: coachId, p_client_id: input.client_id, p_block_id: null,
+      p_block: { name: input.name, kind, progression, notes: input.notes ?? null, change_note: input.change_note ?? null },
+      p_days: days, p_replace_conflicts: input.replace_conflicts,
+    })
+    if (error) {
+      throw new Error(error.hint === 'replace_conflicts'
+        ? `${error.message} Vuelve a llamar con replace_conflicts = true si el coach quiere sustituirlos.`
+        : (error.message || 'No se ha podido guardar el calendario. No se aplicó ningún cambio.'))
+    }
+    return { saved: true, client_id: input.client_id, block: data, days }
+  }))
+
+  server.registerTool('clear_nutrition_days', {
+    title: 'Devolver días al plan base',
+    description: 'Quita lo planificado en esas fechas del calendario y el atleta vuelve a su plan base esos días. Los días pasados no se tocan. Un bloque que se queda sin días queda archivado en el historial.',
+    inputSchema: z.strictObject({ ...scope, dates: z.array(date).min(1).max(62) }), annotations: { ...write, destructiveHint: true },
+  }, (input: Row) => scoped('clear_nutrition_days', input, async coachId => {
+    const { data, error } = await db.rpc('clear_nutrition_planned_days', { p_coach_id: coachId, p_client_id: input.client_id, p_dates: input.dates })
+    if (error) throw new Error(error.message || 'No se han podido quitar los días.')
+    return { cleared: true, client_id: input.client_id, cleared_dates: data?.cleared_dates ?? [], archived_block_ids: data?.archived_block_ids ?? [] }
+  }))
+
   server.registerTool('search_foods', {
     title: 'Buscar alimentos y macros', description: 'Busca alimentos accesibles por nombre. Devuelve ID, macros por serving_size_g y peso por unidad para construir dietas con cantidades reales.',
     inputSchema: z.strictObject({ coach_id: scope.coach_id, search: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(50).default(15) }), annotations,
@@ -212,8 +326,6 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     effective_from: date.describe('Fecha de inicio (YYYY-MM-DD).'),
     effective_to: date.nullable().optional().describe('Fecha de fin; vacío = sin fin.'),
   }
-  const changeNote = z.string().trim().max(500).nullable().optional()
-    .describe('Motivo del cambio respecto al plan anterior, p. ej. «+150 kcal: peso estancado 3 semanas». Se ve en el historial del coach.')
   server.registerTool('create_macro_plan', {
     title: 'Fijar objetivos nutricionales (macros y calorías)',
     description: 'Pone nuevos objetivos nutricionales a un atleta: calorías (kcal), proteína, hidratos/carbohidratos y grasas, iguales todos los días (target) o distintos en días de entreno y de descanso (day_type_config), con fecha de inicio, pasos y notas. Úsala para subir o bajar calorías, empezar volumen o definición, o cambiar los macros. Las kcal omitidas salen de 4P+4HC+9G. El plan anterior se cierra el día previo y queda en el histórico. Si ya hay un plan que empieza ese día, el error da su plan_id para editarlo con update_macro_plan.',

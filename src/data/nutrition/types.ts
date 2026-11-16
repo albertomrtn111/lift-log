@@ -58,7 +58,7 @@ export interface MacroPlanInput {
 // ============================================================================
 
 export type DietPlanType = 'options' | 'macros' | 'hybrid'
-export type DietPlanStatus = 'draft' | 'active' | 'archived'
+export type DietPlanStatus = 'draft' | 'active' | 'archived' | 'scheduled'
 
 // Full DayType including weekly days for future support
 export type DayType =

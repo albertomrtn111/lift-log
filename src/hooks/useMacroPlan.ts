@@ -11,6 +11,7 @@ import type { MacroPlan, MacroPlanInput } from '@/data/nutrition/types'
 import { formatSupabaseError, logSupabaseError } from '@/lib/supabase/helpers'
 import { notifyClientPlanUpdatedAction } from '@/lib/notifications/plan-update-actions'
 import { nutritionHistoryKeys } from './useNutritionHistory'
+import { nutritionCalendarKeys } from './useNutritionCalendar'
 
 // ============================================================================
 // QUERY KEYS
@@ -76,6 +77,7 @@ export function useUpsertMacroPlan(coachId: string, clientId: string) {
             queryClient.invalidateQueries({ queryKey: macroPlanKeys.active(clientId) })
             queryClient.invalidateQueries({ queryKey: macroPlanKeys.list(clientId) })
             queryClient.invalidateQueries({ queryKey: nutritionHistoryKeys.client(clientId) })
+            queryClient.invalidateQueries({ queryKey: nutritionCalendarKeys.client(clientId) })
             toast({
                 title: 'Guardado',
                 description: 'El plan de macros se ha guardado correctamente.',

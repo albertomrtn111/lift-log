@@ -319,9 +319,13 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
             <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
                 <div className="flex items-baseline justify-between gap-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tu plan de macros</p>
-                    <p className="text-[11px] text-muted-foreground">
-                        Activo desde {format(parseISO(macroPlan.effectiveFrom), 'd MMM', { locale: es })}
-                    </p>
+                    {macroPlan.plannedLabel ? (
+                        <p className="text-[11px] font-medium text-primary">Planificado para este día</p>
+                    ) : macroPlan.effectiveFrom ? (
+                        <p className="text-[11px] text-muted-foreground">
+                            Activo desde {format(parseISO(macroPlan.effectiveFrom), 'd MMM', { locale: es })}
+                        </p>
+                    ) : null}
                 </div>
 
                 {macroPlan.day_type_config ? (

@@ -1,11 +1,12 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Target, Utensils } from 'lucide-react'
+import { CalendarRange, Target, Utensils } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DietPlanPanel } from '../workspace/plan/DietPlanPanel'
 import { MacroPlanPanel } from '../workspace/plan/MacroPlanPanel'
 import { NutritionHistoryCard } from '../workspace/plan/NutritionHistoryCard'
+import { NutritionCalendarTab } from '../workspace/plan/NutritionCalendarTab'
 
 interface DietTabProps {
     clientId: string
@@ -34,6 +35,13 @@ export function DietTab({ clientId, coachId }: DietTabProps) {
                             <Utensils className="h-4 w-4" />
                             Dieta por opciones
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="calendar"
+                            className="workspace-tab-trigger"
+                        >
+                            <CalendarRange className="h-4 w-4" />
+                            Calendario
+                        </TabsTrigger>
                     </TabsList>
                 </div>
 
@@ -43,6 +51,10 @@ export function DietTab({ clientId, coachId }: DietTabProps) {
 
                 <TabsContent value="options" className="mt-0">
                     <DietPlanPanel coachId={coachId} clientId={clientId} />
+                </TabsContent>
+
+                <TabsContent value="calendar" className="mt-0">
+                    <NutritionCalendarTab coachId={coachId} clientId={clientId} />
                 </TabsContent>
             </Tabs>
 
