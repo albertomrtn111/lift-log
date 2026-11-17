@@ -44,12 +44,14 @@ const STATUS_LABELS: Record<DietPlanStatus, string> = {
     active: 'Activo',
     draft: 'Borrador',
     archived: 'Archivado',
+    scheduled: 'Programada',
 }
 
 const STATUS_VARIANTS: Record<DietPlanStatus, 'default' | 'secondary' | 'outline'> = {
     active: 'default',
     draft: 'secondary',
     archived: 'outline',
+    scheduled: 'secondary',
 }
 
 export function DietPlansHistory({ coachId, clientId, activePlanId, onlyArchived, hideActiveInHistory = false }: DietPlansHistoryProps) {
@@ -70,8 +72,8 @@ export function DietPlansHistory({ coachId, clientId, activePlanId, onlyArchived
             return true
         })
         .sort((a, b) => {
-            // Priority: Active (0) < Draft (1) < Archived (2)
-            const statusPriority = { active: 0, draft: 1, archived: 2 }
+            // Priority: Active (0) < Draft / Programada (1) < Archived (2)
+            const statusPriority: Record<DietPlanStatus, number> = { active: 0, draft: 1, scheduled: 1, archived: 2 }
             const priorityA = statusPriority[a.status] ?? 99
             const priorityB = statusPriority[b.status] ?? 99
 

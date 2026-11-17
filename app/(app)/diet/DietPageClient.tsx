@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { ChevronDown, Utensils } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MacroPlan } from '@/types/training'
 import type { ClientDietMeal } from '@/data/diet'
+import type { CalendarDay } from '@/data/nutrition/calendar'
+import { NutritionWeekStrip } from '@/components/nutrition/NutritionWeekStrip'
 import { MacrosTracker } from '@/components/nutrition/MacrosTracker'
 import { DietOptionsPlan } from '@/components/nutrition/DietOptionsPlan'
 import { DayNavigator } from '@/components/nutrition/DayNavigator'
@@ -49,6 +51,27 @@ interface DietPageClientProps {
     dietPlan: ParsedDietPlan | null
     dietMeals: ClientDietMeal[]
     supplements: ClientSupplement[]
+    /** Lo que toca cada día (días planificados por el coach o plan base) */
+    calendar: CalendarDay[]
+}
+
+/** Objetivos de un día del calendario con la forma que usa el contador de macros. */
+function macroPlanForDay(day: CalendarDay, current: MacroPlan | null): MacroPlan | null {
+    if (day.source === 'none') return null
+    const planned = day.source === 'planned'
+    // Del plan base solo se sabe desde cuándo vale si es el plan de hoy
+    const effectiveFrom = planned ? day.day : (current && current.id === day.macro_plan_id ? current.effectiveFrom : '')
+    return {
+        id: day.planned_day_id ?? day.macro_plan_id ?? day.day,
+        kcal: day.kcal,
+        protein: day.protein_g,
+        carbs: day.carbs_g,
+        fat: day.fat_g,
+        stepsGoal: day.steps ?? undefined,
+        effectiveFrom,
+        plannedLabel: planned ? (day.label || day.block_name || 'Día planificado') : null,
+        day_type_config: day.day_type_config,
+    }
 }
 
 type DietTab = 'macros' | 'meals' | 'supplements'
@@ -73,13 +96,13 @@ function parseDateParam(value: string | null) {
     return parsed
 }
 
-export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: DietPageClientProps) {
+export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements, calendar }: DietPageClientProps) {
     const searchParams = useSearchParams()
     const router = useRouter()
     // Macros, dieta y suplementos vienen del servidor: si el coach los cambia
     // (o al volver a la app), se vuelve a pedir la página
     useAthleteLiveRefresh(() => router.refresh(), ['diet-plan'])
-    const hasMacros = !!macroPlan
+    const hasMacros = !!macroPlan || calendar.some(day => day.source !== 'none')
     const hasStructuredMeals = dietMeals.length > 0
     const hasLegacyMeals = !!(dietPlan?.meals?.labels?.length)
     const hasMeals = hasStructuredMeals || hasLegacyMeals
@@ -92,6 +115,13 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
     // Un único día para Macros y Suplementos: cambiar de pestaña no lo pierde
     const [date, setDate] = useState<Date>(() => parseDateParam(searchParams.get('date')) ?? new Date())
     const swipeLink = useTabSwipeLink()
+
+    // Los objetivos son los del día que se mira, no los de hoy: el coach puede haber
+    // planificado días concretos (p. ej. una carga de hidratos) o cambiado el plan.
+    const calendarByDate = useMemo(() => new Map(calendar.map(day => [day.day, day])), [calendar])
+    const selectedKey = format(date, 'yyyy-MM-dd')
+    const selectedDay = calendarByDate.get(selectedKey)
+    const macroPlanForDate = selectedDay ? macroPlanForDay(selectedDay, macroPlan) : macroPlan
 
     return (
         <div className="app-mobile-page min-h-screen pb-4">
@@ -130,7 +160,14 @@ export function DietPageClient({ macroPlan, dietPlan, dietMeals, supplements }: 
                 swipeLink={swipeLink}
                 panelClassName="px-4 pt-4"
                 renderPanel={tab => {
-                    if (tab === 'macros') return <MacrosTracker macroPlan={macroPlan} date={date} />
+                    if (tab === 'macros') return (
+                        <>
+                            {calendar.some(day => day.source === 'planned') && (
+                                <NutritionWeekStrip calendar={calendarByDate} date={selectedKey} />
+                            )}
+                            <MacrosTracker macroPlan={macroPlanForDate} date={date} />
+                        </>
+                    )
                     if (tab === 'supplements') return <SupplementsTracker supplements={supplements} date={date} onDateChange={setDate} />
                     if (hasStructuredMeals && dietPlan) return <DietOptionsPlan planId={dietPlan.id} planName={dietPlan.name} meals={dietMeals} />
                     if (hasLegacyMeals && dietPlan) return <LegacyDietPlan plan={dietPlan} />

@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation'
-import { Bot, CalendarDays, CheckCircle2, Dumbbell, ShieldCheck, Users } from 'lucide-react'
+import { Bot, CalendarDays, Dumbbell, ShieldCheck, Users } from 'lucide-react'
 import { LogoAppIcon } from '@/components/brand/LogoMark'
 
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/server'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
+import { ConsentActions } from './ConsentActions'
 
 function ErrorCard({ title, message }: { title: string; message: string }) {
     return (
@@ -23,11 +23,14 @@ function ErrorCard({ title, message }: { title: string; message: string }) {
 export default async function OAuthConsentPage({
     searchParams,
 }: {
-    searchParams: { authorization_id?: string }
+    searchParams: { authorization_id?: string; aviso?: string }
 }) {
     const authorizationId = searchParams.authorization_id?.trim()
     if (!authorizationId) {
         return <ErrorCard title="Solicitud incompleta" message="Falta el identificador de autorización. Vuelve a iniciar la conexión desde tu asistente." />
+    }
+    if (searchParams.aviso === 'usada') {
+        return <ErrorCard title="Esta solicitud ya se respondió" message="Cada solicitud solo se puede autorizar una vez. Si tu asistente no ha quedado conectado, vuelve a conectarlo desde él y pulsa «Autorizar conexión» una sola vez." />
     }
 
     const supabase = await createClient()
@@ -127,20 +130,8 @@ export default async function OAuthConsentPage({
                     )}
                 </CardContent>
 
-                <CardFooter className="flex flex-col-reverse gap-3 border-t border-border/70 bg-muted/20 p-5 sm:flex-row sm:justify-end sm:p-7">
-                    <form action="/api/oauth/decision" method="POST" className="w-full sm:w-auto">
-                        <input type="hidden" name="authorization_id" value={authorizationId} />
-                        <Button type="submit" name="decision" value="deny" variant="outline" className="h-11 w-full sm:w-auto">
-                            Cancelar
-                        </Button>
-                    </form>
-                    <form action="/api/oauth/decision" method="POST" className="w-full sm:w-auto">
-                        <input type="hidden" name="authorization_id" value={authorizationId} />
-                        <Button type="submit" name="decision" value="approve" className="h-11 w-full sm:w-auto">
-                            <CheckCircle2 className="h-4 w-4" />
-                            Autorizar conexión
-                        </Button>
-                    </form>
+                <CardFooter className="border-t border-border/70 bg-muted/20 p-5 sm:p-7">
+                    <ConsentActions authorizationId={authorizationId} />
                 </CardFooter>
             </Card>
         </main>

@@ -111,3 +111,22 @@ test('buildDietProgressData calculates macro adherence against rest-day targets'
   assert.equal(data.summary.avgKcal, 1900)
   assert.equal(data.summary.avgOverallAdherencePct, 93)
 })
+
+test('un día planificado en el calendario manda sobre el plan base', () => {
+  const data = buildDietProgressData({
+    dateFrom: '2026-06-15',
+    dateTo: '2026-06-17',
+    macroPlans,
+    dayTargets: [
+      { day: '2026-06-15', source: 'planned', kcal: 3400, protein_g: 150, carbs_g: 530, fat_g: 60, day_type_config: null },
+      { day: '2026-06-16', source: 'base', kcal: 2200, protein_g: 160, carbs_g: 240, fat_g: 70, day_type_config: macroPlans[0].day_type_config },
+      { day: '2026-06-17', source: 'none', kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, day_type_config: null },
+    ],
+    daySettings: [{ log_date: '2026-06-16', day_type: 'rest' }],
+    entries: [],
+  })
+  const [planned, base, none] = data.days.sort((a, b) => a.date.localeCompare(b.date))
+  assert.equal(planned.target.kcal, 3400)
+  assert.equal(base.target.kcal, 2000)
+  assert.equal(none.target, null)
+})
