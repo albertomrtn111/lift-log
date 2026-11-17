@@ -70,6 +70,20 @@ test('adherencia: un programa reactivado empieza en su primera serie, no en effe
   assert.ok(Math.abs(bea.adherence - 4 / (4 * 19 / 7)) < 1e-9)
 })
 
+test('adherencia: un día quitado por el coach no cuenta como series prescritas', () => {
+  const input = baseInput()
+  // La sentadilla es del día de pierna; el coach lo quitó la semana 3 (lunes 19-10) y en la semana 2 de otro programa.
+  input.exercises = input.exercises.map(exercise => exercise.id === 'squat' ? { ...exercise, dayId: 'pierna' } : exercise)
+  input.skippedDays = [
+    { programId: 'p-ana', dayId: 'pierna', date: '2026-10-19' },
+    { programId: 'p-ana-old', dayId: 'pierna', date: '2026-10-12' },
+    { programId: 'p-ana', dayId: 'pierna', date: '2026-11-02' },
+  ]
+  const ana = rowOf(trackingRows(input), 'ana')
+  // 9 × 26/7 series esperadas menos las 3 de la sentadilla de la semana 3; las de fuera de la ventana no cuentan
+  assert.ok(Math.abs(ana.adherence - 10 / (9 * 26 / 7 - 3)) < 1e-9)
+})
+
 test('sin programa activo: sin adherencia ni Δ', () => {
   const input = baseInput()
   input.programs = input.programs.map(program => ({ ...program, status: 'archived' }))

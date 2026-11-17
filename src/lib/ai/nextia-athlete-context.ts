@@ -4,6 +4,8 @@ import { ATHLETE_GOAL_TYPES } from '@/types/athlete-current-goal'
 import { resolveHrBounds, type CustomZones, type HrZoneMethod } from '@/lib/training/zones'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { buildSkipSet, isSessionSkipped } from '@/lib/training/strength-week-skips'
+import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
 import { cardioDiscipline, formatSpeed, speedKmh, usesSpeed } from '@/lib/cardio/discipline'
 import {
     buildEventTiming,
@@ -240,11 +242,12 @@ function formatStrengthProgram(program: any, days: any[], exercises: any[], sets
     return lines.slice(0, 180).join('\n')
 }
 
-function formatStrengthPlanning(strengthSessions: any[]) {
+function formatStrengthPlanning(strengthSessions: any[], skipSet: Set<string> = new Set()) {
     return formatList(strengthSessions.map(session => {
         const day = session.training_days?.name || 'Sesion fuerza'
         const program = session.training_programs?.name || 'programa'
-        const status = session.is_completed ? 'completada' : 'planificada/no completada'
+        const skipped = !session.is_completed && isSessionSkipped(skipSet, session, session.training_programs?.effective_from)
+        const status = session.is_completed ? 'completada' : skipped ? 'quitada por el coach esa semana (no cuenta como fallo)' : 'planificada/no completada'
         return `${session.scheduled_date}: ${day} (${program}) | ${status}`
     }), 'Sin sesiones de fuerza planificadas en las ultimas 4 semanas.')
 }
@@ -368,7 +371,7 @@ export async function buildNextIAAthleteContext({
         admin.from('client_metrics').select('metric_date, weight_kg, steps, sleep_h, hrv_ms, sleep_score, fatigue, notes').eq('client_id', clientId).gte('metric_date', fromDate).lte('metric_date', referenceDate).order('metric_date', { ascending: true }),
         admin.from('diet_adherence_logs').select('log_date, adherence_pct').eq('client_id', clientId).gte('log_date', fromDate).lte('log_date', referenceDate).order('log_date', { ascending: true }),
         admin.from('workout_logs').select('workout_date, completed').eq('client_id', clientId).gte('workout_date', fromDate).lte('workout_date', referenceDate).order('workout_date', { ascending: true }),
-        admin.from('scheduled_strength_sessions').select('scheduled_date, is_completed, training_days(name), training_programs(name)').eq('coach_id', coachId).eq('client_id', clientId).gte('scheduled_date', fromDate).lte('scheduled_date', referenceDate).order('scheduled_date', { ascending: true }),
+        admin.from('scheduled_strength_sessions').select('program_id, day_id, scheduled_date, is_completed, training_days(name), training_programs(name, effective_from)').eq('coach_id', coachId).eq('client_id', clientId).gte('scheduled_date', fromDate).lte('scheduled_date', referenceDate).order('scheduled_date', { ascending: true }),
         admin.from('athlete_thresholds').select('max_hr, resting_hr, run_lthr, run_threshold_pace_sec, bike_lthr, bike_ftp_watts, hr_zone_method, custom_zones, tested_at').eq('client_id', clientId).maybeSingle(),
         admin.from('athlete_baseline').select('birth_date, sex, height_cm, reference_weight_kg, reference_weight_date, vo2max, endurance_enabled').eq('client_id', clientId).maybeSingle(),
     ])
@@ -386,6 +389,8 @@ export async function buildNextIAAthleteContext({
 
     const activeProgram = activeProgramResult.data?.[0] || null
     const currentGoal = currentGoalResult.data
+    // Días que el coach quitó en una semana: no son sesiones fallidas.
+    const strengthSkipSet = buildSkipSet(await loadStrengthSkips(admin, clientId))
     let trainingDays: any[] = []
     let trainingExercises: any[] = []
     let trainingSets: any[] = []
@@ -443,7 +448,7 @@ export async function buildNextIAAthleteContext({
         { title: 'Eventos proximos', content: formatEvents(eventsResult.data || [], referenceDate) },
         { title: 'Ultimo check-in y revision', content: formatLatestReview(latestCheckin, reviewResult.data) },
         { title: 'Programa activo de fuerza y progresion', content: formatStrengthProgram(activeProgram, trainingDays, trainingExercises, trainingSets) },
-        { title: 'Planificacion fuerza ultimas 4 semanas', content: formatStrengthPlanning(strengthScheduleResult.data || []) },
+        { title: 'Planificacion fuerza ultimas 4 semanas', content: formatStrengthPlanning(strengthScheduleResult.data || [], strengthSkipSet) },
         { title: 'Cardio ultimas 4 semanas', content: formatCardio(cardioResult.data || []) },
         { title: 'Datos relevantes de progreso', content: formatRecentProgress(metricsResult.data || [], dietResult.data || [], workoutResult.data || []) },
         { title: 'Ultimos mensajes Chat NextIA', content: formatRecentMessages(recentMessages) },

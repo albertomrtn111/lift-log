@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay } from 'date-fns'
 import { parseLocalDate } from '@/lib/date-utils'
 import { es } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy, FileText, Timer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Dumbbell, Activity, Calendar as CalendarIcon, CalendarX2, Loader2, CheckCircle2, MoreHorizontal, Trash2, Pencil, GripVertical, Copy, FileText, Timer, RotateCcw } from 'lucide-react'
+import { toast as sonnerToast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getWeeklySchedule, deleteCardioSession, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession, duplicateStrengthSession, duplicateCardioSession } from '@/app/(coach)/coach/workspace/planning-actions'
+import { restoreStrengthDayWeekAction, skipStrengthDayWeekAction, type StrengthSkipInput } from '@/app/(coach)/coach/workspace/strength-skip-actions'
 import { UnifiedCalendarItem, PlanningSnapshot, PlanningDayContext } from '@/types/planning'
 import { CardioStructure } from '@/types/templates'
 import { useToast } from '@/hooks/use-toast'
@@ -269,6 +271,8 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
     const [loading, setLoading] = useState(true)
     const [schedule, setSchedule] = useState<UnifiedCalendarItem[]>([])
     const [planningSnapshot, setPlanningSnapshot] = useState<PlanningSnapshot | null>(null)
+    // Días de fuerza quitados por el coach solo en su semana: se pintan aparte, tachados.
+    const [skippedStrength, setSkippedStrength] = useState<UnifiedCalendarItem[]>([])
     const [editingSession, setEditingSession] = useState<UnifiedCalendarItem | null>(null)
     const [activeItem, setActiveItem] = useState<UnifiedCalendarItem | null>(null)
     const [viewMode, setViewMode] = useState<'week' | 'month'>('week')
@@ -332,9 +336,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
             if (result.success && result.data) {
                 setPlanningSnapshot(result.data)
                 setSchedule(result.data.items)
+                setSkippedStrength(result.data.skippedStrength ?? [])
             } else {
                 setPlanningSnapshot(null)
                 setSchedule([])
+                setSkippedStrength([])
                 if (result.error) {
                     toast({ title: "Info", description: "No se pudieron cargar datos (Mostrando vacío)" })
                 }
@@ -344,6 +350,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
             if (requestId !== fetchRequestId.current) return
             setPlanningSnapshot(null)
             setSchedule([])
+            setSkippedStrength([])
             toast({ title: "Error crítico", description: "Fallo al cargar calendario.", variant: "destructive" })
         } finally {
             if (requestId === fetchRequestId.current) {
@@ -493,6 +500,53 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Quitar un día de fuerza solo en su semana del programa, y restaurarlo
+    // -----------------------------------------------------------------------
+
+    const skipInputOf = (item: UnifiedCalendarItem): StrengthSkipInput | null => {
+        if (item.type !== 'strength' || !item.training_program_id || !item.training_day_id || !item.week_index) return null
+        return { clientId, programId: item.training_program_id, dayId: item.training_day_id, weekIndex: item.week_index }
+    }
+
+    const handleRestoreStrength = async (item: UnifiedCalendarItem) => {
+        const input = skipInputOf(item)
+        if (!input) return
+        setSkippedStrength(prev => prev.filter(s => s.id !== item.id))
+        setSchedule(prev => [...prev, { ...item, is_skipped: false, skip_id: null } as UnifiedCalendarItem])
+        const res = await restoreStrengthDayWeekAction(input)
+        if (res.success) {
+            sonnerToast.success(`«${res.dayName}» vuelve a la semana ${res.weekIndex}`)
+        } else {
+            toast({ title: 'No se pudo restaurar', description: res.error, variant: 'destructive' })
+        }
+        fetchSchedule()
+    }
+
+    const handleSkipStrength = async (item: UnifiedCalendarItem) => {
+        const input = skipInputOf(item)
+        if (!input) {
+            toast({ title: 'No se puede quitar', description: 'Este día no cae dentro de las semanas del programa.', variant: 'destructive' })
+            return
+        }
+        const prevSchedule = schedule
+        const prevSkipped = skippedStrength
+        setSchedule(prev => prev.filter(s => s.id !== item.id))
+        setSkippedStrength(prev => [...prev, { ...item, is_skipped: true } as UnifiedCalendarItem])
+        const res = await skipStrengthDayWeekAction(input)
+        if (!res.success) {
+            setSchedule(prevSchedule)
+            setSkippedStrength(prevSkipped)
+            toast({ title: 'No se pudo quitar', description: res.error, variant: 'destructive' })
+            return
+        }
+        sonnerToast.success(`«${res.dayName}» quitado solo en la semana ${res.weekIndex}`, {
+            description: 'El atleta no lo verá esa semana. Las demás no cambian.',
+            action: { label: 'Deshacer', onClick: () => { void handleRestoreStrength({ ...item, is_skipped: true } as UnifiedCalendarItem) } },
+        })
+        fetchSchedule()
+    }
+
     const handleDuplicateStrength = async (e: React.MouseEvent, sessionId: string) => {
         e.stopPropagation()
         try {
@@ -576,6 +630,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
 
     const getItemsForDay = (date: Date) => {
         return visibleSchedule.filter(item => isSameDay(parseLocalDate(item.date), date))
+    }
+
+    const visibleSkipped = skippedStrength.filter(item => isItemInDateRange(item, visibleStart, visibleEnd))
+    const getSkippedForDay = (date: Date) => {
+        return visibleSkipped.filter(item => isSameDay(parseLocalDate(item.date), date))
     }
 
     const getDayContext = (date: Date): PlanningDayContext | undefined => {
@@ -682,7 +741,8 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                             const dayDateStr = toLocalDateStr(day)
                             const dayContext = getDayContext(day)
                             const noteCount = dayContext?.noteCount ?? 0
-                            const isFreeDay = !loading && items.length === 0
+                            const skippedItems = getSkippedForDay(day)
+                            const isFreeDay = !loading && items.length === 0 && skippedItems.length === 0
 
                             return (
                                 <div key={day.toISOString()} className={cn(
@@ -763,7 +823,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                                             </div>
                                         ) : (
                                             <>
-                                                {items.length === 0 && (
+                                                {items.length === 0 && skippedItems.length === 0 && (
                                                     <div className={cn(
                                                         "hidden min-h-[100px] items-start justify-start rounded-xl border p-3 xl:flex",
                                                         "border-dashed border-border/40 bg-muted/10"
@@ -779,6 +839,7 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                                                                 onDuplicate={(e) => handleDuplicateStrength(e, item.id)}
                                                                 onDuplicateToDate={() => setDuplicatingItem(item)}
                                                                 onDelete={(e) => handleDeleteStrength(e, item.id)}
+                                                                onSkip={() => handleSkipStrength(item)}
                                                             />
                                                         ) : (
                                                             <CardioCard
@@ -790,6 +851,13 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                                                             />
                                                         )}
                                                     </DraggableCard>
+                                                ))}
+                                                {skippedItems.map((item) => (
+                                                    <SkippedStrengthCard
+                                                        key={`skipped-${item.id}`}
+                                                        item={item}
+                                                        onRestore={() => handleRestoreStrength(item)}
+                                                    />
                                                 ))}
                                             </>
                                         )}
@@ -1021,6 +1089,14 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                                                                                 }}>
                                                                                     <CalendarIcon className="mr-2 h-3 w-3" /> Duplicar en otra fecha
                                                                                 </DropdownMenuItem>
+                                                                                {item.type === 'strength' && item.week_index && !item.is_completed && (
+                                                                                    <DropdownMenuItem onClick={(e) => {
+                                                                                        e.stopPropagation()
+                                                                                        void handleSkipStrength(item)
+                                                                                    }}>
+                                                                                        <CalendarX2 className="mr-2 h-3 w-3" /> Quitar solo esta semana
+                                                                                    </DropdownMenuItem>
+                                                                                )}
                                                                                 {!item.id.startsWith('virtual-') && (
                                                                                     <DropdownMenuItem
                                                                                         onClick={(e) => {
@@ -1045,6 +1121,26 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
                                                                 +{overflow} más
                                                             </div>
                                                         )}
+                                                        {getSkippedForDay(day).map(item => (
+                                                            <div
+                                                                key={`skipped-${item.id}`}
+                                                                className="nt-skipped-stripes flex items-center justify-between gap-0.5 rounded-md border border-dashed border-border/80 bg-muted/40 px-1.5 py-1 text-[10px] font-medium text-muted-foreground"
+                                                                title="Quitado por el coach solo esta semana"
+                                                            >
+                                                                <span className="min-w-0 flex-1 truncate line-through">
+                                                                    {(item as any).training_days?.name || 'Fuerza'}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                                                                    onClick={(e) => { e.stopPropagation(); void handleRestoreStrength(item) }}
+                                                                    aria-label={`Restaurar ${(item as any).training_days?.name || 'día de fuerza'}`}
+                                                                    title="Restaurar día"
+                                                                >
+                                                                    <RotateCcw className="h-2.5 w-2.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             )
@@ -1138,16 +1234,19 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
 // Sub-components (extracted for readability)
 // ---------------------------------------------------------------------------
 
-function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }: {
+function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete, onSkip }: {
     item: UnifiedCalendarItem
     onEdit?: (programId: string) => void
     onDuplicate?: (e: React.MouseEvent) => void
     onDuplicateToDate?: () => void
     onDelete?: (e: React.MouseEvent) => void
+    onSkip?: () => void
 }) {
     const isVirtual = item.id.startsWith('virtual-')
     const programId = (item as any).training_program_id
     const canDelete = !isVirtual
+    // Solo los días del programa (con semana) y que el atleta aún no ha hecho.
+    const canSkip = item.type === 'strength' && Boolean(item.week_index) && !item.is_completed && Boolean(onSkip)
 
     return (
         <Card className="group relative cursor-pointer overflow-hidden border-none bg-red-100 text-red-950 shadow-sm transition-opacity hover:opacity-80 dark:bg-red-900/30 dark:text-red-50">
@@ -1184,6 +1283,11 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDuplicateToDate?.() }}>
                                     <CalendarIcon className="mr-2 h-4 w-4" /> Duplicar en otra fecha
                                 </DropdownMenuItem>
+                                {canSkip && (
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSkip?.() }}>
+                                        <CalendarX2 className="mr-2 h-4 w-4" /> Quitar solo esta semana
+                                    </DropdownMenuItem>
+                                )}
                                 {canDelete && (
                                     <DropdownMenuItem
                                         onClick={(e) => onDelete?.(e)}
@@ -1205,6 +1309,33 @@ function StrengthCard({ item, onEdit, onDuplicate, onDuplicateToDate, onDelete }
                 </div>
             </CardContent>
         </Card>
+    )
+}
+
+/** Día de fuerza que el coach quitó solo en esta semana: tachado, sombreado y con «Restaurar». */
+function SkippedStrengthCard({ item, onRestore }: { item: UnifiedCalendarItem; onRestore: () => void }) {
+    const name = (item as any).training_days?.name || 'Sesión de fuerza'
+    return (
+        <div className="nt-skipped-stripes relative overflow-hidden rounded-xl border border-dashed border-border/80 bg-muted/40 p-3 text-muted-foreground">
+            <div className="mb-2 flex items-start justify-between gap-2">
+                <Badge variant="outline" className="h-5 border-border/70 bg-background/80 px-1.5 py-0 text-[10px] font-medium text-muted-foreground">
+                    Quitado esta semana
+                </Badge>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 rounded-full px-2 text-xs text-foreground"
+                    onClick={(e) => { e.stopPropagation(); onRestore() }}
+                    aria-label={`Restaurar ${name} en esta semana`}
+                >
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" /> Restaurar
+                </Button>
+            </div>
+            <div className="flex items-center gap-2">
+                <Dumbbell className="h-4 w-4 shrink-0 opacity-60" />
+                <span className="line-clamp-2 text-sm font-semibold leading-snug line-through decoration-1">{name}</span>
+            </div>
+        </div>
     )
 }
 

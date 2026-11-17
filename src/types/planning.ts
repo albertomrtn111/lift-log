@@ -34,6 +34,9 @@ export interface ScheduledStrengthSession {
     source_label?: string | null;
     week_index?: number | null;
     is_program_auto?: boolean;
+    // Quitado por el coach solo en esa semana del programa (strength_day_week_skips).
+    is_skipped?: boolean;
+    skip_id?: string | null;
 }
 
 export interface CardioSession {
@@ -85,6 +88,8 @@ export interface PlanningSnapshot {
     overview: PlanningOverview;
     dayContexts: PlanningDayContext[];
     notesEnabled: boolean;
+    // Días de fuerza quitados por el coach en esas semanas. No están en items ni cuentan en overview.
+    skippedStrength?: UnifiedCalendarItem[];
 }
 
 export type PlanningAICardioType =

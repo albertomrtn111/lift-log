@@ -46,6 +46,16 @@ test('a session moved by the coach replaces the program day that week', () => {
   assert.deepEqual(strengthSessionsOn({ program, scheduled: [{ day_id: 'b', scheduled_date: '2026-11-05', is_completed: true }], dateKey: '2026-11-05' }), [])
 })
 
+test('a day the coach removed that week is not reminded, other weeks are', () => {
+  const withId = { ...program, id: 'p1' }
+  const skips = [{ program_id: 'p1', day_id: 'a', week_start: '2026-11-09', week_end: '2026-11-15' }]
+  assert.deepEqual(strengthSessionsOn({ program: withId, scheduled: [], dateKey: '2026-11-09', skips }), [])
+  assert.deepEqual(strengthSessionsOn({ program: withId, scheduled: [], dateKey: '2026-11-02', skips }), ['Pierna A'])
+  // También si el día estaba guardado como sesión programada esa semana
+  const scheduled = [{ program_id: 'p1', day_id: 'a', scheduled_date: '2026-11-10' }]
+  assert.deepEqual(strengthSessionsOn({ program: withId, scheduled, dateKey: '2026-11-10', skips }), [])
+})
+
 test('cardio sessions are described with their target', () => {
   assert.equal(describeCardio({ name: 'Rodaje Z2', target_duration_min: 45 }), 'Rodaje Z2 · 45 min')
   assert.equal(describeCardio({ training_type: 'series', target_distance_km: 8.5 }), 'series · 8,5 km')

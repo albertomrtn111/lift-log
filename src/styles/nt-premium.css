@@ -412,3 +412,13 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.w
 @media (prefers-reduced-motion: reduce) {
     .nt-grow, .nt-draw, .nt-pop-in { animation: none; stroke-dashoffset: 0; }
 }
+
+/* Día de fuerza que el coach quitó solo en una semana: rayas suaves sobre el
+ * fondo para que no se confunda con «no lo hizo» (Planificación y cuadrante). */
+.nt-skipped-stripes {
+    background-image: repeating-linear-gradient(
+        135deg,
+        hsl(var(--muted-foreground) / 0.14) 0 1px,
+        transparent 1px 7px
+    );
+}

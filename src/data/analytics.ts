@@ -3,6 +3,7 @@ import { addDays, seasonDiscipline } from '@/lib/season/volume'
 import { normalizeExerciseName } from '@/lib/training/exercise-catalog'
 import { epley1RM } from '@/lib/training/progress-summary'
 import { trackingRows } from '@/lib/analytics/compute'
+import { programDayDate } from '@/lib/training/strength-week-skips'
 import type { AnalyticsFacts, CardioFact } from '@/lib/analytics/engine'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -81,6 +82,21 @@ async function loadSets(supabase: Supabase, coachId: string, since: string, acti
     const byId = new Map<string, any>()
     for (const row of [...await recent, ...await active]) byId.set(row.id, row)
     return [...byId.values()]
+}
+
+/** Días de fuerza quitados por el coach en una semana, con la fecha en que tocaban. */
+async function loadSkippedDays(supabase: Supabase, coachId: string, programs: { id: string; effectiveFrom: string | null }[]) {
+    const { data, error } = await supabase
+        .from('strength_day_week_skips')
+        .select('program_id, day_id, week_index, training_days(default_weekday)')
+        .eq('coach_id', coachId)
+    if (error) return []
+    const startById = new Map(programs.map(program => [program.id, program.effectiveFrom]))
+    return (data ?? []).flatMap((row: any) => {
+        const weekday = embedOne<{ default_weekday: number | null }>(row.training_days)?.default_weekday ?? 1
+        const date = programDayDate(startById.get(row.program_id), row.week_index, weekday)
+        return date ? [{ programId: row.program_id as string, dayId: row.day_id as string, date }] : []
+    })
 }
 
 /** Series hechas en sala desde `since`. Son del ejercicio del catálogo, sin programa. */
@@ -185,7 +201,7 @@ export async function loadAnalyticsFacts(coachId: string, since: string): Promis
         supabase.from('muscle_groups').select('name, legacy_key, counts_for_volume, sort_order').order('sort_order'),
         fetchAll<any>((from, to) => supabase
             .from('training_exercises')
-            .select('id, program_id, exercise_name, catalog_exercise_id, muscle_group, sets, rir, exercise_catalog(name, primary_group)')
+            .select('id, program_id, day_id, exercise_name, catalog_exercise_id, muscle_group, sets, rir, exercise_catalog(name, primary_group)')
             .eq('coach_id', coachId)
             .order('id')
             .range(from, to)),
@@ -222,6 +238,7 @@ export async function loadAnalyticsFacts(coachId: string, since: string): Promis
         return {
             id: row.id as string,
             programId: row.program_id as string,
+            dayId: (row.day_id as string | null) ?? null,
             name,
             exerciseKey: (row.catalog_exercise_id as string | null) ?? `name:${normalizeExerciseName(name)}`,
             group,
@@ -241,8 +258,11 @@ export async function loadAnalyticsFacts(coachId: string, since: string): Promis
         day: toDay.format(new Date(row.performed_at)),
     }))
 
+    // Días que el coach quitó en una semana: no cuentan como series prescritas en la adherencia
+    const skippedDays = await loadSkippedDays(supabase, coachId, programs)
+
     // Seguimiento: mismos cálculos que Progreso (adherencia, Δ del bloque, último registro)
-    const tracking = trackingRows({ today, athletes, programs, exercises, sets }).map(row => ({
+    const tracking = trackingRows({ today, athletes, programs, exercises, sets, skippedDays }).map(row => ({
         a: row.id,
         adherence: row.adherence,
         block_e1rm: row.e1rmDelta,

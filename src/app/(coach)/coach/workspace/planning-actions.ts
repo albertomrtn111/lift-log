@@ -11,6 +11,8 @@ import { cardioActivityType, cardioSessionMetrics, hasRenderableCardioBlocks, pr
 import { requireAIClient } from '@/lib/ai/access';
 import { dateSchema } from '@/lib/ai/planning-block';
 import { sendPlanUpdatedNotification } from '@/lib/notifications/client';
+import { buildSkipSet, isDaySkipped, mondayOfDate, programWeekOfDate, skipKey } from '@/lib/training/strength-week-skips';
+import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data';
 
 type TrainingDayRow = {
     id: string;
@@ -314,12 +316,17 @@ export async function getWeeklySchedule(
                 ? supabase.from('training_days').select('id, name, order_index, default_weekday').in('id', dayIds)
                 : Promise.resolve({ data: [] as any[] }),
             programIds.length > 0
-                ? supabase.from('training_programs').select('id, name').in('id', programIds)
+                ? supabase.from('training_programs').select('id, name, effective_from').in('id', programIds)
                 : Promise.resolve({ data: [] as any[] }),
             dayIds.length > 0
                 ? supabase.from('training_exercises').select('day_id, exercise_name').in('day_id', dayIds)
                 : Promise.resolve({ data: [] as any[] }),
         ]);
+
+        // Días que el coach ha quitado en una semana concreta (strength_day_week_skips).
+        const skipRows = await loadStrengthSkips(supabase, clientId, programIds);
+        const skipSet = buildSkipSet(skipRows);
+        const skipIdByKey = new Map(skipRows.map((row) => [skipKey(row.program_id, row.day_id, row.week_index), row.id]));
 
         const daysMap = new Map((daysData || []).map((d: any) => [d.id, d]));
         const programsMap = new Map((programsData || []).map((p: any) => [p.id, p]));
@@ -369,6 +376,8 @@ export async function getWeeklySchedule(
                         source_label: 'Programa',
                         week_index: week + 1,
                         is_program_auto: true,
+                        is_skipped: isDaySkipped(skipSet, activeProgram.id, day.id, week + 1),
+                        skip_id: skipIdByKey.get(skipKey(activeProgram.id, day.id, week + 1)) ?? null,
                     });
                 }
             }
@@ -378,10 +387,16 @@ export async function getWeeklySchedule(
             const dayInfo = daysMap.get(session.day_id);
             const programInfo = programsMap.get(session.program_id);
             const exerciseNames = exercisesByDayId.get(session.day_id) || [];
+            const sessionWeekStart = mondayOfDate(session.scheduled_date);
+            // Solo sustituye al día de plantilla de su misma semana.
             const replacedVirtual = virtualStrengthItems.some((virtualItem) => (
                 virtualItem.type === 'strength' &&
-                virtualItem.training_day_id === session.day_id
+                virtualItem.training_day_id === session.day_id &&
+                mondayOfDate(virtualItem.date) === sessionWeekStart
             ));
+            // La semana sale del programa de la propia sesión (puede no ser el activo).
+            const sessionWeek = programWeekOfDate(programInfo?.effective_from, session.scheduled_date);
+            const skipped = !session.is_completed && isDaySkipped(skipSet, session.program_id, session.day_id, sessionWeek);
 
             return {
                 type: 'strength',
@@ -400,22 +415,29 @@ export async function getWeeklySchedule(
                 focus_label: deriveStrengthFocus(dayInfo?.name, exerciseNames),
                 source_kind: replacedVirtual ? 'adjusted' : 'manual',
                 source_label: replacedVirtual ? 'Ajustada' : 'Manual',
-                week_index: activeProgram?.effective_from
+                week_index: sessionWeek ?? (activeProgram?.effective_from
                     ? getProgramWeekForDate(parseLocalDate(session.scheduled_date), activeProgram.effective_from, totalWeeks)
-                    : null,
+                    : null),
                 is_program_auto: replacedVirtual,
+                is_skipped: skipped,
+                skip_id: skipped && sessionWeek ? skipIdByKey.get(skipKey(session.program_id, session.day_id, sessionWeek)) ?? null : null,
             };
         });
 
-        const realDayIds = new Set(
+        // Una sesión guardada oculta el día de plantilla de su misma semana (no de todo el rango:
+        // en la vista de mes, mover un día no debe borrarlo de las demás semanas).
+        const realDayWeeks = new Set(
             realStrengthItems
                 .filter((item) => item.type === 'strength')
-                .map((item) => item.training_day_id)
+                .map((item) => `${item.training_day_id}:${mondayOfDate(item.date)}`)
         );
         const dedupedVirtual = virtualStrengthItems.filter(
-            (item) => item.type === 'strength' && !realDayIds.has(item.training_day_id)
+            (item) => item.type === 'strength' && !realDayWeeks.has(`${item.training_day_id}:${mondayOfDate(item.date)}`)
         );
-        const allStrengthItems = [...dedupedVirtual, ...realStrengthItems];
+        const combinedStrength = [...dedupedVirtual, ...realStrengthItems];
+        // Los quitados por el coach van aparte: no cuentan como sesión en ningún resumen.
+        const skippedStrength = combinedStrength.filter((item) => item.type === 'strength' && item.is_skipped);
+        const allStrengthItems = combinedStrength.filter((item) => !(item.type === 'strength' && item.is_skipped));
 
         const { data: cardioData, error: cardioError } = await supabase
             .from('cardio_sessions')
@@ -539,6 +561,7 @@ export async function getWeeklySchedule(
                 },
                 dayContexts,
                 notesEnabled,
+                skippedStrength,
             },
         };
 

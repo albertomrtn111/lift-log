@@ -47,6 +47,16 @@ test('program progress separates elapsed calendar weeks from weeks with complete
   assert.equal(progress.deload_week_indices, null)
 })
 
+test('a day the coach removed in a week is not expected nor counted as missing', () => {
+  const base = programProgress(program, days, sessions, '2026-10-10')
+  const skipped = [{ program_id: 'program-1', day_id: 'legs', week_index: 3 }, { program_id: 'other', day_id: 'legs', week_index: 4 }]
+  const progress = programProgress(program, days, sessions, '2026-10-10', null, skipped)
+  assert.equal(progress.sessions_skipped_by_coach, 1)
+  assert.equal(progress.expected_sessions_from_current_template, base.expected_sessions_from_current_template - 1)
+  assert.equal(progress.past_sessions_without_completion_record, base.past_sessions_without_completion_record - 1)
+  assert.equal(base.sessions_skipped_by_coach, 0)
+})
+
 test('archived, finished and upcoming are not conflated', () => {
   assert.equal(programProgress({ ...program, status: 'archived' }, days, sessions, '2026-10-10').status, 'archived')
   assert.equal(programProgress(program, days, sessions, '2026-11-23').status, 'finished')
