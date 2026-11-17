@@ -13,6 +13,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToClient, sendPushToCoach } from '@/lib/push'
 import { claimDelivery } from '@/lib/notifications/delivery-log'
+import { programWeekRange } from '@/lib/training/strength-week-skips'
 import {
     sendPlanUpdatedNotification,
     sendStravaFeedbackReminder,
@@ -237,7 +238,7 @@ type AthleteSchedulePrefs = {
 /** Programa activo, sesiones movidas y cardio de un atleta entre dos fechas. */
 async function loadAthletePlan(clientId: string, from: string, to: string) {
     const admin = createAdminClient()
-    const [programs, scheduled, cardio] = await Promise.all([
+    const [programs, scheduled, cardio, skipRows] = await Promise.all([
         admin.from('training_programs')
             .select('id, effective_from, weeks, training_days ( id, name, default_weekday )')
             .eq('client_id', clientId)
@@ -245,7 +246,7 @@ async function loadAthletePlan(clientId: string, from: string, to: string) {
             .order('created_at', { ascending: false })
             .limit(5),
         admin.from('scheduled_strength_sessions')
-            .select('day_id, scheduled_date, is_completed')
+            .select('program_id, day_id, scheduled_date, is_completed')
             .eq('client_id', clientId)
             .gte('scheduled_date', from)
             .lte('scheduled_date', to),
@@ -254,11 +255,22 @@ async function loadAthletePlan(clientId: string, from: string, to: string) {
             .eq('client_id', clientId)
             .gte('scheduled_date', from)
             .lte('scheduled_date', to),
+        // Días que el coach quitó en una semana: no entran en «Hoy toca» ni en el resumen.
+        admin.from('strength_day_week_skips')
+            .select('program_id, day_id, week_index, training_programs ( effective_from )')
+            .eq('client_id', clientId),
     ])
     const program = ((programs.data ?? []) as any[]).find(p => p.training_days?.some((d: any) => d.default_weekday != null)) ?? null
+    const skips = ((skipRows.error ? [] : skipRows.data) ?? []).flatMap((row: any) => {
+        const start = (Array.isArray(row.training_programs) ? row.training_programs[0] : row.training_programs)?.effective_from
+        if (!start) return []
+        const range = programWeekRange(start, row.week_index)
+        return [{ program_id: row.program_id as string, day_id: row.day_id as string, week_start: range.start, week_end: range.end }]
+    })
     return {
         program,
-        scheduled: (scheduled.data ?? []) as Array<{ day_id: string; scheduled_date: string; is_completed: boolean | null }>,
+        skips,
+        scheduled: (scheduled.data ?? []) as Array<{ program_id: string; day_id: string; scheduled_date: string; is_completed: boolean | null }>,
         cardio: (cardio.data ?? []) as Array<{ name: string | null; training_type: string | null; target_duration_min: number | null; target_distance_km: number | null; scheduled_date: string; is_completed: boolean | null }>,
     }
 }
@@ -288,7 +300,7 @@ export async function sendWorkoutReminders(now: Date = new Date(), force = false
         try {
             const plan = await loadAthletePlan(pref.client_id, mondayOf(clock.dateKey), addDays(mondayOf(clock.dateKey), 6))
             const copy = buildTodayWorkoutCopy({
-                strength: strengthSessionsOn({ program: plan.program, scheduled: plan.scheduled, dateKey: clock.dateKey }),
+                strength: strengthSessionsOn({ program: plan.program, scheduled: plan.scheduled, dateKey: clock.dateKey, skips: plan.skips }),
                 cardio: plan.cardio.filter(c => c.scheduled_date === clock.dateKey && !c.is_completed),
             })
             if (!copy) continue
@@ -326,7 +338,7 @@ export async function sendWeekSummaries(now: Date = new Date(), force = false): 
             const plan = await loadAthletePlan(pref.client_id, weekStart, weekEnd)
             let strengthCount = 0
             for (let offset = 0; offset < 7; offset += 1) {
-                strengthCount += strengthSessionsOn({ program: plan.program, scheduled: plan.scheduled, dateKey: addDays(weekStart, offset) }).length
+                strengthCount += strengthSessionsOn({ program: plan.program, scheduled: plan.scheduled, dateKey: addDays(weekStart, offset), skips: plan.skips }).length
             }
             const copy = buildWeekSummaryCopy({ strengthCount, cardioCount: plan.cardio.filter(c => !c.is_completed).length })
             if (!copy) continue

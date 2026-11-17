@@ -8,6 +8,8 @@ export interface TrainingProgram {
   totalWeeks: number;
   effectiveFrom: string;
   effectiveTo?: string;
+  /** Días que el coach quitó en una semana concreta (no se muestran esa semana) */
+  skippedDays?: { dayId: string; week: number }[];
 }
 
 export interface TrainingDay {

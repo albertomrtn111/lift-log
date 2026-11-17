@@ -47,6 +47,7 @@ export const outputSchemas: Record<string, z.ZodType> = {
   list_client_schedule: z.looseObject({
     client_id: z.string(), start_date: day, end_date: day,
     items: z.array(z.looseObject({ kind: z.enum(['cardio', 'event', 'strength']), date: day })),
+    skipped_strength_days: maybe(records),
   }),
   list_exercise_catalog: z.looseObject({ exercises: z.array(z.looseObject({ id: z.string(), name: z.string() })) }),
   list_workspace_library: z.looseObject({ exercises: z.array(z.looseObject({ id: z.string(), name: z.string() })) }),
@@ -125,6 +126,15 @@ export const outputSchemas: Record<string, z.ZodType> = {
   update_strength_program: z.looseObject({
     updated: z.boolean(), program: z.looseObject({ id: z.string(), status: z.string() }),
     archived_program_ids: z.array(z.string()), removed_scheduled_sessions: z.number().int(),
+  }),
+
+  skip_strength_day_week: z.looseObject({
+    skipped: z.boolean(), already_skipped: z.boolean(), program: record, day: record, week: z.number().int(),
+    planned_date: maybe(day), week_start: day, week_end: day, note: text,
+  }),
+  restore_strength_day_week: z.looseObject({
+    restored: z.boolean(), was_skipped: z.boolean(), program: record, day: record, week: z.number().int(),
+    planned_date: maybe(day), week_start: day, week_end: day,
   }),
 
   update_strength_program_days: z.looseObject({

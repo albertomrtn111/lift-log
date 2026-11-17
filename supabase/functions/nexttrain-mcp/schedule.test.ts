@@ -90,6 +90,37 @@ Deno.test('template weeks follow the app: weeks from the Monday of the start wee
   assert.equal(items.at(-1)!.date, '2026-10-29')
 })
 
+Deno.test('a day removed by the coach in one week is flagged only that week', () => {
+  const skips = [{ id: 'skip-1', program_id: activeId, day_id: 'day-a', week_index: 2, created_at: '2026-10-10T09:00:00Z' }]
+  const items = buildStrengthSchedule({
+    activePrograms: [activeProgram], programs: [activeProgram],
+    // Semana 3: el día A está guardado como sesión (no completada) y no está quitado.
+    sessions: [{ id: 's-w3', program_id: activeId, day_id: 'day-a', scheduled_date: '2026-10-19', is_completed: false }],
+    startDate: '2026-10-05', endDate: '2026-10-25', skips,
+  })
+  const dayA = items.filter((item) => item.day_id === 'day-a')
+  assert.deepEqual(dayA.map((item) => [item.date, item.week, item.skipped_by_coach]), [
+    ['2026-10-05', 1, false],
+    ['2026-10-12', 2, true],
+    ['2026-10-19', 3, false],
+  ])
+  assert.equal(dayA[1].skipped_at, '2026-10-10T09:00:00Z')
+  assert.equal(items.filter((item) => item.day_id === 'day-b').every((item) => !item.skipped_by_coach), true)
+})
+
+Deno.test('a saved session in a removed week is flagged, unless the athlete already completed it', () => {
+  const skips = [{ program_id: activeId, day_id: 'day-b', week_index: 2 }, { program_id: activeId, day_id: 'day-a', week_index: 2 }]
+  const items = buildStrengthSchedule({
+    activePrograms: [activeProgram], programs: [activeProgram],
+    sessions: [
+      { id: 's-b', program_id: activeId, day_id: 'day-b', scheduled_date: '2026-10-15', is_completed: false },
+      { id: 's-a', program_id: activeId, day_id: 'day-a', scheduled_date: '2026-10-12', is_completed: true },
+    ],
+    startDate: '2026-10-12', endDate: '2026-10-18', skips,
+  })
+  assert.deepEqual(items.map((item) => [item.session_id, item.skipped_by_coach]), [['s-a', false], ['s-b', true]])
+})
+
 function fixture() {
   const tables: Record<string, any[]> = {
     training_programs: [activeProgram, archivedProgram],
@@ -100,6 +131,10 @@ function fixture() {
     ],
     cardio_sessions: [{ id: 'cardio-1', coach_id: coach, client_id: client, scheduled_date: '2026-10-14', name: 'Rodaje', is_completed: false }],
     client_events: [],
+    strength_day_week_skips: [
+      { id: 'skip-w3', coach_id: coach, client_id: client, program_id: activeId, day_id: 'day-a', week_index: 3, created_at: '2026-10-10T09:00:00Z' },
+      { id: 'skip-foreign', coach_id: coach, client_id: otherClient, program_id: activeId, day_id: 'day-b', week_index: 3, created_at: '2026-10-10T09:00:00Z' },
+    ],
   }
   const queries: any[] = []
   const db = {
@@ -171,6 +206,15 @@ Deno.test('sessions from archived programs are shown like in the app and keep th
   assert.equal(old.program_name, 'Bloque 1')
   assert.equal(old.extra_session, true)
   assert.equal(old.week, null)
+})
+
+Deno.test('list_client_schedule moves removed days out of items into skipped_strength_days', async () => {
+  const { run } = fixture()
+  const { data } = await run({ client_id: client, start_date: '2026-10-19', end_date: '2026-10-25' })
+  assert.deepEqual(strength(data.items).map((item: any) => item.day_id), ['day-b'])
+  assert.deepEqual(data.skipped_strength_days, [{
+    date: '2026-10-19', week: 3, program_id: activeId, program_name: 'Bloque 2', day_id: 'day-a', day_name: 'Pierna', skipped_at: '2026-10-10T09:00:00Z',
+  }])
 })
 
 Deno.test('list_client_schedule validates the range before touching the database', async () => {

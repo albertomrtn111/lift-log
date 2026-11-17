@@ -32,17 +32,27 @@ export function addDays(key, days) {
 
 /**
  * @typedef {{ id: string; name: string | null; default_weekday: number | null }} TrainingDay
- * @typedef {{ effective_from: string | null; weeks: number | null; training_days: TrainingDay[] }} ActiveProgram
- * @typedef {{ day_id: string; scheduled_date: string; is_completed?: boolean | null }} ScheduledStrength
+ * @typedef {{ id?: string; effective_from: string | null; weeks: number | null; training_days: TrainingDay[] }} ActiveProgram
+ * @typedef {{ day_id: string; program_id?: string | null; scheduled_date: string; is_completed?: boolean | null }} ScheduledStrength
+ * @typedef {{ program_id: string; day_id: string; week_start: string; week_end: string }} SkippedWeek
+ *   Día que el coach quitó en una semana del programa (lunes a domingo de esa semana).
  */
+
+/** @param {SkippedWeek[]} skips @param {string | null | undefined} programId @param {string} dayId @param {string} dateKey */
+function isSkippedOn(skips, programId, dayId, dateKey) {
+  if (!programId) return false
+  return skips.some((skip) => skip.program_id === programId && skip.day_id === dayId
+    && dateKey >= skip.week_start && dateKey <= skip.week_end)
+}
 
 /**
  * Sesiones de fuerza de una fecha: las programadas a mano ese día y los días
  * del programa que caen ese día de la semana (si no se han movido esa semana).
- * @param {{ program: ActiveProgram | null; scheduled: ScheduledStrength[]; dateKey: string }} input
+ * Los días que el coach quitó esa semana no cuentan.
+ * @param {{ program: ActiveProgram | null; scheduled: ScheduledStrength[]; dateKey: string; skips?: SkippedWeek[] }} input
  * @returns {string[]} nombres de los días
  */
-export function strengthSessionsOn({ program, scheduled, dateKey }) {
+export function strengthSessionsOn({ program, scheduled, dateKey, skips = [] }) {
   const days = new Map((program?.training_days ?? []).map((day) => [day.id, day]))
   const weekStart = mondayOf(dateKey)
   const weekEnd = addDays(weekStart, 6)
@@ -54,6 +64,7 @@ export function strengthSessionsOn({ program, scheduled, dateKey }) {
   const names = []
   for (const session of scheduled) {
     if (session.scheduled_date !== dateKey || session.is_completed) continue
+    if (isSkippedOn(skips, session.program_id, session.day_id, dateKey)) continue
     names.push(days.get(session.day_id)?.name?.trim() || 'Sesión de fuerza')
   }
 
@@ -65,6 +76,7 @@ export function strengthSessionsOn({ program, scheduled, dateKey }) {
       const weekday = isoWeekday(dateKey)
       for (const day of program.training_days ?? []) {
         if (day.default_weekday !== weekday || movedThisWeek.has(day.id)) continue
+        if (isSkippedOn(skips, program.id, day.id, dateKey)) continue
         names.push(day.name?.trim() || 'Sesión de fuerza')
       }
     }

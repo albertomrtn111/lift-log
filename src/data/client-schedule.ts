@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { roundToDecimals } from '@/lib/format/number'
 import { hasRenderableCardioBlocks, resolveCardioPlanForDisplay } from '@/lib/cardio/structure'
+import { buildSkipSet, isDaySkipped, mondayOfDate, programWeekOfDate } from '@/lib/training/strength-week-skips'
+import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
 
 // ------------------------------------------------------------------
 // Types
@@ -131,6 +133,9 @@ export async function getClientWeeklySchedule(
         p.training_days?.some((d: any) => d.default_weekday != null)
     ) || null
 
+    // Días que el coach quitó en una semana concreta: esa semana no se muestran.
+    const skipSet = buildSkipSet(await loadStrengthSkips(supabase, clientId))
+
     if (activeProgram && activeProgram.training_days) {
         const programStart = new Date(activeProgram.effective_from + 'T12:00:00')
         const totalWeeks = activeProgram.weeks || 4
@@ -151,7 +156,7 @@ export async function getClientWeeklySchedule(
                 sessionDate.setDate(monday.getDate() + (day.default_weekday - 1))
                 const sessionDateStr = toDateStr(sessionDate)
 
-                if (sessionDateStr >= startStr && sessionDateStr <= endStr) {
+                if (sessionDateStr >= startStr && sessionDateStr <= endStr && !isDaySkipped(skipSet, activeProgram.id, day.id, week + 1)) {
                     strengthItems.push({
                         id: `virtual-${activeProgram.id}-${day.id}-w${week}`,
                         kind: 'strength',
@@ -198,6 +203,8 @@ export async function getClientWeeklySchedule(
         for (const s of realStrength as any[]) {
             const dayInfo = daysMap.get(s.day_id)
             const programInfo = programsMap.get(s.program_id) as any
+            // Quitado por el coach esa semana (salvo que ya lo hubiera hecho).
+            if (!s.is_completed && isDaySkipped(skipSet, s.program_id, s.day_id, programWeekOfDate(programInfo?.effective_from, s.scheduled_date))) continue
             realStrengthItems.push({
                 id: s.id,
                 kind: 'strength',
@@ -213,9 +220,10 @@ export async function getClientWeeklySchedule(
         }
     }
 
-    // Dedup: real sessions override virtual ones for the same day_id
-    const realDayIds = new Set(realStrengthItems.map(r => r.dayId))
-    const dedupedVirtual = strengthItems.filter(v => !realDayIds.has(v.dayId))
+    // Dedup: una sesión guardada sustituye al día de plantilla de su misma semana
+    // (no de todo el rango: en la vista de mes, mover un día no lo borra de las demás semanas).
+    const realDayWeeks = new Set((realStrength || []).map((r: any) => `${r.day_id}:${mondayOfDate(r.scheduled_date)}`))
+    const dedupedVirtual = strengthItems.filter(v => !realDayWeeks.has(`${v.dayId}:${mondayOfDate(v.date)}`))
     const allStrength = [...dedupedVirtual, ...realStrengthItems]
 
     // ----- 3. Cardio sessions -----
@@ -427,6 +435,25 @@ export async function autoMarkStrengthDayComplete(
     }
 
     const admin = createAdminClient()
+
+    // Un día que el coach quitó esa semana no se da por hecho (en la app no se muestra).
+    const { data: programRow } = await admin
+        .from('training_programs')
+        .select('effective_from')
+        .eq('id', programId)
+        .eq('client_id', clientId)
+        .maybeSingle()
+    const sessionWeek = programWeekOfDate(programRow?.effective_from, sessionDate)
+    if (sessionWeek) {
+        const { data: skip } = await admin
+            .from('strength_day_week_skips')
+            .select('id')
+            .eq('program_id', programId)
+            .eq('day_id', dayId)
+            .eq('week_index', sessionWeek)
+            .maybeSingle()
+        if (skip) return { success: false, error: 'Day removed by the coach for this week' }
+    }
 
     const { data: updatedSessions, error: updateError } = await admin
         .from('scheduled_strength_sessions')
@@ -643,12 +670,16 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
         })
     }
 
+    // Días que el coach quitó en una semana: la pantalla Fuerza no los muestra esa semana.
+    const skipRows = await loadStrengthSkips(supabase, clientId, [program.id])
+
     return {
         program: {
             id: program.id,
             name: program.name,
             totalWeeks: program.weeks || 4,
             effectiveFrom: program.effective_from,
+            skippedDays: skipRows.map((row) => ({ dayId: row.day_id, week: row.week_index })),
         },
         days: days.map((d: any) => ({
             id: d.id,

@@ -53,7 +53,10 @@ export function resolveRoutineInitialSelection({ program, days, today = new Date
   const weekDiff = Math.floor((todayWeekStart.getTime() - programWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000))
   const week = Math.min(Math.max(weekDiff + 1, 1), totalWeeks)
   const todayWeekday = today.getDay() === 0 ? 7 : today.getDay()
-  const selectedDay = orderedDays.find((day) => getDefaultWeekday(day) === todayWeekday) ?? firstDay
+  // Los días que el coach quitó esa semana no se preseleccionan.
+  const skipped = new Set((program?.skippedDays ?? []).filter((skip) => skip.week === week).map((skip) => skip.dayId))
+  const weekDays = orderedDays.filter((day) => !skipped.has(day.id))
+  const selectedDay = weekDays.find((day) => getDefaultWeekday(day) === todayWeekday) ?? weekDays[0] ?? firstDay
   const selectedWeekday = getDefaultWeekday(selectedDay)
 
   return {
