@@ -58,3 +58,18 @@ test('resolveRoutineInitialSelection keeps the last program week after the progr
     }
   )
 })
+
+test('resolveRoutineInitialSelection skips a day the coach removed in that week', () => {
+  assert.deepEqual(
+    resolveRoutineInitialSelection({
+      program: { ...program, skippedDays: [{ dayId: 'legs', week: 3 }, { dayId: 'torso', week: 2 }] },
+      days,
+      today: new Date('2026-06-15T12:00:00'),
+    }),
+    {
+      week: 3,
+      dayId: 'torso',
+      sessionDate: '2026-06-17',
+    }
+  )
+})

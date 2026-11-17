@@ -13,6 +13,7 @@ import {
   toUtcDate,
   type ToolHelpers,
 } from './shared.ts'
+import { loadSkippedDays } from './strength-skips.ts'
 
 type Server = any
 
@@ -45,6 +46,8 @@ type StrengthScheduleInput = {
   sessions: Row[]
   startDate: string
   endDate: string
+  // Filas de strength_day_week_skips: días que el coach quitó en una semana del programa.
+  skips?: Row[]
 }
 
 /**
@@ -55,8 +58,13 @@ type StrengthScheduleInput = {
  *   lunes de la semana de inicio, por default_weekday.
  * - Un día de plantilla se oculta si en esa semana hay una fila del mismo day_id:
  *   así una sesión reprogramada solo aparece en su fecha nueva.
+ * - Un día que el coach quitó en esa semana del programa sale con skipped_by_coach
+ *   (salvo una sesión ya completada): el atleta no lo ve y no es un fallo.
  */
-export function buildStrengthSchedule({ activePrograms, programs, sessions, startDate, endDate }: StrengthScheduleInput) {
+export function buildStrengthSchedule({ activePrograms, programs, sessions, startDate, endDate, skips = [] }: StrengthScheduleInput) {
+  const skipped = new Map(skips.map((row) => [`${row.program_id}:${row.day_id}:${row.week_index}`, row]))
+  const skipOf = (programId: string | null | undefined, dayId: string, week: number | null) =>
+    programId && week ? skipped.get(`${programId}:${dayId}:${week}`) ?? null : null
   const programById = new Map(programs.map((program) => [program.id, program]))
   const dayById = new Map<string, Row>()
   for (const program of programs) {
@@ -82,6 +90,7 @@ export function buildStrengthSchedule({ activePrograms, programs, sessions, star
 
   for (const slot of template) {
     if (sessions.some((session) => session.day_id === slot.trainingDay.id && sameWeek(session.scheduled_date, slot.date))) continue
+    const skip = skipOf(active!.id, slot.trainingDay.id, slot.week)
     items.push({
       kind: 'strength',
       date: slot.date,
@@ -98,6 +107,8 @@ export function buildStrengthSchedule({ activePrograms, programs, sessions, star
       rescheduled: false,
       original_date: null,
       extra_session: false,
+      skipped_by_coach: Boolean(skip),
+      skipped_at: skip?.created_at ?? null,
     })
   }
 
@@ -107,13 +118,15 @@ export function buildStrengthSchedule({ activePrograms, programs, sessions, star
     // Fecha que tenía ese día en la plantilla de la misma semana, si la había.
     const templateDate = template.find((slot) => slot.trainingDay.id === session.day_id && sameWeek(slot.date, session.scheduled_date))?.date ?? null
     const rescheduled = templateDate !== null && templateDate !== session.scheduled_date
+    const week = programWeek(program, session.scheduled_date)
+    const skip = session.is_completed === true ? null : skipOf(session.program_id, session.day_id, week)
     items.push({
       kind: 'strength',
       date: session.scheduled_date,
       program_id: session.program_id,
       program_name: program?.name ?? null,
       program_status: program?.status ?? null,
-      week: programWeek(program, session.scheduled_date),
+      week,
       day_id: session.day_id,
       day_name: trainingDay?.name ?? null,
       exercises: exercisesOf(trainingDay),
@@ -124,6 +137,8 @@ export function buildStrengthSchedule({ activePrograms, programs, sessions, star
       original_date: rescheduled ? templateDate : null,
       // Sesión añadida o duplicada que no sustituye a ningún día de la plantilla en esa semana.
       extra_session: templateDate === null,
+      skipped_by_coach: Boolean(skip),
+      skipped_at: skip?.created_at ?? null,
     })
   }
 
@@ -139,7 +154,7 @@ export function registerScheduleTools(server: Server, db: Db, helpers: ToolHelpe
     'list_client_schedule',
     {
       title: 'Consultar planificación',
-      description: 'Devuelve cardio, fuerza y eventos de un cliente dentro de un rango de hasta 120 días. La fuerza usa las sesiones programadas (fecha real, completada, reprogramada) y completa con la plantilla del programa activo, igual que el calendario de la app.',
+      description: 'Devuelve cardio, fuerza y eventos de un cliente dentro de un rango de hasta 120 días. La fuerza usa las sesiones programadas (fecha real, completada, reprogramada) y completa con la plantilla del programa activo, igual que el calendario de la app. Los días de fuerza que el coach quitó en una semana no están en items: van en skipped_strength_days (el atleta no los ve y no son fallos).',
       inputSchema: z.object({
         client_id: z.string().uuid(),
         start_date: isoDate,
@@ -164,7 +179,7 @@ export function registerScheduleTools(server: Server, db: Db, helpers: ToolHelpe
         const weekStart = mondayOf(start_date)
         const weekEnd = addDays(mondayOf(end_date), 6)
 
-        const [cardioResult, eventsResult, programsResult, sessions] = await Promise.all([
+        const [cardioResult, eventsResult, programsResult, sessions, skips] = await Promise.all([
           db
             .from('cardio_sessions')
             .select('id, scheduled_date, name, activity_type, training_type, description, target_distance_km, target_duration_min, target_pace, planned_structure, coach_notes, is_completed')
@@ -196,6 +211,7 @@ export function registerScheduleTools(server: Server, db: Db, helpers: ToolHelpe
             .lte('scheduled_date', weekEnd)
             .order('scheduled_date', { ascending: true })
             .order('id', { ascending: true }), 'las sesiones de fuerza programadas', { loadError: 'No se ha podido cargar la planificación.' }),
+          loadSkippedDays(db, coachId, client_id),
         ])
 
         const failed = [cardioResult, eventsResult, programsResult].find((item) => item.error)
@@ -221,18 +237,24 @@ export function registerScheduleTools(server: Server, db: Db, helpers: ToolHelpe
         for (const event of eventsResult.data ?? []) {
           items.push({ kind: 'event', date: event.event_date, ...event })
         }
-        items.push(...buildStrengthSchedule({
+        const strength = buildStrengthSchedule({
           activePrograms,
           programs: [...activePrograms, ...otherPrograms],
           sessions,
           startDate: start_date,
           endDate: end_date,
+          skips,
+        })
+        items.push(...strength.filter((item) => !item.skipped_by_coach))
+        const skippedStrengthDays = strength.filter((item) => item.skipped_by_coach).map((item) => ({
+          date: item.date, week: item.week, program_id: item.program_id, program_name: item.program_name,
+          day_id: item.day_id, day_name: item.day_name, skipped_at: item.skipped_at,
         }))
 
         // sort es estable: dentro de cada día la fuerza conserva el orden de buildStrengthSchedule.
         items.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind))
         log.result_count = items.length
-        return { client_id, start_date, end_date, items }
+        return { client_id, start_date, end_date, items, skipped_strength_days: skippedStrengthDays }
       })
     },
   )

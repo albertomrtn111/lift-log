@@ -35,7 +35,8 @@ export function findStrengthSession(program, trainingDay, weekIndex, sessions) {
 }
 
 /** @param {number[] | null} confirmedWeekIndices */
-export function programProgress(program, days, sessions, asOfDate, confirmedWeekIndices = null) {
+// skipped: filas de strength_day_week_skips (día quitado por el coach en una semana). No cuentan como esperadas.
+export function programProgress(program, days, sessions, asOfDate, confirmedWeekIndices = null, skipped = []) {
   const weeks = Number(program.total_weeks ?? program.weeks)
   const validWeeks = Number.isInteger(weeks) && weeks > 0 ? weeks : null
   const start = program.effective_from
@@ -51,15 +52,22 @@ export function programProgress(program, days, sessions, asOfDate, confirmedWeek
   const completedKeys = new Set(completed.map((session) => `${session.day_id}:${programWeekForDate(start, session.scheduled_date)}`))
   const recurringDays = days.filter((trainingDay) => Number.isInteger(Number(trainingDay.default_weekday))
     && Number(trainingDay.default_weekday) >= 1 && Number(trainingDay.default_weekday) <= 7)
+  const skippedKeys = new Set(skipped.filter((row) => !row.program_id || row.program_id === program.id)
+    .map((row) => `${row.day_id}:${row.week_index}`))
   let totalExpected = 0
   let pastUnconfirmed = 0
   let futureExpected = 0
+  let skippedByCoach = 0
   if (validWeeks && start) {
     const firstMonday = monday(start)
     for (let week = 1; week <= validWeeks; week++) {
       for (const trainingDay of recurringDays) {
         const expectedDate = addDays(firstMonday, (week - 1) * 7 + Number(trainingDay.default_weekday) - 1)
         if (expectedDate < start || (end && expectedDate > end)) continue
+        if (skippedKeys.has(`${trainingDay.id}:${week}`) && !completedKeys.has(`${trainingDay.id}:${week}`)) {
+          skippedByCoach++
+          continue
+        }
         totalExpected++
         if (completedKeys.has(`${trainingDay.id}:${week}`)) continue
         if (expectedDate < asOfDate) pastUnconfirmed++
@@ -83,6 +91,7 @@ export function programProgress(program, days, sessions, asOfDate, confirmedWeek
     expected_sessions_from_current_template: validWeeks ? totalExpected : null,
     past_sessions_without_completion_record: pastUnconfirmed,
     future_expected_sessions: futureExpected,
+    sessions_skipped_by_coach: skippedByCoach,
     omitted_sessions: null,
     omitted_sessions_reason: 'No existe un estado de sesión omitida; una fecha pasada sin confirmación no demuestra que el atleta faltara.',
     deload_week_indices: null,

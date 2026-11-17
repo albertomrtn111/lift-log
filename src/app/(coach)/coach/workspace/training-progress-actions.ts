@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
 import {
     analyzeTrainingProgress,
     type TrainingProgressAIAnalysis,
@@ -45,6 +46,9 @@ export interface ProgressDay {
     id: string
     name: string
     order: number
+    defaultWeekday: number | null
+    /** Semanas del programa en las que el coach quitó este día (strength_day_week_skips) */
+    skippedWeeks: number[]
     exercises: ProgressExercise[]
 }
 
@@ -114,7 +118,7 @@ export async function getTrainingProgressData(
         // 1. Get program info
         const { data: programRow, error: progErr } = await supabase
             .from('training_programs')
-            .select('id, name, status, total_weeks, effective_from, effective_to')
+            .select('id, client_id, name, status, total_weeks, effective_from, effective_to')
             .eq('id', programId)
             .single()
 
@@ -132,11 +136,20 @@ export async function getTrainingProgressData(
         // 2. Get days
         const { data: daysRaw, error: daysErr } = await supabase
             .from('training_days')
-            .select('id, name, order_index')
+            .select('id, name, order_index, default_weekday')
             .eq('program_id', programId)
             .order('order_index', { ascending: true })
 
         if (daysErr) throw new Error(daysErr.message)
+
+        // Días quitados por el coach en una semana: se marcan en el cuadrante y no cuentan como fallo.
+        const skipRows = await loadStrengthSkips(supabase, programRow.client_id, [programId])
+        const skippedWeeksByDay = new Map<string, number[]>()
+        for (const row of skipRows) {
+            const list = skippedWeeksByDay.get(row.day_id) || []
+            list.push(row.week_index)
+            skippedWeeksByDay.set(row.day_id, list)
+        }
 
         // 3. Get exercises for all days
         const dayIds = (daysRaw || []).map((d: any) => d.id)
@@ -211,6 +224,8 @@ export async function getTrainingProgressData(
             id: d.id,
             name: d.name || 'Día',
             order: d.order_index,
+            defaultWeekday: d.default_weekday ?? null,
+            skippedWeeks: (skippedWeeksByDay.get(d.id) || []).sort((a, b) => a - b),
             exercises: exercisesByDay.get(d.id) || [],
         }))
 

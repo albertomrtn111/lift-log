@@ -9,7 +9,7 @@ import { MobileExerciseCards } from '@/components/routine/MobileExerciseCards'
 import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExercise, ExerciseSet } from '@/types/training'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Dumbbell } from 'lucide-react'
+import { CalendarX2, Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet, getAllSetsForProgram } from '@/data/exercise-sets'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
@@ -83,7 +83,20 @@ export default function RoutinePageClient({
         void refreshSets()
     }, [refreshSets])
 
-    const dayExercises = exercises.filter(e => e.dayId === selectedDayId)
+    // Días que el coach quitó en la semana elegida: esa semana no aparecen.
+    const skippedThisWeek = new Set(
+        (program.skippedDays ?? []).filter(skip => skip.week === selectedWeek).map(skip => skip.dayId)
+    )
+    const weekDays = days.filter(day => !skippedThisWeek.has(day.id))
+    const weekDayIds = weekDays.map(day => day.id).join(',')
+    const visibleDayId = weekDays.some(day => day.id === selectedDayId) ? selectedDayId : (weekDays[0]?.id ?? '')
+
+    // Si el día elegido está quitado esa semana, pasa al primero que sí toca.
+    useEffect(() => {
+        if (visibleDayId && visibleDayId !== selectedDayId) setSelectedDayId(visibleDayId)
+    }, [visibleDayId, selectedDayId, weekDayIds])
+
+    const dayExercises = weekDays.length > 0 ? exercises.filter(e => e.dayId === visibleDayId) : []
 
     const getSessionDate = useCallback(() => {
         if (initialSessionDate && selectedDayId === initialDayId && selectedWeek === initialWeek) {
@@ -255,7 +268,7 @@ export default function RoutinePageClient({
         onDeleteSet: handleDeleteSet,
     }
 
-    const selectedDay = days.find(day => day.id === selectedDayId)
+    const selectedDay = days.find(day => day.id === visibleDayId)
     const sessionDate = getSessionDate()
     const sessionDateLabel = sessionDate
         ? capitalize(format(new Date(`${sessionDate}T12:00:00`), "EEEE d 'de' MMMM", { locale: es }))
@@ -282,11 +295,20 @@ export default function RoutinePageClient({
                         onSelectWeek={setSelectedWeek}
                     />
                 </div>
-                <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={setSelectedDayId} />
+                {weekDays.length > 0 && (
+                    <DayTabs days={weekDays} selectedDayId={visibleDayId} onSelectDay={setSelectedDayId} />
+                )}
             </div>
 
             <div className="pb-6 pt-4">
-                {dayExercises.length > 0 ? (
+                {weekDays.length === 0 ? (
+                    <ClientEmptyState
+                        icon={CalendarX2}
+                        title="Semana sin fuerza"
+                        description="Tu coach ha quitado los entrenos de fuerza de esta semana."
+                        className="mx-4"
+                    />
+                ) : dayExercises.length > 0 ? (
                     <>
                         {/* Se decide por CSS (no con useIsMobile) para que en móvil no
                             se pinte primero la tabla de escritorio y luego salte */}

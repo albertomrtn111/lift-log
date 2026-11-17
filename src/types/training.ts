@@ -8,6 +8,8 @@ export interface TrainingProgram {
   totalWeeks: number;
   effectiveFrom: string;
   effectiveTo?: string;
+  /** Días que el coach quitó en una semana concreta (no se muestran esa semana) */
+  skippedDays?: { dayId: string; week: number }[];
 }
 
 export interface TrainingDay {
@@ -88,6 +90,8 @@ export interface MacroPlan {
   cardioGoal?: string;
   effectiveFrom: string;
   effectiveTo?: string;
+  /** Día planificado en el calendario del coach (etiqueta o nombre del bloque) */
+  plannedLabel?: string | null;
   day_type_config?: {
     training: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
     rest: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };

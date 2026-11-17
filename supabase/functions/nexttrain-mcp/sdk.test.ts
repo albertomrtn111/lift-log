@@ -10,6 +10,7 @@ import { outputSchemas, withOutputSchemas } from './output-schemas.ts'
 import { registerPrompts } from './prompts.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { registerSeasonTools } from './season.ts'
+import { registerStrengthSkipTools } from './strength-skips.ts'
 import { jsonResult, type ToolHelpers, toolError } from './shared.ts'
 
 // Comprueba con el SDK real lo que las demás pruebas simulan: los esquemas se publican
@@ -44,6 +45,7 @@ function server() {
   registerAgendaTools(instance, db, helpers)
   registerCoachWriteTools(instance, db, helpers)
   registerSeasonTools(instance, db, helpers)
+  registerStrengthSkipTools(instance, db, helpers)
   registerPrompts(instance)
   return instance
 }

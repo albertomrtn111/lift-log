@@ -206,6 +206,8 @@ const PLAN_CHANGE_TOOLS: Record<string, 'training' | 'diet' | 'macros' | 'cardio
   create_strength_program: 'training',
   update_strength_program: 'training',
   update_strength_program_days: 'training',
+  skip_strength_day_week: 'training',
+  restore_strength_day_week: 'training',
   create_diet_plan: 'diet',
   update_diet_plan: 'diet',
   create_macro_plan: 'macros',

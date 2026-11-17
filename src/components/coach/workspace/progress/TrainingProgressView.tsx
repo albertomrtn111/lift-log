@@ -30,6 +30,7 @@ import {
     type TrainingProgressData,
 } from '@/app/(coach)/coach/workspace/training-progress-actions'
 import type { TrainingProgressAIAnalysis } from '@/lib/ai/analyze-training-progress'
+import { restoreStrengthDayWeekAction } from '@/app/(coach)/coach/workspace/strength-skip-actions'
 
 interface TrainingProgressViewProps {
     clientId: string
@@ -81,6 +82,17 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
         }
         setLoadingData(false)
     }, [])
+
+    const restoreSkip = useCallback(async (dayId: string, week: number) => {
+        if (!selectedProgramId) return
+        const result = await restoreStrengthDayWeekAction({ clientId, programId: selectedProgramId, dayId, weekIndex: week })
+        if (result.success) {
+            toast({ title: 'Día restaurado', description: `«${result.dayName}» vuelve a la semana ${result.weekIndex}.` })
+            void loadProgressData(selectedProgramId)
+        } else {
+            toast({ title: 'No se pudo restaurar', description: result.error, variant: 'destructive' })
+        }
+    }, [clientId, selectedProgramId, loadProgressData, toast])
 
     useEffect(() => {
         if (selectedProgramId) {
@@ -308,6 +320,7 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
                         <ProgressionTable
                             days={progressData.days}
                             maxWeek={progressData.maxWeek}
+                            onRestoreSkip={restoreSkip}
                         />
                     )}
                 </>

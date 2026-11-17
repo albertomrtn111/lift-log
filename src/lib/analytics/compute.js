@@ -17,6 +17,7 @@ import { STALE_LOG_DAYS, WINDOW_DAYS } from './metrics.js'
  * @typedef {{
  *   id: string
  *   programId: string
+ *   dayId?: string | null
  *   name: string
  *   exerciseKey: string
  *   group: string | null
@@ -25,12 +26,15 @@ import { STALE_LOG_DAYS, WINDOW_DAYS } from './metrics.js'
  *   prescribedRir: number | null
  * }} AnalyticsExercise
  * @typedef {{ exerciseId: string, weekIndex: number, weightKg: number, reps: number, rir: number | null, day: string }} AnalyticsSet
+ * @typedef {{ programId: string, dayId: string, date: string }} AnalyticsSkippedDay
+ *   Día de fuerza que el coach quitó en una semana, con la fecha en la que tocaba.
  * @typedef {{
  *   today: string
  *   athletes: AnalyticsAthlete[]
  *   programs: AnalyticsProgram[]
  *   exercises: AnalyticsExercise[]
  *   sets: AnalyticsSet[]
+ *   skippedDays?: AnalyticsSkippedDay[]
  * }} AnalyticsInput
  * @typedef {{
  *   id: string
@@ -94,6 +98,10 @@ function indexInput(input) {
   const exercisesByProgram = new Map()
   for (const exercise of input.exercises) pushTo(exercisesByProgram, exercise.programId, exercise)
 
+  /** @type {Map<string, AnalyticsSkippedDay[]>} */
+  const skipsByProgram = new Map()
+  for (const skip of input.skippedDays ?? []) pushTo(skipsByProgram, skip.programId, skip)
+
   /** @type {Map<string, AnalyticsSet[]>} */
   const setsByClient = new Map()
   /** @type {Map<string, AnalyticsSet[]>} */
@@ -106,7 +114,7 @@ function indexInput(input) {
     pushTo(setsByExercise, set.exerciseId, set)
   }
 
-  return { activeProgramByClient, exercisesByProgram, setsByClient, setsByExercise }
+  return { activeProgramByClient, exercisesByProgram, skipsByProgram, setsByClient, setsByExercise }
 }
 
 /**
@@ -114,6 +122,8 @@ function indexInput(input) {
  * prescritas en la ventana (28 días, o desde que empezó el programa). El
  * programa empieza en effective_from o en su primera serie si es anterior:
  * reactivar un programa reescribe effective_from aunque ya llevara semanas.
+ * Un día que el coach quitó en una semana no cuenta como prescrito: sus series
+ * se descuentan si su fecha cae en la ventana.
  */
 function strengthAdherence(ctx, program, today) {
   if (!program) return null
@@ -131,7 +141,14 @@ function strengthAdherence(ctx, program, today) {
   if (days < 7) return null
 
   const done = sets.filter(set => set.day >= start && set.day <= today).length
-  return done / (prescribedPerWeek * days / 7)
+  const skippedPrescribed = (ctx.skipsByProgram.get(program.id) ?? [])
+    .filter(skip => skip.date >= start && skip.date <= today)
+    .reduce((sum, skip) => sum + exercises
+      .filter(exercise => exercise.dayId === skip.dayId)
+      .reduce((daySum, exercise) => daySum + (exercise.prescribedSets ?? 0), 0), 0)
+  const expected = prescribedPerWeek * days / 7 - skippedPrescribed
+  if (expected <= 0) return null
+  return done / expected
 }
 
 /** Mediana del Δ de bloque de los ejercicios del programa (como Progreso) */

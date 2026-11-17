@@ -1,6 +1,8 @@
 import { z } from 'npm:zod@4.3.6'
 import { cardioDiscipline, speedKmh, speedFromPaceSeconds, usesSpeed } from '../../../src/lib/cardio/discipline.js'
 import { findStrengthSession, groupStrengthResults, programProgress, programTransitions, setEvidence } from './strength-progress.js'
+import { programDayDate } from '../../../src/lib/training/strength-week-skips.js'
+import { loadSkippedDays } from './strength-skips.ts'
 import {
   addDays,
   allRows,
@@ -495,13 +497,23 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     const asOfDate = as_of_date ?? today
     const context = await strengthContext(db, coachId, client_id, program_id, program_offset, program_limit)
     const programIds = context.programs.map((item) => item.id)
-    const [sessions, timelinePrograms] = await Promise.all([
+    const [sessions, timelinePrograms, skippedRows] = await Promise.all([
       inBatches(db, 'scheduled_strength_sessions', 'id, program_id, day_id, scheduled_date, is_completed', 'program_id', programIds,
         (q) => q.eq('coach_id', coachId).eq('client_id', client_id).order('scheduled_date', { ascending: false })),
       allRows(() => db.from('training_programs').select('id, name, status, effective_from, effective_to, weeks, total_weeks, created_at')
         .eq('coach_id', coachId).eq('client_id', client_id).order('effective_from', { ascending: true }).order('id', { ascending: true }), 'la cronología de programas'),
+      loadSkippedDays(db, coachId, client_id, programIds),
     ])
     const transitions = programTransitions(timelinePrograms)
+    // Días que el coach quitó en una semana concreta (strength_day_week_skips), con la fecha en que tocaban.
+    const skippedOf = (program: any) => skippedRows.filter((row) => row.program_id === program.id).map((row) => {
+      const trainingDay = context.days.find((item) => item.id === row.day_id)
+      return {
+        day_id: row.day_id, day_name: trainingDay?.name ?? null, week_index: row.week_index,
+        planned_date: programDayDate(program.effective_from, row.week_index, trainingDay?.default_weekday),
+        reason: row.reason ?? null, skipped_at: row.created_at,
+      }
+    })
     if (!program_id) {
       return {
         client_id, as_of_date: asOfDate,
@@ -511,7 +523,8 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
           return { ...program, day_count: context.days.filter((item) => item.program_id === program.id).length,
             exercise_count: context.exercises.filter((item) => item.program_id === program.id).length,
             scheduled_sessions: ownSessions.length, completed_sessions: ownSessions.filter((item) => item.is_completed).length,
-            progress: programProgress(program, ownDays, ownSessions, asOfDate) }
+            skipped_days: skippedOf(program),
+            progress: programProgress(program, ownDays, ownSessions, asOfDate, null, skippedRows) }
         }),
         program_changes: transitions,
         older_programs_available: context.hasMorePrograms,
@@ -527,14 +540,15 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
       ...trainingDay, exercises: context.exercises.filter((exercise) => exercise.day_id === trainingDay.id),
     }))
     return {
-      client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks) }, days, sessions,
+      client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks, skippedRows) }, days, sessions,
+      skipped_days: skippedOf(program),
       program_changes: transitions.filter((event) => event.from_program_id === program_id || event.to_program_id === program_id),
       possible_deload_blocks: timelinePrograms.filter((item) => /descarga|deload/i.test(item.name || '')).map((item) => ({ id: item.id, name: item.name, effective_from: item.effective_from, inference_source: 'program_name' })),
       ...strengthResultPage(detail.results.slice(result_offset, result_offset + result_limit), format),
       has_more_results: detail.results.length > result_offset + result_limit,
       next_result_offset: detail.results.length > result_offset + result_limit ? result_offset + result_limit : null,
       result_source_counts: detail.source_counts, result_data_quality: detail.data_quality,
-      note: 'Las series prescritas aparecen en days. Los resultados (workouts o results) separan ejecución confirmada de valores editados sin confirmar. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
+      note: 'Las series prescritas aparecen en days. Los resultados (workouts o results) separan ejecución confirmada de valores editados sin confirmar. skipped_days son los días que el coach quitó en una semana: el atleta no los ve y no son fallos. No existe un estado fiable de omisión ni semanas de descarga estructuradas.',
     }
   }))
 }

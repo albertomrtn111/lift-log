@@ -26,7 +26,10 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas. Cada actividad trae `discipline` (`running`, `bicicleta`, `natacion` o `hibrido`); en bicicleta la intensidad es `speed_kmh` y `pace` es `null`.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
 - `get_diet_plan`: detalle completo de una dieta por ID, también archivada o borrador; devuelve `updated_at` para editar.
-- `get_nutrition_history`: historial paginado de cada cambio de nutrición. `timeline` mezcla macros y dietas con fechas, duración, motivo del cambio (`change_note`) y peso al empezar y al terminar; `macro_plans` y `diet_plans` dan el detalle.
+- `get_nutrition_calendar`: qué toca cada día entre dos fechas (máx. 62): objetivo, etiqueta y dieta, y si sale de un día planificado (`planned`) o del plan base (`base`).
+- `plan_nutrition_days`: planifica días concretos sobre el plan base, con `days` (cada día su objetivo) o `generate` (de `start` a `end`, desde el plan base o un objetivo, con progresión `weekly` o `within_week`). `dry_run` calcula sin guardar; no toca días pasados; si pisa días ya planificados pide `replace_conflicts`.
+- `clear_nutrition_days`: devuelve esas fechas al plan base.
+- `get_nutrition_history`: historial paginado de cada cambio de nutrición. `timeline` mezcla macros, dietas y bloques del calendario con fechas, duración, motivo del cambio (`change_note`) y peso al empezar y al terminar; `macro_plans` y `diet_plans` dan el detalle.
 - `search_foods`: catálogo de alimentos accesibles, macros por ración y peso por unidad.
 - `preview_diet_plan`: calcula y ajusta una dieta por opciones sin guardarla.
 - `create_macro_plan` / `update_macro_plan`: fija o edita los objetivos nutricionales (kcal y macros), simples o diferentes en entreno y descanso, con fecha de inicio y notas. Al crear uno, el anterior se cierra el día previo y queda en el historial; `change_note` guarda el motivo del cambio.
@@ -42,6 +45,7 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `create_strength_program`: crea un programa de fuerza completo en una sola transacción, solo con ejercicios de la biblioteca; por defecto queda en borrador.
 - `update_strength_program`: cambia nombre, semanas, fecha de inicio o estado (activar, archivar, volver a borrador) de un programa de fuerza.
 - `update_strength_program_days`: reemplaza los días y ejercicios de un programa conservando los identificadores y los resultados.
+- `skip_strength_day_week` / `restore_strength_day_week`: quita un día del programa de fuerza solo en una semana (por `week` o por cualquier `date` de esa semana) y lo deshace. Ver «Días quitados por el coach».
 - `save_review_draft`: guarda en borrador el resumen interno y el mensaje para el cliente de la revisión de un check-in.
 - `create_coach_task`: añade una tarea de seguimiento.
 - `list_coach_tasks` / `update_coach_task`: lista las tareas (por defecto, pendientes), las edita, aplaza, completa o reabre.
@@ -458,3 +462,14 @@ No requiere migraciones. Verificación: `deno test supabase/functions/nexttrain-
 
 Deno debe ejecutarse con `--node-modules-dir=none`: sin esa opción detecta el `package.json` de la web y busca las dependencias `npm:` en `node_modules`.
 
+## Días quitados por el coach (strength_day_week_skips)
+
+El coach puede quitar un día de fuerza solo en una semana del programa (por ejemplo, la pierna de la semana 3). Se guarda una fila en `strength_day_week_skips` (programa, día y semana del programa; la semana 1 es la de `effective_from`). El programa, sus series y las demás semanas no cambian. Restaurar borra la fila.
+
+- `skip_strength_day_week`: `client_id`, `program_id`, `day_id` y `week` o `date` (una de las dos). `reason` es opcional y solo lo ve el coach. No deja quitar un día que el atleta ya entrenó esa semana (sesión completada o series confirmadas). Repetirlo devuelve `already_skipped=true`.
+- `restore_strength_day_week`: mismos datos. `was_skipped` indica si estaba quitado.
+- `list_client_schedule`: los días quitados no salen en `items`; van en `skipped_strength_days` con su fecha, semana, programa y día. Una sesión ya completada no se considera quitada.
+- `get_program_history`: cada programa trae `skipped_days` y su `progress` no los cuenta como esperados (`sessions_skipped_by_coach`).
+- Las dos herramientas avisan al atleta como cualquier cambio de entrenamiento (`notification_outbox`, tipo `training`).
+
+En la app: el coach los quita y restaura desde Planificación (menú del día, «Quitar solo esta semana») y los ve tachados en el cuadrante de Progreso. El atleta no los ve esa semana en Fuerza, Plan ni en los avisos de «Hoy toca» y del resumen semanal, y la adherencia de fuerza de Analítica no los cuenta como series prescritas.

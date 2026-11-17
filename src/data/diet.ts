@@ -115,6 +115,8 @@ export async function getActiveDietPlan(clientId: string): Promise<DBDietPlan | 
         .from('diet_plans')
         .select('*')
         .eq('client_id', clientId)
+        // Ni borradores ni dietas programadas para días concretos del calendario
+        .not('status', 'in', '(draft,scheduled)')
         .lte('effective_from', today)
         .or(`effective_to.is.null,effective_to.gte.${today}`)
         .order('effective_from', { ascending: false })

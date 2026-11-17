@@ -57,7 +57,22 @@ function isPlanActiveOnDate(plan, date) {
   return true
 }
 
-function getTargetForDate(macroPlans, date, dayType) {
+function targetFromPlan(plan, dayType) {
+  const config = parseDayTypeConfig(plan.day_type_config)
+  const dayTarget = config?.[dayType]
+  return {
+    kcal: toNumber(dayTarget?.kcal ?? plan.kcal),
+    protein_g: toNumber(dayTarget?.protein_g ?? plan.protein_g),
+    carbs_g: toNumber(dayTarget?.carbs_g ?? plan.carbs_g),
+    fat_g: toNumber(dayTarget?.fat_g ?? plan.fat_g),
+  }
+}
+
+function getTargetForDate(macroPlans, date, dayType, dayTargets) {
+  // Calendario (nutrition_targets_for): manda lo planificado ese día o el plan base.
+  const resolved = dayTargets?.get(date)
+  if (resolved) return resolved.source === 'none' ? null : targetFromPlan(resolved, dayType)
+
   const plan = [...(macroPlans || [])]
     .filter((candidate) => isPlanActiveOnDate(candidate, date))
     .sort((a, b) => {
@@ -67,16 +82,7 @@ function getTargetForDate(macroPlans, date, dayType) {
     })[0]
 
   if (!plan) return null
-
-  const config = parseDayTypeConfig(plan.day_type_config)
-  const dayTarget = config?.[dayType]
-
-  return {
-    kcal: toNumber(dayTarget?.kcal ?? plan.kcal),
-    protein_g: toNumber(dayTarget?.protein_g ?? plan.protein_g),
-    carbs_g: toNumber(dayTarget?.carbs_g ?? plan.carbs_g),
-    fat_g: toNumber(dayTarget?.fat_g ?? plan.fat_g),
-  }
+  return targetFromPlan(plan, dayType)
 }
 
 function getPct(actual, target) {
@@ -181,6 +187,7 @@ function getDayStatus(day) {
  *   entries?: any[],
  *   daySettings?: any[],
  *   macroPlans?: any[],
+ *   dayTargets?: any[],
  *   dateFrom: string,
  *   dateTo: string
  * }} input
@@ -189,9 +196,11 @@ export function buildDietProgressData({
   entries = [],
   daySettings = [],
   macroPlans = [],
+  dayTargets = [],
   dateFrom,
   dateTo,
 }) {
+  const targetsByDate = new Map(dayTargets.map((row) => [row.day, row]))
   const settingsByDate = new Map(daySettings.map((setting) => [setting.log_date, setting.day_type]))
   const entriesByDate = new Map()
 
@@ -215,7 +224,7 @@ export function buildDietProgressData({
       carbs_g: round(acc.carbs_g + meal.totals.carbs_g),
       fat_g: round(acc.fat_g + meal.totals.fat_g),
     }), getEmptyTotals())
-    const target = getTargetForDate(macroPlans, date, dayType)
+    const target = getTargetForDate(macroPlans, date, dayType, targetsByDate)
     const day = {
       date,
       dayType,

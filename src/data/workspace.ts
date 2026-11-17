@@ -619,6 +619,7 @@ export async function getActiveDietPlan(coachId: string, clientId: string): Prom
         .select('*')
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
+        .not('status', 'in', '(draft,scheduled)')
         .lte('effective_from', today)
         .or(`effective_to.is.null,effective_to.gte.${today}`)
         .order('effective_from', { ascending: false })

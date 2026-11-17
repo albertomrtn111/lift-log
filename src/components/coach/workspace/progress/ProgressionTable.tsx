@@ -12,6 +12,8 @@ import {
     Minus,
     Dumbbell,
     Trophy,
+    CalendarX2,
+    RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -72,14 +74,17 @@ function formatDeltaPct(delta: number): string {
 interface ProgressionTableProps {
     days: ProgressDay[]
     maxWeek: number
+    /** Restaurar un día que el coach quitó en una semana */
+    onRestoreSkip?: (dayId: string, week: number) => void
 }
 
-export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
+export function ProgressionTable({ days, maxWeek, onRestoreSkip }: ProgressionTableProps) {
     // Recortar las semanas futuras sin datos: la tabla termina en la última
-    // semana con algo registrado (mínimo 1 columna).
+    // semana con algo registrado o con un día quitado por el coach (mínimo 1 columna).
     const lastWeekWithData = useMemo(() => {
         let last = 0
         for (const day of days) {
+            for (const week of day.skippedWeeks ?? []) if (week > last) last = week
             for (const exercise of day.exercises) {
                 for (const key of Object.keys(exercise.setsByWeek)) {
                     const week = Number(key)
@@ -96,6 +101,19 @@ export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
 
     // Resumen ejecutivo del bloque
     const summary = useMemo(() => summarizeBlockProgress(days), [days])
+
+    // Semanas en las que el coach quitó todos los días: no cuentan como semanas por registrar.
+    const fullySkippedWeeks = useMemo(() => {
+        const withWeekday = days.filter(day => day.defaultWeekday != null)
+        const pool = withWeekday.length > 0 ? withWeekday : days
+        if (pool.length === 0) return 0
+        let count = 0
+        for (let week = 1; week <= maxWeek; week++) {
+            if (pool.every(day => (day.skippedWeeks ?? []).includes(week))) count++
+        }
+        return count
+    }, [days, maxWeek])
+    const weeksToTrack = Math.max(maxWeek - fullySkippedWeeks, summary.weeksTracked)
 
     // All days collapsed state: default all expanded
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -118,7 +136,7 @@ export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
                         <p className="text-xs text-muted-foreground">Semanas registradas</p>
                         <p className="mt-1 text-xl font-bold tabular-nums">
                             {summary.weeksTracked}
-                            <span className="text-sm font-normal text-muted-foreground"> / {maxWeek}</span>
+                            <span className="text-sm font-normal text-muted-foreground"> / {weeksToTrack}</span>
                         </p>
                     </Card>
                     <Card className="p-3.5">
@@ -192,6 +210,7 @@ export function ProgressionTable({ days, maxWeek }: ProgressionTableProps) {
                                         weeks={weeks}
                                         isCollapsed={collapsed.has(day.id)}
                                         onToggle={() => toggle(day.id)}
+                                        onRestoreSkip={onRestoreSkip}
                                     />
                                 ))}
                             </tbody>
@@ -217,12 +236,15 @@ function DayGroup({
     weeks,
     isCollapsed,
     onToggle,
+    onRestoreSkip,
 }: {
     day: ProgressDay
     weeks: number[]
     isCollapsed: boolean
     onToggle: () => void
+    onRestoreSkip?: (dayId: string, week: number) => void
 }) {
+    const skipped = new Set(day.skippedWeeks ?? [])
     return (
         <>
             {/* Day header row */}
@@ -246,9 +268,33 @@ function DayGroup({
                         </span>
                     </div>
                 </td>
-                {/* Empty cells for the week + delta columns */}
+                {/* Semana a semana: vacío, o la marca de día quitado por el coach */}
                 {weeks.map(w => (
-                    <td key={w} className="bg-muted/40" />
+                    skipped.has(w) ? (
+                        <td key={w} className="nt-skipped-stripes bg-muted/40 px-2 py-1.5 text-center">
+                            <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-border bg-background/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                <CalendarX2 className="h-3 w-3 shrink-0" />
+                                <span className="truncate">Quitado por el coach</span>
+                                {onRestoreSkip && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="-mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-muted"
+                                                onClick={(e) => { e.stopPropagation(); onRestoreSkip(day.id, w) }}
+                                                aria-label={`Restaurar ${day.name} en la semana ${w}`}
+                                            >
+                                                <RotateCcw className="h-3 w-3" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" className="text-xs">Restaurar el día en esta semana</TooltipContent>
+                                    </Tooltip>
+                                )}
+                            </span>
+                        </td>
+                    ) : (
+                        <td key={w} className="bg-muted/40" />
+                    )
                 ))}
                 <td className="bg-muted/40" />
             </tr>
@@ -259,6 +305,7 @@ function DayGroup({
                     key={exercise.id}
                     exercise={exercise}
                     weeks={weeks}
+                    skippedWeeks={skipped}
                 />
             ))}
         </>
@@ -272,9 +319,11 @@ function DayGroup({
 function ExerciseRow({
     exercise,
     weeks,
+    skippedWeeks,
 }: {
     exercise: ProgressExercise
     weeks: number[]
+    skippedWeeks: Set<number>
 }) {
     const blockDelta = getBlockDeltaPct(exercise)
     const blockTrend = deltaToTrend(blockDelta)
@@ -298,12 +347,16 @@ function ExerciseRow({
             {/* Set cells per week */}
             {weeks.map(w => {
                 const sets = exercise.setsByWeek[w] || []
-                const prevSets = w > 1 ? (exercise.setsByWeek[w - 1] || []) : []
+                // Una semana quitada por el coach no rompe la comparación: se salta hacia atrás.
+                let prevWeek = w - 1
+                while (prevWeek >= 1 && skippedWeeks.has(prevWeek) && (exercise.setsByWeek[prevWeek] || []).length === 0) prevWeek--
+                const prevSets = prevWeek >= 1 ? (exercise.setsByWeek[prevWeek] || []) : []
                 return (
                     <SetCell
                         key={w}
                         sets={sets}
                         prevSets={prevSets}
+                        skipped={skippedWeeks.has(w)}
                     />
                 )
             })}
@@ -346,10 +399,23 @@ const TREND_STYLES: Record<Trend, string> = {
 function SetCell({
     sets,
     prevSets,
+    skipped = false,
 }: {
     sets: ProgressExerciseSet[]
     prevSets: ProgressExerciseSet[]
+    skipped?: boolean
 }) {
+    if (skipped && sets.length === 0) {
+        return (
+            <td
+                className="nt-skipped-stripes bg-muted/30 px-2 py-2 text-center text-muted-foreground/60"
+                title="Quitado por el coach esta semana"
+            >
+                <span className="line-through" aria-label="Quitado por el coach esta semana">—</span>
+            </td>
+        )
+    }
+
     if (sets.length === 0) {
         return (
             <td className="text-center px-2 py-2 text-muted-foreground/40">

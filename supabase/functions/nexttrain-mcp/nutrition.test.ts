@@ -42,7 +42,14 @@ function fixture() {
       }
       return query
     },
-    rpc(name: string, args: any) { calls.push({ name, args }); return Promise.resolve({ data: { id: planId, ...args.p_payload }, error: null }) },
+    rpc(name: string, args: any) {
+      // Lectura del calendario: no cuenta como escritura
+      if (name === 'nutrition_targets_for') return Promise.resolve({ data: (tables.calendar ?? []).filter(row => row.day >= args.p_from && row.day <= args.p_to), error: null })
+      calls.push({ name, args })
+      if (name === 'save_nutrition_block') return Promise.resolve({ data: { id: 'b1b1b1b1-0000-4000-8000-000000000000', name: args.p_block.name, days: args.p_days.length, replaced_dates: [], archived_block_ids: [] }, error: null })
+      if (name === 'clear_nutrition_planned_days') return Promise.resolve({ data: { cleared_dates: args.p_dates, archived_block_ids: [] }, error: null })
+      return Promise.resolve({ data: { id: planId, ...args.p_payload }, error: null })
+    },
   }
   const tools = new Map<string, any>()
   registerNutritionTools({ registerTool: (name: string, config: any, run: any) => tools.set(name, { config, run }) }, db, {
@@ -196,4 +203,73 @@ Deno.test('create tools pass the change note and ignore plans replaced on their 
   assert.equal(result.error, undefined)
   assert.equal(calls[0].args.p_payload.change_note, 'Volumen')
   assert.equal(calls[0].args.p_payload.replace_same_day, undefined)
+})
+
+const calendarRow = (day: string, extra: Record<string, unknown> = {}) => ({
+  day, source: 'base', block_id: null, block_name: null, planned_day_id: null, label: null,
+  kcal: 2600, protein_g: 150, carbs_g: 330, fat_g: 75, steps: null, day_type_config: null, macro_plan_id: planId, diet_plan_id: planId, ...extra,
+})
+
+Deno.test('the calendar returns what each day gets and marks planned days', async () => {
+  const { run, tables } = fixture()
+  tables.calendar = [calendarRow('2026-11-18'), calendarRow('2026-11-19', { source: 'planned', block_name: 'Maratón', label: 'Carga HC 1/3', kcal: 3400, carbs_g: 530, fat_g: 60, macro_plan_id: null, planned_day_id: mealId })]
+  const result = await run('get_nutrition_calendar', { client_id: clientId, from: '2026-11-18', to: '2026-11-19' })
+  assert.equal(result.error, undefined)
+  assert.equal(result.data.days[0].source, 'base')
+  assert.equal(result.data.days[1].label, 'Carga HC 1/3')
+  assert.equal(result.data.days[1].target.kcal, 3400)
+  outputSchemas.get_nutrition_calendar.parse(JSON.parse(JSON.stringify(result.data)))
+  assert.ok((await run('get_nutrition_calendar', { client_id: clientId, from: '2026-11-01', to: '2027-01-15' })).error)
+})
+
+Deno.test('planning days saves explicit targets and a dry run saves nothing', async () => {
+  const { run, calls } = fixture()
+  const days = [
+    { date: '2099-11-19', target: { protein_g: 150, carbs_g: 530, fat_g: 60 }, label: 'Carga HC 1/3' },
+    { date: '2099-11-20', target: { protein_g: 150, carbs_g: 580, fat_g: 60 }, label: 'Carga HC 2/3' },
+  ]
+  const preview = await run('plan_nutrition_days', { client_id: clientId, name: 'Maratón', days, dry_run: true })
+  assert.equal(preview.data.saved, false)
+  assert.equal(preview.data.days[0].kcal, 3260)
+  assert.equal(calls.length, 0)
+  const saved = await run('plan_nutrition_days', { client_id: clientId, name: 'Maratón', days, change_note: 'Carga' })
+  assert.equal(saved.data.saved, true)
+  assert.equal(calls[0].name, 'save_nutrition_block')
+  assert.equal(calls[0].args.p_block.kind, 'days')
+  assert.equal(calls[0].args.p_days[1].label, 'Carga HC 2/3')
+  outputSchemas.plan_nutrition_days.parse(JSON.parse(JSON.stringify(saved.data)))
+})
+
+Deno.test('a generated block starts from the plan base and climbs 100 kcal each week', async () => {
+  const { run, calls, tables } = fixture()
+  tables.calendar = [calendarRow('2099-11-16')]
+  const result = await run('plan_nutrition_days', {
+    client_id: clientId, name: 'Volumen',
+    generate: { start: '2099-11-16', end: '2099-11-29', progression: { type: 'weekly', step_kcal: 100, start_kcal: 100 } },
+  })
+  assert.equal(result.error, undefined)
+  const sent = calls[0].args.p_days
+  assert.equal(sent.length, 14)
+  assert.equal(sent[0].kcal, 2700)
+  assert.equal(sent[7].kcal, 2800)
+  assert.equal(sent[7].protein_g, 150)
+  assert.equal(calls[0].args.p_block.kind, 'block')
+  assert.ok((await run('plan_nutrition_days', { client_id: clientId, name: 'X', days: [{ date: '2020-01-01', target: { protein_g: 1, carbs_g: 1, fat_g: 1 } }] })).error)
+})
+
+Deno.test('current nutrition uses the planned day over the base plan', async () => {
+  const { run, tables } = fixture()
+  tables.calendar = [calendarRow('2026-11-19', { source: 'planned', block_id: 'b1', block_name: 'Maratón', label: 'Carga HC 1/3', kcal: 3400, carbs_g: 530, fat_g: 60, macro_plan_id: null, planned_day_id: mealId })]
+  const result = await run('get_current_nutrition', { client_id: clientId, on_date: '2026-11-19' })
+  assert.equal(result.error, undefined)
+  assert.equal(result.data.macro_target.kcal, 3400)
+  assert.equal(result.data.macro_target.source, 'planned')
+  assert.equal(result.data.planned_day.label, 'Carga HC 1/3')
+})
+
+Deno.test('clearing days sends the dates to the database', async () => {
+  const { run, calls } = fixture()
+  const result = await run('clear_nutrition_days', { client_id: clientId, dates: ['2099-11-19'] })
+  assert.equal(result.data.cleared, true)
+  assert.deepEqual(calls[0].args.p_dates, ['2099-11-19'])
 })

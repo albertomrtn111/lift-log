@@ -45,6 +45,7 @@ export function historyEntry(row) {
     start_weight_kg: start, end_weight_kg: end,
     weight_change_kg: start !== null && end !== null ? round(end - start) : null,
   }
+  if (row.kind === 'block') return { ...base, planned_days: number(row.planned_days) }
   if (row.kind !== 'macros') return { ...base, meals_count: number(row.meals_count) }
   const macro = normalizeMacroPlan(row)
   return { ...base, mode: macro.mode, target: normalizeTarget(row), day_type_config: macro.day_type_config, steps: number(row.steps) }

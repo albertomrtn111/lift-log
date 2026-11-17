@@ -15,6 +15,7 @@ import { registerScheduleTools } from './schedule.ts'
 import { withOutputSchemas } from './output-schemas.ts'
 import { registerAgendaTools } from './agenda.ts'
 import { registerCoachWriteTools } from './coach-writes.ts'
+import { registerStrengthSkipTools } from './strength-skips.ts'
 import { registerPrompts } from './prompts.ts'
 import { registerSeasonTools } from './season.ts'
 import { type Caller, callerFromClaims, checkSession, closedSessionResponse, createAudit, unavailableResponse } from './access.ts'
@@ -80,7 +81,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.22.0',
+    version: '0.24.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
@@ -460,6 +461,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   registerCardioTools(server, supabase, helpers)
   registerAgendaTools(server, supabase, helpers)
   registerCoachWriteTools(server, supabase, helpers)
+  registerStrengthSkipTools(server, supabase, helpers)
   registerSeasonTools(server, supabase, helpers)
   registerPrompts(server)
 
