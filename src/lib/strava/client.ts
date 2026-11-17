@@ -296,6 +296,13 @@ export async function saveStravaIntegration(params: {
     const hasActivityPermission = hasRequiredStravaActivityScope(grantedScope)
 
     const supabase = createAdminClient()
+    const { data: client } = await supabase
+        .from('clients')
+        .select('status')
+        .eq('id', params.context.clientId)
+        .maybeSingle()
+    if (client?.status !== 'active') throw new Error('Client is not active')
+
     const { error } = await supabase
         .from('athlete_integrations')
         .upsert({
@@ -1072,6 +1079,14 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
         await handleDeletedStravaActivity(String(event.object_id))
         return
     }
+
+    // Atleta dado de baja: no se importan actividades nuevas mientras no tenga licencia
+    const { data: owner } = await supabase
+        .from('clients')
+        .select('status')
+        .eq('id', integration.client_id)
+        .maybeSingle()
+    if (owner?.status !== 'active') return
 
     const { imported, activity } = await importStravaActivityForIntegration(integration, event.object_id)
     await supabase

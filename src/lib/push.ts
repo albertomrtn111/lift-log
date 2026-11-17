@@ -155,15 +155,21 @@ async function sendPushToSubscribers(
 
     try {
         const adminSupabase = getAdminSupabase(config)
-        const { data: subscriptions, error } = await adminSupabase
+        const { data: rows, error } = await adminSupabase
             .from(table)
-            .select('endpoint, p256dh, auth, id')
+            .select(table === 'coach_push_subscriptions' ? 'endpoint, p256dh, auth, id, user_id' : 'endpoint, p256dh, auth, id')
             .eq(ownerColumn, ownerId)
 
         if (error) {
             console.error('[push] Error al leer suscripciones:', error)
             return { ok: false, reason: 'db_error' }
         }
+
+        // Quien está dado de baja no recibe avisos: el atleta inactivo ni el miembro
+        // que ya no está en el equipo. Sus suscripciones se guardan por si vuelve.
+        const licensed = await filterLicensedSubscriptions(adminSupabase, table, ownerId, (rows ?? []) as unknown as Array<PushSubscriptionRow & { user_id?: string | null }>)
+        if (licensed === null) return { ok: false, reason: 'db_error' }
+        const subscriptions = licensed
 
         if (!subscriptions || subscriptions.length === 0) {
             return {
@@ -226,4 +232,36 @@ async function sendPushToSubscribers(
         console.error(`[push] Error inesperado enviando a ${ownerColumn}=${ownerId}:`, error)
         return { ok: false, reason: 'unexpected' }
     }
+}
+
+async function filterLicensedSubscriptions<T extends { user_id?: string | null }>(
+    adminSupabase: ReturnType<typeof getAdminSupabase>,
+    table: 'push_subscriptions' | 'coach_push_subscriptions',
+    ownerId: string,
+    rows: T[],
+): Promise<T[] | null> {
+    if (rows.length === 0) return rows
+
+    if (table === 'push_subscriptions') {
+        const { data, error } = await adminSupabase.from('clients').select('status').eq('id', ownerId).maybeSingle()
+        if (error) {
+            console.error('[push] Error al comprobar el estado del atleta:', error)
+            return null
+        }
+        return data?.status === 'active' ? rows : []
+    }
+
+    const { data, error } = await adminSupabase
+        .from('coach_memberships')
+        .select('user_id')
+        .eq('coach_id', ownerId)
+        .eq('status', 'active')
+        .in('role', ['owner', 'admin', 'coach', 'reception'])
+    if (error) {
+        console.error('[push] Error al comprobar el equipo:', error)
+        return null
+    }
+    const active = new Set((data ?? []).map(row => row.user_id as string))
+    // Las suscripciones antiguas sin usuario se mantienen (eran del propietario)
+    return rows.filter(row => !row.user_id || active.has(row.user_id))
 }

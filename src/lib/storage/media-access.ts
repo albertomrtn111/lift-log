@@ -34,6 +34,7 @@ export async function canAccessCheckinMedia(
         .from('clients')
         .select('id')
         .eq('id', clientId)
+        .eq('status', 'active')
         .eq('auth_user_id', userId)
         .maybeSingle()
     return !!data
@@ -50,6 +51,7 @@ export async function canAccessChatMedia(
         .from('clients')
         .select('id')
         .eq('id', clientId)
+        .eq('status', 'active')
         .eq('coach_id', coachId)
         .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
         .maybeSingle()

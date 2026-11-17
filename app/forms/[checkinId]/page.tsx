@@ -80,11 +80,15 @@ export default async function FormPage({ params }: PageProps) {
     await linkPendingClientForUser(user)
     const { data: client } = await admin
         .from('clients')
-        .select('auth_user_id, user_id')
+        .select('auth_user_id, user_id, status')
         .eq('id', checkin.client_id)
         .single()
 
-    if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) {
+    const isOwner = !!client && (client.auth_user_id === user.id || client.user_id === user.id)
+    // Atleta dado de baja: ve el aviso de que se ha quedado sin licencia
+    if (isOwner && client.status !== 'active') redirect('/no-access')
+
+    if (!isOwner) {
         return <ErrorCard
             icon={<Lock className="h-8 w-8 text-destructive" />}
             title="Acceso denegado"

@@ -60,12 +60,15 @@ export async function submitFormAction(
     // 3. Verify ownership: the client's auth_user_id must match the current user
     const { data: client } = await admin
         .from('clients')
-        .select('id, auth_user_id, user_id')
+        .select('id, auth_user_id, user_id, status')
         .eq('id', checkin.client_id)
         .single()
 
     if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) {
         return { success: false, error: 'No tienes permiso para enviar este formulario' }
+    }
+    if (client.status !== 'active') {
+        return { success: false, error: 'Te has quedado sin licencia: habla con tu entrenador para volver a enviar revisiones.' }
     }
 
     // 4. Validate server-side photo requirements from the review template.
