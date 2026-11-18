@@ -158,25 +158,28 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
     }
 }
 
-export async function getWeightSeries(range: MetricsRange) {
+export async function getWeightSeries(range: MetricsRange): Promise<ClientSummaryBundle['weight']> {
     const client = await getClientContext()
-
-    if (!client) return { data: [], avg: '--', trend: null }
-    const supabase = createAdminClient()
 
     const today = new Date()
     const startDate = getRangeStart(range)
+    // Rango que cubre la gráfica, para marcar la primera y la última semana incompletas
+    const rangeStart = format(startDate, 'yyyy-MM-dd')
+    const rangeEnd = format(today, 'yyyy-MM-dd')
+
+    if (!client) return { data: [], avg: '--', trend: null, rangeStart, rangeEnd }
+    const supabase = createAdminClient()
 
     const { data } = await supabase
         .from('client_metrics')
         .select('metric_date, weight_kg')
         .eq('client_id', client.id)
-        .gte('metric_date', format(startDate, 'yyyy-MM-dd'))
+        .gte('metric_date', rangeStart)
         .order('metric_date', { ascending: true })
         .not('weight_kg', 'is', null)
 
     if (!data || data.length === 0) {
-        return { data: [], avg: '--', trend: null }
+        return { data: [], avg: '--', trend: null, rangeStart, rangeEnd }
     }
 
     // Calculate stats
@@ -191,9 +194,11 @@ export async function getWeightSeries(range: MetricsRange) {
     }
 
     return {
-        data: data.map(d => ({ date: d.metric_date, weight: d.weight_kg })),
+        data: data.map(d => ({ date: d.metric_date, weight: Number(d.weight_kg) })),
         avg,
-        trend
+        trend,
+        rangeStart,
+        rangeEnd,
     }
 }
 
@@ -439,7 +444,14 @@ export async function getClientCardioProgress(range: MetricsRange): Promise<Clie
 
 export interface ClientSummaryBundle {
     program: ProgramSummary | null
-    weight: { data: { date: string; weight: number }[]; avg: string; trend: string | null }
+    weight: {
+        data: { date: string; weight: number }[]
+        avg: string
+        trend: string | null
+        /** Primer y último día del rango ('yyyy-MM-dd') */
+        rangeStart: string
+        rangeEnd: string
+    }
     adherence: { percent: number | string; days: number; totalDays: number }
     cardio: ClientCardioProgressData
     dailyMetrics: ClientDailyMetricEntry[]

@@ -44,6 +44,16 @@ import { CardioProgressView } from './progress/CardioProgressView'
 import { getAthleteThresholdsAction } from './athlete-thresholds-actions'
 import { resolveHrBounds } from '@/lib/training/zones'
 import { DietProgressView } from './progress/DietProgressView'
+import { buildWeightSeries, formatKg } from '@/lib/progress/weekly-weight'
+import {
+    WEIGHT_GROUPING_OPTIONS,
+    WeightTooltip,
+    WeightWeekDot,
+    formatWeightAxisDate,
+    useWeightGrouping,
+    type WeightChartPoint,
+    type WeightGrouping,
+} from '@/components/progress/weight-grouping'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -325,9 +335,12 @@ function DateRangeSlider({
 function DateRangeFilter({
     value,
     onChange,
+    extra,
 }: {
     value: [number, number]
     onChange: (v: [number, number]) => void
+    /** Controles extra en la misma fila (p. ej. Día / Semana del peso) */
+    extra?: React.ReactNode
 }) {
     const activePreset = PRESETS.find(
         p => value[1] === MAX_DAYS_BACK && value[0] === MAX_DAYS_BACK - p.days
@@ -358,8 +371,43 @@ function DateRangeFilter({
                 </div>
 
                 <DateRangeSlider value={value} onChange={onChange} />
+                {extra}
             </div>
         </Card>
+    )
+}
+
+/** Día / Semana para la gráfica de peso, con el mismo aspecto que los presets */
+function WeightGroupingToggle({
+    value,
+    onChange,
+}: {
+    value: WeightGrouping
+    onChange: (value: WeightGrouping) => void
+}) {
+    return (
+        <div role="tablist" aria-label="Agrupar el peso" className="flex items-center gap-1 rounded-full bg-muted/60 p-0.5">
+            {WEIGHT_GROUPING_OPTIONS.map(option => {
+                const isActive = option.value === value
+                return (
+                    <button
+                        key={option.value}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => onChange(option.value)}
+                        className={cn(
+                            'rounded-full px-2.5 py-1 text-xs font-medium transition-all',
+                            isActive
+                                ? 'bg-card text-primary shadow-sm ring-1 ring-primary/20'
+                                : 'text-muted-foreground hover:text-foreground'
+                        )}
+                    >
+                        {option.label}
+                    </button>
+                )
+            })}
+        </div>
     )
 }
 
@@ -369,6 +417,7 @@ function DateRangeFilter({
 
 export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
     const [subTab, setSubTab] = useState<SubTab>('general')
+    const [weightGrouping, setWeightGrouping] = useWeightGrouping('nt:coach-progress:weight-grouping')
     const [offsets, setOffsets] = useState<[number, number]>(DEFAULT_OFFSETS)
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<ProgressData | null>(null)
@@ -484,16 +533,28 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
         return calculateGeneralKpis(previousData)
     }, [previousData])
 
-    const weightChartData = useMemo(() => {
-        if (!data) return []
-        return data.metrics
-            .filter(m => m.weight_kg !== null)
-            .map(m => ({
-                date: new Date(m.metric_date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-                rawDate: m.metric_date,
-                weight: m.weight_kg,
-            }))
-    }, [data])
+    // La KPI «Peso medio» y la gráfica salen de la misma serie (día o semana)
+    const weightSeries = useMemo(() => buildWeightSeries(
+        (data?.metrics ?? []).map(m => ({ date: m.metric_date, weight: m.weight_kg })),
+        weightGrouping,
+        { rangeStart: dateFrom, rangeEnd: dateTo }
+    ), [data, weightGrouping, dateFrom, dateTo])
+
+    const previousWeightSeries = useMemo(() => {
+        const previousRange = getPeriodComparisonRange(dateFrom, selectedDays)
+        return buildWeightSeries(
+            (previousData?.metrics ?? []).map(m => ({ date: m.metric_date, weight: m.weight_kg })),
+            weightGrouping,
+            { rangeStart: previousRange.from, rangeEnd: previousRange.to }
+        )
+    }, [previousData, weightGrouping, dateFrom, selectedDays])
+
+    const weightPoints = weightSeries.points as WeightChartPoint[]
+    const lastWeightPoint = weightPoints.length > 0 ? weightPoints[weightPoints.length - 1] : null
+    const weightRecordCount = useMemo(
+        () => weightPoints.reduce((sum, point) => sum + ('count' in point ? point.count : 1), 0),
+        [weightPoints]
+    )
 
     const weightDetailRows = useMemo<WeightDetailRow[]>(() => {
         if (!data) return []
@@ -577,7 +638,11 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                 </>
             ) : (
                 <>
-                    <DateRangeFilter value={offsets} onChange={setOffsets} />
+                    <DateRangeFilter
+                        value={offsets}
+                        onChange={setOffsets}
+                        extra={<WeightGroupingToggle value={weightGrouping} onChange={setWeightGrouping} />}
+                    />
                     {loading ? (
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -588,11 +653,13 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                 <KpiCard
                                     icon={Scale}
                                     label="Peso medio"
-                                    value={kpis?.avgWeight != null ? `${kpis.avgWeight.toFixed(1)} kg` : null}
-                                    subValue={kpis?.lastWeight != null ? `Último: ${kpis.lastWeight.toFixed(1)} kg` : undefined}
-                                    delta={kpis?.weightDelta}
+                                    value={weightSeries.avg != null ? `${formatKg(weightSeries.avg)} kg` : null}
+                                    subValue={lastWeightPoint
+                                        ? `${weightGrouping === 'week' ? 'Última semana' : 'Último'}: ${formatKg(lastWeightPoint.weight)} kg`
+                                        : undefined}
+                                    delta={weightSeries.change}
                                     deltaUnit="kg"
-                                    comparisonDelta={getComparisonDelta(kpis?.avgWeight, previousKpis?.avgWeight)}
+                                    comparisonDelta={getComparisonDelta(weightSeries.avg, previousWeightSeries.avg)}
                                     comparisonUnit="kg"
                                     comparisonLabel={`vs ${selectedDays}d anteriores`}
                                     color="blue"
@@ -684,7 +751,7 @@ export function ProgresoTab({ clientId, coachId }: ProgresoTabProps) {
                                     )}
                                 </div>
                             )}
-                            <WeightChart data={weightChartData} />
+                            <WeightChart points={weightPoints} grouping={weightGrouping} recordCount={weightRecordCount} />
                             <WeightDetail
                                 rows={weightDetailRows}
                                 dateFrom={dateFrom}
@@ -961,8 +1028,16 @@ function KpiCard({
 // Weight Chart
 // ---------------------------------------------------------------------------
 
-function WeightChart({ data }: { data: { date: string; weight: number | null }[] }) {
-    if (data.length === 0) {
+function WeightChart({
+    points,
+    grouping,
+    recordCount,
+}: {
+    points: WeightChartPoint[]
+    grouping: WeightGrouping
+    recordCount: number
+}) {
+    if (points.length === 0) {
         return (
             <Card className="p-8">
                 <div className="flex flex-col items-center justify-center text-center py-8">
@@ -976,22 +1051,29 @@ function WeightChart({ data }: { data: { date: string; weight: number | null }[]
         )
     }
 
+    const primary = 'hsl(var(--primary))'
+
     return (
         <Card className="p-4">
             <div className="flex items-center gap-2 mb-4">
-                <Scale className="h-5 w-5 text-blue-500" />
-                <h3 className="font-semibold">Evolución de peso</h3>
-                <span className="text-xs text-muted-foreground ml-auto">
-                    {data.length} registros
+                <Scale className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">
+                    Evolución de peso
+                    {grouping === 'week' && <span className="hidden font-normal text-muted-foreground sm:inline"> · media semanal</span>}
+                </h3>
+                <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+                    {grouping === 'week'
+                        ? `${points.length} ${points.length === 1 ? 'semana' : 'semanas'} · ${recordCount} registros`
+                        : `${recordCount} registros`}
                 </span>
             </div>
             <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                    <AreaChart data={points} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                         <defs>
                             <linearGradient id="weightGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                                <stop offset="0%" stopColor={primary} stopOpacity={0.3} />
+                                <stop offset="100%" stopColor={primary} stopOpacity={0} />
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
@@ -999,31 +1081,24 @@ function WeightChart({ data }: { data: { date: string; weight: number | null }[]
                             dataKey="date"
                             tick={{ fontSize: 11 }}
                             className="text-muted-foreground"
+                            tickFormatter={formatWeightAxisDate}
                             interval="preserveStartEnd"
                         />
                         <YAxis
                             tick={{ fontSize: 11 }}
                             className="text-muted-foreground"
                             domain={['dataMin - 1', 'dataMax + 1']}
-                            unit=" kg"
+                            tickFormatter={(value: number) => `${formatKg(value)} kg`}
                         />
-                        <Tooltip
-                            contentStyle={{
-                                backgroundColor: 'hsl(var(--card))',
-                                border: '1px solid hsl(var(--border))',
-                                borderRadius: '8px',
-                                fontSize: '13px',
-                            }}
-                            formatter={(value: number) => [`${value} kg`, 'Peso']}
-                        />
+                        <Tooltip content={<WeightTooltip />} />
                         <Area
                             type="monotone"
                             dataKey="weight"
-                            stroke="#3b82f6"
+                            stroke={primary}
                             strokeWidth={2.5}
                             fill="url(#weightGradient)"
-                            dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}
-                            activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
+                            dot={grouping === 'week' ? <WeightWeekDot /> : { r: 3, fill: primary, strokeWidth: 0 }}
+                            activeDot={{ r: 5, fill: primary, stroke: 'hsl(var(--card))', strokeWidth: 2 }}
                             connectNulls
                         />
                     </AreaChart>

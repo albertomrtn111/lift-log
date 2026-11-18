@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import {
     getClientSummaryBundle,
+    type ClientSummaryBundle,
     type ClientDailyMetricEntry,
     type ClientCardioProgressData,
     type ProgramSummary,
@@ -25,6 +26,16 @@ import {
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { buildWeightSeries, formatKg, formatKgDelta } from '@/lib/progress/weekly-weight'
+import {
+    WEIGHT_GROUPING_OPTIONS,
+    WeightTooltip,
+    WeightWeekDot,
+    formatWeightAxisDate,
+    useWeightGrouping,
+    type WeightChartPoint,
+    type WeightGrouping,
+} from '@/components/progress/weight-grouping'
 import { RegistrarSheet } from '@/components/progress/RegistrarSheet'
 import { ClientCardioEvolution } from '@/components/progress/ClientCardioEvolution'
 import { ClientReviewsTab } from '@/components/progress/ClientReviewsTab'
@@ -37,6 +48,9 @@ import { STRAVA_ACTIVITY_COMPLETED_EVENT } from '@/lib/strava/events'
 import { notifyAthleteDataChanged } from '@/lib/athlete-data-events'
 
 type ProgressTab = 'resumen' | 'revisiones' | 'galeria'
+type WeightSeriesData = ClientSummaryBundle['weight']
+
+const EMPTY_WEIGHT: WeightSeriesData = { data: [], avg: '--', trend: null, rangeStart: '', rangeEnd: '' }
 
 const PROGRESS_TAB_OPTIONS: Array<{ value: ProgressTab; label: string }> = [
     { value: 'resumen', label: 'Resumen' },
@@ -108,7 +122,9 @@ interface SummaryOverviewProps {
     range: MetricsRange
     setRange: (range: MetricsRange) => void
     program: ProgramSummary | null
-    weightData: { data: any[], avg: string, trend: string | null }
+    weightData: WeightSeriesData
+    weightGrouping: WeightGrouping
+    setWeightGrouping: (grouping: WeightGrouping) => void
     adherenceData: { percent: number | string, days: number, totalDays: number }
     cardioData: ClientCardioProgressData
     dailyMetrics: ClientDailyMetricEntry[]
@@ -121,12 +137,22 @@ function SummaryOverview({
     setRange,
     program,
     weightData,
+    weightGrouping,
+    setWeightGrouping,
     adherenceData,
     cardioData,
     dailyMetrics,
     loading,
     onOpenDay,
 }: SummaryOverviewProps) {
+    // La tarjeta «Peso medio» y la gráfica salen de la misma serie
+    const weightSeries = useMemo(() => buildWeightSeries(
+        weightData.data,
+        weightGrouping,
+        { rangeStart: weightData.rangeStart || undefined, rangeEnd: weightData.rangeEnd || undefined }
+    ), [weightData, weightGrouping])
+    const weightPoints = weightSeries.points as WeightChartPoint[]
+
     const ranges: { label: string, value: MetricsRange }[] = [
         { label: '7D', value: '7d' },
         { label: '14D', value: '14d' },
@@ -186,12 +212,23 @@ function SummaryOverview({
                 )}
             </Card>
 
-            <ClientTabSwitcher
-                aria-label="Periodo"
-                value={range}
-                options={ranges.map(r => ({ value: r.value, label: r.label }))}
-                onValueChange={setRange}
-            />
+            <div className="flex items-center gap-2">
+                <ClientTabSwitcher
+                    aria-label="Periodo"
+                    className="min-w-0 flex-1"
+                    value={range}
+                    options={ranges.map(r => ({ value: r.value, label: r.label }))}
+                    onValueChange={setRange}
+                />
+                <ClientTabSwitcher
+                    aria-label="Agrupar el peso"
+                    fit="content"
+                    className="shrink-0"
+                    value={weightGrouping}
+                    options={WEIGHT_GROUPING_OPTIONS}
+                    onValueChange={setWeightGrouping}
+                />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
                 <Card className="p-4">
@@ -200,14 +237,15 @@ function SummaryOverview({
                         <span className="text-sm text-muted-foreground">Peso medio</span>
                     </div>
                     <div className="flex items-end gap-2">
-                        <span className="text-xl sm:text-2xl font-bold">{weightData.avg}</span>
+                        <span className="text-xl sm:text-2xl font-bold">{weightSeries.avg !== null ? formatKg(weightSeries.avg) : '--'}</span>
                         <span className="text-muted-foreground text-sm mb-0.5">kg</span>
                     </div>
-                    {weightData.trend && (
+                    {weightSeries.change !== null && (
                         <div className="flex items-center gap-1 mt-1">
-                            <TrendingUp className={`h-3 w-3 ${parseFloat(weightData.trend) > 0 ? 'text-success' : 'text-destructive'}`} />
+                            <TrendingUp className={`h-3 w-3 ${weightSeries.change > 0 ? 'text-success' : 'text-destructive'}`} />
                             <span className="text-xs text-muted-foreground">
-                                {parseFloat(weightData.trend) > 0 ? '+' : ''}{weightData.trend} kg
+                                {formatKgDelta(weightSeries.change)} kg
+                                {weightGrouping === 'week' && ` · ${weightSeries.count} semanas`}
                             </span>
                         </div>
                     )}
@@ -233,11 +271,14 @@ function SummaryOverview({
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-primary" />
                     Evolución peso
+                    {weightGrouping === 'week' && weightPoints.length > 0 && (
+                        <span className="ml-auto text-xs font-normal text-muted-foreground">Media semanal</span>
+                    )}
                 </h3>
                 <div className="h-[200px] w-full">
-                    {weightData.data.length > 0 ? (
+                    {weightPoints.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={weightData.data}>
+                            <AreaChart data={weightPoints}>
                                 <defs>
                                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -246,24 +287,14 @@ function SummaryOverview({
                                 </defs>
                                 <XAxis
                                     dataKey="date"
-                                    tickFormatter={(date) => format(new Date(date), 'dd MMM', { locale: es })}
+                                    tickFormatter={formatWeightAxisDate}
                                     tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                                     tickLine={false}
                                     axisLine={false}
                                     minTickGap={30}
                                 />
                                 <YAxis domain={['auto', 'auto']} hide />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'hsl(var(--background))',
-                                        borderRadius: '8px',
-                                        border: '1px solid hsl(var(--border))',
-                                        fontSize: '12px'
-                                    }}
-                                    itemStyle={{ color: 'hsl(var(--foreground))' }}
-                                    formatter={(value: number) => [`${value} kg`, 'Peso']}
-                                    labelFormatter={(label) => format(new Date(label), 'd MMMM yyyy', { locale: es })}
-                                />
+                                <Tooltip content={<WeightTooltip />} />
                                 <Area
                                     type="monotone"
                                     dataKey="weight"
@@ -271,6 +302,7 @@ function SummaryOverview({
                                     fillOpacity={1}
                                     fill="url(#colorWeight)"
                                     strokeWidth={2}
+                                    dot={weightGrouping === 'week' ? <WeightWeekDot /> : false}
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
@@ -351,7 +383,8 @@ export default function SummaryPage() {
     const [activeTab, setActiveTab] = useState<ProgressTab>(() => normalizeTab(searchParams.get('tab')))
     const [range, setRange] = useState<MetricsRange>('14d')
     const [program, setProgram] = useState<ProgramSummary | null>(null)
-    const [weightData, setWeightData] = useState<{ data: any[], avg: string, trend: string | null }>({ data: [], avg: '--', trend: null })
+    const [weightData, setWeightData] = useState<WeightSeriesData>(EMPTY_WEIGHT)
+    const [weightGrouping, setWeightGrouping] = useWeightGrouping('nt:progress:weight-grouping')
     const [adherenceData, setAdherenceData] = useState<{ percent: number | string, days: number, totalDays: number }>({ percent: '--', days: 0, totalDays: 0 })
     const [dailyMetrics, setDailyMetrics] = useState<ClientDailyMetricEntry[]>([])
     const [cardioData, setCardioData] = useState<ClientCardioProgressData>({
@@ -480,6 +513,8 @@ export default function SummaryPage() {
                             setRange={setRange}
                             program={program}
                             weightData={weightData}
+                            weightGrouping={weightGrouping}
+                            setWeightGrouping={setWeightGrouping}
                             adherenceData={adherenceData}
                             cardioData={cardioData}
                             dailyMetrics={dailyMetrics}
