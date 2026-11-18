@@ -42,6 +42,8 @@ export interface TrainingExercise {
   rir?: string;
   restSeconds?: number;
   notes?: string;
+  /** Ejercicios seguidos del día con la misma clave forman una superserie (src/lib/training/supersets.js). */
+  supersetKey?: string | null;
 }
 
 export interface TrainingCell {

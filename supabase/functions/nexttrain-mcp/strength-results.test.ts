@@ -57,7 +57,7 @@ Deno.test('a typical page of 200 sets is less than half the size when grouped', 
   assert.ok(groupedSize < flatSize * 0.5)
 })
 
-function historyFixture() {
+function historyFixture(mutate?: (tables: Record<string, any[]>) => void) {
   const tables: Record<string, any[]> = {
     training_programs: [{ id: programId, coach_id: coach, client_id: client, name: 'Bloque', status: 'active', weeks: 4, total_weeks: 4,
       effective_from: '2026-10-05', effective_to: '2026-11-01', created_at: '2026-10-01T00:00:00Z' }],
@@ -74,6 +74,7 @@ function historyFixture() {
     training_exercise_logs: [],
     scheduled_strength_sessions: [{ id: 'session-2', coach_id: coach, client_id: client, program_id: programId, day_id: 'day-a', scheduled_date: '2026-10-12', is_completed: true }],
   }
+  mutate?.(tables)
   const db = {
     from(table: string) {
       let filtered = [...tables[table] ?? []]
@@ -141,4 +142,32 @@ Deno.test('get_program_history detail uses the same grouped results and validate
   assert.equal(flat.results.length, 3)
   const list = await run('get_program_history', { client_id: client })
   assert.equal(list.programs.length, 1)
+})
+
+Deno.test('superseries: results follow the program order and carry the block letter', async () => {
+  const run = historyFixture((tables) => {
+    // Ids en orden alfabético distinto del programa: antes salían por id.
+    tables.training_exercises = [
+      { id: 'exercise-z', coach_id: coach, program_id: programId, day_id: 'day-a', catalog_exercise_id: null, exercise_name: 'Press banca', order_index: 1, sets: 1, reps: '6', rir: 2, rest_seconds: 150, superset_key: null },
+      { id: 'exercise-b', coach_id: coach, program_id: programId, day_id: 'day-a', catalog_exercise_id: null, exercise_name: 'Curl de bíceps en polea', order_index: 2, sets: 2, reps: '12', rir: 2, rest_seconds: 0, superset_key: 'C' },
+      { id: 'exercise-a', coach_id: coach, program_id: programId, day_id: 'day-a', catalog_exercise_id: null, exercise_name: 'Extensión de tríceps con cuerda', order_index: 3, sets: 1, reps: '15', rir: 2, rest_seconds: 90, superset_key: 'C' },
+    ]
+    tables.training_exercise_sets = ['exercise-a', 'exercise-b', 'exercise-z'].map((exerciseId, index) => (
+      { id: `set-${index}`, exercise_id: exerciseId, week_index: 2, set_index: 0, weight_kg: 20, reps: 10, rir: 2, completed: true, is_override: false, notes: null, updated_at: '2026-10-12T18:00:00Z' }
+    ))
+  })
+  const grouped = await run('get_strength_results', { client_id: client })
+  const exercises = grouped.workouts[0].exercises
+  assert.deepEqual(exercises.map((exercise: any) => [exercise.exercise_id, exercise.block]), [['exercise-z', 'A'], ['exercise-b', 'B1'], ['exercise-a', 'B2']])
+  assert.equal(exercises[0].superset_with, null)
+  assert.deepEqual(exercises[1].superset_with, ['Extensión de tríceps con cuerda'])
+
+  const detail = await run('get_program_history', { client_id: client, program_id: programId })
+  const day = detail.days[0]
+  assert.deepEqual(day.exercises.map((exercise: any) => exercise.block), ['A', 'B1', 'B2'])
+  assert.equal(day.exercises[0].superset, null)
+  assert.equal(day.exercises[1].superset.kind, 'superserie')
+  assert.equal(day.exercises[1].superset.rounds, 2)
+  assert.match(day.exercises[1].superset.rest_meaning, /paso al siguiente/)
+  assert.match(day.exercises[2].superset.rest_meaning, /tras la ronda/)
 })

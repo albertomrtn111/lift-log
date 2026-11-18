@@ -290,6 +290,7 @@ export async function duplicateTrainingProgramClient(programId: string) {
                                 rir: ex.rir,
                                 rest_seconds: ex.rest_seconds,
                                 notes: ex.notes,
+                                superset_key: ex.superset_key ?? null,
                             })
                             .select()
                             .single()

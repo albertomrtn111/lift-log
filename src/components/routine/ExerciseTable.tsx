@@ -5,6 +5,7 @@ import { Lock, Check, Loader2, AlertCircle, Plus, Trash2, RotateCcw, Zap, Chevro
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { supersetInfoById } from '@/lib/training/supersets';
 
 interface ExerciseTableProps {
   exercises: TrainingExercise[];
@@ -146,6 +147,8 @@ export function ExerciseTable({
   const notesCol = columns.find(c => isNotesColumn(c));
 
   const completedCount = exercises.filter(ex => getExerciseSets(ex.id).some(s => s.weightKg !== null || s.reps !== null)).length;
+  // Letras del día (A, B, C1, C2…) y superseries, como en el móvil.
+  const blockInfo = supersetInfoById(exercises, (exercise: TrainingExercise) => exercise.name);
 
   return (
     <div className="space-y-4">
@@ -194,7 +197,14 @@ export function ExerciseTable({
                     const value = col.id === 'c1' ? exercise.name : getCellValue(exercise.id, col.id);
                     const cellKey = `${exercise.id}-${col.id}`;
                     return (
-                      <td key={col.id} className={cn(colIndex === 0 && 'sticky-col font-medium', !col.editable ? 'cell-coach' : 'p-1')}>
+                      <td
+                        key={col.id}
+                        className={cn(
+                          colIndex === 0 && 'sticky-col font-medium',
+                          colIndex === 0 && blockInfo.get(exercise.id)?.isSuperset && 'border-l-[3px] border-l-primary/60',
+                          !col.editable ? 'cell-coach' : 'p-1'
+                        )}
+                      >
                         {col.editable ? (
                           <div className="cell-client">
                             {col.type === 'textarea' ? (
@@ -203,6 +213,26 @@ export function ExerciseTable({
                               <input key={`${col.id}-${weekNumber}`} type={col.type} defaultValue={value} placeholder="..." className="w-full min-w-[60px] bg-transparent text-sm outline-none" onFocus={() => setEditingCell(cellKey)} onBlur={(e) => { setEditingCell(null); if (e.target.value !== getCellValue(exercise.id, col.id)) handleCellChange(exercise.id, col.id, e.target.value); }} />
                             )}
                             {renderSaveIndicator(exercise.id, col.id)}
+                          </div>
+                        ) : colIndex === 0 ? (
+                          <div className="flex items-start gap-2">
+                            <span
+                              className={cn(
+                                'mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums',
+                                blockInfo.get(exercise.id)?.isSuperset ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                              )}
+                            >
+                              {blockInfo.get(exercise.id)?.label}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="text-sm">{value}</span>
+                              {blockInfo.get(exercise.id)?.isSuperset && (
+                                <p className="mt-0.5 text-[11px] font-medium text-primary">
+                                  Superserie con {blockInfo.get(exercise.id)!.withLabels.join(', ')}
+                                  {blockInfo.get(exercise.id)!.isLast ? ' · descanso tras la ronda' : ' · pasa al siguiente'}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-sm">{value}</span>

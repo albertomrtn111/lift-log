@@ -2,6 +2,7 @@ import { z } from 'npm:zod@4.3.6'
 import { cardioDiscipline, speedKmh, speedFromPaceSeconds, usesSpeed } from '../../../src/lib/cardio/discipline.js'
 import { findStrengthSession, groupStrengthResults, programProgress, programTransitions, setEvidence } from './strength-progress.js'
 import { programDayDate } from '../../../src/lib/training/strength-week-skips.js'
+import { strengthBlocks, supersetOutput } from './strength-blocks.ts'
 import { loadSkippedDays } from './strength-skips.ts'
 import {
   addDays,
@@ -150,7 +151,7 @@ async function strengthContext(db: Db, coachId: string, clientId: string, progra
   const programIds = programs.map((item) => item.id)
   const days = await inBatches(db, 'training_days', 'id, program_id, name, default_weekday, order_index', 'program_id', programIds,
     (q) => q.eq('coach_id', coachId).order('order_index', { ascending: true }))
-  const exercises = await inBatches(db, 'training_exercises', 'id, program_id, day_id, catalog_exercise_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes', 'program_id', programIds,
+  const exercises = await inBatches(db, 'training_exercises', 'id, program_id, day_id, catalog_exercise_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes, superset_key', 'program_id', programIds,
     (q) => q.eq('coach_id', coachId).order('order_index', { ascending: true }))
   return { programs, days, exercises, hasMorePrograms }
 }
@@ -169,6 +170,7 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
   const programById = new Map(context.programs.map((item) => [item.id, item]))
   const dayById = new Map(context.days.map((item) => [item.id, item]))
   const exerciseById = new Map(context.exercises.map((item) => [item.id, item]))
+  const blockById = strengthBlocks(context.exercises)
   const results: Row[] = []
   let confirmedSetCount = 0
   let unverifiedSetCount = 0
@@ -199,6 +201,7 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
         day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id, catalog_exercise_id: exercise.catalog_exercise_id,
         comparison_exercise_id: exercise.catalog_exercise_id ?? exercise.id,
         comparison_scope: exercise.catalog_exercise_id ? 'catalog_across_programs' : 'within_program', exercise: exercise.exercise_name,
+        block: blockById.get(exercise.id)?.label ?? null, superset_with: blockById.get(exercise.id)?.isSuperset ? blockById.get(exercise.id).with : null,
         week_index: log.week_index, set_index: index, set_number: num(set.set) ?? index + 1,
         scheduled_date: session?.scheduled_date ?? plannedDate,
         scheduled_date_source: session ? 'stored_session' : plannedDate ? 'template_weekday' : null,
@@ -233,6 +236,7 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
       day_id: exercise.day_id, day_name: trainingDay?.name, exercise_id: exercise.id,
       catalog_exercise_id: exercise.catalog_exercise_id, comparison_exercise_id: exercise.catalog_exercise_id ?? exercise.id,
       comparison_scope: exercise.catalog_exercise_id ? 'catalog_across_programs' : 'within_program', exercise: exercise.exercise_name,
+      block: blockById.get(exercise.id)?.label ?? null, superset_with: blockById.get(exercise.id)?.isSuperset ? blockById.get(exercise.id).with : null,
       week_index: set.week_index, set_index: set.set_index, set_number: setNumber,
       scheduled_date: scheduledDate, scheduled_date_source: session ? 'stored_session' : plannedDate ? 'template_weekday' : null,
       session_id: session?.id ?? null, session_completed: session?.is_completed ?? null,
@@ -240,7 +244,14 @@ async function completedStrengthRows(db: Db, coachId: string, clientId: string, 
       rir: num(set.rir), rpe: null, completed: set.completed === true, notes: set.notes, note_source: set.notes ? 'set_row' : null,
     })
   }
+  // Dentro de una fecha, los ejercicios salen en el orden del programa (A, B, C1, C2…), no por id.
+  const exerciseOrder = (result: Row) => {
+    const exercise = exerciseById.get(result.exercise_id)
+    const trainingDay = exercise ? dayById.get(exercise.day_id) : null
+    return (num(trainingDay?.order_index) ?? 0) * 1000 + (num(exercise?.order_index) ?? 0)
+  }
   results.sort((a, b) => String(b.scheduled_date ?? b.performed_at ?? b.recorded_at).localeCompare(String(a.scheduled_date ?? a.performed_at ?? a.recorded_at))
+    || exerciseOrder(a) - exerciseOrder(b)
     || String(a.exercise_id).localeCompare(String(b.exercise_id)) || Number(a.set_index) - Number(b.set_index))
   const rangedSessions = range ? sessions.filter((session) => session.scheduled_date >= range.from_date && session.scheduled_date <= range.to_date) : sessions
   const confirmedSessionIds = new Set(results.filter((result) => result.execution_status !== 'recorded_unverified').map((result) => result.session_id).filter(Boolean))
@@ -536,8 +547,11 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
     const detail = await completedStrengthRows(db, coachId, client_id, context)
     const confirmedWeeks = detail.results.filter((result) => result.execution_status !== 'recorded_unverified')
       .map((result) => num(result.week_index)).filter((value) => value !== null)
+    const blocks = strengthBlocks(context.exercises)
     const days = context.days.filter((item) => item.program_id === program_id).map((trainingDay) => ({
-      ...trainingDay, exercises: context.exercises.filter((exercise) => exercise.day_id === trainingDay.id),
+      ...trainingDay, exercises: context.exercises.filter((exercise) => exercise.day_id === trainingDay.id).map((exercise) => ({
+        ...exercise, block: blocks.get(exercise.id)?.label ?? null, superset: supersetOutput(blocks.get(exercise.id)),
+      })),
     }))
     return {
       client_id, as_of_date: asOfDate, program: { ...program, progress: programProgress(program, context.days, sessions, asOfDate, confirmedWeeks, skippedRows) }, days, sessions,

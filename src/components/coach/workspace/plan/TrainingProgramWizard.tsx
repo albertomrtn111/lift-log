@@ -25,6 +25,9 @@ import {
     ArrowDown,
     GripVertical,
     MoreHorizontal,
+    Link2,
+    Unlink,
+    Info,
 } from 'lucide-react'
 import {
     DndContext,
@@ -57,7 +60,26 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { addExerciseAction, deleteExerciseAction, reorderExerciseAction, reorderExercisesAction } from '../actions'
+import { addExerciseAction, deleteExerciseAction } from '../actions'
+import {
+    dropExerciseInDayAction,
+    equalizeSupersetSetsAction,
+    linkExercisesAction,
+    moveExerciseInDayAction,
+    moveSupersetBlockAction,
+    normalizeDaySupersetsAction,
+    removeFromSupersetAction,
+    unlinkSupersetAction,
+    type DayExerciseState,
+    type SupersetActionResult,
+} from '@/app/(coach)/coach/workspace/superset-actions'
+import {
+    MAX_SUPERSET_SIZE,
+    buildExerciseBlocks,
+    describeSupersetFlow,
+    planDrop,
+    supersetKindLabel,
+} from '@/lib/training/supersets'
 import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPicker'
 import { ExerciseLibraryDialog } from '@/components/training/ExerciseLibraryDialog'
@@ -367,6 +389,7 @@ export function TrainingProgramWizard({
                     rir: ex.rir != null ? Number(ex.rir) : null,
                     rest_seconds: ex.rest_seconds ?? 60,
                     notes: ex.notes || null,
+                    superset_key: ex.superset_key ?? null,
                 })
             })
         })
@@ -411,6 +434,7 @@ export function TrainingProgramWizard({
                     rir: e.rir,
                     rest_seconds: e.rest_seconds,
                     notes: e.notes,
+                    superset_key: e.superset_key ?? null,
                 }))
             )
             if (exError) {
@@ -489,6 +513,7 @@ export function TrainingProgramWizard({
                         rir: ex.rir != null ? Number(ex.rir) : null,
                         rest_seconds: ex.rest_seconds ?? 60,
                         notes: ex.notes || null,
+                        superset_key: ex.superset_key ?? null,
                     })
                 })
             }
@@ -544,6 +569,7 @@ export function TrainingProgramWizard({
                     rir: e.rir,
                     rest_seconds: e.rest_seconds,
                     notes: e.notes,
+                    superset_key: e.superset_key ?? null,
                 }))
                 const { error: exError } = await supabase.from('training_exercises').insert(exsToInsert)
                 if (exError) {
@@ -991,7 +1017,7 @@ function StepProgramTable({
     days: any[],
     columns: any[],
     exercises: any[],
-    setExercises: (e: any[]) => void,
+    setExercises: React.Dispatch<React.SetStateAction<any[]>>,
     cells: any[],
     setCells: (c: any[]) => void,
     activeDayId: string | null,
@@ -1035,86 +1061,69 @@ function StepProgramTable({
         }
     }
 
-    function moveExerciseLocally(exerciseId: string, direction: 'up' | 'down') {
-        if (!activeDayId) return
+    const dayBlocks = buildExerciseBlocks(activeDayExercises)
+    const supersetCount = dayBlocks.filter(block => block.isSuperset).length
 
-        const orderedDayExercises = exercises
-            .filter((exercise: any) => exercise.day_id === activeDayId)
-            .sort((a: any, b: any) => {
-                const orderDiff = (a.order_index ?? 0) - (b.order_index ?? 0)
-                if (orderDiff !== 0) return orderDiff
-                return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
-            })
-
-        const currentIndex = orderedDayExercises.findIndex((exercise: any) => exercise.id === exerciseId)
-        if (currentIndex === -1) return
-
-        const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-        if (nextIndex < 0 || nextIndex >= orderedDayExercises.length) return
-
-        const reorderedDayExercises = [...orderedDayExercises]
-        const [movedExercise] = reorderedDayExercises.splice(currentIndex, 1)
-        reorderedDayExercises.splice(nextIndex, 0, movedExercise)
-
-        const orderByExerciseId = new Map(
-            reorderedDayExercises.map((exercise: any, index: number) => [exercise.id, index + 1])
-        )
-
-        setExercises(exercises.map((exercise: any) => {
-            const nextOrder = orderByExerciseId.get(exercise.id)
-            return nextOrder ? { ...exercise, order_index: nextOrder } : exercise
+    /** Aplica al editor el estado del día que devuelve el servidor (orden, bloques, descanso, series). */
+    function applyDayState(state: DayExerciseState[]) {
+        const byId = new Map(state.map(row => [row.id, row]))
+        setExercises(current => current.map((exercise: any) => {
+            const row = byId.get(exercise.id)
+            return row ? { ...exercise, ...row } : exercise
         }))
+    }
+
+    /** Ejecuta una acción de superseries o de orden y aplica su resultado. */
+    async function runDayAction(action: () => Promise<SupersetActionResult>, errorTitle: string) {
+        setIsReorderingExercises(true)
+        try {
+            const result = await action()
+            if (result.success) {
+                applyDayState(result.exercises)
+                return true
+            }
+            toast({ title: errorTitle, description: result.error, variant: 'destructive' })
+        } catch (error) {
+            toast({
+                title: errorTitle,
+                description: error instanceof Error ? error.message : 'Error inesperado.',
+                variant: 'destructive',
+            })
+        } finally {
+            setIsReorderingExercises(false)
+        }
+        return false
+    }
+
+    function linkExercises(upperId: string, lowerId: string) {
+        if (!activeDayId) return
+        return runDayAction(() => linkExercisesAction(activeDayId, upperId, lowerId), 'No se pudo enlazar')
     }
 
     async function handleExerciseDragEnd(event: DragEndEvent) {
         if (!activeDayId || !event.over || event.active.id === event.over.id) return
 
         const activeExerciseId = event.active.data.current?.exerciseId as string | undefined
+        const wholeBlock = Boolean(event.active.data.current?.wholeBlock)
         const overExerciseId = event.over.data.current?.exerciseId as string | undefined
         if (!activeExerciseId || !overExerciseId) return
 
-        const currentIndex = activeDayExercises.findIndex(exercise => exercise.id === activeExerciseId)
-        const targetIndex = activeDayExercises.findIndex(exercise => exercise.id === overExerciseId)
-        if (currentIndex === -1 || targetIndex === -1) return
+        // Mismo orden que calculará el servidor: nunca se parte una superserie.
+        const order = planDrop(activeDayExercises, activeExerciseId, overExerciseId, { wholeBlock })
+        if (!order) return
 
         const previousExercises = exercises
-        const reorderedDayExercises = [...activeDayExercises]
-        const [movedExercise] = reorderedDayExercises.splice(currentIndex, 1)
-        reorderedDayExercises.splice(targetIndex, 0, movedExercise)
-
-        const orderByExerciseId = new Map(
-            reorderedDayExercises.map((exercise, index) => [exercise.id, index + 1])
-        )
-        setExercises(exercises.map(exercise => {
+        const orderByExerciseId = new Map(order.map((id: string, index: number) => [id, index + 1]))
+        setExercises(current => current.map(exercise => {
             const nextOrder = orderByExerciseId.get(exercise.id)
             return nextOrder ? { ...exercise, order_index: nextOrder } : exercise
         }))
 
-        setIsReorderingExercises(true)
-        try {
-            const result = await reorderExercisesAction(
-                activeDayId,
-                reorderedDayExercises.map(exercise => exercise.id)
-            )
-
-            if (result.success) return
-
-            setExercises(previousExercises)
-            toast({
-                title: 'No se pudo guardar el orden',
-                description: result.error,
-                variant: 'destructive',
-            })
-        } catch (error) {
-            setExercises(previousExercises)
-            toast({
-                title: 'No se pudo guardar el orden',
-                description: error instanceof Error ? error.message : 'Error inesperado al reordenar los ejercicios.',
-                variant: 'destructive',
-            })
-        } finally {
-            setIsReorderingExercises(false)
-        }
+        const saved = await runDayAction(
+            () => dropExerciseInDayAction(activeDayId, activeExerciseId, overExerciseId, wholeBlock),
+            'No se pudo guardar el orden',
+        )
+        if (!saved) setExercises(previousExercises)
     }
 
     const activeDay = days.find(day => day.id === activeDayId)
@@ -1159,7 +1168,7 @@ function StepProgramTable({
                         <div className="min-w-0">
                             <h5 className="truncate font-semibold leading-tight">{activeDay?.name ?? 'Ejercicios'}</h5>
                             <p className="text-xs text-muted-foreground">
-                                {activeDayExercises.length} ejercicios{daySets > 0 ? ` · ${daySets} series` : ''} · igual en todas las semanas
+                                {activeDayExercises.length} ejercicios{supersetCount > 0 ? ` · ${supersetCount} ${supersetCount === 1 ? 'superserie' : 'superseries'}` : ''}{daySets > 0 ? ` · ${daySets} series` : ''} · igual en todas las semanas
                             </p>
                         </div>
                         <Button
@@ -1174,28 +1183,98 @@ function StepProgramTable({
                     </div>
 
                     {activeDayExercises.length > 0 ? (
-                        <div className="divide-y divide-border/60">
-                            {activeDayExercises.map((ex, index) => (
-                                <ExerciseRow
-                                    key={ex.id}
-                                    index={index}
-                                    total={activeDayExercises.length}
-                                    exercise={ex}
-                                    dayId={activeDayId!}
-                                    onUpdate={(updated) => {
-                                        setExercises(exercises.map(e => e.id === updated.id ? updated : e))
-                                    }}
-                                    onDelete={() => {
-                                        setExercises(exercises.filter(e => e.id !== ex.id))
-                                    }}
-                                    onMoveUp={() => moveExerciseLocally(ex.id, 'up')}
-                                    onMoveDown={() => moveExerciseLocally(ex.id, 'down')}
-                                    dragDisabled={isReorderingExercises}
-                                    catalog={catalog}
-                                    catalogLoading={catalogLoading}
-                                    catalogError={catalogError}
-                                />
-                            ))}
+                        <div>
+                            {dayBlocks.map((block, blockIndex) => {
+                                const nextBlock = dayBlocks[blockIndex + 1]
+                                const upper = block.members[block.members.length - 1].exercise
+                                const lower = nextBlock?.members[0].exercise
+                                const canLink = Boolean(nextBlock) && block.members.length + (nextBlock?.members.length ?? 0) <= MAX_SUPERSET_SIZE
+                                const renderRow = (member: (typeof block.members)[number]) => {
+                                    const ex = member.exercise
+                                    const memberIndex = activeDayExercises.findIndex(candidate => candidate.id === ex.id)
+                                    const previousBlock = dayBlocks[blockIndex - 1]
+                                    return (
+                                        <ExerciseRow
+                                            key={ex.id}
+                                            label={member.label}
+                                            superset={block.isSuperset ? {
+                                                position: member.position,
+                                                size: block.members.length,
+                                                isLast: member.isLast,
+                                                nextLabel: block.members[member.position + 1]?.label ?? null,
+                                            } : null}
+                                            canMoveUp={block.isSuperset ? member.position > 0 : blockIndex > 0}
+                                            canMoveDown={block.isSuperset ? !member.isLast : blockIndex < dayBlocks.length - 1}
+                                            canLinkUp={!block.isSuperset && Boolean(previousBlock) && previousBlock.members.length + 1 <= MAX_SUPERSET_SIZE}
+                                            canLinkDown={!block.isSuperset && canLink}
+                                            exercise={ex}
+                                            onUpdate={(updated) => {
+                                                setExercises(current => current.map(e => e.id === updated.id ? updated : e))
+                                            }}
+                                            onDelete={() => {
+                                                setExercises(current => current.filter(e => e.id !== ex.id))
+                                                // Un bloque que se queda con uno se deshace en el mismo momento.
+                                                if (block.isSuperset && activeDayId) {
+                                                    void runDayAction(() => normalizeDaySupersetsAction(activeDayId), 'No se pudo actualizar la superserie')
+                                                }
+                                            }}
+                                            onMove={(direction) => runDayAction(
+                                                () => moveExerciseInDayAction(activeDayId!, ex.id, direction),
+                                                'No se pudo mover',
+                                            )}
+                                            onLink={(direction) => {
+                                                const neighbour = activeDayExercises[memberIndex + (direction === 'up' ? -1 : 1)]
+                                                if (!neighbour) return
+                                                return direction === 'up' ? linkExercises(neighbour.id, ex.id) : linkExercises(ex.id, neighbour.id)
+                                            }}
+                                            onRemoveFromSuperset={() => runDayAction(
+                                                () => removeFromSupersetAction(activeDayId!, ex.id),
+                                                'No se pudo sacar de la superserie',
+                                            )}
+                                            dragDisabled={isReorderingExercises}
+                                            catalog={catalog}
+                                            catalogLoading={catalogLoading}
+                                            catalogError={catalogError}
+                                        />
+                                    )
+                                }
+                                return (
+                                    <React.Fragment key={block.key ?? upper.id}>
+                                        {block.isSuperset ? (
+                                            <SupersetGroup
+                                                block={block}
+                                                dragDisabled={isReorderingExercises}
+                                                canMoveUp={blockIndex > 0}
+                                                canMoveDown={blockIndex < dayBlocks.length - 1}
+                                                onSeparate={() => runDayAction(
+                                                    () => unlinkSupersetAction(activeDayId!, upper.id),
+                                                    'No se pudo separar',
+                                                )}
+                                                onEqualize={() => runDayAction(
+                                                    () => equalizeSupersetSetsAction(activeDayId!, upper.id),
+                                                    'No se pudieron igualar las series',
+                                                )}
+                                                onMoveBlock={(direction) => runDayAction(
+                                                    () => moveSupersetBlockAction(activeDayId!, upper.id, direction),
+                                                    'No se pudo mover',
+                                                )}
+                                            >
+                                                {block.members.map(renderRow)}
+                                            </SupersetGroup>
+                                        ) : (
+                                            renderRow(block.members[0])
+                                        )}
+                                        {nextBlock && (
+                                            <LinkDivider
+                                                upperLabel={block.letter}
+                                                lowerLabel={nextBlock.letter}
+                                                disabled={!canLink || isReorderingExercises}
+                                                onLink={() => linkExercises(upper.id, lower!.id)}
+                                            />
+                                        )}
+                                    </React.Fragment>
+                                )
+                            })}
                         </div>
                     ) : (
                         <div className="px-6 py-12 text-center">
@@ -1224,15 +1303,39 @@ function StepProgramTable({
     )
 }
 
-function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMoveUp, onMoveDown, dragDisabled, catalog, catalogLoading, catalogError }: {
+type ExerciseRowSuperset = { position: number, size: number, isLast: boolean, nextLabel: string | null }
+
+function ExerciseRow({
+    exercise,
+    label,
+    superset,
+    canMoveUp,
+    canMoveDown,
+    canLinkUp,
+    canLinkDown,
+    onUpdate,
+    onDelete,
+    onMove,
+    onLink,
+    onRemoveFromSuperset,
+    dragDisabled,
+    catalog,
+    catalogLoading,
+    catalogError,
+}: {
     exercise: any,
-    index: number,
-    total: number,
-    dayId: string,
+    /** Letra del ejercicio en el día: A, B, C1, C2… */
+    label: string,
+    superset: ExerciseRowSuperset | null,
+    canMoveUp: boolean,
+    canMoveDown: boolean,
+    canLinkUp: boolean,
+    canLinkDown: boolean,
     onUpdate: (ex: any) => void,
     onDelete: () => void,
-    onMoveUp: () => void,
-    onMoveDown: () => void,
+    onMove: (direction: 'up' | 'down') => Promise<unknown> | void,
+    onLink: (direction: 'up' | 'down') => Promise<unknown> | void,
+    onRemoveFromSuperset: () => Promise<unknown> | void,
     dragDisabled: boolean,
     catalog: CatalogExercise[],
     catalogLoading: boolean,
@@ -1294,17 +1397,18 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
         return Number.isFinite(parsed) ? parsed : null
     }
 
-    async function move(direction: 'up' | 'down') {
+    async function runRowAction(action: () => Promise<unknown> | void) {
         setIsProcessing(true)
-        const result = await reorderExerciseAction(exercise.id, direction, dayId)
-        if (result.success) {
-            if (direction === 'up') onMoveUp()
-            else onMoveDown()
-        } else {
-            toast({ title: 'Error', description: result.error, variant: 'destructive' })
+        try {
+            await action()
+        } finally {
+            setIsProcessing(false)
         }
-        setIsProcessing(false)
     }
+
+    const restLabel = superset
+        ? superset.isLast ? 'Tras la ronda (s)' : `Hasta ${superset.nextLabel ?? 'el siguiente'} (s)`
+        : 'Desc. (s)'
 
     async function remove() {
         setIsProcessing(true)
@@ -1329,11 +1433,15 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
             ref={setRowRef}
             style={{ transform: CSS.Translate.toString(transform) }}
             className={cn(
-                'space-y-2.5 bg-background px-3 py-3 transition-colors sm:px-4',
-                isDragging && 'relative z-10 opacity-40',
+                'relative space-y-2.5 px-3 py-3 transition-colors sm:px-4',
+                superset ? 'bg-transparent' : 'bg-background',
+                isDragging && 'z-10 opacity-40',
                 isOver && !isDragging && 'bg-primary/5 ring-2 ring-inset ring-primary/20'
             )}
         >
+            {superset && !superset.isLast && (
+                <span aria-hidden className="pointer-events-none absolute bottom-0 left-[3rem] top-[2.6rem] w-0.5 rounded-full bg-primary/35 sm:left-[3.25rem]" />
+            )}
             <div className="flex items-center gap-1.5">
                 <button
                     type="button"
@@ -1346,8 +1454,14 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                 >
                     <GripVertical className="h-4 w-4" />
                 </button>
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-muted-foreground">
-                    {index + 1}
+                <span
+                    className={cn(
+                        'flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold tabular-nums',
+                        superset ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                    )}
+                    aria-label={superset ? `Ejercicio ${label} de la superserie` : `Ejercicio ${label}`}
+                >
+                    {label}
                 </span>
                 <div className="min-w-0 flex-1">
                     <ExerciseCatalogPicker
@@ -1371,14 +1485,32 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem disabled={index === 0} onClick={() => move('up')}>
+                        <DropdownMenuItem disabled={!canMoveUp} onClick={() => runRowAction(() => onMove('up'))}>
                             <ArrowUp className="mr-2 h-4 w-4" />
-                            Subir
+                            {superset ? 'Subir dentro del bloque' : 'Subir'}
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled={index === total - 1} onClick={() => move('down')}>
+                        <DropdownMenuItem disabled={!canMoveDown} onClick={() => runRowAction(() => onMove('down'))}>
                             <ArrowDown className="mr-2 h-4 w-4" />
-                            Bajar
+                            {superset ? 'Bajar dentro del bloque' : 'Bajar'}
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {superset ? (
+                            <DropdownMenuItem onClick={() => runRowAction(onRemoveFromSuperset)}>
+                                <Unlink className="mr-2 h-4 w-4" />
+                                Sacar de la superserie
+                            </DropdownMenuItem>
+                        ) : (
+                            <>
+                                <DropdownMenuItem disabled={!canLinkUp} onClick={() => runRowAction(() => onLink('up'))}>
+                                    <Link2 className="mr-2 h-4 w-4" />
+                                    Enlazar con el anterior
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={!canLinkDown} onClick={() => runRowAction(() => onLink('down'))}>
+                                    <Link2 className="mr-2 h-4 w-4" />
+                                    Enlazar con el siguiente
+                                </DropdownMenuItem>
+                            </>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={remove}>
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -1421,13 +1553,13 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                     />
                 </label>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Desc. (s)</span>
+                    <span className={cn('block truncate text-[10px] font-semibold uppercase tracking-wider', superset ? 'text-primary' : 'text-muted-foreground')}>{restLabel}</span>
                     <input
                         type="number"
                         inputMode="numeric"
-                        className={fieldClass}
+                        className={cn(fieldClass, superset && 'border-primary/40')}
                         value={exercise.rest_seconds ?? ''}
-                        placeholder="90"
+                        placeholder={superset && !superset.isLast ? '0' : '90'}
                         onChange={e => onUpdate({ ...exercise, rest_seconds: e.target.value })}
                         onBlur={e => updateExerciseFields({ rest_seconds: parseOptionalInteger(e.target.value) })}
                     />
@@ -1449,6 +1581,156 @@ function ExerciseRow({ exercise, index, total, dayId, onUpdate, onDelete, onMove
                     />
                 </label>
             </div>
+        </div>
+    )
+}
+
+type EditorBlock = ReturnType<typeof buildExerciseBlocks<any>>[number]
+
+/** Superserie en el editor: cabecera con el bloque entero, sus ejercicios y el aviso de series distintas. */
+function SupersetGroup({
+    block,
+    children,
+    dragDisabled,
+    canMoveUp,
+    canMoveDown,
+    onSeparate,
+    onEqualize,
+    onMoveBlock,
+}: {
+    block: EditorBlock,
+    children: React.ReactNode,
+    dragDisabled: boolean,
+    canMoveUp: boolean,
+    canMoveDown: boolean,
+    onSeparate: () => unknown,
+    onEqualize: () => unknown,
+    onMoveBlock: (direction: 'up' | 'down') => unknown,
+}) {
+    const first = block.members[0].exercise
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+        id: `block-${block.key}`,
+        data: { exerciseId: first.id, wholeBlock: true },
+        disabled: dragDisabled,
+    })
+    const { setNodeRef: setDropRef, isOver } = useDroppable({
+        id: `block-drop-${block.key}`,
+        data: { exerciseId: first.id },
+        disabled: dragDisabled,
+    })
+
+    const setsOfMember = (member: EditorBlock['members'][number]) => Number(member.exercise.sets) || 0
+    const maxSets = Math.max(0, ...block.members.map(setsOfMember))
+    const minSets = Math.min(...block.members.map(setsOfMember))
+    const unequal = maxSets > 0 && minSets !== maxSets
+    const fullLabels = block.members.filter(member => setsOfMember(member) === maxSets).map(member => member.label)
+    let unequalText = ''
+    if (unequal) {
+        if (block.members.length === 2) {
+            const [a, b] = block.members
+            const extra = maxSets - minSets
+            const rounds = Array.from({ length: extra }, (_, i) => minSets + i + 1)
+            const roundsText = rounds.length === 1 ? `la ronda ${rounds[0]} será` : `las rondas ${rounds.slice(0, -1).join(', ')} y ${rounds[rounds.length - 1]} serán`
+            unequalText = `${a.label} tiene ${setsOfMember(a)} series y ${b.label} tiene ${setsOfMember(b)}: ${roundsText} solo de ${fullLabels.join(' y ')}.`
+        } else {
+            unequalText = `Series distintas (${block.members.map(member => `${member.label}: ${setsOfMember(member)}`).join(' · ')}): en las últimas rondas solo se hace lo que quede.`
+        }
+    }
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={{ transform: CSS.Translate.toString(transform) }}
+            className={cn(
+                'mx-2 my-2 overflow-hidden rounded-xl border border-primary/35 bg-primary/[0.04] sm:mx-3',
+                isDragging && 'relative z-10 opacity-40'
+            )}
+        >
+            <div
+                ref={setDropRef}
+                className={cn(
+                    'flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-primary/20 py-2 pl-1 pr-2 sm:pr-3',
+                    isOver && !isDragging && 'bg-primary/10'
+                )}
+            >
+                <button
+                    type="button"
+                    disabled={dragDisabled}
+                    className="flex h-8 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Mover la superserie entera"
+                    title="Arrastrar para mover la superserie entera"
+                    {...listeners}
+                    {...attributes}
+                >
+                    <GripVertical className="h-4 w-4" />
+                </button>
+                <span className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-primary">
+                    {supersetKindLabel(block.members.length)}
+                </span>
+                <span className="min-w-0 flex-1 text-[13px] text-foreground/80">
+                    {block.rounds} {block.rounds === 1 ? 'ronda' : 'rondas'} · {describeSupersetFlow(block)}
+                </span>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" disabled={dragDisabled} aria-label="Más acciones de la superserie">
+                            <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem disabled={!canMoveUp} onClick={() => onMoveBlock('up')}>
+                            <ArrowUp className="mr-2 h-4 w-4" />
+                            Subir la superserie
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={!canMoveDown} onClick={() => onMoveBlock('down')}>
+                            <ArrowDown className="mr-2 h-4 w-4" />
+                            Bajar la superserie
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 rounded-full" disabled={dragDisabled} onClick={() => onSeparate()}>
+                    <Unlink className="h-3.5 w-3.5" />
+                    Separar
+                </Button>
+            </div>
+            <div className="divide-y divide-primary/15">{children}</div>
+            {unequal && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-primary/15 px-3.5 py-2.5 text-[13px] text-amber-600 dark:text-amber-400">
+                    <Info className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1">{unequalText}</span>
+                    <Button variant="outline" size="sm" className="h-7 rounded-full text-foreground" disabled={dragDisabled} onClick={() => onEqualize()}>
+                        Igualar a {maxSets}
+                    </Button>
+                </div>
+            )}
+        </div>
+    )
+}
+
+/** Línea entre dos bloques del día con el botón para enlazarlos (al pasar el ratón; en táctil, siempre). */
+function LinkDivider({
+    upperLabel,
+    lowerLabel,
+    disabled,
+    onLink,
+}: {
+    upperLabel: string,
+    lowerLabel: string,
+    disabled: boolean,
+    onLink: () => unknown,
+}) {
+    return (
+        <div className="group/link relative h-px bg-border/60 before:absolute before:inset-x-0 before:-top-2.5 before:z-[4] before:h-5 before:content-['']">
+            {!disabled && (
+                <button
+                    type="button"
+                    onClick={() => onLink()}
+                    aria-label={`Enlazar ${upperLabel} y ${lowerLabel} como superserie`}
+                    className="absolute left-1/2 top-0 z-[5] inline-flex h-7 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border border-dashed border-primary/60 bg-card px-3 text-xs font-semibold text-primary opacity-0 shadow-sm transition-opacity hover:bg-primary/10 focus-visible:opacity-100 group-hover/link:opacity-100 [@media(hover:none)]:opacity-100"
+                >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Enlazar {upperLabel} y {lowerLabel}
+                </button>
+            )}
         </div>
     )
 }

@@ -12,6 +12,7 @@ import {
     formatContextSections,
     takeRecentChatMessages,
 } from './nextia-context-format'
+import { supersetInfoById } from '@/lib/training/supersets'
 
 type NextIAMessage = {
     role: 'user' | 'assistant'
@@ -208,15 +209,25 @@ function formatStrengthProgram(program: any, days: any[], exercises: any[], sets
     for (const day of days.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))) {
         lines.push(`Dia: ${day.name}`)
         const dayExercises = (exercisesByDay.get(day.id) || []).sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+        // Superseries: letra del bloque y con quién va. Dentro del bloque el descanso de los
+        // primeros es el paso al siguiente y el del último, el descanso tras la ronda.
+        const blockInfo = supersetInfoById(dayExercises)
         for (const exercise of dayExercises) {
+            const info = blockInfo.get(exercise.id)
+            const rest = exercise.rest_seconds != null
+                ? info?.isSuperset
+                    ? info.isLast ? `descanso tras la ronda ${exercise.rest_seconds}s` : `paso al siguiente ${exercise.rest_seconds}s`
+                    : `descanso ${exercise.rest_seconds}s`
+                : ''
             const prescribed = [
                 exercise.sets ? `${exercise.sets} series` : '',
                 exercise.reps ? `${exercise.reps} reps` : '',
                 exercise.rir != null ? `RIR ${exercise.rir}` : '',
-                exercise.rest_seconds != null ? `descanso ${exercise.rest_seconds}s` : '',
+                rest,
                 exercise.notes ? `notas ${exercise.notes}` : '',
             ].filter(Boolean).join(' · ')
-            lines.push(`- ${exercise.exercise_name}${exercise.muscle_group ? ` [${exercise.muscle_group}]` : ''}: ${prescribed || 'sin pauta'}`)
+            const superset = info?.isSuperset ? ` (${info.kind} con ${info.withLabels.join(', ')})` : ''
+            lines.push(`- ${info ? `${info.label} ` : ''}${exercise.exercise_name}${exercise.muscle_group ? ` [${exercise.muscle_group}]` : ''}${superset}: ${prescribed || 'sin pauta'}`)
 
             const weeklySets = (setsByExercise.get(exercise.id) || [])
                 .sort((a, b) => (a.week_index ?? 0) - (b.week_index ?? 0) || (a.set_index ?? 0) - (b.set_index ?? 0))
@@ -402,7 +413,7 @@ export async function buildNextIAAthleteContext({
             .select(`
                 id, name, order_index,
                 training_exercises (
-                    id, day_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes,
+                    id, day_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes, superset_key,
                     training_exercise_sets ( exercise_id, week_index, set_index, weight_kg, reps, rir, completed, notes )
                 )
             `)
