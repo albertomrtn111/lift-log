@@ -81,29 +81,103 @@ export function shiftDay(day, deltaKcal, to = 'carbs') {
     return { ...day, ...shiftTarget(base, deltaKcal, to), day_type_config: null }
 }
 
-/** Cuánto se sube cada día según la progresión. dayIndex cuenta desde el inicio del bloque. */
-export function progressionDelta(progression, dayIndex, startDate) {
+/** Gramos que se pueden subir o bajar en una progresión por gramos. */
+export const GRAM_MACROS = ['protein_g', 'carbs_g', 'fat_g']
+
+/** Kcal de unos macros (4 / 4 / 9 kcal por gramo). */
+export function macrosKcal(t) {
+    return round(GRAM_MACROS.reduce((sum, k) => sum + (Number(t?.[k]) || 0) * KCAL_PER_G[k], 0))
+}
+
+/**
+ * Suma (o resta) gramos a un objetivo: { protein_g, carbs_g, fat_g }.
+ * Las kcal cambian lo que aportan esos gramos, así se respeta el punto de partida.
+ */
+export function shiftGrams(target, deltaGrams) {
+    const next = { ...target }
+    let kcal = Number(target.kcal) || 0
+    for (const key of GRAM_MACROS) {
+        const d = Number(deltaGrams?.[key]) || 0
+        if (!d) continue
+        const before = Number(target[key]) || 0
+        next[key] = round(before + d)
+        kcal += (next[key] - before) * KCAL_PER_G[key]
+    }
+    next.kcal = round(kcal)
+    return next
+}
+
+/** Igual que shiftGrams, también para los dos juegos de entreno/descanso. */
+export function shiftDayGrams(day, deltaGrams) {
+    const base = normalizeBase(day)
+    if (base.day_type_config) {
+        const training = shiftGrams(base.day_type_config.training, deltaGrams)
+        const rest = shiftGrams(base.day_type_config.rest, deltaGrams)
+        return { ...day, ...training, day_type_config: { training, rest } }
+    }
+    return { ...day, ...shiftGrams(base, deltaGrams), day_type_config: null }
+}
+
+/** ¿La progresión va en gramos (start_g / step_g) en vez de en kcal? */
+export function isGramProgression(progression) {
+    return !!(progression && (progression.step_g || progression.start_g))
+}
+
+const scaleGrams = (start, step, n) =>
+    Object.fromEntries(GRAM_MACROS.map(k => [k, (Number(start?.[k]) || 0) + (Number(step?.[k]) || 0) * n]))
+
+/**
+ * Lo que se suma a un día: kcal (número) o gramos ({ protein_g, carbs_g, fat_g }),
+ * según la progresión, tras `n` escalones.
+ */
+export function progressionAmount(progression, n) {
     const p = progression ?? { type: 'none' }
-    const start = Number(p.start_kcal) || 0
-    const step = Number(p.step_kcal) || 0
-    if (p.type === 'weekly') {
-        // Semana 1 = start, semana 2 = start + step… Las semanas son de lunes a domingo.
-        const week = Math.floor((weekdayIndex(startDate) + dayIndex) / 7)
-        return start + step * week
-    }
-    if (p.type === 'within_week') {
-        // Sube cada día y el lunes vuelve al punto de partida.
-        const day = weekdayIndex(addDays(startDate, dayIndex))
-        return start + step * day
-    }
-    return start
+    const steps = p.type === 'weekly' || p.type === 'within_week' ? n : 0
+    if (isGramProgression(p)) return scaleGrams(p.start_g, p.step_g, steps)
+    return (Number(p.start_kcal) || 0) + (Number(p.step_kcal) || 0) * steps
+}
+
+/**
+ * Escalones de cada día de un bloque.
+ * - weekly: la semana del bloque (las semanas van de lunes a domingo; la primera es la del inicio).
+ * - within_week: los días planificados que ya van esa semana dentro del bloque, así el primer
+ *   día del bloque (o el primero de cada semana) es el punto de partida aunque no sea lunes.
+ */
+export function progressionSteps(progression, dates, startDate) {
+    const type = progression?.type
+    const perWeek = new Map()
+    return dates.map(date => {
+        if (type === 'weekly') return Math.floor(daysBetween(weekStart(startDate), date) / 7)
+        if (type === 'within_week') {
+            const week = weekStart(date)
+            const n = perWeek.get(week) ?? 0
+            perWeek.set(week, n + 1)
+            return n
+        }
+        return 0
+    })
+}
+
+/** Lo que se suma el día `dayIndex` (contando desde el inicio) de un bloque sin días saltados. */
+export function progressionDelta(progression, dayIndex, startDate) {
+    const dates = eachDay(startDate, addDays(startDate, dayIndex))
+    return progressionAmount(progression, progressionSteps(progression, dates, startDate)[dayIndex])
 }
 
 const sign = (n) => (n > 0 ? `+${n}` : `${n}`)
+const GRAM_LABEL = { protein_g: 'prot.', carbs_g: 'HC', fat_g: 'grasa' }
+
+/** Etiqueta corta de lo que se ha sumado: «+300 kcal» o «+60 g HC · −5 g grasa». */
+export function amountLabel(amount) {
+    if (typeof amount === 'number') return amount ? `${sign(amount)} kcal` : null
+    const parts = GRAM_MACROS.filter(k => amount?.[k]).map(k => `${sign(amount[k])} g ${GRAM_LABEL[k]}`)
+    return parts.length ? parts.join(' · ').replace(/-/g, '−') : null
+}
 
 /**
  * Días de un bloque: del inicio al fin (incluidos), opcionalmente solo algunos días de la
- * semana (0 = lunes). Cada día parte de `base` y suma lo que diga la progresión.
+ * semana (0 = lunes). Cada día parte de `base` y suma lo que diga la progresión, en kcal
+ * (start_kcal / step_kcal, a donde diga `to`) o en gramos (start_g / step_g).
  * @param {{ start: string, end: string, base: object, progression?: object | null,
  *   weekdays?: number[] | null, label?: string | null, dietPlanId?: string | null }} options
  */
@@ -112,21 +186,20 @@ export function buildBlockDays({ start, end, base, progression, weekdays, label,
     if (daysBetween(start, end) > 61) throw new Error('Un bloque puede tener como mucho 62 días.')
     const origin = normalizeBase(base)
     const to = KCAL_TARGETS.includes(progression?.to) ? progression.to : 'carbs'
-    return eachDay(start, end)
-        .map((date, i) => ({ date, i }))
-        .filter(({ date }) => !weekdays?.length || weekdays.includes(weekdayIndex(date)))
-        .map(({ date, i }) => {
-            const delta = progressionDelta(progression, i, start)
-            const day = shiftDay({ ...origin }, delta, to)
-            return {
-                date,
-                ...pick(day),
-                day_type_config: day.day_type_config,
-                steps: origin.steps,
-                label: label ?? (delta ? `${sign(delta)} kcal` : null),
-                diet_plan_id: dietPlanId ?? null,
-            }
-        })
+    const dates = eachDay(start, end).filter(date => !weekdays?.length || weekdays.includes(weekdayIndex(date)))
+    const steps = progressionSteps(progression, dates, start)
+    return dates.map((date, i) => {
+        const amount = progressionAmount(progression, steps[i])
+        const day = typeof amount === 'number' ? shiftDay({ ...origin }, amount, to) : shiftDayGrams({ ...origin }, amount)
+        return {
+            date,
+            ...pick(day),
+            day_type_config: day.day_type_config,
+            steps: origin.steps,
+            label: label ?? amountLabel(amount),
+            diet_plan_id: dietPlanId ?? null,
+        }
+    })
 }
 
 /**

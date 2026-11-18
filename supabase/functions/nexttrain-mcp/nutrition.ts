@@ -227,10 +227,12 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
     return { client_id: input.client_id, from: input.from, to: input.to, days: (await calendarRows(input.client_id, input.from, input.to)).map(calendarDay) }
   }))
 
+  const gramDelta = z.number().int().min(-500).max(500)
+  const gramStep = z.strictObject({ protein_g: gramDelta.optional(), carbs_g: gramDelta.optional(), fat_g: gramDelta.optional() })
   const plannedTarget = { target: target.optional().describe('Objetivo único del día.'), day_type_config: config.optional().describe('Objetivos de entreno y descanso del día.') }
   server.registerTool('plan_nutrition_days', {
     title: 'Planificar días de nutrición (semana, días o bloque con progresión)',
-    description: 'Planifica días concretos en el calendario del atleta sin tocar su plan base: mandan solo esas fechas y luego vuelve solo al plan base. Dos formas: days (cada día con su objetivo, p. ej. carga de hidratos de jueves a sábado) o generate (de start a end, partiendo del plan base o de un objetivo, con progresión weekly = sube cada semana, within_week = sube cada día y el lunes vuelve al inicio; las kcal van a hidratos salvo que digas otra cosa; la proteína no cambia). Usa dry_run para ver los días antes de guardar. No planifica días pasados. Si pisa días ya planificados, falla salvo replace_conflicts = true.',
+    description: 'Planifica días concretos en el calendario del atleta sin tocar su plan base: mandan solo esas fechas y luego vuelve solo al plan base. Dos formas: days (cada día con su objetivo, p. ej. carga de hidratos de jueves a sábado) o generate (de start a end, partiendo del plan base o de un objetivo, con progresión weekly = sube cada semana, within_week = sube cada día planificado de la semana desde el primer día del bloque y la semana siguiente vuelve al inicio; en kcal (van a hidratos salvo que digas otra cosa; la proteína no cambia) o en gramos por macro con step_g/start_g, p. ej. +60 g HC y −5 g grasa por día). Con days cada fecha puede llevar sus propios macros. Usa dry_run para ver los días antes de guardar. No planifica días pasados. Si pisa días ya planificados, falla salvo replace_conflicts = true.',
     inputSchema: z.strictObject({
       ...scope,
       name: z.string().trim().min(1).max(160).describe('Nombre del bloque, p. ej. «Semana maratón».'),
@@ -248,6 +250,8 @@ export function registerNutritionTools(server: any, db: any, helpers: ToolHelper
           step_kcal: z.number().int().min(-1000).max(1000).default(0).describe('Cuánto sube cada semana (weekly) o cada día (within_week).'),
           start_kcal: z.number().int().min(-2000).max(2000).default(0).describe('Lo que se suma ya el primer día; p. ej. 100 para empezar 100 kcal por encima.'),
           to: z.enum(['carbs', 'fat', 'carbs_fat']).default('carbs').describe('A qué macro van las kcal.'),
+          step_g: gramStep.optional().describe('En gramos en vez de kcal: lo que suma cada escalón, p. ej. { carbs_g: 60, fat_g: -5 }. Las kcal salen de los gramos (4/4/9). Si lo envías, step_kcal, start_kcal y to no se usan.'),
+          start_g: gramStep.optional().describe('En gramos: lo que se suma ya el primer día.'),
         }).optional(),
         weekdays: z.array(z.number().int().min(0).max(6)).max(7).optional().describe('Solo estos días de la semana (0 = lunes … 6 = domingo).'),
         label: z.string().trim().max(60).optional(), diet_plan_id: z.string().uuid().optional(),
