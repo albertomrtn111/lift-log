@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import { ProgramSelector } from './ProgramSelector'
 import { ProgressionTable } from './ProgressionTable'
 import { TrainingProgressAIAnalysisCard } from './TrainingProgressAIAnalysisCard'
 import { buildTrainingProgressCsv } from '@/lib/training/progress-csv'
+import { findProgramWithLogsInSamePeriod } from '@/lib/training/program-selector'
 import {
     analyzeTrainingProgressAction,
     getClientProgramsForSelector,
@@ -44,6 +45,10 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
     const [progressData, setProgressData] = useState<TrainingProgressData | null>(null)
     const [loadingPrograms, setLoadingPrograms] = useState(true)
     const [loadingData, setLoadingData] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
+    // Solo vale la respuesta del último programa pedido: si el coach cambia rápido
+    // de programa, una respuesta lenta del anterior no pisa la del elegido.
+    const latestRequest = useRef(0)
     const [sheetOpen, setSheetOpen] = useState(false)
     const [coachInstruction, setCoachInstruction] = useState('')
     const [analysis, setAnalysis] = useState<TrainingProgressAIAnalysis | null>(null)
@@ -73,12 +78,16 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
     // Load progression data when program changes
     const loadProgressData = useCallback(async (programId: string) => {
         if (!programId) return
+        const requestId = ++latestRequest.current
         setLoadingData(true)
+        setLoadError(null)
         const result = await getTrainingProgressData(programId)
+        if (requestId !== latestRequest.current) return
         if (result.success && result.data) {
             setProgressData(result.data)
         } else {
             setProgressData(null)
+            setLoadError(result.error || 'No se pudo cargar el progreso de este programa.')
         }
         setLoadingData(false)
     }, [])
@@ -103,6 +112,13 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
             loadProgressData(selectedProgramId)
         }
     }, [selectedProgramId, loadProgressData])
+
+    const selectedProgram = programs.find((program) => program.id === selectedProgramId)
+    const isCurrentProgram = selectedProgram?.status === 'active'
+    // En un programa anterior sin registros, el de las mismas fechas donde sí los hay.
+    const programWithLogs = !isCurrentProgram
+        ? (findProgramWithLogsInSamePeriod(programs, selectedProgramId) as ProgramSummary | null)
+        : null
 
     const hasTrackedTrainingData = !!progressData && progressData.days.some((day) =>
         day.exercises.some((exercise) =>
@@ -297,6 +313,22 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
                 </div>
             )}
 
+            {/* Error loading */}
+            {!loadingData && !progressData && loadError && (
+                <Card className="p-8">
+                    <div className="flex flex-col items-center justify-center text-center py-8">
+                        <AlertTriangle className="h-10 w-10 text-muted-foreground/40 mb-4" />
+                        <h3 className="font-semibold text-lg">No se pudo cargar el progreso</h3>
+                        <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+                            Ha fallado la carga de este programa. Prueba de nuevo en unos segundos.
+                        </p>
+                        <Button variant="outline" className="mt-4" onClick={() => loadProgressData(selectedProgramId)}>
+                            Reintentar
+                        </Button>
+                    </div>
+                </Card>
+            )}
+
             {/* Data loaded */}
             {!loadingData && progressData && (
                 <>
@@ -308,12 +340,33 @@ export function TrainingProgressView({ clientId, coachId }: TrainingProgressView
                             <div className="flex flex-col items-center justify-center text-center py-8">
                                 <Dumbbell className="h-12 w-12 text-muted-foreground/30 mb-4" />
                                 <h3 className="font-semibold text-lg">Sin datos de entrenamiento</h3>
-                                <p className="text-muted-foreground mt-1 max-w-sm text-sm">
-                                    El atleta aún no ha registrado entrenamientos en este programa.
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-3">
-                                    Cuando haya semanas registradas, podrás lanzar un análisis IA del progreso desde aquí.
-                                </p>
+                                {isCurrentProgram ? (
+                                    <>
+                                        <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+                                            El atleta aún no ha registrado entrenamientos en este programa.
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-3">
+                                            Cuando haya semanas registradas, podrás lanzar un análisis IA del progreso desde aquí.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+                                            El atleta no registró entrenamientos en este programa.
+                                        </p>
+                                        {programWithLogs && (
+                                            <div className="mt-4 flex max-w-md flex-col items-center gap-3">
+                                                <p className="text-sm text-muted-foreground">
+                                                    Los entrenos de esas fechas están en{' '}
+                                                    <span className="font-medium text-foreground break-words">«{programWithLogs.name}»</span>.
+                                                </p>
+                                                <Button variant="outline" size="sm" onClick={() => setSelectedProgramId(programWithLogs.id)}>
+                                                    Ver ese programa
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </Card>
                     ) : (
