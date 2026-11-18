@@ -80,3 +80,45 @@ test('los bloques no pasan de 62 días y los valores raros se señalan', () => {
     assert.deepEqual(dayErrors(base), [])
     assert.equal(dayErrors({ ...base, kcal: -1 }).length, 1)
 })
+
+const planning = await import('../src/lib/nutrition/planning.js')
+
+test('sube durante la semana desde el primer día del bloque aunque no sea lunes', () => {
+    const days = planning.buildBlockDays({
+        start: '2026-11-19', end: '2026-11-25', base,
+        progression: { type: 'within_week', step_kcal: 300 },
+    })
+    // jueves 0, viernes +300, sábado +600, domingo +900; el lunes vuelve al inicio
+    assert.deepEqual(days.slice(0, 5).map(d => d.kcal), [2600, 2900, 3200, 3500, 2600])
+})
+
+test('con días saltados, cada día planificado de la semana es un escalón', () => {
+    const days = planning.buildBlockDays({
+        start: '2026-11-16', end: '2026-11-22', base, weekdays: [3, 4, 5],
+        progression: { type: 'within_week', step_kcal: 300 },
+    })
+    assert.deepEqual(days.map(d => d.kcal), [2600, 2900, 3200])
+})
+
+test('progresión en gramos: hidratos arriba y grasa abajo, las kcal salen solas', () => {
+    const days = planning.buildBlockDays({
+        start: '2026-11-19', end: '2026-11-21', base,
+        progression: { type: 'within_week', start_g: { carbs_g: 60 }, step_g: { carbs_g: 60, fat_g: -5 } },
+    })
+    assert.deepEqual(days.map(d => [d.carbs_g, d.fat_g, d.protein_g]), [[390, 75, 150], [450, 70, 150], [510, 65, 150]])
+    // 2600 + 60·4 = 2840; + 60·4 − 5·9 = 3035; + 60·4 − 5·9 = 3230
+    assert.deepEqual(days.map(d => d.kcal), [2840, 3035, 3230])
+    assert.equal(days[0].label, '+60 g HC')
+    assert.equal(days[1].label, '+120 g HC · −5 g grasa')
+})
+
+test('gramos también en entreno y descanso, y nunca por debajo de cero', () => {
+    const day = planning.shiftDayGrams(
+        { ...base, day_type_config: { training: base, rest: { ...base, fat_g: 3 } } },
+        { fat_g: -10, protein_g: 10 },
+    )
+    assert.equal(day.day_type_config.training.fat_g, 65)
+    assert.equal(day.day_type_config.rest.fat_g, 0)
+    assert.equal(day.day_type_config.rest.kcal, 2600 - 27 + 40)
+    assert.equal(planning.macrosKcal({ protein_g: 120, carbs_g: 368, fat_g: 50 }), 2402)
+})

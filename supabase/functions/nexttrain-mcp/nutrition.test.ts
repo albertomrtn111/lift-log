@@ -257,6 +257,25 @@ Deno.test('a generated block starts from the plan base and climbs 100 kcal each 
   assert.ok((await run('plan_nutrition_days', { client_id: clientId, name: 'X', days: [{ date: '2020-01-01', target: { protein_g: 1, carbs_g: 1, fat_g: 1 } }] })).error)
 })
 
+Deno.test('a carb load in grams climbs carbs and drops fat from the first day of the block', async () => {
+  const { run, calls, tables } = fixture()
+  tables.calendar = [calendarRow('2099-11-19')]
+  const result = await run('plan_nutrition_days', {
+    client_id: clientId, name: 'Carga HC maratón',
+    generate: {
+      start: '2099-11-19', end: '2099-11-21',
+      progression: { type: 'within_week', start_g: { carbs_g: 60 }, step_g: { carbs_g: 60, fat_g: -5 } },
+    },
+  })
+  assert.equal(result.error, undefined)
+  const sent = calls[0].args.p_days
+  assert.deepEqual(sent.map((d: { carbs_g: number; fat_g: number }) => d.carbs_g - sent[0].carbs_g), [0, 60, 120])
+  assert.deepEqual(sent.map((d: { carbs_g: number; fat_g: number }) => d.fat_g - sent[0].fat_g), [0, -5, -10])
+  assert.equal(sent[1].kcal - sent[0].kcal, 60 * 4 - 5 * 9)
+  assert.equal(sent[0].label, '+60 g HC')
+  assert.equal(calls[0].args.p_block.progression.step_g.carbs_g, 60)
+})
+
 Deno.test('current nutrition uses the planned day over the base plan', async () => {
   const { run, tables } = fixture()
   tables.calendar = [calendarRow('2026-11-19', { source: 'planned', block_id: 'b1', block_name: 'Maratón', label: 'Carga HC 1/3', kcal: 3400, carbs_g: 530, fat_g: 60, macro_plan_id: null, planned_day_id: mealId })]
