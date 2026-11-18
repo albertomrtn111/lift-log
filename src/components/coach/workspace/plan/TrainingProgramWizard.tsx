@@ -61,6 +61,22 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { addExerciseAction, deleteExerciseAction } from '../actions'
+import { applyStrengthStructureAction } from '../strength-structure-actions'
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+    LoggedResultsDialog,
+    describeWeeks,
+    type LoggedResultsDecision,
+    type LoggedResultsPrompt,
+} from './LoggedResultsDialog'
+import type { StrengthResultConflict } from '@/lib/training/strength-results-data'
 import {
     dropExerciseInDayAction,
     equalizeSupersetSetsAction,
@@ -139,6 +155,8 @@ export function TrainingProgramWizard({
         }
     }, [autoOpenTemplateImport, step, autoImportShown])
     const appliedPendingAIKeyRef = useRef<string | null>(null)
+    const [loggedResultsPrompt, setLoggedResultsPrompt] = useState<LoggedResultsPrompt | null>(null)
+    const loggedResultsResolveRef = useRef<((decision: LoggedResultsDecision) => void) | null>(null)
 
     // Refs for imperative save
     const step1Ref = useRef<{ handleSave: () => Promise<boolean> }>(null)
@@ -181,12 +199,17 @@ export function TrainingProgramWizard({
         ;(async () => {
             setLoading(true)
             try {
-                await applyStructureToDB(currentProgramId, coachId ?? program?.coach_id ?? '', pendingAIStructure, pendingAIName)
+                const structure = await resolveAIStructure(pendingAIStructure)
+                const result = await applyStructureToDB(currentProgramId, structure, pendingAIName)
                 await loadAllData(currentProgramId)
                 setStep(2)
+                if (!result) {
+                    toast({ title: 'No se ha cambiado el programa', description: 'Has cancelado la propuesta de la IA.' })
+                    return
+                }
                 toast({
                     title: 'Programa actualizado con IA',
-                    description: 'Revisa los días antes de finalizar para confirmar la planificación semanal.',
+                    description: keptMessage(result) ?? 'Revisa los días antes de finalizar para confirmar la planificación semanal.',
                 })
             } catch {
                 await loadAllData(currentProgramId)
@@ -323,142 +346,71 @@ export function TrainingProgramWizard({
         onClose()
     }
 
+    /** Aviso de NXT-124: el coach decide qué hacer con lo que el atleta ya ha registrado. */
+    function askLoggedResults(conflicts: StrengthResultConflict[], context: LoggedResultsPrompt['context']) {
+        return new Promise<LoggedResultsDecision>(resolve => {
+            loggedResultsResolveRef.current = resolve
+            setLoggedResultsPrompt({ conflicts, context })
+        })
+    }
+
+    function resolveLoggedResults(decision: LoggedResultsDecision) {
+        const resolve = loggedResultsResolveRef.current
+        loggedResultsResolveRef.current = null
+        setLoggedResultsPrompt(null)
+        resolve?.(decision)
+    }
+
+    function keptMessage(result: { keptExercises: number; keptDays: number }) {
+        const parts: string[] = []
+        if (result.keptExercises > 0) parts.push(`${result.keptExercises} ${result.keptExercises === 1 ? 'ejercicio' : 'ejercicios'} al final de su día`)
+        if (result.keptDays > 0) parts.push(`${result.keptDays} ${result.keptDays === 1 ? 'día' : 'días'} al final del programa`)
+        return parts.length > 0 ? `Se ha conservado lo que el atleta ya había registrado: ${parts.join(' y ')}.` : null
+    }
+
     /**
-     * Writes days + exercises directly to DB using explicit IDs.
-     * Used by the AI flow where we have the real programId immediately —
-     * avoids the React state closure issue with currentProgramId.
-     * Throws on any DB error so the caller can block progression.
+     * Aplica la estructura (IA o plantilla) sin recrear el programa (NXT-124): lo que
+     * sigue conserva su id y, con él, las series del atleta. Si algo que sobra tiene
+     * registros, pregunta antes. Devuelve null si el coach cancela y lanza si falla.
      */
     async function applyStructureToDB(
         programId: string,
-        resolvedCoachId: string,
         structure: StrengthStructure,
         programName?: string | null,
+        { regenerateSchedule = true }: { regenerateSchedule?: boolean } = {},
     ) {
-        const supabase = createClient()
+        const input = { programId, structure, programName }
+        let result = await applyStrengthStructureAction(input)
+        while (!result.success && result.needsDecision) {
+            const conflicts = result.conflicts
+            const decision = await askLoggedResults(conflicts, 'structure')
+            if (decision === 'cancel') return null
+            result = await applyStrengthStructureAction({
+                ...input,
+                decision,
+                confirmedDeleteIds: decision === 'delete' ? conflicts.map(conflict => conflict.id) : undefined,
+            })
+        }
+        if (!result.success) {
+            const message = 'error' in result ? result.error : 'No se pudieron aplicar los cambios.'
+            toast({ title: 'No se pudieron aplicar los cambios', description: message, variant: 'destructive' })
+            throw new Error(message)
+        }
+
+        // Vuelve a agendar las sesiones con los días que tengan día de la semana.
+        if (regenerateSchedule) await saveTrainingDays(programId, result.days)
+        return result
+    }
+
+    /** Liga cada ejercicio de la IA a la biblioteca; lanza si alguno no está. */
+    async function resolveAIStructure(structure: StrengthStructure) {
         const resolved = resolveStrengthStructure(structure, await loadExerciseCatalog())
         if (resolved.unresolved.length > 0) {
             const message = `Elige de la biblioteca: ${resolved.unresolved.slice(0, 3).join(', ')}`
             toast({ title: 'Ejercicios sin identificar', description: message, variant: 'destructive' })
             throw new Error(message)
         }
-        structure = resolved.structure
-
-        const { data: existingDays } = await supabase
-            .from('training_days')
-            .select('name, order_index, default_weekday')
-            .eq('program_id', programId)
-
-        const defaultWeekdayByName = new Map(
-            (existingDays ?? [])
-                .filter((day: any) => day.default_weekday != null)
-                .map((day: any) => [String(day.name ?? '').trim().toLowerCase(), day.default_weekday])
-        )
-        const defaultWeekdayByOrder = new Map(
-            (existingDays ?? [])
-                .filter((day: any) => day.default_weekday != null)
-                .map((day: any) => [day.order_index, day.default_weekday])
-        )
-
-        // Build days + exercises with fresh UUIDs
-        const newDays: any[] = []
-        const newExercises: any[] = []
-
-        structure.days.forEach((day, dIdx) => {
-            const newDayId = crypto.randomUUID()
-            const orderIndex = dIdx + 1
-            const normalizedName = String(day.name ?? '').trim().toLowerCase()
-            newDays.push({
-                id: newDayId,
-                name: day.name,
-                order_index: orderIndex,
-                default_weekday: defaultWeekdayByName.get(normalizedName) ?? defaultWeekdayByOrder.get(orderIndex) ?? null,
-            })
-            ;(day.exercises ?? []).forEach((ex, eIdx) => {
-                newExercises.push({
-                    id: crypto.randomUUID(),
-                    day_id: newDayId,
-                    exercise_name: ex.exercise_name || '',
-                    catalog_exercise_id: ex.catalog_exercise_id ?? null,
-                    // Double-normalize: already normalized in proposalToStrengthStructure,
-                    // but guard here too in case structure comes from another source.
-                    muscle_group: normalizeMuscleGroup(ex.muscle_group),
-                    order_index: ex.order ?? eIdx + 1,
-                    sets: ex.sets ?? 3,
-                    reps: ex.reps ?? '10',
-                    rir: ex.rir != null ? Number(ex.rir) : null,
-                    rest_seconds: ex.rest_seconds ?? 60,
-                    notes: ex.notes || null,
-                    superset_key: ex.superset_key ?? null,
-                })
-            })
-        })
-
-        // Clear any pre-existing days/exercises (RPC creates program with empty days)
-        await supabase.from('training_cells').delete().eq('program_id', programId)
-        await supabase.from('training_exercises').delete().eq('program_id', programId)
-        await supabase.from('training_days').delete().eq('program_id', programId)
-
-        // Insert days
-        const { error: daysError } = await supabase.from('training_days').insert(
-            newDays.map(d => ({
-                id: d.id,
-                program_id: programId,
-                coach_id: resolvedCoachId,
-                name: d.name,
-                order_index: d.order_index,
-                day_name: d.name,
-                day_order: d.order_index,
-                default_weekday: d.default_weekday,
-            }))
-        )
-        if (daysError) {
-            toast({ title: 'Error al cargar días de la IA', description: daysError.message, variant: 'destructive' })
-            throw new Error(daysError.message)
-        }
-
-        // Insert exercises
-        if (newExercises.length > 0) {
-            const { error: exError } = await supabase.from('training_exercises').insert(
-                newExercises.map(e => ({
-                    id: e.id,
-                    program_id: programId,
-                    coach_id: resolvedCoachId,
-                    day_id: e.day_id,
-                    exercise_name: e.exercise_name,
-                    catalog_exercise_id: e.catalog_exercise_id,
-                    muscle_group: normalizeMuscleGroup(e.muscle_group),
-                    order_index: e.order_index,
-                    sets: e.sets,
-                    reps: e.reps,
-                    rir: e.rir,
-                    rest_seconds: e.rest_seconds,
-                    notes: e.notes,
-                    superset_key: e.superset_key ?? null,
-                }))
-            )
-            if (exError) {
-                toast({ title: 'Error al cargar ejercicios de la IA', description: exError.message, variant: 'destructive' })
-                throw new Error(exError.message)
-            }
-        }
-
-        // Update weeks on the program if structure specifies them
-        const programUpdate: Record<string, unknown> = {}
-        if (structure.weeks) programUpdate.weeks = structure.weeks
-        if (programName?.trim()) programUpdate.name = programName.trim()
-        if (Object.keys(programUpdate).length > 0) {
-            await supabase.from('training_programs').update(programUpdate).eq('id', programId)
-        }
-
-        await saveTrainingDays(
-            programId,
-            newDays.map(day => ({
-                id: day.id,
-                name: day.name,
-                default_weekday: day.default_weekday,
-            }))
-        )
+        return resolved.structure
     }
 
     const handleImportTemplate = async (template: TrainingTemplate) => {
@@ -487,122 +439,78 @@ export function TrainingProgramWizard({
             return
         }
 
-        // Build new days + exercises with explicit UUIDs
-        const newDays: any[] = []
-        const newExercises: any[] = []
-
-        structure.days.forEach((day, dIdx) => {
-            const newDayId = crypto.randomUUID()
-            newDays.push({
-                id: newDayId,
-                name: day.name,
-                order_index: dIdx + 1,
-            })
-
-            if (day.exercises) {
-                day.exercises.forEach((ex, eIdx) => {
-                    newExercises.push({
-                        id: crypto.randomUUID(),
-                        day_id: newDayId,
-                        exercise_name: ex.exercise_name || '',
-                        catalog_exercise_id: ex.catalog_exercise_id ?? null,
-                        muscle_group: normalizeMuscleGroup(ex.muscle_group),
-                        order_index: ex.order ?? eIdx + 1,
-                        sets: ex.sets ?? 3,
-                        reps: ex.reps ?? '10',
-                        rir: ex.rir != null ? Number(ex.rir) : null,
-                        rest_seconds: ex.rest_seconds ?? 60,
-                        notes: ex.notes || null,
-                        superset_key: ex.superset_key ?? null,
-                    })
-                })
-            }
-        })
-
-        // Update weeks if template provides them
-        if (structure.weeks) {
-            setProgram((prev: any) => ({ ...prev, weeks: structure.weeks }))
-        }
-
-        // If program already saved to DB (Step 1 done), persist directly and advance
+        // Programa ya guardado (paso 1 hecho): se aplica en su sitio, sin borrar lo registrado.
         if (currentProgramId) {
-            const supabase = createClient()
-
-            // 1. Update weeks if template provides them
-            if (structure.weeks) {
-                await supabase.from('training_programs').update({ weeks: structure.weeks }).eq('id', currentProgramId)
+            let result: Awaited<ReturnType<typeof applyStructureToDB>>
+            try {
+                result = await applyStructureToDB(currentProgramId, structure, null, { regenerateSchedule: false })
+            } catch {
+                await loadAllData(currentProgramId)
+                return
             }
-
-            // 2. Delete existing days (cascades exercises via FK)
-            await supabase.from('training_exercises').delete().eq('program_id', currentProgramId)
-            await supabase.from('training_days').delete().eq('program_id', currentProgramId)
-
-            // 3. Insert new days (single insert, explicit IDs)
-            const daysToInsert = newDays.map(d => ({
-                id: d.id,
-                program_id: currentProgramId,
-                coach_id: program.coach_id,
-                name: d.name,
-                order_index: d.order_index,
-                day_name: d.name,
-                day_order: d.order_index,
-            }))
-            const { error: daysError } = await supabase.from('training_days').insert(daysToInsert)
-            if (daysError) {
-                toast({ title: 'Error al importar días', description: daysError.message, variant: 'destructive' })
+            if (!result) {
+                toast({ title: 'No se ha cambiado el programa', description: 'Has cancelado la plantilla.' })
                 return
             }
 
-            // 4. Insert exercises (explicit IDs, referencing new day IDs)
-            if (newExercises.length > 0) {
-                const exsToInsert = newExercises.map(e => ({
-                    id: e.id,
-                    program_id: currentProgramId,
-                    coach_id: program.coach_id,
-                    day_id: e.day_id,
-                    exercise_name: e.exercise_name,
-                    catalog_exercise_id: e.catalog_exercise_id,
-                    muscle_group: normalizeMuscleGroup(e.muscle_group),
-                    order_index: e.order_index,
-                    sets: e.sets,
-                    reps: e.reps,
-                    rir: e.rir,
-                    rest_seconds: e.rest_seconds,
-                    notes: e.notes,
-                    superset_key: e.superset_key ?? null,
-                }))
-                const { error: exError } = await supabase.from('training_exercises').insert(exsToInsert)
-                if (exError) {
-                    toast({ title: 'Error al importar ejercicios', description: exError.message, variant: 'destructive' })
-                    return
-                }
-            }
-
+            const kept = keptMessage(result)
             toast({
-                title: 'Plantilla Importada',
-                description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios. Asigna el día de la semana a cada uno.`,
+                title: 'Plantilla importada',
+                description: `Se han cargado ${result.dayCount} días y ${result.exerciseCount} ejercicios. ${kept ?? 'Asigna el día de la semana a cada uno.'}`,
             })
 
-            // Reload data and stay on Step 2 so user can assign weekdays
+            // Recarga y se queda en el paso 2 para asignar los días de la semana
             await loadAllData(currentProgramId)
-        } else {
-            // Fallback: just update local state (unlikely — Step 1 should create the program first)
-            setDays(newDays)
-            setExercises(newExercises)
-            toast({
-                title: 'Plantilla Importada',
-                description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios.`,
-            })
+            return
         }
+
+        // Sin programa guardado (no debería pasar: el paso 1 lo crea): solo estado local.
+        const newDays: any[] = []
+        const newExercises: any[] = []
+        structure.days.forEach((day, dIdx) => {
+            const newDayId = crypto.randomUUID()
+            newDays.push({ id: newDayId, name: day.name, order_index: dIdx + 1 })
+            ;(day.exercises ?? []).forEach((ex, eIdx) => {
+                newExercises.push({
+                    id: crypto.randomUUID(),
+                    day_id: newDayId,
+                    exercise_name: ex.exercise_name || '',
+                    catalog_exercise_id: ex.catalog_exercise_id ?? null,
+                    muscle_group: normalizeMuscleGroup(ex.muscle_group),
+                    order_index: ex.order ?? eIdx + 1,
+                    sets: ex.sets ?? 3,
+                    reps: ex.reps ?? '10',
+                    rir: ex.rir != null ? Number(ex.rir) : null,
+                    rest_seconds: ex.rest_seconds ?? 60,
+                    notes: ex.notes || null,
+                })
+            })
+        })
+        if (structure.weeks) {
+            setProgram((prev: any) => ({ ...prev, weeks: structure.weeks }))
+        }
+        setDays(newDays)
+        setExercises(newExercises)
+        toast({
+            title: 'Plantilla importada',
+            description: `Se han cargado ${newDays.length} días y ${newExercises.length} ejercicios.`,
+        })
     }
+
+    const loggedResultsDialog = (
+        <LoggedResultsDialog prompt={loggedResultsPrompt} onResolve={resolveLoggedResults} />
+    )
 
     if (loading && isOpen) {
         return (
-            <Dialog open={isOpen} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-4xl h-[80vh] flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </DialogContent>
-            </Dialog>
+            <>
+                <Dialog open={isOpen} onOpenChange={onOpenChange}>
+                    <DialogContent className="max-w-4xl h-[80vh] flex items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </DialogContent>
+                </Dialog>
+                {loggedResultsDialog}
+            </>
         )
     }
 
@@ -636,7 +544,8 @@ export function TrainingProgramWizard({
                                 // but the step stays on 1 — user sees the error toast and can retry.
                                 if (pendingAIStructure) {
                                     try {
-                                        await applyStructureToDB(newId, coachId ?? '', pendingAIStructure, pendingAIName)
+                                        const structure = await resolveAIStructure(pendingAIStructure)
+                                        await applyStructureToDB(newId, structure, pendingAIName)
                                     } catch {
                                         // Error already shown via toast inside applyStructureToDB.
                                         // Load the (empty) program so the wizard is usable.
@@ -657,6 +566,7 @@ export function TrainingProgramWizard({
                             programId={currentProgramId!}
                             coachId={program?.coach_id}
                             onImportRequest={() => setIsImportDialogOpen(true)}
+                            onLoggedResults={askLoggedResults}
                         />
                     )}
                     {step === 3 && (
@@ -719,6 +629,7 @@ export function TrainingProgramWizard({
                 onOpenChange={setIsImportDialogOpen}
                 onSelect={handleImportTemplate}
             />
+            {loggedResultsDialog}
         </Dialog>
     )
 }
@@ -865,7 +776,28 @@ const StepInfo = React.forwardRef(({
 })
 StepInfo.displayName = 'StepInfo'
 
-const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImportRequest }: { days: any[], setDays: (d: any[]) => void, programId: string, coachId: string, onImportRequest: () => void }, ref) => {
+/** Vuelve a poner en la lista los días que el coach decide conservar, en su posición. */
+function restoreKeptDays(list: any[], conflicts: StrengthResultConflict[]) {
+    const restored = [...list]
+    const keptDays = conflicts
+        .flatMap(conflict => conflict.kind === 'day' ? [conflict] : [])
+        .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    for (const day of keptDays) {
+        if (restored.some(item => item.id === day.id)) continue
+        const position = Math.min(Math.max((day.order_index ?? restored.length + 1) - 1, 0), restored.length)
+        restored.splice(position, 0, { id: day.id, name: day.name, default_weekday: day.default_weekday ?? undefined, order_index: day.order_index })
+    }
+    return restored
+}
+
+const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImportRequest, onLoggedResults }: {
+    days: any[],
+    setDays: (d: any[]) => void,
+    programId: string,
+    coachId: string,
+    onImportRequest: () => void,
+    onLoggedResults: (conflicts: StrengthResultConflict[], context: LoggedResultsPrompt['context']) => Promise<LoggedResultsDecision>,
+}, ref) => {
     const { toast } = useToast()
     const [localDays, setLocalDays] = useState([...days])
     const [isSaving, setIsSaving] = useState(false)
@@ -889,10 +821,26 @@ const StepDays = React.forwardRef(({ days, setDays, programId, coachId, onImport
         setIsSaving(true)
 
         try {
-            const result = await saveTrainingDays(programId, localDays)
+            let daysToSave = localDays
+            let result = await saveTrainingDays(programId, daysToSave)
+            // NXT-124: un día quitado con entrenamientos del atleta no se borra sin preguntar.
+            while (!result.success && result.needsDecision) {
+                const conflicts = result.conflicts
+                const decision = await onLoggedResults(conflicts, 'days')
+                if (decision === 'cancel') return false
+                if (decision === 'keep') {
+                    daysToSave = restoreKeptDays(daysToSave, conflicts)
+                    updateDays(daysToSave)
+                    result = await saveTrainingDays(programId, daysToSave)
+                } else {
+                    result = await saveTrainingDays(programId, daysToSave, {
+                        confirmedDeleteDayIds: conflicts.map(conflict => conflict.id),
+                    })
+                }
+            }
 
             if (!result.success) {
-                throw new Error(result.error || 'Error al guardar los días')
+                throw new Error(('error' in result && result.error) || 'Error al guardar los días')
             }
 
             toast({ title: 'Días sincronizados', description: 'La estructura y el calendario han sido actualizados.' })
@@ -1359,6 +1307,7 @@ function ExerciseRow({
         disabled: dragDisabled,
     })
     const [isProcessing, setIsProcessing] = useState(false)
+    const [confirmDelete, setConfirmDelete] = useState<{ sets: number; weeks: number[] } | null>(null)
 
     async function updateExerciseFields(fields: Partial<any>) {
         const supabase = createClient()
@@ -1410,15 +1359,22 @@ function ExerciseRow({
         ? superset.isLast ? 'Tras la ronda (s)' : `Hasta ${superset.nextLabel ?? 'el siguiente'} (s)`
         : 'Desc. (s)'
 
-    async function remove() {
+    async function remove(confirmResults = false) {
         setIsProcessing(true)
-        const result = await deleteExerciseAction(exercise.id)
-        if (!result.success) {
-            toast({ title: 'Error al eliminar', description: result.error, variant: 'destructive' })
-        } else {
-            onDelete()
-        }
+        const result = await deleteExerciseAction(exercise.id, { confirmResults })
         setIsProcessing(false)
+        if (result.success) {
+            setConfirmDelete(null)
+            onDelete()
+            return
+        }
+        // NXT-124: con series registradas, se pregunta antes de borrarlas.
+        if (result.needsConfirmation) {
+            setConfirmDelete({ sets: result.sets, weeks: result.weeks })
+            return
+        }
+        setConfirmDelete(null)
+        toast({ title: 'Error al eliminar', description: result.error, variant: 'destructive' })
     }
 
     const setRowRef = (node: HTMLDivElement | null) => {
@@ -1512,7 +1468,7 @@ function ExerciseRow({
                             </>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={remove}>
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void remove()}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             Eliminar ejercicio
                         </DropdownMenuItem>
@@ -1581,6 +1537,24 @@ function ExerciseRow({
                     />
                 </label>
             </div>
+
+            <AlertDialog open={!!confirmDelete} onOpenChange={open => { if (!open && !isProcessing) setConfirmDelete(null) }}>
+                <AlertDialogContent className="max-w-md rounded-2xl">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar {exercise.exercise_name || 'este ejercicio'}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {confirmDelete && `El atleta tiene ${confirmDelete.sets} ${confirmDelete.sets === 1 ? 'serie registrada' : 'series registradas'} en este ejercicio${describeWeeks(confirmDelete.weeks) ? ` (${describeWeeks(confirmDelete.weeks)})` : ''}. Si lo eliminas, se borran y no se pueden recuperar.`}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-2 sm:space-x-0">
+                        <Button variant="ghost" disabled={isProcessing} onClick={() => setConfirmDelete(null)}>Cancelar</Button>
+                        <Button variant="destructive" disabled={isProcessing} onClick={() => void remove(true)} className="gap-2">
+                            {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
+                            Eliminar y borrar {confirmDelete?.sets} {confirmDelete?.sets === 1 ? 'serie' : 'series'}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }
