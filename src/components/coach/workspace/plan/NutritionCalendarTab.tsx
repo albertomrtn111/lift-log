@@ -19,11 +19,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import { macroKcal } from '@/lib/nutrition/macro-autofit'
 import {
     addDays, buildBlockDays, dayErrors, eachDay, repeatWeek, weekStart,
 } from '@/lib/nutrition/planning'
-import { NutritionDayTable, fillRows, rowFromDay, rowToInput, type DayRow } from './NutritionDayTable'
+import { DayMacroEditor, NutritionDayTable, fillRows, rowFromDay, rowToInput, templateRow, type DayRow } from './NutritionDayTable'
 import {
     PlannedDaysConflictError, clearPlannedDays, markDietScheduled, saveNutritionBlock,
     type BlockInput, type CalendarDay, type PlannedDayInput,
@@ -45,31 +44,6 @@ const fmtDay = (d: string, pattern = 'd MMM') => format(parseISO(d), pattern, { 
 const todayStr = () => format(new Date(), 'yyyy-MM-dd')
 
 type Target = MacroDayTypeValues
-
-interface DayDraft {
-    mode: 'simple' | 'day_type'
-    simple: Target
-    training: Target
-    rest: Target
-}
-
-function draftFromDay(day: CalendarDay | undefined): DayDraft {
-    const empty: Target = { kcal: 2000, protein_g: 150, carbs_g: 200, fat_g: 70 }
-    if (!day || day.source === 'none') return { mode: 'simple', simple: empty, training: empty, rest: empty }
-    const simple = { kcal: day.kcal, protein_g: day.protein_g, carbs_g: day.carbs_g, fat_g: day.fat_g }
-    if (day.day_type_config) {
-        return { mode: 'day_type', simple, training: day.day_type_config.training, rest: day.day_type_config.rest }
-    }
-    return { mode: 'simple', simple, training: simple, rest: simple }
-}
-
-/** El objetivo que se guarda: con entreno/descanso, los macros de arriba son los de entreno. */
-function draftToBase(draft: DayDraft) {
-    if (draft.mode === 'day_type') {
-        return { ...draft.training, day_type_config: { training: draft.training, rest: draft.rest } }
-    }
-    return { ...draft.simple, day_type_config: null }
-}
 
 // ============================================================================
 // MAIN
@@ -413,68 +387,6 @@ function DayCell({ date, day, past, isToday, selected, onClick }: {
     )
 }
 
-// ============================================================================
-// TARGET FIELDS
-// ============================================================================
-
-function TargetFields({ value, onChange }: { value: Target; onChange: (t: Target) => void }) {
-    const fields: { key: keyof Target; label: string }[] = [
-        { key: 'kcal', label: 'Kcal' },
-        { key: 'protein_g', label: 'Prot. (g)' },
-        { key: 'carbs_g', label: 'HC (g)' },
-        { key: 'fat_g', label: 'Grasa (g)' },
-    ]
-    const fromMacros = macroKcal({ protein: value.protein_g, carbs: value.carbs_g, fat: value.fat_g })
-    const gap = Math.round(value.kcal - fromMacros)
-    return (
-        <div className="space-y-1.5">
-            <div className="grid grid-cols-4 gap-2">
-                {fields.map(f => (
-                    <div key={f.key} className="space-y-1">
-                        <Label className="text-xs">{f.label}</Label>
-                        <Input
-                            type="number"
-                            inputMode="numeric"
-                            min={0}
-                            value={Number.isFinite(value[f.key]) ? value[f.key] : ''}
-                            onChange={(e) => onChange({ ...value, [f.key]: e.target.value === '' ? 0 : Number(e.target.value) })}
-                        />
-                    </div>
-                ))}
-            </div>
-            {Math.abs(gap) > Math.max(50, value.kcal * 0.05) && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Los macros suman {fmtInt(fromMacros)} kcal ({gap > 0 ? 'faltan' : 'sobran'} {fmtInt(Math.abs(gap))}).
-                </p>
-            )}
-        </div>
-    )
-}
-
-function DraftFields({ draft, onChange }: { draft: DayDraft; onChange: (d: DayDraft) => void }) {
-    return (
-        <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2">
-                <div>
-                    <p className="text-sm font-medium">Entreno y descanso</p>
-                    <p className="text-xs text-muted-foreground">Dos juegos de macros; el atleta elige cada día.</p>
-                </div>
-                <Switch checked={draft.mode === 'day_type'} onCheckedChange={(on) => onChange({ ...draft, mode: on ? 'day_type' : 'simple' })} />
-            </div>
-            {draft.mode === 'simple' ? (
-                <TargetFields value={draft.simple} onChange={(simple) => onChange({ ...draft, simple })} />
-            ) : (
-                <>
-                    <p className="text-xs font-medium text-muted-foreground">Entreno</p>
-                    <TargetFields value={draft.training} onChange={(training) => onChange({ ...draft, training })} />
-                    <p className="text-xs font-medium text-muted-foreground">Descanso</p>
-                    <TargetFields value={draft.rest} onChange={(rest) => onChange({ ...draft, rest })} />
-                </>
-            )}
-        </div>
-    )
-}
-
 function DietSelect({ coachId, clientId, value, onChange }: {
     coachId: string; clientId: string; value: string; onChange: (v: string) => void
 }) {
@@ -527,9 +439,9 @@ function PlanDaysDialog({ open, onOpenChange, coachId, clientId, dates, calendar
     onSave: (request: SaveRequest) => void
 }) {
     const [rows, setRows] = useState<DayRow[]>([])
+    const [selectedRow, setSelectedRow] = useState<string | null>(null)
     const [fillOpen, setFillOpen] = useState(false)
-    const [fill, setFill] = useState<DayDraft>(() => draftFromDay(undefined))
-    const [fillLabel, setFillLabel] = useState('')
+    const [fill, setFill] = useState<DayRow>(() => templateRow())
     const [name, setName] = useState('')
     const [diet, setDiet] = useState('base')
     const [note, setNote] = useState('')
@@ -542,9 +454,10 @@ function PlanDaysDialog({ open, onOpenChange, coachId, clientId, dates, calendar
     useEffect(() => {
         if (!open) return
         const first = dates.map(d => calendar.get(d)).find(d => d && d.source !== 'none')
-        setRows(dates.map(d => rowFromDay(d, calendar.get(d), first ? rowFromDay(d, first).simple : undefined)))
-        setFill(draftFromDay(first))
-        setFillLabel('')
+        const initial = dates.map(d => rowFromDay(d, calendar.get(d), first ? rowFromDay(d, first).simple : undefined))
+        setRows(initial)
+        setSelectedRow(dates[0] ?? null)
+        setFill(templateRow(initial[0]))
         setFillOpen(false)
         setName('')
         setDiet('base')
@@ -553,12 +466,7 @@ function PlanDaysDialog({ open, onOpenChange, coachId, clientId, dates, calendar
     }, [open])
 
     const applyFill = () => {
-        const g = (t: Target) => ({ protein_g: t.protein_g, carbs_g: t.carbs_g, fat_g: t.fat_g })
-        setRows(rows => fillRows(rows, {
-            simple: g(fill.simple),
-            dayType: fill.mode === 'day_type' ? { training: g(fill.training), rest: g(fill.rest) } : null,
-            label: fillLabel,
-        }))
+        setRows(rows => fillRows(rows, fill))
         setFillOpen(false)
     }
 
@@ -581,7 +489,7 @@ function PlanDaysDialog({ open, onOpenChange, coachId, clientId, dates, calendar
                 <DialogHeader>
                     <DialogTitle>Planificar {dates.length} {dates.length === 1 ? 'día' : 'días'}</DialogTitle>
                     <DialogDescription>
-                        Cada día lleva sus propios gramos; las kcal se calculan solas. Mandan sobre el plan base solo esos días.
+                        Pulsa un día para cambiar sus macros; con «Auto» los hidratos completan las kcal. Mandan sobre el plan base solo esos días.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
@@ -602,18 +510,14 @@ function PlanDaysDialog({ open, onOpenChange, coachId, clientId, dates, calendar
                             </button>
                             {fillOpen && (
                                 <div className="space-y-3 border-t border-border/70 p-3">
-                                    <div className="space-y-1">
-                                        <Label>Etiqueta</Label>
-                                        <Input value={fillLabel} maxLength={60} placeholder="ej: Carga HC" onChange={(e) => setFillLabel(e.target.value)} />
-                                    </div>
-                                    <DraftFields draft={fill} onChange={setFill} />
+                                    <DayMacroEditor row={fill} onChange={setFill} bare />
                                     <Button type="button" size="sm" variant="outline" onClick={applyFill}>Aplicar a todos</Button>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    <NutritionDayTable rows={rows} onChange={setRows} planned={planned} />
+                    <NutritionDayTable rows={rows} onChange={setRows} selected={selectedRow} onSelect={setSelectedRow} planned={planned} />
 
                     <DietSelect coachId={coachId} clientId={clientId} value={diet} onChange={setDiet} />
                     <div className="space-y-1">
@@ -692,7 +596,8 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
     const [weeks, setWeeks] = useState(4)
     const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6])
     const [useBase, setUseBase] = useState(true)
-    const [draft, setDraft] = useState<DayDraft>(() => draftFromDay(calendar.get(today)))
+    const [draft, setDraft] = useState<DayRow>(() => rowFromDay(today, calendar.get(today)))
+    const [selectedRow, setSelectedRow] = useState<string | null>(null)
     const [type, setType] = useState<ProgressionType>('weekly')
     const [startG, setStartG] = useState<Grams>(WEEKLY_STEP)
     const [stepG, setStepG] = useState<Grams>(WEEKLY_STEP)
@@ -704,7 +609,7 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
     useEffect(() => {
         if (!open) return
         setStep(1); setName(''); setStart(nextMonday); setWeeks(4); setWeekdays([0, 1, 2, 3, 4, 5, 6])
-        setUseBase(true); setDraft(draftFromDay(calendar.get(today))); setType('weekly'); setStepG(WEEKLY_STEP)
+        setUseBase(true); setDraft(rowFromDay(today, calendar.get(today))); setType('weekly'); setStepG(WEEKLY_STEP)
         setStartG(WEEKLY_STEP); setRows([]); setDiet('base'); setNote('')
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open])
@@ -720,7 +625,7 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
     const baseDay = calendar.get(start) ?? calendar.get(today)
     const hasBase = !!baseDay && baseDay.source !== 'none'
     const fromBase = useBase && hasBase
-    const origin = fromBase ? draftToBase(draftFromDay(baseDay)) : draftToBase(draft)
+    const origin = rowToInput(fromBase ? rowFromDay(start, baseDay) : draft, null)
     const progression = type === 'none' ? { type: 'none', start_g: startG } : { type, start_g: startG, step_g: stepG }
 
     let preview: PlannedDayInput[] = []
@@ -736,6 +641,7 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
     const goToReview = () => {
         // La tabla parte de lo generado; a partir de aquí cada día se retoca a mano
         setRows(preview.map(d => rowFromDay(d.date, d)))
+        setSelectedRow(preview[0]?.date ?? null)
         setStep(3)
     }
     const included = rows.filter(r => r.include)
@@ -825,7 +731,7 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
                             </div>
                             <Switch checked={fromBase} onCheckedChange={setUseBase} disabled={!hasBase} />
                         </div>
-                        {!fromBase && <DraftFields draft={draft} onChange={setDraft} />}
+                        {!fromBase && <DayMacroEditor row={draft} onChange={setDraft} hideLabel />}
 
                         <div className="space-y-1">
                             <Label>Progresión</Label>
@@ -865,11 +771,11 @@ function BlockWizardDialog({ open, onOpenChange, coachId, clientId, today, calen
                         {previewError ? (
                             <p className="text-sm text-destructive">{previewError}</p>
                         ) : (
-                            <NutritionDayTable rows={rows} onChange={setRows} />
+                            <NutritionDayTable rows={rows} onChange={setRows} selected={selectedRow} onSelect={setSelectedRow} />
                         )}
                         {errors.length > 0 && <p className="text-xs text-destructive">{errors[0]}</p>}
                         <p className="text-xs text-muted-foreground">
-                            {included.length} {included.length === 1 ? 'día' : 'días'} planificados. Cambia lo que quieras de cada día antes de guardar.
+                            {included.length} {included.length === 1 ? 'día' : 'días'} planificados. Pulsa un día para cambiar sus macros antes de guardar.
                         </p>
                     </div>
                 )}

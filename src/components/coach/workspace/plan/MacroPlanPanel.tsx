@@ -57,7 +57,7 @@ type AutoCarbs = Record<BlockKey, boolean>
 
 const ALL_AUTO: AutoCarbs = { simple: true, training: true, rest: true }
 
-interface MacroValues {
+export interface MacroValues {
     kcal: number
     protein: number
     carbs: number
@@ -594,7 +594,7 @@ function MacroFormStep({
 // MACRO FIELDS BLOCK (reused for simple, training, and rest)
 // ============================================================================
 
-function MacroFieldsBlock({
+export function MacroFieldsBlock({
     values,
     onChange,
     autoCarbs,
