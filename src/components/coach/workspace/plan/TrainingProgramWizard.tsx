@@ -1520,7 +1520,7 @@ function ExerciseRow({
                 </DropdownMenu>
             </div>
 
-            <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-2 sm:pl-[3.25rem] sm:grid-cols-[5rem_7rem_5rem_6rem_minmax(0,1fr)]">
+            <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-2 sm:pl-[3.25rem] sm:grid-cols-[5rem_7rem_5rem_8rem_minmax(0,1fr)]">
                 <label className="min-w-0 space-y-1">
                     <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Series</span>
                     <input

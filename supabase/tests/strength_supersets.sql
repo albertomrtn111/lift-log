@@ -1,4 +1,4 @@
--- Prueba de integración de las superseries (migración 20261118100000_strength_supersets)
+-- Prueba de integración de las superseries (migración 20261118082738_strength_supersets)
 -- con un cliente temporal y el rol authenticated. Termina con ROLLBACK explícito.
 begin;
 do $tests$

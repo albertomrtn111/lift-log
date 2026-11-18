@@ -476,7 +476,7 @@ En la app: el coach los quita y restaura desde Planificación (menú del día, �
 
 ## Superseries en los programas de fuerza (MCP 0.26.0)
 
-Migración `20261118100000_strength_supersets`. Los ejercicios seguidos de un mismo día con la misma `superset_key` forman un bloque de 2 a 4 (superserie, triserie o serie gigante). Las reglas viven en `src/lib/training/supersets.js` y las usan igual la web y el MCP (`strength-blocks.ts`).
+Migración `20261118082738_strength_supersets`. Los ejercicios seguidos de un mismo día con la misma `superset_key` forman un bloque de 2 a 4 (superserie, triserie o serie gigante). Las reglas viven en `src/lib/training/supersets.js` y las usan igual la web y el MCP (`strength-blocks.ts`).
 
 - **Escribir:** `create_strength_program` y `update_strength_program_days` aceptan `superset` en cada ejercicio, una etiqueta cualquiera (por ejemplo `"C"`). En `update_strength_program_days`, omitirlo conserva la que tenía (`superset_key` en `get_program_history`) y `null` lo saca del bloque.
 - **Descanso:** dentro del bloque, `rest_seconds` de cada ejercicio es el paso al siguiente (0 = sin descanso) y el del último, el descanso tras la ronda. Las rondas son el mayor número de series del bloque.
