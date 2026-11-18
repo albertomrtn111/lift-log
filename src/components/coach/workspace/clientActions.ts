@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/client'
 import { addWeeks, setDay, format, startOfWeek, addDays, isBefore, isAfter, parseISO } from 'date-fns'
 import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
+import { findRemovedDayConflicts } from '@/lib/training/strength-structure-plan'
+import { loadStrengthResults, type StrengthResultConflict } from '@/lib/training/strength-results-data'
 
 /**
  * @deprecated Use TrainingProgramWizard Step 1 for program creation.
@@ -336,8 +338,13 @@ export async function duplicateTrainingProgramClient(programId: string) {
 
 export async function saveTrainingDays(
     programId: string,
-    days: { name: string; id?: string; default_weekday?: number }[]
-) {
+    days: { name: string; id?: string; default_weekday?: number | null }[],
+    options: { confirmedDeleteDayIds?: string[] } = {},
+): Promise<
+    | { success: true }
+    | { success: false; needsDecision: true; conflicts: StrengthResultConflict[] }
+    | { success: false; needsDecision?: false; error: string }
+> {
     const supabase = createClient()
 
     try {
@@ -359,15 +366,38 @@ export async function saveTrainingDays(
         // 2. Sync Days
         const currentDayIds = days.map(d => d.id).filter(Boolean) as string[]
 
-        // Delete removed days
-        if (currentDayIds.length > 0) {
-            await supabase
+        // NXT-124: quitar un día borra en cascada sus ejercicios, series, registros y
+        // sesiones completadas. Si tiene algo del atleta, el coach decide antes.
+        const [existingDays, existingExercises] = await Promise.all([
+            supabase.from('training_days').select('id, name, order_index, default_weekday').eq('program_id', programId),
+            supabase.from('training_exercises').select('id, day_id').eq('program_id', programId),
+        ])
+        if (existingDays.error) throw existingDays.error
+        if (existingExercises.error) throw existingExercises.error
+        const removedDayIds = new Set((existingDays.data ?? []).map(day => day.id).filter(id => !currentDayIds.includes(id)))
+        if (removedDayIds.size > 0) {
+            const removedExerciseIds = (existingExercises.data ?? []).filter(exercise => removedDayIds.has(exercise.day_id)).map(exercise => exercise.id)
+            const results = await loadStrengthResults(supabase, programId, removedExerciseIds)
+            const conflicts = findRemovedDayConflicts({
+                currentDays: existingDays.data ?? [],
+                currentExercises: existingExercises.data ?? [],
+                keepDayIds: currentDayIds,
+                results,
+                deleteConfirmedIds: options.confirmedDeleteDayIds ?? [],
+            }) as StrengthResultConflict[]
+            if (conflicts.length > 0) return { success: false, needsDecision: true, conflicts }
+        }
+
+        // Quitar exactamente los días comprobados arriba. Antes se filtraba por los ids de
+        // la lista, que incluyen los provisionales «new-…»; con uno de ellos el borrado
+        // fallaba sin avisar y el día quitado seguía ahí.
+        if (removedDayIds.size > 0) {
+            const { error: deleteError } = await supabase
                 .from('training_days')
                 .delete()
                 .eq('program_id', programId)
-                .not('id', 'in', `(${currentDayIds.join(',')})`)
-        } else {
-            await supabase.from('training_days').delete().eq('program_id', programId)
+                .in('id', [...removedDayIds])
+            if (deleteError) throw deleteError
         }
 
         // Upsert Days
