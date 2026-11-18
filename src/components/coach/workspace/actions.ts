@@ -17,6 +17,7 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 import { catalogGroupToMuscleGroup } from '@/lib/training/exercise-catalog'
 import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
+import { loadStrengthResults } from '@/lib/training/strength-results-data'
 import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================
@@ -870,8 +871,34 @@ export async function saveCellAction(
     return { success: true }
 }
 
-export async function deleteExerciseAction(exerciseId: string) {
+export async function deleteExerciseAction(
+    exerciseId: string,
+    options: { confirmResults?: boolean } = {},
+): Promise<
+    | { success: true }
+    | { success: false; needsConfirmation: true; sets: number; weeks: number[] }
+    | { success: false; needsConfirmation?: false; error: string }
+> {
     const supabase = await createClient()
+
+    // NXT-124: si el atleta ya ha registrado algo, no se borra sin que el coach lo confirme.
+    if (!options.confirmResults) {
+        const { data: exercise, error: exerciseError } = await supabase
+            .from('training_exercises')
+            .select('id, program_id')
+            .eq('id', exerciseId)
+            .single()
+        if (exerciseError || !exercise) return { success: false, error: 'Ejercicio no encontrado.' }
+        try {
+            const results = await loadStrengthResults(supabase, exercise.program_id, [exerciseId])
+            const logged = results.exerciseResults[exerciseId]
+            if (logged && logged.sets > 0) {
+                return { success: false, needsConfirmation: true, sets: logged.sets, weeks: logged.weeks }
+            }
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'No se pudieron comprobar los registros.' }
+        }
+    }
 
     // Eliminar primero las celdas asociadas para evitar huérfanos
     await supabase
