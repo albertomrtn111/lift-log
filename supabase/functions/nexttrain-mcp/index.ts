@@ -18,16 +18,19 @@ import { registerCoachWriteTools } from './coach-writes.ts'
 import { registerStrengthSkipTools } from './strength-skips.ts'
 import { registerPrompts } from './prompts.ts'
 import { registerSeasonTools } from './season.ts'
+import { type Caller, callerFromClaims, checkSession, closedSessionResponse, createAudit, unavailableResponse } from './access.ts'
 import {
   addDays,
   createToolRunner,
   type Db,
+  defaultHelpers,
   idempotentWriteAnnotations,
   isoDate,
   jsonResult,
   readOnlyAnnotations,
   type Row,
   toolError,
+  type ToolHelpers,
   toUtcDate,
   writeAnnotations,
 } from './shared.ts'
@@ -74,11 +77,11 @@ function asNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function createNextTrainServer(supabase: Db) {
+function createNextTrainServer(supabase: Db, caller: Caller) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.23.0',
+    version: '0.24.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
@@ -89,7 +92,9 @@ function createNextTrainServer(supabase: Db) {
       'Fuerza: create_strength_program, update_strength_program, update_strength_program_days. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
     ].join('\n'),
   }))
-  const run = createToolRunner(supabase)
+  // Todas las herramientas registran quién las usó (cuenta y asistente) con el mismo ayudante.
+  const helpers: ToolHelpers = { ...defaultHelpers, audit: createAudit(supabase, caller) }
+  const run = createToolRunner(supabase, helpers)
 
   server.registerTool(
     'who_am_i',
@@ -106,6 +111,7 @@ function createNextTrainServer(supabase: Db) {
         .eq('status', 'active')
         .in('role', ['owner', 'admin', 'coach'])
 
+      await helpers.audit('who_am_i', { status: error ? 'error' : 'ok', result_count: data?.length ?? 0 })
       if (error) return toolError('No se ha podido comprobar la cuenta conectada.')
       return jsonResult({
         trainer_access: (data ?? []).map((access: Row) => ({ ...access, ...rolePermissions(access.role) })),
@@ -113,10 +119,10 @@ function createNextTrainServer(supabase: Db) {
     },
   )
 
-  registerClientTools(server, supabase)
-  registerLibraryTools(server, supabase)
-  registerStudioTools(server, supabase)
-  registerStudioReportTools(server, supabase)
+  registerClientTools(server, supabase, helpers)
+  registerLibraryTools(server, supabase, helpers)
+  registerStudioTools(server, supabase, helpers)
+  registerStudioReportTools(server, supabase, helpers)
 
   server.registerTool(
     'get_client_overview',
@@ -322,7 +328,7 @@ function createNextTrainServer(supabase: Db) {
     },
   )
 
-  registerScheduleTools(server, supabase)
+  registerScheduleTools(server, supabase, helpers)
 
   server.registerTool(
     'list_exercise_catalog',
@@ -450,13 +456,13 @@ function createNextTrainServer(supabase: Db) {
     }),
   )
 
-  registerHistoryTools(server, supabase)
-  registerNutritionTools(server, supabase)
-  registerCardioTools(server, supabase)
-  registerAgendaTools(server, supabase)
-  registerCoachWriteTools(server, supabase)
-  registerStrengthSkipTools(server, supabase)
-  registerSeasonTools(server, supabase)
+  registerHistoryTools(server, supabase, helpers)
+  registerNutritionTools(server, supabase, helpers)
+  registerCardioTools(server, supabase, helpers)
+  registerAgendaTools(server, supabase, helpers)
+  registerCoachWriteTools(server, supabase, helpers)
+  registerStrengthSkipTools(server, supabase, helpers)
+  registerSeasonTools(server, supabase, helpers)
   registerPrompts(server)
 
   return server
@@ -465,8 +471,13 @@ function createNextTrainServer(supabase: Db) {
 Deno.serve(
   pipeline(
     [withOAuthProtectedResource(), withSupabase({ auth: 'user' })],
-    async (request, { supabase }) => {
-      const handler = createMcpHandler(() => createNextTrainServer(supabase))
+    async (request, { supabase, jwtClaims }) => {
+      const caller = callerFromClaims(jwtClaims)
+      // Solo tokens de usuario con la sesión todavía abierta (desconectar en Ajustes corta al momento).
+      const session = await checkSession(supabase, caller)
+      if (session === 'closed') return closedSessionResponse()
+      if (session === 'unavailable') return unavailableResponse()
+      const handler = createMcpHandler(() => createNextTrainServer(supabase, caller))
       return handler.fetch(request)
     },
   ),

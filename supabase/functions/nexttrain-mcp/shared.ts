@@ -172,7 +172,8 @@ export type ToolHelpers = {
   requireClient: (db: Db, coachId: string, clientId: string) => Promise<unknown>
   jsonResult: (data: unknown) => any
   toolError: (message: string) => any
-  audit: (tool: string, details: Record<string, unknown>) => void
+  // Registro de uso; la versión real (access.ts) también guarda una fila en mcp_tool_calls.
+  audit: (tool: string, details: Record<string, unknown>) => void | Promise<void>
   // Reloj de la petición; las pruebas lo fijan para comprobar el cambio de día.
   now?: () => Date
 }
@@ -246,12 +247,14 @@ export function createToolRunner(db: Db, helpers: ToolHelpers = defaultHelpers) 
       const client = options.clientId ? await requireClient(db, coachId, options.clientId) as Row : null
       const log: Record<string, unknown> = {}
       const result = await action({ coachId, timeZone, today: todayIn(timeZone, now()), client, log })
-      audit(tool, { coach_id: coachId, ...scope, ...log, status: 'ok' })
+      await audit(tool, { coach_id: coachId, ...scope, ...log, status: 'ok' })
       await queuePlanChangeNotice(db, tool, coachId, options.clientId, log, result)
       return jsonResult(result)
     } catch (error) {
-      audit(tool, { ...scope, status: 'error' })
-      return toolError(error instanceof Error ? error.message : options.fallbackError)
+      const message = error instanceof Error ? error.message : options.fallbackError
+      // Los intentos rechazados también quedan registrados, con el espacio pedido si lo hubo.
+      await audit(tool, { coach_id: options.coachId ?? null, ...scope, status: 'error', error: message })
+      return toolError(message)
     }
   }
 }

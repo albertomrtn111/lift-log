@@ -8,7 +8,7 @@ Servidor MCP remoto y multiusuario para entrenadores. Se despliega como Supabase
 
 Cada entrenador conecta esta URL desde su cliente MCP. El cliente abre el login de NexTrain, muestra `/oauth/consent` y recibe un token de usuario. Todas las consultas se ejecutan con ese token y respetan RLS.
 
-La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/settings?tab=asistente-ia`): dirección con botón de copiar, pasos para Claude, Claude Code, ChatGPT y otros clientes, qué puede hacer la IA, ejemplos de peticiones y la lista de asistentes autorizados, que el coach puede desconectar (`auth.oauth.listGrants` / `revokeGrant` con su propia sesión). Desconectar no es inmediato: `revokeGrant` cierra las sesiones del cliente e invalida sus refresh tokens, pero el access token ya emitido sigue siendo válido hasta que caduca (1 h en este proyecto), porque la función solo verifica la firma del JWT. La dirección se calcula a partir de `NEXT_PUBLIC_SUPABASE_URL` (`src/lib/mcp-url.ts`). Los menús de los clientes se comprobaron en su documentación el 01-11-2026; si cambian, se actualizan en `src/components/coach/settings/McpSettingsPanel.tsx`.
+La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/settings?tab=asistente-ia`): dirección con botón de copiar, pasos para Claude, Claude Code, ChatGPT y otros clientes, qué puede hacer la IA, ejemplos de peticiones y la lista de asistentes autorizados, que el coach puede desconectar (`auth.oauth.listGrants` / `revokeGrant` con su propia sesión). Desconectar es inmediato: `revokeGrant` cierra las sesiones del cliente e invalida sus refresh tokens, y la función comprueba en cada petición que la sesión del token sigue abierta. La dirección se calcula a partir de `NEXT_PUBLIC_SUPABASE_URL` (`src/lib/mcp-url.ts`). Los menús de los clientes se comprobaron en su documentación el 01-11-2026; si cambian, se actualizan en `src/components/coach/settings/McpSettingsPanel.tsx`.
 
 ## Herramientas
 
@@ -68,6 +68,17 @@ Prompts: `revision_semanal`, `preparar_bloque_siguiente`, `planificar_temporada`
 - El objetivo actual se consulta y actualiza bajo el token del coach; RLS limita cada fila a su espacio.
 - Las herramientas declaran si son de solo lectura, idempotentes o modifican datos.
 - Cada nueva consulta comprueba membresía activa y pertenencia del cliente antes de leer, además de usar RLS.
+- Solo se aceptan tokens de usuario (`role = authenticated`) cuya sesión siga abierta: cada petición lo comprueba con `mcp_session_active()`. Al desconectar un asistente en Ajustes, Supabase cierra su sesión y el MCP lo rechaza en ese momento, sin esperar a que caduque el token.
+- Registro de uso en `mcp_tool_calls`: herramienta, cuenta, asistente (cliente OAuth), espacio, cliente, registro tocado y resultado, también de los intentos rechazados. Solo identificadores, nunca los datos. Se escribe con `mcp_log_call()`, que toma la cuenta y el asistente del token. Cada cuenta ve su uso; dueño y administradores, el de su espacio. Se guarda 13 meses.
+
+## Reglas para herramientas y MCP nuevos
+
+- Solo token de usuario: nunca la clave de servicio ni `supabaseAdmin`.
+- Toda herramienta pasa por `createToolRunner` (espacio, cliente y registro).
+- Nada de SQL libre, listar tablas ni consultas genéricas.
+- Las funciones `SECURITY DEFINER` comprueban `auth.uid()`, la membresía con su rol y que el cliente sea del espacio.
+- Antes de desplegar, pruebas de acceso cruzado con otro espacio, un coach sin asignar, recepción y un atleta.
+- A un asistente externo solo se le da la URL de este MCP: nunca claves de Supabase, tokens personales ni la cadena de conexión.
 
 ## Fidelidad de los datos
 
