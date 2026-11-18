@@ -19,6 +19,8 @@ export interface ProgramSummary {
     totalWeeks: number
     effectiveFrom: string
     effectiveTo: string | null
+    /** Series registradas por el atleta en el programa (null si no se pudieron contar). */
+    loggedSets?: number | null
 }
 
 export interface ProgressExerciseSet {
@@ -72,6 +74,51 @@ export interface AnalyzeTrainingProgressResponse {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+// PostgREST corta cada respuesta en 1000 filas: se pide por páginas para no
+// perder semanas en programas largos.
+const PAGE_SIZE = 1000
+
+async function fetchAllPages<T>(
+    fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+    const rows: T[] = []
+    for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1)
+        if (error) throw new Error(error.message)
+        const page = data || []
+        rows.push(...page)
+        if (page.length < PAGE_SIZE) return rows
+    }
+}
+
+/** Cuenta las series registradas de cada programa (para el selector). */
+async function countLoggedSetsByProgram(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    programIds: string[]
+): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    if (programIds.length === 0) return counts
+
+    const rows = await fetchAllPages<any>((from, to) =>
+        supabase
+            .from('training_exercises')
+            .select('program_id, training_exercise_sets(count)')
+            .in('program_id', programIds)
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
+
+    for (const row of rows) {
+        const n = Number(row.training_exercise_sets?.[0]?.count ?? 0)
+        counts.set(row.program_id, (counts.get(row.program_id) || 0) + n)
+    }
+    return counts
+}
+
+// ============================================================================
 // Get programs for selector
 // ============================================================================
 
@@ -86,8 +133,17 @@ export async function getClientProgramsForSelector(
             .select('id, name, status, total_weeks, effective_from, effective_to')
             .eq('client_id', clientId)
             .order('effective_from', { ascending: false })
+            .order('created_at', { ascending: false })
 
         if (error) throw new Error(error.message)
+
+        // Si el recuento falla, el selector sigue funcionando sin él.
+        let loggedSets: Map<string, number> | null = null
+        try {
+            loggedSets = await countLoggedSetsByProgram(supabase, (data || []).map((p: any) => p.id))
+        } catch (countError: any) {
+            console.error('[getClientProgramsForSelector] Recuento de series:', countError?.message)
+        }
 
         const programs: ProgramSummary[] = (data || []).map((p: any) => ({
             id: p.id,
@@ -96,6 +152,7 @@ export async function getClientProgramsForSelector(
             totalWeeks: p.total_weeks,
             effectiveFrom: p.effective_from,
             effectiveTo: p.effective_to,
+            loggedSets: loggedSets ? loggedSets.get(p.id) ?? 0 : null,
         }))
 
         return { success: true, programs }
@@ -165,14 +222,17 @@ export async function getTrainingProgressData(
         const exerciseIds = (exercisesRaw || []).map((e: any) => e.id)
         let setsRaw: any[] = []
         if (exerciseIds.length > 0) {
-            const { data: sData, error: sErr } = await supabase
-                .from('training_exercise_sets')
-                .select('exercise_id, week_index, set_index, weight_kg, reps, rir, completed, notes')
-                .in('exercise_id', exerciseIds)
-                .order('set_index', { ascending: true })
-
-            if (sErr) throw new Error(sErr.message)
-            setsRaw = sData || []
+            setsRaw = await fetchAllPages<any>((from, to) =>
+                supabase
+                    .from('training_exercise_sets')
+                    .select('exercise_id, week_index, set_index, weight_kg, reps, rir, completed, notes')
+                    .in('exercise_id', exerciseIds)
+                    .order('exercise_id', { ascending: true })
+                    .order('week_index', { ascending: true })
+                    .order('set_index', { ascending: true })
+                    .order('id', { ascending: true })
+                    .range(from, to)
+            )
         }
 
         // 5. Group sets by exercise_id → week_index
