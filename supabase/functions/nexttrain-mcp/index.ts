@@ -81,7 +81,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.24.0',
+    version: '0.25.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
