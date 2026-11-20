@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale'
 import { CalendarX2, Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
 import { programDayDate } from '@/lib/training/strength-week-skips'
+import { isAthleteNotesColumn } from '@/lib/training/exercise-notes'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet, getAllSetsForProgram } from '@/data/exercise-sets'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
 import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
@@ -126,10 +127,11 @@ export default function RoutinePageClient({
     }, [clientId, getSessionDate, program.id, router, selectedDayId, selectedWeek])
 
     // ─── Cell handlers (legacy) ─────────────────────────────────
-    const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string) => {
+    const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string): Promise<boolean> => {
         const existing = cells.find(
             c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
         )
+        const previousValue = existing?.value
 
         setCells(prev => {
             const idx = prev.findIndex(
@@ -145,11 +147,20 @@ export default function RoutinePageClient({
 
         const result = await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
         if (result.success) {
-            await markCurrentDayComplete()
-        } else {
-            toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
+            // Una nota no es haber entrenado: no da el día por hecho
+            const column = columns.find(c => c.id === columnId)
+            if (!isAthleteNotesColumn(column)) await markCurrentDayComplete()
+            return true
         }
-    }, [selectedWeek, cells, markCurrentDayComplete])
+        // Lo de pantalla vuelve a lo que había guardado
+        setCells(prev => prev.map(c =>
+            c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
+                ? { ...c, value: previousValue ?? '' }
+                : c
+        ))
+        toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
+        return false
+    }, [selectedWeek, cells, columns, markCurrentDayComplete])
 
     // ─── Base Block: Generate / Apply ───────────────────────────
     const handleGenerateSets = useCallback(async (

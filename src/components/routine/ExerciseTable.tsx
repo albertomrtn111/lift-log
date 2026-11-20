@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { TrainingColumn, TrainingExercise, TrainingCell, CellSaveStatus, ExerciseSet } from '@/types/training';
 import { cn } from '@/lib/utils';
+import { COACH_NOTES_KEY, isAthleteNotesColumn } from '@/lib/training/exercise-notes';
 import { Lock, Check, Loader2, AlertCircle, Plus, Trash2, RotateCcw, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ interface ExerciseTableProps {
   cells: TrainingCell[];
   sets: ExerciseSet[];
   weekNumber: number;
-  onCellChange: (exerciseId: string, columnId: string, value: string) => void;
+  onCellChange: (exerciseId: string, columnId: string, value: string) => Promise<boolean> | void;
   onGenerateSets: (exerciseId: string, series: number, weight: number | null, reps: number | null, rir: number | null) => Promise<any>;
   onSetUpdate: (setId: string, payload: { weightKg?: number | null; reps?: number | null; rir?: number | null }) => Promise<void>;
   onRevertSet: (setId: string, baseWeight: number | null, baseReps: number | null, baseRir: number | null) => Promise<void>;
@@ -45,7 +46,8 @@ export function ExerciseTable({
     const weekToCheck = column?.scope === 'exercise' ? 0 : weekNumber;
     const cell = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekToCheck);
     if (cell?.value) return cell.value;
-    if (column?.scope === 'week' && weekNumber > 1) {
+    // La nota del atleta es de esa semana: no se arrastra la de la semana anterior
+    if (column?.scope === 'week' && weekNumber > 1 && !isAthleteNotesColumn(column)) {
       const prev = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekNumber - 1);
       if (prev?.value) return prev.value;
     }
@@ -56,7 +58,7 @@ export function ExerciseTable({
         case 'reps': return exercise.reps || '';
         case 'rir': return exercise.rir?.toString() || '';
         case 'rest': return exercise.restSeconds?.toString() || '';
-        case 'notes': return exercise.notes || '';
+        case COACH_NOTES_KEY: return exercise.notes || '';
       }
     }
     return '';
@@ -64,14 +66,13 @@ export function ExerciseTable({
 
   const getColumnId = (key: string) => columns.find(c => c.key === key)?.id || key;
 
-  const handleCellChange = useCallback((exerciseId: string, columnId: string, value: string) => {
+  const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string) => {
     const cellKey = `${exerciseId}-${columnId}`;
     setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'saving' } }));
-    setTimeout(() => {
-      onCellChange(exerciseId, columnId, value);
-      setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'saved', lastSaved: new Date() } }));
-      setTimeout(() => { setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'idle' } })); }, 2000);
-    }, 500);
+    // El aviso dice lo que pasó de verdad: antes marcaba «guardado» aunque fallase
+    const ok = (await onCellChange(exerciseId, columnId, value)) !== false;
+    setSaveStatus(prev => ({ ...prev, [cellKey]: ok ? { status: 'saved', lastSaved: new Date() } : { status: 'error' } }));
+    if (ok) setTimeout(() => { setSaveStatus(prev => ({ ...prev, [cellKey]: { status: 'idle' } })); }, 2000);
   }, [onCellChange]);
 
   const getExerciseSets = useCallback((exerciseId: string): ExerciseSet[] => {
@@ -141,9 +142,13 @@ export function ExerciseTable({
   };
 
   const isSetColumn = (col: TrainingColumn) => ['weight', 'reps_done', 'notes'].includes(col.key || '');
-  const isNotesColumn = (col: TrainingColumn) => col.key === 'notes';
+  // Las notas (del coach y del atleta) van juntas en la última columna, no en la tabla
+  const isNotesColumn = (col: TrainingColumn) => isAthleteNotesColumn(col) || col.key === COACH_NOTES_KEY;
   const tableColumns = columns.filter(c => !isSetColumn(c) && !isNotesColumn(c));
-  const notesCol = columns.find(c => isNotesColumn(c));
+  const notesCol = columns.find(c => isAthleteNotesColumn(c));
+  const coachNotesCol = columns.find(c => c.key === COACH_NOTES_KEY);
+  const coachNoteOf = (exerciseId: string) => (coachNotesCol ? String(getCellValue(exerciseId, coachNotesCol.id) ?? '').trim() : '');
+  const showNotes = Boolean(notesCol) || exercises.some(ex => coachNoteOf(ex.id) !== '');
 
   const completedCount = exercises.filter(ex => getExerciseSets(ex.id).some(s => s.weightKg !== null || s.reps !== null)).length;
 
@@ -173,9 +178,9 @@ export function ExerciseTable({
               <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary min-w-[520px]">
                 Bloque base / Series
               </th>
-              {notesCol && (
+              {showNotes && (
                 <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground min-w-[160px] max-w-[420px]">
-                  {notesCol.label}
+                  {notesCol?.label || 'Notas'}
                 </th>
               )}
             </tr>
@@ -276,23 +281,34 @@ export function ExerciseTable({
                       )}
                     </div>
                   </td>
-                  {/* Notes column (after sets) */}
-                  {notesCol && (
+                  {/* Notas (después de las series): indicaciones del coach y nota del atleta */}
+                  {showNotes && (
                     <td className="p-2 align-top">
-                      <div className="cell-client max-w-[420px]">
-                        <textarea
-                          key={`${notesCol.id}-${weekNumber}`}
-                          defaultValue={getCellValue(exercise.id, notesCol.id)}
-                          placeholder="Notas..."
-                          className="w-full min-w-[140px] min-h-[80px] resize-none bg-transparent text-sm outline-none"
-                          rows={3}
-                          onBlur={(e) => {
-                            if (e.target.value !== getCellValue(exercise.id, notesCol.id)) {
-                              handleCellChange(exercise.id, notesCol.id, e.target.value);
-                            }
-                          }}
-                        />
-                        {renderSaveIndicator(exercise.id, notesCol.id)}
+                      <div className="max-w-[420px] space-y-2">
+                        {coachNoteOf(exercise.id) && (
+                          <div className="rounded-md border border-primary/15 bg-primary/5 px-2.5 py-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Indicaciones del coach</p>
+                            <p className="mt-0.5 whitespace-pre-line text-xs leading-relaxed text-foreground/90">{coachNoteOf(exercise.id)}</p>
+                          </div>
+                        )}
+                        {notesCol && (
+                          <div className="cell-client">
+                            <textarea
+                              key={`${notesCol.id}-${exercise.id}-${weekNumber}`}
+                              defaultValue={getCellValue(exercise.id, notesCol.id)}
+                              placeholder="Tus notas: sensaciones, molestias…"
+                              aria-label={`Tus notas de ${exercise.name}`}
+                              className="w-full min-w-[140px] min-h-[80px] resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                              rows={3}
+                              onBlur={(e) => {
+                                if (e.target.value !== getCellValue(exercise.id, notesCol.id)) {
+                                  handleCellChange(exercise.id, notesCol.id, e.target.value);
+                                }
+                              }}
+                            />
+                            {renderSaveIndicator(exercise.id, notesCol.id)}
+                          </div>
+                        )}
                       </div>
                     </td>
                   )}
