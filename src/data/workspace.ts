@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 import type { Client } from '@/types/coach'
+import { sortCheckinsForCoach } from '@/lib/reviews/coach-checkin-state'
 
 // ============================================================================
 // TYPES
@@ -47,6 +48,7 @@ export interface Checkin {
     type: 'checkin' | 'onboarding'
     status: 'pending' | 'reviewed' | 'archived'
     submitted_at: string | null
+    created_at?: string
     period_start: string | null
     period_end: string | null
     weight_kg: number | null
@@ -384,10 +386,12 @@ export async function listCheckins(coachId: string, clientId: string): Promise<C
 
     const reviewMap = new Map(reviews?.map(r => [r.checkin_id, r]) || [])
 
-    return checkins.map(checkin => ({
+    // Postgres pone primero los check-ins sin respuesta (submitted_at null) al
+    // ordenar de forma descendente: el orden final lo decide sortCheckinsForCoach.
+    return sortCheckinsForCoach(checkins.map(checkin => ({
         ...checkin,
         review: reviewMap.get(checkin.id) || null,
-    })) as CheckinWithReview[]
+    })) as CheckinWithReview[])
 }
 
 export async function getLatestCheckin(coachId: string, clientId: string): Promise<CheckinWithReview | null> {
@@ -399,9 +403,12 @@ export async function getLatestCheckin(coachId: string, clientId: string): Promi
         .eq('coach_id', coachId)
         .eq('client_id', clientId)
         .eq('type', 'checkin')
+        // Última revisión = la última que respondió el atleta. Sin este filtro,
+        // Postgres pone primero las no respondidas (pendientes o caducadas).
+        .not('submitted_at', 'is', null)
         .order('submitted_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
     if (error || !checkin) return null
 
