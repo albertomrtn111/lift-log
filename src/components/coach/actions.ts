@@ -7,6 +7,8 @@ import { sendAthleteInvite } from '@/lib/onboarding/athlete-invite'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
+import { athleteSeatMessage } from '@/lib/subscription/plan-limits'
+import { getAthleteUsage } from '@/lib/subscription/plan-usage'
 import {
     getCoachBillingSettings,
     settleBillingBeforeReactivation,
@@ -44,6 +46,10 @@ export async function reactivateClientAction(clientId: string) {
     } catch (e: any) {
         return { success: false, error: 'No autorizado: ' + e.message }
     }
+
+    // El límite de atletas del plan se mira antes de tocar Facturación (la base lo vuelve a aplicar)
+    const seatMessage = athleteSeatMessage(await getAthleteUsage(coachId), 'reactivate')
+    if (seatMessage) return { success: false, error: seatMessage }
 
     // Antes de cambiar el estado: necesita la fecha de baja para cerrar esos meses
     const today = todayKeyIn((await getCoachBillingSettings(coachId)).timeZone)

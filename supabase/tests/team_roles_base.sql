@@ -1,5 +1,5 @@
 -- Prueba de la base de roles con un espacio temporal y una sesión simulada por usuario.
--- Requiere 20261104110000_team_roles_base.sql.
+-- Requiere 20261104110000_team_roles_base.sql (y, para el límite de miembros, 20261120132000_planes_y_limites.sql).
 -- La transacción termina con ROLLBACK explícito: no deja datos de prueba.
 begin;
 do $tests$
@@ -24,6 +24,8 @@ begin
     on conflict (id) do nothing;
 
   insert into public.coaches (id, name, created_by) values (v_space, 'Rollback roles', v_owner);
+  -- Studio: el equipo de la prueba no cabe en el límite de miembros de Starter
+  insert into public.coach_subscriptions (coach_id, status, plan, billing_cycle) values (v_space, 'comped', 'studio', 'monthly');
   insert into public.coach_memberships (coach_id, user_id, role, status) values
     (v_space, v_owner, 'owner', 'active'),
     (v_space, v_admin, 'admin', 'active'),
