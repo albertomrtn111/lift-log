@@ -11,6 +11,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { CalendarX2, Dumbbell } from 'lucide-react'
 import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
+import { programDayDate } from '@/lib/training/strength-week-skips'
 import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet, getAllSetsForProgram } from '@/data/exercise-sets'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
 import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
@@ -105,20 +106,8 @@ export default function RoutinePageClient({
 
         const selectedDay = days.find(day => day.id === selectedDayId)
         const defaultWeekday = selectedDay?.defaultWeekday ?? selectedDay?.default_weekday
-        if (!defaultWeekday) return undefined
-
-        const programStart = new Date(`${program.effectiveFrom}T12:00:00`)
-        const weekStart = new Date(programStart)
-        weekStart.setDate(weekStart.getDate() + ((selectedWeek - 1) * 7))
-        const mondayOffset = (weekStart.getDay() + 6) % 7
-        weekStart.setDate(weekStart.getDate() - mondayOffset)
-
-        const sessionDate = new Date(weekStart)
-        sessionDate.setDate(weekStart.getDate() + defaultWeekday - 1)
-        const y = sessionDate.getFullYear()
-        const m = String(sessionDate.getMonth() + 1).padStart(2, '0')
-        const d = String(sessionDate.getDate()).padStart(2, '0')
-        return `${y}-${m}-${d}`
+        // Misma cuenta que el servidor, con fechas sin hora.
+        return programDayDate(program.effectiveFrom, selectedWeek, defaultWeekday) ?? undefined
     }, [days, initialDayId, initialSessionDate, initialWeek, program.effectiveFrom, selectedDayId, selectedWeek])
 
     const markCurrentDayComplete = useCallback(async () => {

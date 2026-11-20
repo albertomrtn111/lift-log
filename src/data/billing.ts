@@ -3,22 +3,12 @@ import { revalidatePath } from 'next/cache'
 import type { BillingLedgerData } from '@/types/billing'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
 import { dueDateFor, isBillable, feeOf, monthsMissedWhileInactive, type LedgerClient, type LedgerRecord } from '@/lib/billing/ledger'
+import { todayKeyIn } from '@/lib/time-zone'
 
 export type { BillingLedgerData } from '@/types/billing'
 
-/** Hoy (YYYY-MM-DD) en la zona horaria del coach */
-export function todayKeyIn(timeZone: string | null | undefined) {
-    try {
-        return new Intl.DateTimeFormat('en-CA', {
-            timeZone: timeZone || 'Europe/Madrid',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-        }).format(new Date())
-    } catch {
-        return new Date().toISOString().slice(0, 10)
-    }
-}
+/** Hoy (YYYY-MM-DD) en la zona horaria del coach: la misma función que usan Fuerza y Progreso */
+export { todayKeyIn }
 
 /** Nota de los cobros que se eximen automáticamente al dar de baja */
 const DEACTIVATION_NOTE = 'Exento por baja'

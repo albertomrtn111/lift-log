@@ -4,6 +4,7 @@ import { getAthleteModules } from '@/data/athlete-modules'
 import { athleteHome } from '@/lib/athlete/module-rules'
 import { getClientId, getActiveClientProgram } from '@/data/client-schedule'
 import { resolveRoutineInitialSelection } from '@/lib/training/routine-defaults'
+import { getClientTimeZone } from '@/data/workspace-time-zone'
 import RoutinePageClient from './RoutinePageClient'
 import { Dumbbell } from 'lucide-react'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
@@ -37,7 +38,10 @@ export default async function RoutinePage(
         )
     }
 
-    const data = await getActiveClientProgram(clientId, searchParams.programId)
+    const [data, timeZone] = await Promise.all([
+        getActiveClientProgram(clientId, searchParams.programId),
+        getClientTimeZone(clientId),
+    ])
 
     if (!data) {
         return (
@@ -63,9 +67,11 @@ export default async function RoutinePage(
         )
     }
 
+    // «Hoy» es el día en la zona del espacio, no el del servidor (va en UTC).
     const defaultSelection = resolveRoutineInitialSelection({
         program: data.program,
         days: data.days,
+        timeZone,
     })
     const parsedWeek = searchParams.week ? parseInt(searchParams.week) : null
     const initialWeek = parsedWeek && Number.isFinite(parsedWeek) ? parsedWeek : defaultSelection.week

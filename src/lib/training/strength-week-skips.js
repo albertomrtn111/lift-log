@@ -38,6 +38,25 @@ export function programWeekOfDate(effectiveFrom, dateKey) {
 }
 
 /**
+ * Semana del programa que toca en una fecha (normalmente «hoy» en la zona del
+ * espacio), dentro de la duración: antes de empezar es la 1 y, con el programa
+ * terminado, la última. Es la que abren Fuerza y Progreso.
+ * @param {string | null | undefined} effectiveFrom
+ * @param {string | null | undefined} dateKey
+ * @param {number | string | null | undefined} totalWeeks
+ * @returns {number}
+ */
+export function currentProgramWeek(effectiveFrom, dateKey, totalWeeks) {
+  const weeks = Math.max(Math.floor(Number(totalWeeks)) || 1, 1)
+  return Math.min(programWeekOfDate(effectiveFrom, dateKey) ?? 1, weeks)
+}
+
+/** Día de la semana de una fecha: 1 = lunes … 7 = domingo. @param {string} key */
+export function weekdayOfDate(key) {
+  return ((new Date(toUtc(key)).getUTCDay() + 6) % 7) + 1
+}
+
+/**
  * Fecha en la que cae un día del programa en una semana, por su default_weekday.
  * @param {string | null | undefined} effectiveFrom
  * @param {number} week

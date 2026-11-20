@@ -4,7 +4,10 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { format, differenceInDays, subDays } from 'date-fns'
+import { format, subDays } from 'date-fns'
+import { currentProgramWeek } from '@/lib/training/strength-week-skips'
+import { todayKeyIn } from '@/lib/time-zone'
+import { getCoachTimeZone } from '@/data/workspace-time-zone'
 
 export interface ProgramSummary {
     id: string
@@ -75,7 +78,7 @@ const getClientContext = cache(async () => {
     const admin = createAdminClient()
     const { data: client } = await admin
         .from('clients')
-        .select('id')
+        .select('id, coach_id')
         .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
         .eq('status', 'active')
         .maybeSingle()
@@ -131,20 +134,11 @@ export async function getActiveStrengthProgramSummary(): Promise<ProgramSummary 
 
     if (!program) return null
 
-    // 2. Calculate Current Week
+    // 2. Semana de hoy: la misma que abre Fuerza (lunes a domingo desde la semana
+    // de inicio, con «hoy» en la zona del espacio y sin pasar de la última).
     const totalWeeks = getTotalWeeks(program)
-    const effectiveFrom = new Date(program.effective_from)
-    const today = new Date()
-    const diffDays = differenceInDays(today, effectiveFrom)
-
-    // Week index starts at 1
-    // If effectiveFrom is today, diffDays is 0 -> week 1
-    // If effectiveFrom is 7 days ago, diffDays is 7 -> week 2
-    let currentWeek = Math.floor(diffDays / 7) + 1
-
-    // Clamp week
-    if (currentWeek < 1) currentWeek = 1
-    if (currentWeek > totalWeeks) currentWeek = totalWeeks
+    const today = todayKeyIn(await getCoachTimeZone(client.coach_id))
+    const currentWeek = currentProgramWeek(program.effective_from, today, totalWeeks)
 
     const progressPercent = Math.min(100, Math.round((currentWeek / totalWeeks) * 100))
 
