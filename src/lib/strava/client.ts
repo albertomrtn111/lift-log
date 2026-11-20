@@ -15,6 +15,24 @@ import {
     STRAVA_ACTIVITY_PERMISSION_ERROR,
 } from '@/lib/strava/scopes'
 import { roundToDecimals } from '@/lib/format/number'
+import {
+    classifyActivityCheck,
+    classifyAuthorizationCheck,
+    decideActivityDeletion,
+    decideAthleteDeauthorization,
+    decideSubscription,
+    parseStravaSubscriptionIds,
+    parseStravaWebhookEvent,
+    shouldRestoreDeletedActivity,
+    STRAVA_CHECK_TIMEOUT_MS,
+    STRAVA_SUBSCRIPTION_CACHE_MS,
+    STRAVA_SUBSCRIPTION_LOOKUP_TIMEOUT_MS,
+    STRAVA_SUBSCRIPTION_RECHECK_MS,
+    STRAVA_SUBSCRIPTION_RETRY_MS,
+    type StravaActivityCheck,
+    type StravaAuthorizationCheck,
+    type StravaProbe,
+} from '@/lib/strava/webhook-checks'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -249,13 +267,17 @@ export function buildStravaAuthorizeUrl(state: string) {
     return url
 }
 
-async function postStravaToken(params: Record<string, string>): Promise<StravaTokenResponse> {
+function stravaTokenRequestBody(params: Record<string, string>) {
     const env = getStravaEnv()
-    const body = new URLSearchParams({
+    return new URLSearchParams({
         client_id: env.clientId,
         client_secret: env.clientSecret,
         ...params,
     })
+}
+
+async function postStravaToken(params: Record<string, string>): Promise<StravaTokenResponse> {
+    const body = stravaTokenRequestBody(params)
 
     const response = await fetch(STRAVA_TOKEN_URL, {
         method: 'POST',
@@ -426,6 +448,154 @@ async function fetchStravaApi<T>(path: string, accessToken: string): Promise<T> 
     }
 
     return response.json()
+}
+
+// Llamada a Strava que nunca lanza: devuelve el código y el cuerpo, o status
+// null si no hubo respuesta a tiempo. Se usa para las comprobaciones del webhook.
+async function probeStrava(url: string, init: RequestInit = {}, timeoutMs?: number): Promise<StravaProbe> {
+    try {
+        const response = await fetch(url, {
+            ...init,
+            cache: 'no-store',
+            ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+        })
+        const text = await response.text()
+        let body: unknown = null
+        try {
+            body = text ? JSON.parse(text) : null
+        } catch {
+            body = null
+        }
+        return { status: response.status, body }
+    } catch {
+        return { status: null, body: null }
+    }
+}
+
+// Id de nuestra suscripción al webhook, pedido a Strava con las credenciales de
+// la app y guardado en memoria. null = no se ha podido saber.
+let stravaSubscriptionCache: { ids: number[] | null; fetchedAt: number; expiresAt: number } | null = null
+let stravaSubscriptionLookup: Promise<number[] | null> | null = null
+
+async function lookupStravaSubscriptionIds(): Promise<number[] | null> {
+    const env = getStravaEnv()
+    const url = new URL(`${STRAVA_API_URL}/push_subscriptions`)
+    url.searchParams.set('client_id', env.clientId)
+    url.searchParams.set('client_secret', env.clientSecret)
+
+    const probe = await probeStrava(url.toString(), {}, STRAVA_SUBSCRIPTION_LOOKUP_TIMEOUT_MS)
+    if (probe.status === null || probe.status < 200 || probe.status >= 300) {
+        console.warn('[strava/webhook] No se pudo consultar la suscripción', { status: probe.status })
+        return null
+    }
+
+    const ids = parseStravaSubscriptionIds(probe.body)
+    if (ids.length === 0) {
+        console.warn('[strava/webhook] Strava no devuelve ninguna suscripción')
+        return null
+    }
+    return ids
+}
+
+async function getOwnStravaSubscriptionIds(options: { refreshIfOlderThanMs?: number } = {}) {
+    const now = Date.now()
+    const cache = stravaSubscriptionCache
+    const tooOld = options.refreshIfOlderThanMs !== undefined
+        && cache !== null
+        && now - cache.fetchedAt > options.refreshIfOlderThanMs
+    if (cache && cache.expiresAt > now && !tooOld) return cache.ids
+
+    if (!stravaSubscriptionLookup) {
+        stravaSubscriptionLookup = lookupStravaSubscriptionIds()
+            .catch(() => null)
+            .then((ids) => {
+                const fetchedAt = Date.now()
+                stravaSubscriptionCache = {
+                    ids,
+                    fetchedAt,
+                    expiresAt: fetchedAt + (ids ? STRAVA_SUBSCRIPTION_CACHE_MS : STRAVA_SUBSCRIPTION_RETRY_MS),
+                }
+                return ids
+            })
+            .finally(() => {
+                stravaSubscriptionLookup = null
+            })
+    }
+    return stravaSubscriptionLookup
+}
+
+async function checkWebhookSubscription(subscriptionId: number | undefined) {
+    const decision = decideSubscription(subscriptionId, await getOwnStravaSubscriptionIds())
+    if (decision !== 'reject') return decision
+
+    // Por si la suscripción se ha vuelto a crear con otro id: se pregunta otra vez.
+    return decideSubscription(
+        subscriptionId,
+        await getOwnStravaSubscriptionIds({ refreshIfOlderThanMs: STRAVA_SUBSCRIPTION_RECHECK_MS })
+    )
+}
+
+// ¿Sigue valiendo el permiso del atleta? Con el token en vigor se pide su
+// perfil; si ha caducado, se intenta renovar (y se guarda el token nuevo).
+// La renovación no se corta por tiempo: cortarla a medias podría dejar
+// guardado un token que Strava ya ha sustituido.
+async function checkStravaAuthorization(integration: any): Promise<StravaAuthorizationCheck> {
+    const expiresAtMs = integration.expires_at ? new Date(integration.expires_at).getTime() : 0
+    const accessTokenIsFresh = expiresAtMs > Date.now() + TOKEN_REFRESH_SKEW_SECONDS * 1000
+
+    if (integration.access_token && accessTokenIsFresh) {
+        const probe = await probeStrava(`${STRAVA_API_URL}/athlete`, {
+            headers: { Authorization: `Bearer ${integration.access_token}` },
+        }, STRAVA_CHECK_TIMEOUT_MS)
+        return classifyAuthorizationCheck(probe)
+    }
+
+    if (!integration.refresh_token) return 'unknown'
+
+    const probe = await probeStrava(STRAVA_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: stravaTokenRequestBody({
+            grant_type: 'refresh_token',
+            refresh_token: integration.refresh_token,
+        }),
+    })
+    const check = classifyAuthorizationCheck(probe)
+
+    const refreshed = probe.body as Partial<StravaTokenResponse> | null
+    if (check === 'valid' && refreshed?.access_token && refreshed.refresh_token) {
+        const { error } = await createAdminClient()
+            .from('athlete_integrations')
+            .update({
+                access_token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+                expires_at: toIsoFromEpochSeconds(refreshed.expires_at),
+            })
+            .eq('id', integration.id)
+
+        if (error) console.warn('[strava/webhook] No se pudo guardar el token renovado', { integrationId: integration.id, error: error.message })
+    }
+
+    return check
+}
+
+// ¿Existe todavía la actividad en Strava? Se pide con el token de su atleta.
+async function checkStravaActivityExists(integration: any, activityId: number): Promise<StravaActivityCheck> {
+    let accessToken: string
+    try {
+        accessToken = await getValidStravaAccessToken(integration.client_id)
+    } catch (error) {
+        console.warn('[strava/webhook] Sin token para comprobar la actividad', {
+            clientId: integration.client_id,
+            error: error instanceof Error ? error.message : String(error),
+        })
+        return 'unknown'
+    }
+
+    const probe = await probeStrava(`${STRAVA_API_URL}/activities/${activityId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+    }, STRAVA_CHECK_TIMEOUT_MS)
+    return classifyActivityCheck(probe)
 }
 
 async function fetchStravaActivityLaps(providerActivityId: string, accessToken: string) {
@@ -640,14 +810,25 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
     const stravaAthleteId = String(activity.athlete?.id ?? '')
     const { data: existing, error: existingError } = await supabase
         .from('strava_activities')
-        .select('id, feedback_status, is_deleted, matched_planned_session_id')
+        .select('id, feedback_status, is_deleted, matched_planned_session_id, rpe')
         .eq('provider', 'strava')
         .eq('provider_activity_id', providerActivityId)
         .maybeSingle()
 
     if (existingError) throw new Error(existingError.message)
 
-    const hasAthleteDecision = existing?.is_deleted || existing?.feedback_status === 'completed'
+    // Strava acaba de devolver la actividad, así que existe: si estaba marcada
+    // como borrada por un aviso, vuelve a pendientes para que el atleta la
+    // confirme y se rehaga su sesión de cardio.
+    const restoreDeleted = shouldRestoreDeletedActivity(existing)
+    if (restoreDeleted) {
+        console.info('[strava] Actividad recuperada: Strava confirma que existe', {
+            stravaActivityId: existing?.id,
+            providerActivityId,
+        })
+    }
+
+    const hasAthleteDecision = !restoreDeleted && (existing?.is_deleted || existing?.feedback_status === 'completed')
     const shouldNotifyAthlete = !existing
 
     const { data, error } = await supabase
@@ -676,8 +857,9 @@ async function upsertImportedActivity(clientId: string, coachId: string, activit
             matched_planned_session_id: hasAthleteDecision
                 ? existing.matched_planned_session_id
                 : matchedSessionId,
-            feedback_status: existing?.feedback_status || 'pending',
-            is_deleted: existing?.is_deleted || false,
+            feedback_status: restoreDeleted ? 'pending' : existing?.feedback_status || 'pending',
+            is_deleted: restoreDeleted ? false : existing?.is_deleted || false,
+            ...(restoreDeleted ? { cardio_session_id: null } : {}),
             imported_at: new Date().toISOString(),
         }, { onConflict: 'provider,provider_activity_id' })
         .select('id')
@@ -962,6 +1144,10 @@ export async function ignoreStravaActivity(context: AuthenticatedClientContext, 
         .update({
             is_deleted: true,
             feedback_status: 'completed',
+            // Sin RPE: así una actividad ignorada no se recupera al reimportarla
+            // (ver shouldRestoreDeletedActivity).
+            rpe: null,
+            athlete_notes: null,
         })
         .eq('id', activityId)
         .eq('client_id', context.clientId)
@@ -970,13 +1156,16 @@ export async function ignoreStravaActivity(context: AuthenticatedClientContext, 
     return { success: true }
 }
 
-async function handleDeletedStravaActivity(providerActivityId: string) {
+// Borrado confirmado por Strava. Solo toca las filas del atleta del aviso
+// (su client_id), no las de otros atletas con el mismo id de actividad.
+async function handleDeletedStravaActivity(clientId: string, providerActivityId: string) {
     const supabase = createAdminClient()
     const { data: activities, error: selectError } = await supabase
         .from('strava_activities')
         .select('id, cardio_session_id, matched_planned_session_id')
         .eq('provider', 'strava')
         .eq('provider_activity_id', providerActivityId)
+        .eq('client_id', clientId)
 
     if (selectError) throw new Error(selectError.message)
 
@@ -985,6 +1174,7 @@ async function handleDeletedStravaActivity(providerActivityId: string) {
         .update({ is_deleted: true, feedback_status: 'completed' })
         .eq('provider', 'strava')
         .eq('provider_activity_id', providerActivityId)
+        .eq('client_id', clientId)
 
     if (deleteError) throw new Error(deleteError.message)
 
@@ -1001,6 +1191,7 @@ async function handleDeletedStravaActivity(providerActivityId: string) {
             .from('cardio_sessions')
             .update(resetPayload)
             .in('id', matchedCardioSessionIds)
+            .eq('client_id', clientId)
 
         if (error) throw new Error(error.message)
     }
@@ -1010,6 +1201,7 @@ async function handleDeletedStravaActivity(providerActivityId: string) {
             .from('cardio_sessions')
             .delete()
             .in('id', extraCardioSessionIds)
+            .eq('client_id', clientId)
 
         if (error) throw new Error(error.message)
     }
@@ -1020,31 +1212,83 @@ async function handleDeletedStravaActivity(providerActivityId: string) {
             .update(resetPayload)
             .eq('source_provider', 'strava')
             .eq('provider_activity_id', providerActivityId)
+            .eq('client_id', clientId)
 
         if (error) throw new Error(error.message)
     }
 }
 
-export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
+export type StravaWebhookOutcome =
+    | { handled: true }
+    | { handled: false; reason: string }
+
+// Motivos que apuntan a un aviso que no cuadra con lo que dice Strava.
+const SUSPICIOUS_IGNORE_REASONS = new Set([
+    'other_subscription',
+    'authorization_still_valid',
+    'activity_still_exists',
+])
+
+function ignoreWebhookEvent(event: StravaWebhookEvent, reason: string): StravaWebhookOutcome {
+    const details = {
+        reason,
+        object_type: event.object_type,
+        aspect_type: event.aspect_type,
+        owner_id: event.owner_id,
+        object_id: event.object_id,
+        subscription_id: event.subscription_id ?? null,
+    }
+    if (SUSPICIOUS_IGNORE_REASONS.has(reason)) console.warn('[strava/webhook] Aviso ignorado', details)
+    else console.info('[strava/webhook] Aviso ignorado', details)
+    return { handled: false, reason }
+}
+
+async function handleAthleteDeauthorization(event: StravaWebhookEvent): Promise<StravaWebhookOutcome> {
+    const supabase = createAdminClient()
+    const { data: integration, error } = await supabase
+        .from('athlete_integrations')
+        .select('*')
+        .eq('provider', 'strava')
+        .eq('provider_athlete_id', String(event.owner_id))
+        .maybeSingle()
+
+    if (error) throw new Error(error.message)
+    if (!integration) return ignoreWebhookEvent(event, 'unknown_athlete')
+    // Sin tokens ya no hay nada que revocar (por ejemplo, se desconectó desde NexTrain).
+    if (!integration.access_token && !integration.refresh_token) {
+        return ignoreWebhookEvent(event, 'already_disconnected')
+    }
+
+    const check = await checkStravaAuthorization(integration)
+    if (decideAthleteDeauthorization(check) !== 'revoke') {
+        return ignoreWebhookEvent(event, check === 'valid' ? 'authorization_still_valid' : 'authorization_unconfirmed')
+    }
+
+    const { error: revokeError } = await supabase
+        .from('athlete_integrations')
+        .update({ status: 'revoked', access_token: null, refresh_token: null, error_message: 'Strava access revoked' })
+        .eq('id', integration.id)
+
+    if (revokeError) throw new Error(revokeError.message)
+    await sendStravaDisconnectedNotification(integration.client_id as string, 'revoked')
+    return { handled: true }
+}
+
+export async function processStravaWebhookEvent(event: StravaWebhookEvent): Promise<StravaWebhookOutcome> {
     const supabase = createAdminClient()
     const ownerId = String(event.owner_id)
 
-    if (event.object_type === 'athlete' && event.updates?.authorized === 'false') {
-        const { data: revoked, error } = await supabase
-            .from('athlete_integrations')
-            .update({ status: 'revoked', access_token: null, refresh_token: null, error_message: 'Strava access revoked' })
-            .eq('provider', 'strava')
-            .eq('provider_athlete_id', ownerId)
-            .select('client_id')
-
-        if (error) throw new Error(error.message)
-        for (const row of revoked ?? []) {
-            await sendStravaDisconnectedNotification(row.client_id as string, 'revoked')
-        }
-        return
+    // Si no se puede saber nuestra suscripción, se sigue: lo que borra o
+    // desconecta se confirma igualmente con Strava más abajo.
+    if (await checkWebhookSubscription(event.subscription_id) === 'reject') {
+        return ignoreWebhookEvent(event, 'other_subscription')
     }
 
-    if (event.object_type !== 'activity') return
+    if (event.object_type === 'athlete' && event.updates?.authorized === 'false') {
+        return handleAthleteDeauthorization(event)
+    }
+
+    if (event.object_type !== 'activity') return ignoreWebhookEvent(event, 'not_handled')
 
     const { data: integration, error } = await supabase
         .from('athlete_integrations')
@@ -1055,7 +1299,7 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
         .maybeSingle()
 
     if (error) throw new Error(error.message)
-    if (!integration) return
+    if (!integration) return ignoreWebhookEvent(event, 'unknown_athlete')
 
     if (!hasRequiredStravaActivityScope(integration.scope)) {
         const { error: permissionError } = await supabase
@@ -1065,12 +1309,17 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
 
         if (permissionError) throw new Error(permissionError.message)
         await sendStravaDisconnectedNotification(integration.client_id, 'permissions')
-        return
+        return { handled: true }
     }
 
     if (event.aspect_type === 'delete') {
-        await handleDeletedStravaActivity(String(event.object_id))
-        return
+        const check = await checkStravaActivityExists(integration, event.object_id)
+        if (decideActivityDeletion(check) !== 'delete') {
+            return ignoreWebhookEvent(event, check === 'exists' ? 'activity_still_exists' : 'deletion_unconfirmed')
+        }
+
+        await handleDeletedStravaActivity(integration.client_id as string, String(event.object_id))
+        return { handled: true }
     }
 
     const { imported, activity } = await importStravaActivityForIntegration(integration, event.object_id)
@@ -1082,13 +1331,9 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent) {
     if (imported?.shouldNotifyAthlete && event.aspect_type === 'create') {
         await sendStravaActivityImportedNotification(integration.client_id, activity.name, event.object_id)
     }
+    return { handled: true }
 }
 
 export function validateWebhookEvent(value: unknown): StravaWebhookEvent | null {
-    if (!value || typeof value !== 'object') return null
-    const event = value as Partial<StravaWebhookEvent>
-    if (!event.object_type || !event.aspect_type || !event.object_id || !event.owner_id) return null
-    if (!['activity', 'athlete'].includes(event.object_type)) return null
-    if (!['create', 'update', 'delete'].includes(event.aspect_type)) return null
-    return event as StravaWebhookEvent
+    return parseStravaWebhookEvent(value)
 }
