@@ -43,6 +43,7 @@ import {
 } from './CheckinAIAnalysisSheet'
 import { parseLocalDate, toLocalDateStr } from '@/lib/date-utils'
 import { getWorkspaceExpiryAlerts, type ExpiryAlert } from '@/lib/workspace-expiry-alerts'
+import { getCheckinAnswerState } from '@/lib/reviews/coach-checkin-state'
 
 type MetricPoint = {
     metric_date?: string
@@ -724,7 +725,8 @@ export function ResumenTab({
 }
 
 function canOpenReviewFlow(checkin: CheckinWithReview | null) {
-    if (!checkin || checkin.status === 'pending') return false
+    // Solo se cierra una revisión que el atleta respondió.
+    if (!checkin || checkin.status === 'pending' || getCheckinAnswerState(checkin) !== 'answered') return false
 
     return (
         !checkin.review ||

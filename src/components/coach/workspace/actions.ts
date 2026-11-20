@@ -56,6 +56,10 @@ export async function updateClientBasicsAction(
 // REVIEW ACTIONS
 // ============================================================================
 
+// Una revisión sin submitted_at no la respondió el atleta (pendiente o caducada):
+// no hay formulario que analizar, aprobar ni contestar.
+const UNANSWERED_CHECKIN_ERROR = 'El atleta no ha respondido esta revisión, así que no se puede cerrar ni revisar.'
+
 export async function createReviewAction(
     coachId: string,
     clientId: string,
@@ -74,7 +78,7 @@ export async function createReviewAction(
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
-            .select('id')
+            .select('id, submitted_at')
             .eq('id', checkinId)
             .eq('coach_id', validatedCoachId)
             .eq('client_id', clientId)
@@ -82,6 +86,10 @@ export async function createReviewAction(
 
         if (checkinError || !checkin) {
             return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
+        }
+
+        if (!checkin.submitted_at) {
+            return { success: false, error: UNANSWERED_CHECKIN_ERROR }
         }
 
         const review = await ensureReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
@@ -1203,7 +1211,7 @@ export async function completeReviewAction(input: {
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
-            .select('id, coach_id, client_id')
+            .select('id, coach_id, client_id, submitted_at')
             .eq('id', input.checkinId)
             .eq('coach_id', validatedCoachId)
             .eq('client_id', input.clientId)
@@ -1211,6 +1219,10 @@ export async function completeReviewAction(input: {
 
         if (checkinError || !checkin) {
             return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
+        }
+
+        if (!checkin.submitted_at) {
+            return { success: false, error: UNANSWERED_CHECKIN_ERROR }
         }
 
         const review = await ensureReviewForCheckin(validatedCoachId, input.clientId, input.checkinId, user.id)

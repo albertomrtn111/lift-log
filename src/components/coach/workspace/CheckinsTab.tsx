@@ -33,6 +33,11 @@ import {
 } from './CheckinAIAnalysisSheet'
 import { useToast } from '@/hooks/use-toast'
 import { ReviewApprovalDialog } from './ReviewApprovalDialog'
+import {
+    canCloseCheckinReview as canOpenReviewFlow,
+    getCheckinAnswerState,
+    getCoachCheckinBadge,
+} from '@/lib/reviews/coach-checkin-state'
 
 interface CheckinsTabProps {
     coachId: string
@@ -44,48 +49,24 @@ interface CheckinsTabProps {
     isSampleClient?: boolean
 }
 
-function getReviewStatusMeta(checkin: CheckinWithReview) {
-    if (!checkin.review) {
-        return {
-            label: 'Sin revisión',
-            className: 'bg-muted/50 text-muted-foreground border-border',
-        }
-    }
-
-    if (checkin.review.status === 'approved' && checkin.review.message_to_client?.trim()) {
-        return {
-            label: 'Aprobada y enviada',
-            className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-        }
-    }
-
-    if (checkin.review.status === 'approved') {
-        return {
-            label: 'Aprobada',
-            className: 'bg-success/10 text-success border-success/20',
-        }
-    }
-
-    if (checkin.review.status === 'draft') {
-        return {
-            label: 'Borrador',
-            className: 'bg-warning/10 text-warning border-warning/20',
-        }
-    }
-
-    return {
-        label: 'Rechazada',
-        className: 'bg-destructive/10 text-destructive border-destructive/20',
-    }
+const REVIEW_BADGE_CLASS: Record<ReturnType<typeof getCoachCheckinBadge>['tone'], string> = {
+    waiting: 'bg-primary/10 text-primary border-primary/20',
+    expired: 'bg-muted/50 text-muted-foreground border-border',
+    none: 'bg-muted/50 text-muted-foreground border-border',
+    sent: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+    approved: 'bg-success/10 text-success border-success/20',
+    draft: 'bg-warning/10 text-warning border-warning/20',
+    rejected: 'bg-destructive/10 text-destructive border-destructive/20',
 }
 
-function canOpenReviewFlow(checkin: CheckinWithReview) {
-    if (checkin.status === 'pending') return false
-    return (
-        !checkin.review ||
-        checkin.review.status === 'draft' ||
-        (checkin.review.status === 'approved' && !checkin.review.message_to_client?.trim())
-    )
+function getReviewStatusMeta(checkin: CheckinWithReview) {
+    const badge = getCoachCheckinBadge(checkin)
+    return { label: badge.label, className: REVIEW_BADGE_CLASS[badge.tone] }
+}
+
+/** Título de la fila cuando el atleta no respondió. */
+function getUnansweredTitle(checkin: CheckinWithReview) {
+    return getCheckinAnswerState(checkin) === 'waiting' ? 'Pendiente' : 'Sin respuesta'
 }
 
 function getReviewActionLabel(checkin: CheckinWithReview) {
@@ -335,7 +316,7 @@ function CheckinRow({
         >
             <div className="min-w-0">
                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}</span>
+                    <span className="font-medium text-base">{checkin.submitted_at ? formatDate(checkin.submitted_at) : getUnansweredTitle(checkin)}</span>
                     <Badge variant="outline" className={cn('text-xs', reviewMeta.className)}>
                         {reviewMeta.label}
                     </Badge>
@@ -491,7 +472,7 @@ function CheckinDetailPanel({
                         <h3 className="font-semibold text-xl">Detalle de la revisión</h3>
                     </div>
                     <p className="text-sm text-muted-foreground capitalize">
-                        {checkin.submitted_at ? formatDate(checkin.submitted_at) : 'Pendiente'}
+                        {checkin.submitted_at ? formatDate(checkin.submitted_at) : getUnansweredTitle(checkin)}
                     </p>
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
@@ -705,13 +686,19 @@ function CheckinDetailPanel({
                         </div>
                     ) : (
                         <div className="text-center bg-muted/10 p-8 rounded-xl border border-dashed">
-                            <p className="text-sm text-muted-foreground mb-4">
-                                Esta revisión aún no ha sido revisada
+                            <p className={cn('text-sm text-muted-foreground', canOpenReviewFlow(checkin) && 'mb-4')}>
+                                {getCheckinAnswerState(checkin) === 'waiting'
+                                    ? 'El atleta todavía no ha respondido esta revisión.'
+                                    : getCheckinAnswerState(checkin) === 'expired'
+                                        ? 'El atleta no respondió esta revisión y ya caducó. No hay nada que cerrar.'
+                                        : 'Esta revisión aún no ha sido revisada'}
                             </p>
-                            <Button onClick={() => onOpenReviewDialog(checkin.id)}>
-                                <CheckCheck className="h-4 w-4 mr-2" />
-                                {getReviewActionLabel(checkin)}
-                            </Button>
+                            {canOpenReviewFlow(checkin) && (
+                                <Button onClick={() => onOpenReviewDialog(checkin.id)}>
+                                    <CheckCheck className="h-4 w-4 mr-2" />
+                                    {getReviewActionLabel(checkin)}
+                                </Button>
+                            )}
                         </div>
                     )}
                 </div>
