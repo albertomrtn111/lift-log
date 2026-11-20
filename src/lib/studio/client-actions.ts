@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { cleanObjectives } from '@/lib/studio/client-rules'
+import { athleteLimitErrorMessage } from '@/lib/subscription/plan-limits'
 import type { StudioResult } from '@/lib/studio/session-actions'
 
 export interface StudioPersonMatch {
@@ -25,9 +26,12 @@ export type CreateClientResult =
     | { status: 'created' | 'linked'; client_id: string }
     | { status: 'duplicates'; matches: StudioPersonMatch[] }
 
-type RpcError = { code?: string; message?: string }
+type RpcError = { code?: string; message?: string; details?: string; hint?: string }
 
-function failure(error: RpcError | null): { success: false; error: string } {
+function failure(error: RpcError | null, action: 'create' | 'reactivate' = 'create'): { success: false; error: string } {
+    // Límite de atletas activos del plan: lo aplica la base al dar de alta o reactivar
+    const limitMessage = athleteLimitErrorMessage(error, action)
+    if (limitMessage) return { success: false, error: limitMessage }
     if (error?.code === '42501') return { success: false, error: 'No tienes permiso para hacer esto.' }
     if (error?.code === '22023') return { success: false, error: error.message ?? 'Revisa los datos.' }
     return { success: false, error: 'No se ha podido guardar. Inténtalo de nuevo.' }
@@ -72,7 +76,7 @@ export async function createStudioClientAction(input: {
 export async function adoptClientAction(clientId: string): Promise<StudioResult> {
     const supabase = await createClient()
     const { error } = await supabase.rpc('studio_use_client', { p_client_id: clientId })
-    return error ? failure(error) : { success: true, data: undefined }
+    return error ? failure(error, 'reactivate') : { success: true, data: undefined }
 }
 
 /** Objetivos por puntos y cumpleaños de la ficha. */

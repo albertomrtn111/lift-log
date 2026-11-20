@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invitationState, normalizeEmail } from '@/lib/team/team-rules'
+import { memberLimitErrorMessage } from '@/lib/subscription/plan-limits'
 
 type JoinResult = { success: true; redirectTo: string } | { success: false; error: string }
 
@@ -29,7 +30,8 @@ export async function acceptInvitationAction(invitationId: string): Promise<Join
         { coach_id: invitation.coach_id, user_id: user.id, role: invitation.role, status: 'active' },
         { onConflict: 'coach_id,user_id' },
     )
-    if (error) return { success: false, error: 'No se pudo completar la invitación' }
+    // El límite de miembros del plan lo aplica la base: la invitación sigue pendiente
+    if (error) return { success: false, error: memberLimitErrorMessage(error, 'join') ?? 'No se pudo completar la invitación' }
 
     // Al unirse entra directamente en el espacio nuevo.
     await admin.from('profiles').update({ last_coach_id: invitation.coach_id }).eq('id', user.id)

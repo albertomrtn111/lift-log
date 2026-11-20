@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
+import { athleteLimitErrorMessage } from '@/lib/subscription/plan-limits'
 import { attachPaymentNotes, splitPaymentNote } from '@/lib/billing/payment-notes'
 import { loadPaymentNotes, savePaymentNote } from '@/data/payment-notes'
 import type { Client, ClientWithMeta } from '@/types/coach'
@@ -193,6 +194,10 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
         console.log('------------------------------------')
     }
 
+    // Límite de atletas activos del plan (lo aplica la base, también al reactivar por email)
+    const limitMessage = athleteLimitErrorMessage(error, 'create')
+    if (limitMessage) return { success: false, error: limitMessage }
+
     if (error) {
         console.error('Supabase error creating client:', error)
         return {
@@ -325,6 +330,9 @@ export async function setClientStatus(
         .from('clients')
         .update({ status, deactivated_at, updated_at: new Date().toISOString() })
         .eq('id', clientId)
+
+    const limitMessage = athleteLimitErrorMessage(error, 'reactivate')
+    if (limitMessage) return { success: false, error: limitMessage }
 
     if (error) {
         console.error('Error updating client status:', error)
