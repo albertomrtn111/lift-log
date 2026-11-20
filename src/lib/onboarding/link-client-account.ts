@@ -10,11 +10,11 @@ function normalizeEmail(email: string | null | undefined) {
 /**
  * Enlaza la ficha que un coach creó para alguien que ya tenía cuenta.
  *
- * Los triggers (handle_new_auth_user y link_client_on_profile_insert) solo
- * enlazan por email al crear la cuenta; si el atleta ya existía en Auth, su
- * ficha nueva se quedaba con auth_user_id vacío ("Registro pendiente") para
- * siempre. Aquí lo hacemos cuando el propio atleta entra con su email
- * verificado (enlace de la invitación o del formulario).
+ * La base enlaza por email cuando la cuenta confirma su email (o nace
+ * confirmada): link_clients_to_confirmed_user. Si el atleta ya tenía la cuenta
+ * confirmada, su ficha nueva se quedaba con auth_user_id vacío ("Registro
+ * pendiente") para siempre. Aquí lo hacemos cuando el propio atleta entra con
+ * su email verificado (enlace de la invitación o del formulario).
  *
  * No enlaza si ya tiene otra ficha activa, ni si hay varias candidatas: dos
  * fichas activas rompen get-user-context (maybeSingle).
