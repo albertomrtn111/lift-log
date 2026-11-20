@@ -1,5 +1,6 @@
 import { z } from 'npm:zod@4.3.6'
 import { createToolRunner, type Db, defaultHelpers, idempotentWriteAnnotations, isoDate, type Row, type ToolHelpers } from './shared.ts'
+import { SUPERSET_FIELD_DESCRIPTION, SUPERSET_TOOL_NOTE } from './strength-blocks.ts'
 
 type Server = any
 
@@ -20,6 +21,7 @@ const programExercise = z.strictObject({
   rest_seconds: z.number().int().min(0).max(1800).nullable().optional(),
   notes: z.string().trim().max(800).nullable().optional(),
   muscle_group: muscleGroup.nullable().optional().describe('Solo sin biblioteca de ejercicios; con ella manda el grupo del catálogo.'),
+  superset: z.string().trim().min(1).max(40).nullable().optional().describe(`${SUPERSET_FIELD_DESCRIPTION} Omitido se conserva (get_program_history lo da como superset_key); null lo saca del bloque.`),
 }).refine((exercise) => exercise.id || exercise.name, 'Un ejercicio nuevo necesita name.')
 
 const programDay = z.strictObject({
@@ -100,7 +102,7 @@ export function registerCoachWriteTools(server: Server, db: Db, helpers: ToolHel
 
   server.registerTool('update_strength_program_days', {
     title: 'Editar días y ejercicios de un programa',
-    description: 'Reemplaza los días y ejercicios de un programa de fuerza en una sola transacción. Lee antes get_program_history con program_id y envía expected_updated_at y la estructura completa: los días y ejercicios con id se actualizan y conservan sus resultados; sin id se crean; los que no se envían se eliminan. No se puede quitar un ejercicio con resultados del atleta ni un día con sesiones completadas o resultados. Cambiar el día de la semana borra las sesiones programadas no completadas de ese día. Si la biblioteca de ejercicios está instalada, los ejercicios nuevos o cambiados deben estar en ella (list_exercise_catalog).',
+    description: 'Reemplaza los días y ejercicios de un programa de fuerza en una sola transacción. Lee antes get_program_history con program_id y envía expected_updated_at y la estructura completa: los días y ejercicios con id se actualizan y conservan sus resultados; sin id se crean; los que no se envían se eliminan. No se puede quitar un ejercicio con resultados del atleta ni un día con sesiones completadas o resultados. Cambiar el día de la semana borra las sesiones programadas no completadas de ese día. Si la biblioteca de ejercicios está instalada, los ejercicios nuevos o cambiados deben estar en ella (list_exercise_catalog). ' + SUPERSET_TOOL_NOTE + ' Se rechaza una superserie partida o de más de 4.',
     inputSchema: z.strictObject({
       coach_id: optionalCoachId,
       client_id: z.string().uuid(),

@@ -117,7 +117,7 @@ export function programTransitions(programs) {
 }
 
 const WORKOUT_FIELDS = ['program_id', 'program_name', 'day_id', 'day_name', 'week_index', 'scheduled_date', 'scheduled_date_source', 'session_id', 'session_completed']
-const EXERCISE_FIELDS = ['exercise_id', 'exercise', 'catalog_exercise_id', 'comparison_exercise_id', 'comparison_scope']
+const EXERCISE_FIELDS = ['exercise_id', 'exercise', 'block', 'superset_with', 'catalog_exercise_id', 'comparison_exercise_id', 'comparison_scope']
 // set_index se omite: set_number ya identifica la serie y el id de un registro incluye su posición.
 const OMITTED_SET_FIELDS = new Set([...WORKOUT_FIELDS, ...EXERCISE_FIELDS, 'set_index'])
 

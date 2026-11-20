@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { BarChart3, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MUSCLE_GROUP_LABELS, normalizeMuscleGroup, type MuscleGroup } from '@/lib/training/muscle-groups'
+import { supersetInfoById } from '@/lib/training/supersets'
 
 // ---------------------------------------------------------------------------
 // Datos del programa tal y como los guarda el editor
@@ -22,6 +23,7 @@ export type ProgramDetail = {
         rir?: number | string | null
         rest_seconds?: number | null
         notes?: string | null
+        superset_key?: string | null
     }>
     columns: Array<{ id: string; key?: string | null; label?: string | null; scope?: string | null }>
     cells: Array<{ exercise_id: string; column_id: string; week_index: number; value: unknown }>
@@ -267,16 +269,19 @@ function ExercisesView({ detail, week }: { detail: ProgramDetail; week: number }
                 const exercises = exercisesByDay.get(day.id) ?? []
                 if (exercises.length === 0) return null
                 const daySets = exercises.reduce((sum, exercise) => sum + toNumber(read(exercise, 'sets')), 0)
+                const blockInfo = supersetInfoById(exercises)
+                const supersetCount = new Set([...blockInfo.values()].filter(info => info.isSuperset).map(info => info.letter)).size
                 return (
                     <section key={day.id} className="px-3 py-3 sm:px-4">
                         <div className="mb-2 flex items-baseline justify-between gap-3">
                             <h5 className="font-semibold">{day.name}</h5>
                             <p className="shrink-0 text-xs text-muted-foreground">
-                                {exercises.length} ejercicios{daySets > 0 ? ` · ${daySets} series` : ''}
+                                {exercises.length} ejercicios{supersetCount > 0 ? ` · ${supersetCount} ${supersetCount === 1 ? 'superserie' : 'superseries'}` : ''}{daySets > 0 ? ` · ${daySets} series` : ''}
                             </p>
                         </div>
                         <ol className="space-y-1.5">
-                            {exercises.map((exercise, index) => {
+                            {exercises.map((exercise) => {
+                                const info = blockInfo.get(exercise.id)
                                 const sets = read(exercise, 'sets')
                                 const reps = read(exercise, 'reps')
                                 const rir = read(exercise, 'rir')
@@ -287,22 +292,44 @@ function ExercisesView({ detail, week }: { detail: ProgramDetail; week: number }
                                 const prescription = [sets, reps].every(value => value !== null)
                                     ? `${sets} × ${reps}`
                                     : sets !== null ? `${sets} series` : reps !== null ? `${reps} reps` : null
+                                const nextLabel = info?.isSuperset && !info.isLast ? info.withLabels[info.position] : null
+                                const restDetail = info?.isSuperset
+                                    ? info.isLast
+                                        ? `${rest ?? 'sin descanso'} tras la ronda`
+                                        : toNumber(read(exercise, 'rest')) > 0 ? `${rest} hasta ${nextLabel}` : `sin descanso hasta ${nextLabel}`
+                                    : rest && `${rest} descanso`
                                 const details = [
                                     rir !== null && `RIR ${rir}`,
-                                    rest && `${rest} descanso`,
+                                    restDetail,
                                 ].filter(Boolean) as string[]
                                 const group = exercise.muscle_group ? MUSCLE_GROUP_LABELS[normalizeMuscleGroup(exercise.muscle_group)] : null
 
                                 return (
-                                    <li key={exercise.id} className="flex gap-2.5 rounded-xl bg-muted/30 px-3 py-2.5">
-                                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-background text-[10px] font-bold tabular-nums text-muted-foreground ring-1 ring-border/70">
-                                            {index + 1}
+                                    <li
+                                        key={exercise.id}
+                                        className={cn(
+                                            'flex gap-2.5 rounded-xl px-3 py-2.5',
+                                            info?.isSuperset ? 'bg-primary/[0.06] ring-1 ring-inset ring-primary/20' : 'bg-muted/30'
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                'mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums',
+                                                info?.isSuperset ? 'bg-primary/15 text-primary' : 'bg-background text-muted-foreground ring-1 ring-border/70'
+                                            )}
+                                        >
+                                            {info?.label ?? '·'}
                                         </span>
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-start justify-between gap-3">
                                                 <p className="min-w-0 text-sm font-semibold leading-snug">{exercise.exercise_name || 'Ejercicio sin nombre'}</p>
                                                 {group && <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">{group}</span>}
                                             </div>
+                                            {info?.isSuperset && (
+                                                <p className="mt-0.5 text-[11px] font-medium text-primary">
+                                                    {info.kind === 'superserie' ? 'Superserie' : info.kind === 'triserie' ? 'Triserie' : 'Serie gigante'} con {info.with.join(', ')}
+                                                </p>
+                                            )}
                                             {(prescription || details.length > 0) && (
                                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                                     {prescription && <span className="font-bold tabular-nums text-foreground">{prescription}</span>}

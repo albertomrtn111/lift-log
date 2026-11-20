@@ -290,7 +290,7 @@ function EntrenoSubtab({
         setProgramSummaryDetail(null)
         Promise.all([
             supabase.from('training_days').select('id, name, order_index').eq('program_id', activeProgram.id),
-            supabase.from('training_exercises').select('id, day_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes').eq('program_id', activeProgram.id).order('order_index'),
+            supabase.from('training_exercises').select('id, day_id, exercise_name, muscle_group, order_index, sets, reps, rir, rest_seconds, notes, superset_key').eq('program_id', activeProgram.id).order('order_index'),
             supabase.from('training_columns').select('id, key, label, scope').eq('program_id', activeProgram.id),
             supabase.from('training_cells').select('exercise_id, column_id, week_index, value').eq('program_id', activeProgram.id),
         ]).then(([{ data: days }, { data: exs }, { data: columns }, { data: cells }]) => {

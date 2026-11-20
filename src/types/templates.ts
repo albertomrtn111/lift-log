@@ -94,6 +94,8 @@ export interface TemplateExercise {
     rir?: string
     rest_seconds: number
     notes: string | null
+    /** Ejercicios seguidos del mismo día con la misma clave forman una superserie (src/lib/training/supersets.js). */
+    superset_key?: string | null
 }
 
 // Form input types

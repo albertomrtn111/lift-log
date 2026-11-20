@@ -331,9 +331,31 @@ function ExerciseRow({
     return (
         <tr className="border-b border-muted/30 hover:bg-muted/10 transition-colors">
             {/* Sticky exercise name */}
-            <td className="sticky left-0 z-10 bg-background px-4 py-2 border-r border-muted/20">
+            <td
+                className={cn(
+                    'sticky left-0 z-10 bg-background px-4 py-2 border-r border-muted/20',
+                    (exercise.supersetWith?.length ?? 0) > 0 && 'border-l-[3px] border-l-primary/60'
+                )}
+            >
                 <div className="flex flex-col">
-                    <span className="font-medium text-sm">{exercise.name}</span>
+                    <span className="flex items-start gap-1.5 font-medium text-sm">
+                        {exercise.blockLabel && (
+                            <span
+                                className={cn(
+                                    'mt-px flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums',
+                                    (exercise.supersetWith?.length ?? 0) > 0 ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                                )}
+                            >
+                                {exercise.blockLabel}
+                            </span>
+                        )}
+                        <span>{exercise.name}</span>
+                    </span>
+                    {(exercise.supersetWith?.length ?? 0) > 0 && (
+                        <span className="text-[11px] font-medium text-primary">
+                            Superserie con {exercise.supersetWith!.join(', ')}
+                        </span>
+                    )}
                     {exercise.prescribedReps && (
                         <span className="text-[11px] text-muted-foreground">
                             {exercise.prescribedSets ? `${exercise.prescribedSets}×` : ''}

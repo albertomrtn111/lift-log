@@ -14,10 +14,12 @@ import {
   type ToolHelpers,
 } from './shared.ts'
 import { loadSkippedDays } from './strength-skips.ts'
+import { supersetInfoById } from '../../../src/lib/training/supersets.js'
+import { supersetOutput } from './strength-blocks.ts'
 
 type Server = any
 
-const PROGRAM_FIELDS = 'id, name, status, weeks, total_weeks, effective_from, effective_to, created_at, training_days(id, name, order_index, default_weekday, training_exercises(exercise_name, sets, reps, rir, rest_seconds, notes, order_index))'
+const PROGRAM_FIELDS = 'id, name, status, weeks, total_weeks, effective_from, effective_to, created_at, training_days(id, name, order_index, default_weekday, training_exercises(id, exercise_name, sets, reps, rir, rest_seconds, notes, order_index, superset_key))'
 
 function daysBetween(start: string, end: string) {
   return Math.floor((toUtcDate(end).getTime() - toUtcDate(start).getTime()) / 86_400_000)
@@ -32,9 +34,13 @@ function programWeek(program: Row | undefined, date: string) {
 }
 
 function exercisesOf(trainingDay: Row | undefined) {
-  return [...trainingDay?.training_exercises ?? []]
+  const ordered = [...trainingDay?.training_exercises ?? []]
     .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    .map(({ order_index: _order, ...exercise }) => exercise)
+  const blocks = supersetInfoById(ordered)
+  return ordered.map(({ id, order_index: _order, superset_key: _key, ...exercise }) => {
+    const entry = blocks.get(id)
+    return { ...exercise, block: entry?.label ?? null, superset: supersetOutput(entry) }
+  })
 }
 
 type StrengthScheduleInput = {
