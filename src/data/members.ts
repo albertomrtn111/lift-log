@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
+import { attachPaymentNotes, splitPaymentNote } from '@/lib/billing/payment-notes'
+import { loadPaymentNotes, savePaymentNote } from '@/data/payment-notes'
 import type { Client, ClientWithMeta } from '@/types/coach'
 
 export type StatusFilter = 'all' | 'active' | 'inactive'
@@ -54,15 +56,15 @@ export async function getClients(options: ListClientsOptions): Promise<ClientWit
     }
 
     const today = new Date()
-    const clientList = data as Client[]
-    const clientIds = clientList.map(c => c.id)
+    const clientIds = (data as Client[]).map(c => c.id)
+    let clientList: Client[] = attachPaymentNotes(data as Client[], [])
 
     // Resolver "próxima revisión" desde schedules activos (modelo nuevo).
     // Si un cliente no tiene schedules, usamos el legacy client.next_checkin_date.
     const earliestDueByClient = new Map<string, string>()
     let avatarsByClient = new Map<string, string>()
     if (clientIds.length > 0) {
-        const [{ data: schedules }, avatars] = await Promise.all([
+        const [{ data: schedules }, avatars, paymentNotes] = await Promise.all([
             supabase
                 .from('client_review_schedules')
                 .select('client_id, next_due_date')
@@ -71,8 +73,11 @@ export async function getClients(options: ListClientsOptions): Promise<ClientWit
                 .not('next_due_date', 'is', null)
                 .order('next_due_date', { ascending: true }),
             getAthleteAvatarUrls(clientList),
+            loadPaymentNotes(supabase, clientIds),
         ])
         avatarsByClient = avatars
+        // Las notas de cobro viven en su propia tabla (solo las ve el equipo del coach)
+        clientList = attachPaymentNotes(clientList, paymentNotes)
 
         for (const row of (schedules ?? []) as { client_id: string; next_due_date: string }[]) {
             if (!earliestDueByClient.has(row.client_id)) {
@@ -212,7 +217,7 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
     const billingUpdates: UpdateClientInput = {}
     if (input.payment_amount !== undefined) billingUpdates.payment_amount = input.payment_amount
     if (input.payment_day !== undefined) billingUpdates.payment_day = input.payment_day
-    if (input.payment_notes !== undefined) billingUpdates.payment_notes = input.payment_notes
+    const { paymentNote } = splitPaymentNote({ payment_notes: input.payment_notes })
 
     if (Object.keys(billingUpdates).length > 0) {
         const { data: updatedClient, error: billingError } = await supabase
@@ -231,6 +236,19 @@ export async function createNewClient(input: CreateClientInput): Promise<CreateC
             }
         }
         clientData = updatedClient as Client
+    }
+
+    // La nota de cobro va a su tabla, que solo ve el equipo del coach
+    if (paymentNote !== undefined) {
+        const saved = await savePaymentNote(supabase, clientData.id, paymentNote)
+        if (!saved.success) {
+            return {
+                success: false,
+                error: 'El cliente se creó, pero no se pudo guardar su información de pago.',
+                details: saved.error,
+            }
+        }
+        clientData = { ...clientData, payment_notes: paymentNote }
     }
 
     return { success: true, client: clientData }
@@ -264,11 +282,12 @@ export async function updateClientDetails(
     updates: UpdateClientInput
 ): Promise<UpdateClientResult> {
     const supabase = await createClient()
+    const { clientUpdates, paymentNote } = splitPaymentNote(updates)
 
     const { data, error } = await supabase
         .from('clients')
         .update({
-            ...updates,
+            ...clientUpdates,
             updated_at: new Date().toISOString(),
         })
         .eq('id', clientId)
@@ -280,7 +299,14 @@ export async function updateClientDetails(
         return { success: false, error: error.message }
     }
 
-    return { success: true, client: data as Client }
+    // La nota de cobro va a su tabla, que solo ve el equipo del coach
+    if (paymentNote !== undefined) {
+        const saved = await savePaymentNote(supabase, clientId, paymentNote)
+        if (!saved.success) return { success: false, error: saved.error }
+    }
+    const [client] = attachPaymentNotes([data as Client], await loadPaymentNotes(supabase, [clientId]))
+
+    return { success: true, client }
 }
 
 /**
