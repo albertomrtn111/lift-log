@@ -5,8 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { roundToDecimals } from '@/lib/format/number'
 import { hasRenderableCardioBlocks, resolveCardioPlanForDisplay } from '@/lib/cardio/structure'
-import { buildSkipSet, isDaySkipped, mondayOfDate, programWeekOfDate } from '@/lib/training/strength-week-skips'
+import { buildSkipSet, isDaySkipped, mondayOfDate, programDayDate, programWeekOfDate } from '@/lib/training/strength-week-skips'
 import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
+import { todayKeyIn } from '@/lib/time-zone'
+import { getCoachTimeZone } from '@/data/workspace-time-zone'
 
 // ------------------------------------------------------------------
 // Types
@@ -93,21 +95,10 @@ export async function getClientWeeklySchedule(
         return `${y}-${m}-${day}`
     }
 
+    // Semana del programa de una fecha (con fechas sin hora, como la pantalla Fuerza).
     const getProgramWeekIndex = (dateStr: string, effectiveFrom?: string | null, totalWeeks?: number | null) => {
-        if (!effectiveFrom) return undefined
-
-        const date = new Date(`${dateStr}T12:00:00`)
-        const programStart = new Date(`${effectiveFrom}T12:00:00`)
-        const dateMondayOffset = (date.getDay() + 6) % 7
-        const programMondayOffset = (programStart.getDay() + 6) % 7
-
-        date.setDate(date.getDate() - dateMondayOffset)
-        programStart.setDate(programStart.getDate() - programMondayOffset)
-
-        const msPerWeek = 7 * 24 * 60 * 60 * 1000
-        const weekIndex = Math.floor((date.getTime() - programStart.getTime()) / msPerWeek) + 1
-
-        if (weekIndex < 1) return undefined
+        const weekIndex = programWeekOfDate(effectiveFrom, dateStr)
+        if (!weekIndex) return undefined
         if (totalWeeks && weekIndex > totalWeeks) return undefined
         return weekIndex
     }
@@ -137,26 +128,16 @@ export async function getClientWeeklySchedule(
     const skipSet = buildSkipSet(await loadStrengthSkips(supabase, clientId))
 
     if (activeProgram && activeProgram.training_days) {
-        const programStart = new Date(activeProgram.effective_from + 'T12:00:00')
         const totalWeeks = activeProgram.weeks || 4
 
         for (const day of activeProgram.training_days as any[]) {
             if (!day.default_weekday) continue
 
             for (let week = 0; week < totalWeeks; week++) {
-                // Calculate Monday of the target week
-                const ws = new Date(programStart)
-                ws.setDate(ws.getDate() + (week * 7))
-                const mondayOffset = (ws.getDay() + 6) % 7
-                const monday = new Date(ws)
-                monday.setDate(monday.getDate() - mondayOffset)
+                // Fecha del día en esa semana del programa (lunes a domingo), sin hora.
+                const sessionDateStr = programDayDate(activeProgram.effective_from, week + 1, day.default_weekday)
 
-                // Calculate specific session date
-                const sessionDate = new Date(monday)
-                sessionDate.setDate(monday.getDate() + (day.default_weekday - 1))
-                const sessionDateStr = toDateStr(sessionDate)
-
-                if (sessionDateStr >= startStr && sessionDateStr <= endStr && !isDaySkipped(skipSet, activeProgram.id, day.id, week + 1)) {
+                if (sessionDateStr && sessionDateStr >= startStr && sessionDateStr <= endStr && !isDaySkipped(skipSet, activeProgram.id, day.id, week + 1)) {
                     strengthItems.push({
                         id: `virtual-${activeProgram.id}-${day.id}-w${week}`,
                         kind: 'strength',
@@ -413,7 +394,6 @@ export async function autoMarkStrengthDayComplete(
     scheduledDate?: string,
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
-    const sessionDate = scheduledDate || new Date().toISOString().split('T')[0]
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -433,6 +413,9 @@ export async function autoMarkStrengthDayComplete(
         console.error('[autoMarkStrengthDayComplete] client authorization failed:', message)
         return { success: false, error: message }
     }
+
+    // Sin fecha (día sin día de la semana fijo): hoy en la zona del espacio, no en UTC.
+    const sessionDate = scheduledDate || todayKeyIn(await getCoachTimeZone(clientData.coach_id))
 
     const admin = createAdminClient()
 
