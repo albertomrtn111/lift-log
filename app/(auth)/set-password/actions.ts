@@ -7,9 +7,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * El atleta ha creado su contraseña: queda como "Cuenta creada" en el
  * seguimiento del coach.
  *
- * No basta con signed_up_at: el trigger link_client_on_profile_insert lo
- * rellena en cuanto el enlace de invitación crea la cuenta, antes de que el
- * atleta haga nada. Por eso se guarda preferences.onboarding.password_set_at.
+ * No basta con signed_up_at: se rellena al enlazar la ficha, en cuanto el
+ * enlace de invitación crea la cuenta y antes de que el atleta haga nada. Por
+ * eso se guarda preferences.onboarding.password_set_at.
  */
 export async function markAthleteSignedUpAction(): Promise<void> {
     const supabase = await createClient()
