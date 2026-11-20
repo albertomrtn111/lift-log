@@ -4,6 +4,7 @@ import { callGemini } from '@/lib/ai/gemini'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { formatAthleteProfileContext } from '@/lib/ai/athlete-profile-context'
 import { resolvePayloadLines } from '@/lib/ai/checkin-payload-lines'
+import { reviewInScope, reviewMatchesCheckin } from '@/lib/reviews/review-access-rules'
 
 const AICheckinAnalysisSchema = z.object({
     overall_summary: z.string().min(1),
@@ -65,14 +66,22 @@ type RecentTrainingRow = {
     sets: Array<Record<string, unknown>> | null
 }
 
-async function buildContext(checkinId: string) {
+/** Espacio (y, si se sabe, atleta) que ya ha validado quien pide el análisis. */
+export interface CheckinAnalysisScope {
+    coachId: string
+    clientId?: string | null
+}
+
+async function buildContext(checkinId: string, owner: { coachId: string; clientId: string }) {
     const supabase = createAdminClient()
 
     const { data: checkin, error: checkinError } = await supabase
         .from('checkins')
         .select('*')
         .eq('id', checkinId)
-        .single()
+        .eq('coach_id', owner.coachId)
+        .eq('client_id', owner.clientId)
+        .maybeSingle()
 
     if (checkinError || !checkin) {
         throw new Error('Revisión no encontrada')
@@ -476,22 +485,52 @@ function parseAnalysis(rawText: string) {
     return result.data
 }
 
+/**
+ * Genera el análisis de IA de un check-in y lo guarda en su revisión.
+ *
+ * `scope` es el espacio que ha validado quien llama: la revisión tiene que ser de ese
+ * espacio (y de ese atleta, si se indica) y de ese mismo check-in. Si no, no se toca nada.
+ */
 export async function generateCheckinAnalysis(
     checkinId: string,
-    reviewId: string
+    reviewId: string,
+    scope: CheckinAnalysisScope
 ): Promise<GenerateCheckinAnalysisResult> {
     const supabase = createAdminClient()
 
-    try {
-        await supabase
-            .from('reviews')
-            .update({
-                ai_status: 'pending',
-                ai_error: null,
-            })
-            .eq('id', reviewId)
+    const { data: review, error: reviewError } = await supabase
+        .from('reviews')
+        .select('id, coach_id, client_id, checkin_id')
+        .eq('id', reviewId)
+        .eq('checkin_id', checkinId)
+        .eq('coach_id', scope.coachId)
+        .maybeSingle()
 
-        const context = await buildContext(checkinId)
+    if (reviewError || !review || !reviewInScope(review, scope)) {
+        return { success: false, error: 'Revisión no encontrada' }
+    }
+
+    const owner = { coachId: review.coach_id as string, clientId: review.client_id as string }
+
+    // Toda escritura va a esta revisión concreta: mismo check-in, espacio y atleta.
+    const updateOwnReview = (values: Record<string, unknown>) => supabase
+        .from('reviews')
+        .update(values)
+        .eq('id', review.id)
+        .eq('checkin_id', checkinId)
+        .eq('coach_id', owner.coachId)
+        .eq('client_id', owner.clientId)
+
+    try {
+        await updateOwnReview({
+            ai_status: 'pending',
+            ai_error: null,
+        })
+
+        const context = await buildContext(checkinId, owner)
+        if (!reviewMatchesCheckin(review, context.checkin)) {
+            throw new Error('Revisión no encontrada')
+        }
         const coachContext = await getCoachAIProfileContext(context.checkin.coach_id)
         const rawText = await callGemini(coachContext + buildPrompt(context), {
             maxOutputTokens: 4096,
@@ -501,16 +540,13 @@ export async function generateCheckinAnalysis(
         })
         const analysis = parseAnalysis(rawText)
 
-        const { error: updateError } = await supabase
-            .from('reviews')
-            .update({
-                ai_status: 'completed',
-                ai_summary: analysis.overall_summary,
-                ai_generated_at: new Date().toISOString(),
-                ai_error: null,
-                analysis: analysis as unknown as Record<string, unknown>,
-            })
-            .eq('id', reviewId)
+        const { error: updateError } = await updateOwnReview({
+            ai_status: 'completed',
+            ai_summary: analysis.overall_summary,
+            ai_generated_at: new Date().toISOString(),
+            ai_error: null,
+            analysis: analysis as unknown as Record<string, unknown>,
+        })
 
         if (updateError) {
             throw new Error(updateError.message)
@@ -523,13 +559,10 @@ export async function generateCheckinAnalysis(
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Error desconocido al generar el analisis IA'
 
-        await supabase
-            .from('reviews')
-            .update({
-                ai_status: 'failed',
-                ai_error: message,
-            })
-            .eq('id', reviewId)
+        await updateOwnReview({
+            ai_status: 'failed',
+            ai_error: message,
+        })
 
         return {
             success: false,

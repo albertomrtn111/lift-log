@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Sin permisos para esta revisión' }, { status: 403 })
     }
 
-    const result = await generateCheckinAnalysis(parsed.data.checkinId, parsed.data.reviewId)
+    const result = await generateCheckinAnalysis(parsed.data.checkinId, parsed.data.reviewId, { coachId })
 
     if (!result.success) {
         return NextResponse.json(result, { status: 500 })
