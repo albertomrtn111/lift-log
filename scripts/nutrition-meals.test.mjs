@@ -5,6 +5,8 @@ import {
   buildMealSlotsForDate,
   buildPastedNutritionEntries,
   doesEntryBelongToMeal,
+  hasMealNamed,
+  isMealSlotActiveOn,
 } from '../src/lib/nutrition/meals.js'
 
 const defaults = [
@@ -129,4 +131,39 @@ test('buildMealSlotsForDate includes client custom meals active on the selected 
       canDelete: true,
     },
   ])
+})
+
+test('buildMealSlotsForDate with a date keeps a meal removed later on the days it was active (NXT-154)', () => {
+  const slots = [
+    { id: 'slot-1', label: 'Pre-entreno', order_index: 4, effective_from: '2026-11-01', deleted_from: '2026-11-20' },
+    { id: 'slot-2', label: 'Recena', order_index: 5, effective_from: '2026-11-15', deleted_from: null },
+  ]
+
+  assert.deepEqual(
+    buildMealSlotsForDate(defaults, slots, '2026-11-10').filter((meal) => meal.type === 'other').map((meal) => meal.label),
+    ['Pre-entreno'],
+  )
+  assert.deepEqual(
+    buildMealSlotsForDate(defaults, slots, '2026-11-20').filter((meal) => meal.type === 'other').map((meal) => meal.label),
+    ['Recena'],
+  )
+})
+
+test('isMealSlotActiveOn follows effective_from and deleted_from', () => {
+  const slot = { effective_from: '2026-11-05', deleted_from: '2026-11-08' }
+  assert.equal(isMealSlotActiveOn(slot, '2026-11-04'), false)
+  assert.equal(isMealSlotActiveOn(slot, '2026-11-05'), true)
+  assert.equal(isMealSlotActiveOn(slot, '2026-11-07'), true)
+  assert.equal(isMealSlotActiveOn(slot, '2026-11-08'), false)
+  assert.equal(isMealSlotActiveOn({ effective_from: '2026-11-05', deleted_from: null }, '2026-12-01'), true)
+  assert.equal(isMealSlotActiveOn(slot, undefined), false)
+  assert.equal(isMealSlotActiveOn(null, '2026-11-05'), false)
+})
+
+test('hasMealNamed ignores case and extra spaces', () => {
+  const meals = [...defaults, { type: 'other', label: 'Pre-entreno', order: 4 }]
+  assert.equal(hasMealNamed(meals, '  pre-ENTRENO '), true)
+  assert.equal(hasMealNamed(meals, 'comida'), true)
+  assert.equal(hasMealNamed(meals, 'Post   entreno'), false)
+  assert.equal(hasMealNamed(meals, '   '), false)
 })

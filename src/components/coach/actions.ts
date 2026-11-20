@@ -4,6 +4,8 @@ import { createNewClient, setClientStatus, updateClientDetails, UpdateClientInpu
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { sendAthleteInvite } from '@/lib/onboarding/athlete-invite'
+import { adoptUnconfirmedAccount } from '@/lib/onboarding/auth-account'
+import { isAlreadyRegisteredMessage } from '@/lib/onboarding/account-access-rules.js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncClientTemplateAssignment } from '@/data/form-templates'
@@ -259,15 +261,23 @@ export async function createClientAction(data: {
                 },
             })
 
+            let authUserId: string | null = authData?.user?.id ?? null
             if (authError) {
                 console.error(`[createClientAction] Auth createUser error:`, authError.message)
 
-                // Check for "already registered" error
-                if (
-                    authError.message.toLowerCase().includes('already') ||
-                    authError.message.toLowerCase().includes('exists') ||
-                    authError.message.toLowerCase().includes('registered')
-                ) {
+                if (!isAlreadyRegisteredMessage(authError.message)) {
+                    return {
+                        success: true,
+                        client,
+                        billingWarning,
+                        authWarning: `Cliente creado, pero error al crear usuario Auth: ${authError.message}`,
+                    }
+                }
+
+                // El email ya tiene cuenta. Si está sin confirmar se queda con esta
+                // contraseña y confirmada, como si se creara ahora; si no, no se toca.
+                authUserId = await adoptUnconfirmedAccount(admin, client.email, data.password, client.full_name)
+                if (!authUserId) {
                     return {
                         success: true,
                         client,
@@ -275,16 +285,10 @@ export async function createClientAction(data: {
                         authWarning: 'Ya existe un usuario con ese email en Auth. El cliente se creó pero sin contraseña nueva. El usuario puede iniciar sesión con su contraseña existente o usar "Recuperar contraseña".',
                     }
                 }
-
-                return {
-                    success: true,
-                    client,
-                    billingWarning,
-                    authWarning: `Cliente creado, pero error al crear usuario Auth: ${authError.message}`,
-                }
             }
-
-            const authUserId = authData.user.id
+            if (!authUserId) {
+                return { success: true, client, billingWarning, authWarning: 'Cliente creado, pero Auth no devolvió el usuario.' }
+            }
             console.log(`[createClientAction] Auth user created: ${authUserId}`)
 
             // 3. Link auth_user_id to public.clients

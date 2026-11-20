@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
+import { attachPaymentNotes } from '@/lib/billing/payment-notes'
+import { loadPaymentNotes } from '@/data/payment-notes'
 import type { Client } from '@/types/coach'
 import { sortCheckinsForCoach } from '@/lib/reviews/coach-checkin-state'
 
@@ -175,15 +177,19 @@ export interface DietPlan {
 export async function getClientForWorkspace(coachId: string, clientId: string): Promise<Client | null> {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('coach_id', coachId)
-        .eq('id', clientId)
-        .single()
+    const [{ data, error }, paymentNotes] = await Promise.all([
+        supabase
+            .from('clients')
+            .select('*')
+            .eq('coach_id', coachId)
+            .eq('id', clientId)
+            .single(),
+        loadPaymentNotes(supabase, [clientId]),
+    ])
 
     if (error || !data) return null
-    return data as Client
+    // Las notas de cobro viven en su propia tabla (solo las ve el equipo del coach)
+    return attachPaymentNotes([data as Client], paymentNotes)[0]
 }
 
 export interface ClientSelectorOption {
