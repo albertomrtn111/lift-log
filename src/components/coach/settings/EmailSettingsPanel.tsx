@@ -47,9 +47,12 @@ export function EmailSettingsPanel() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [testing, setTesting] = useState(false)
+    const [canManage, setCanManage] = useState(false)
     const [configured, setConfigured] = useState(false)
-    const [verifiedAt, setVerifiedAt] = useState<string | null>(null)
+    const [verified, setVerified] = useState(false)
     const [hasPassword, setHasPassword] = useState(false)
+    // Lo guardado: si cambian servidor, puerto o usuario hay que volver a escribir la contraseña
+    const [saved, setSaved] = useState<{ host: string; port: number; user: string } | null>(null)
 
     const [preset, setPreset] = useState<string>('gmail')
     const [host, setHost] = useState('smtp.gmail.com')
@@ -62,14 +65,16 @@ export function EmailSettingsPanel() {
         getEmailSettingsAction()
             .then((settings) => {
                 if (!settings) return
+                setCanManage(settings.can_manage)
                 setConfigured(settings.configured)
-                setVerifiedAt(settings.last_verified_at)
+                setVerified(settings.verified)
                 setHasPassword(settings.has_password)
-                if (settings.configured) {
+                if (settings.configured && settings.can_manage) {
                     setHost(settings.smtp_host ?? '')
                     setPort(settings.smtp_port ?? 465)
                     setUser(settings.smtp_user ?? '')
                     setFromName(settings.from_name ?? '')
+                    setSaved({ host: settings.smtp_host ?? '', port: settings.smtp_port ?? 465, user: settings.smtp_user ?? '' })
                     const matched = Object.entries(PRESETS).find(
                         ([, p]) => p.host === settings.smtp_host
                     )
@@ -88,6 +93,12 @@ export function EmailSettingsPanel() {
         }
     }
 
+    const sameServer = saved !== null
+        && saved.host.trim().toLowerCase() === host.trim().toLowerCase()
+        && saved.port === port
+        && saved.user.trim() === user.trim()
+    const passwordNeeded = !hasPassword || !sameServer
+
     const handleSave = async () => {
         setSaving(true)
         try {
@@ -104,7 +115,8 @@ export function EmailSettingsPanel() {
                 setConfigured(true)
                 setHasPassword(true)
                 setPass('')
-                setVerifiedAt(new Date().toISOString())
+                setVerified(true)
+                setSaved({ host, port, user })
             } else {
                 toast.error(result.error ?? 'Error al guardar')
             }
@@ -119,7 +131,7 @@ export function EmailSettingsPanel() {
             const result = await sendTestEmailAction()
             if (result.success) {
                 toast.success('Email de prueba enviado — revisa tu bandeja de entrada')
-                setVerifiedAt(new Date().toISOString())
+                setVerified(true)
             } else {
                 toast.error(result.error ?? 'Error en el envío de prueba')
             }
@@ -137,7 +149,8 @@ export function EmailSettingsPanel() {
             setUser('')
             setPass('')
             setFromName('')
-            setVerifiedAt(null)
+            setVerified(false)
+            setSaved(null)
         } else {
             toast.error(result.error ?? 'Error al eliminar')
         }
@@ -151,6 +164,23 @@ export function EmailSettingsPanel() {
         )
     }
 
+    if (!canManage) {
+        return (
+            <Card className="p-6 space-y-2">
+                <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-base font-semibold">Email de envío</h3>
+                </div>
+                <p className="text-sm text-muted-foreground max-w-lg">
+                    Solo el propietario y los administradores del espacio pueden configurar el email de envío.
+                </p>
+                <p className="text-sm text-muted-foreground max-w-lg">
+                    Las invitaciones y los enlaces de acceso salen siempre desde la dirección de NexTrain.
+                </p>
+            </Card>
+        )
+    }
+
     return (
         <div className="space-y-6">
             <Card className="p-6 space-y-5">
@@ -160,7 +190,7 @@ export function EmailSettingsPanel() {
                             <Mail className="h-4 w-4 text-muted-foreground" />
                             <h3 className="text-base font-semibold">Email de envío</h3>
                             {configured ? (
-                                verifiedAt ? (
+                                verified ? (
                                     <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15 border-0">
                                         <ShieldCheck className="h-3 w-3 mr-1" />
                                         Verificado
@@ -173,10 +203,19 @@ export function EmailSettingsPanel() {
                             )}
                         </div>
                         <p className="text-sm text-muted-foreground max-w-lg">
-                            Las revisiones, invitaciones y formularios de onboarding se enviarán a tus
+                            Las revisiones, los formularios de onboarding y los informes se enviarán a tus
                             atletas <strong>desde tu propia dirección</strong>. Si no configuras nada,
                             salen desde la cuenta general de la app.
                         </p>
+                        <p className="text-sm text-muted-foreground max-w-lg">
+                            Las invitaciones y los enlaces de acceso salen siempre desde la dirección de NexTrain.
+                        </p>
+                        {configured && !verified && (
+                            <p className="text-sm text-muted-foreground max-w-lg">
+                                Mientras no esté verificada, los emails salen desde la cuenta general de la app.
+                                Pulsa «Guardar y verificar» para activarla.
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -239,9 +278,14 @@ export function EmailSettingsPanel() {
                             type="password"
                             value={pass}
                             onChange={(e) => setPass(e.target.value)}
-                            placeholder={hasPassword ? '•••••••• (guardada — deja vacío para no cambiarla)' : 'Contraseña de aplicación'}
+                            placeholder={passwordNeeded ? 'Contraseña de aplicación' : '•••••••• (guardada — deja vacío para no cambiarla)'}
                             autoComplete="new-password"
                         />
+                        {hasPassword && !sameServer && (
+                            <p className="text-xs text-muted-foreground">
+                                Has cambiado el servidor, el puerto o el usuario: escribe de nuevo la contraseña.
+                            </p>
+                        )}
                     </div>
                     <div className="space-y-2 sm:col-span-2">
                         <Label htmlFor="from-name">Nombre visible (remitente)</Label>
@@ -256,11 +300,11 @@ export function EmailSettingsPanel() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap pt-1">
-                    <Button onClick={handleSave} disabled={saving || !host || !user}>
+                    <Button onClick={handleSave} disabled={saving || !host || !user || (passwordNeeded && !pass)}>
                         {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-1.5" />}
                         Guardar y verificar
                     </Button>
-                    <Button variant="outline" onClick={handleTest} disabled={testing || !configured}>
+                    <Button variant="outline" onClick={handleTest} disabled={testing || !configured || !verified}>
                         {testing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
                         Enviarme un email de prueba
                     </Button>

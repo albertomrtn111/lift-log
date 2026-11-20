@@ -8,13 +8,22 @@
  *   SMTP_PASS      contraseña (en Gmail: contraseña de aplicación)
  *   SMTP_FROM      remitente, p.ej. "NexTrain <no-reply@ascenttech.cloud>"
  *
+ * Hay dos clases de email:
+ *   - De acceso (sendAccessEmail): invitaciones, enlaces de acceso, contraseñas.
+ *     Salen SIEMPRE por el correo de NexTrain, nunca por el del espacio.
+ *   - Del espacio (sendWorkspaceEmail): revisiones, informes, avisos. Salen por
+ *     el SMTP propio del espacio si está verificado; si no, por el de NexTrain.
+ *
  * Si SMTP no está configurado, las funciones devuelven { ok: false } sin
  * lanzar — igual de non-blocking que era la llamada a n8n.
  */
 
+import { promises as dnsPromises } from 'dns'
+import { isIP } from 'net'
 import nodemailer from 'nodemailer'
 import type Mail from 'nodemailer/lib/mailer'
 import { getCoachSmtpConfig, type CoachSmtpConfig } from '@/lib/email/coach-settings'
+import { isAllowedSmtpPort, mayUseCoachSmtp, resolveSmtpTarget, smtpTlsOptions } from '@/lib/email/smtp-rules'
 import { getEmailBrand, type EmailBrand } from '@/lib/branding/get-branding'
 
 export interface EmailResult {
@@ -28,21 +37,69 @@ function isGlobalConfigured(): boolean {
     return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
 }
 
-export function buildTransport(config: { host: string; port: number; user: string; pass: string }) {
+function buildGlobalTransport() {
+    const port = Number(process.env.SMTP_PORT ?? 465)
     return nodemailer.createTransport({
-        host: config.host,
-        port: config.port,
-        secure: config.port === 465,
-        auth: { user: config.user, pass: config.pass },
+        host: process.env.SMTP_HOST as string,
+        port,
+        secure: port === 465,
+        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
     })
 }
 
-function globalTransportConfig() {
-    return {
-        host: process.env.SMTP_HOST as string,
-        port: Number(process.env.SMTP_PORT ?? 465),
-        user: process.env.SMTP_USER as string,
-        pass: process.env.SMTP_PASS as string,
+const lookupAll = (host: string) => dnsPromises.lookup(host, { all: true, verbatim: true })
+
+/**
+ * Transporte del SMTP del espacio: conecta a la IP ya comprobada, con TLS
+ * obligatorio y validando el certificado con el nombre del servidor.
+ */
+function buildCoachTransport(config: { host: string; port: number; user: string; pass: string }, address: string) {
+    return nodemailer.createTransport({
+        host: address,
+        port: config.port,
+        ...smtpTlsOptions(config.port),
+        // El certificado se valida con el nombre del servidor, no con la IP
+        tls: isIP(config.host) ? { rejectUnauthorized: true } : { servername: config.host, rejectUnauthorized: true },
+        auth: { user: config.user, pass: config.pass },
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+    })
+}
+
+/** Texto del error para el log del servidor: sin la contraseña y sin saltos de línea. */
+function describeSmtpError(err: unknown, pass?: string): string {
+    const code = (err as { code?: unknown })?.code
+    const responseCode = (err as { responseCode?: unknown })?.responseCode
+    let message = err instanceof Error ? err.message : String(err)
+    if (pass) message = message.split(pass).join('***')
+    message = message.replace(/[\r\n]+/g, ' ').slice(0, 300)
+    return [code, responseCode, message].filter(Boolean).join(' · ')
+}
+
+export type CoachSmtpCheck = { ok: true } | { ok: false; reason: 'host' | 'auth' | 'connection' }
+
+/**
+ * Comprueba un SMTP del espacio antes de guardarlo: servidor público, TLS y
+ * credenciales. No envía nada. El detalle del fallo queda solo en el log.
+ */
+export async function verifyCoachSmtp(
+    config: { host: string; port: number; user: string; pass: string },
+    coachId: string,
+): Promise<CoachSmtpCheck> {
+    const target = isAllowedSmtpPort(config.port)
+        ? await resolveSmtpTarget(config.host, lookupAll)
+        : { ok: false as const, reason: 'port' }
+    if (!target.ok) {
+        console.warn(`[mailer] SMTP del coach ${coachId} rechazado (${target.reason})`)
+        return { ok: false, reason: 'host' }
+    }
+    try {
+        await buildCoachTransport({ ...config, host: target.host }, target.address).verify()
+        return { ok: true }
+    } catch (err) {
+        console.warn(`[mailer] Verificación SMTP del coach ${coachId} fallida: ${describeSmtpError(err, config.pass)}`)
+        return { ok: false, reason: (err as { code?: unknown })?.code === 'EAUTH' ? 'auth' : 'connection' }
     }
 }
 
@@ -55,37 +112,13 @@ function globalFrom(): string {
     return process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@localhost'
 }
 
-/**
- * Envía un email. Si se pasa coachId y el entrenador tiene SMTP propio
- * configurado, sale desde SU cuenta; si no, cae al SMTP global de la app.
- */
-async function send(options: Mail.Options, coachId?: string): Promise<EmailResult> {
-    // 1) SMTP del coach (si existe)
-    if (coachId) {
-        const coachConfig = await getCoachSmtpConfig(coachId).catch(() => null)
-        if (coachConfig) {
-            try {
-                await buildTransport(coachConfig).sendMail({
-                    from: coachFrom(coachConfig),
-                    ...options,
-                })
-                console.log(`[mailer] ✅ (coach ${coachId}) Email enviado a ${options.to} — ${options.subject}`)
-                return { ok: true, via: 'coach' }
-            } catch (err) {
-                const message = err instanceof Error ? err.message : String(err)
-                console.error(`[mailer] ❌ SMTP del coach ${coachId} falló (${message}) — probando SMTP global`)
-                // seguimos al fallback global
-            }
-        }
-    }
-
-    // 2) SMTP global de la app
+async function sendViaGlobal(options: Mail.Options): Promise<EmailResult> {
     if (!isGlobalConfigured()) {
         console.warn('[mailer] SMTP no configurado (ni coach ni global) — email no enviado')
         return { ok: false, error: 'SMTP no configurado' }
     }
     try {
-        await buildTransport(globalTransportConfig()).sendMail({ from: globalFrom(), ...options })
+        await buildGlobalTransport().sendMail({ ...options, from: globalFrom() })
         console.log(`[mailer] ✅ (global) Email enviado a ${options.to} — ${options.subject}`)
         return { ok: true, via: 'global' }
     } catch (err) {
@@ -93,6 +126,51 @@ async function send(options: Mail.Options, coachId?: string): Promise<EmailResul
         console.error(`[mailer] ❌ Error enviando a ${options.to}:`, message)
         return { ok: false, error: message }
     }
+}
+
+/**
+ * Emails que llevan un enlace o una credencial de acceso a una cuenta
+ * (invitaciones, enlaces mágicos, contraseñas): SIEMPRE por el correo de
+ * NexTrain. No recibe coachId a propósito.
+ */
+async function sendAccessEmail(options: Mail.Options): Promise<EmailResult> {
+    return sendViaGlobal(options)
+}
+
+/**
+ * Emails del espacio (revisiones, informes, avisos). Si el espacio tiene SMTP
+ * propio verificado, salen desde SU cuenta; si no, o si falla, por el global.
+ * Si por error llevan un enlace de acceso, salen por el global.
+ */
+async function sendWorkspaceEmail(options: Mail.Options, coachId?: string): Promise<EmailResult> {
+    if (coachId && !mayUseCoachSmtp('workspace', [options.subject, options.html, options.text])) {
+        console.error('[mailer] Email del espacio con enlace de acceso: sale por el correo de NexTrain')
+        return sendViaGlobal(options)
+    }
+    if (coachId) {
+        const coachConfig = await getCoachSmtpConfig(coachId).catch(() => null)
+        if (coachConfig) {
+            const target = isAllowedSmtpPort(coachConfig.port)
+                ? await resolveSmtpTarget(coachConfig.host, lookupAll)
+                : { ok: false as const, reason: 'port' }
+            if (!target.ok) {
+                console.error(`[mailer] SMTP del coach ${coachId} no permitido (${target.reason}) — probando SMTP global`)
+            } else {
+                try {
+                    await buildCoachTransport({ ...coachConfig, host: target.host }, target.address).sendMail({
+                        ...options,
+                        from: coachFrom(coachConfig),
+                    })
+                    console.log(`[mailer] ✅ (coach ${coachId}) Email enviado a ${options.to} — ${options.subject}`)
+                    return { ok: true, via: 'coach' }
+                } catch (err) {
+                    console.error(`[mailer] ❌ SMTP del coach ${coachId} falló (${describeSmtpError(err, coachConfig.pass)}) — probando SMTP global`)
+                    // seguimos al fallback global
+                }
+            }
+        }
+    }
+    return sendViaGlobal(options)
 }
 
 /** Escapa texto que va dentro del HTML del email (nombres, plantillas, etc.). */
@@ -186,7 +264,7 @@ export async function sendReviewEmailSmtp(params: {
         valorar cómo ha ido el periodo y ajustar tu plan.</p>
         <p>Cuanto antes lo completes, antes tendrás tu feedback. 💪</p>`
 
-    return send(
+    return sendWorkspaceEmail(
         {
             to: params.to,
             subject,
@@ -222,7 +300,7 @@ export async function sendReviewReminderEmailSmtp(params: {
         cómo ha ido el periodo y ajustar tu plan.</p>
         ${deadline}`
 
-    return send(
+    return sendWorkspaceEmail(
         {
             to: params.to,
             subject,
@@ -246,7 +324,7 @@ export async function sendOnboardingEmailSmtp(params: {
         Completa el formulario inicial con tus datos, objetivos y fotos de partida.</p>
         <p>Con esa información prepararemos tu primer plan de entrenamiento y nutrición.</p>`
 
-    return send(
+    return sendWorkspaceEmail(
         {
             to: params.to,
             subject: '🚀 Bienvenido/a — completa tu formulario inicial',
@@ -271,7 +349,7 @@ export async function sendSessionReportEmail(params: {
     const body = `
         <p>Hola <strong>${name}</strong>,</p>
         <p>${escapeHtml(text)}</p>`
-    return send(
+    return sendWorkspaceEmail(
         {
             to: params.to,
             subject: params.subject || `Tu informe de sesión${brand?.name ? ` en ${brand.name}` : ''}`,
@@ -281,6 +359,7 @@ export async function sendSessionReportEmail(params: {
     )
 }
 
+/** Lleva una contraseña: sale siempre por el correo de NexTrain. */
 export async function sendInviteEmailSmtp(params: {
     to: string
     clientName?: string
@@ -305,14 +384,11 @@ export async function sendInviteEmailSmtp(params: {
         Desde ahí verás tu plan de entrenamiento, dieta, revisiones y progreso.</p>
         ${passwordBlock}`
 
-    return send(
-        {
-            to: params.to,
-            subject: '🔑 Invitación a tu plataforma de entrenamiento',
-            html: layout('Te han invitado', body, 'Acceder a la plataforma', `${params.appUrl}/login`, brand),
-        },
-        params.coachId
-    )
+    return sendAccessEmail({
+        to: params.to,
+        subject: '🔑 Invitación a tu plataforma de entrenamiento',
+        html: layout('Te han invitado', body, 'Acceder a la plataforma', `${params.appUrl}/login`, brand),
+    })
 }
 
 export interface CoachDigestEmailSection {
@@ -359,7 +435,7 @@ export async function sendCoachDigestEmail(params: {
           <a href="${escapeHtml(params.settingsUrl)}" style="color:#6b7280;">Ajustes → Notificaciones</a>.
         </p>`
 
-    return send({
+    return sendWorkspaceEmail({
         to: params.to,
         subject: params.weekly ? `Tu semana en NexTrain · ${params.dateLabel}` : `Tu día en NexTrain · ${params.dateLabel}`,
         html: layout(params.weekly ? `Resumen semanal, ${params.dateLabel}` : `Resumen de hoy, ${params.dateLabel}`, body, 'Abrir el panel', params.dashboardUrl),
@@ -371,10 +447,11 @@ export async function sendTestEmail(params: { to: string; coachId: string }): Pr
     const body = `
         <p>¡Buenas noticias! 🎉</p>
         <p>Tu cuenta de email está correctamente configurada. A partir de ahora,
-        las revisiones, invitaciones y formularios de onboarding que envíes a tus
-        atletas saldrán desde esta dirección.</p>`
+        las revisiones, los formularios de onboarding y los informes que envíes a tus
+        atletas saldrán desde esta dirección.</p>
+        <p>Las invitaciones y los enlaces de acceso seguirán saliendo desde la dirección de NexTrain.</p>`
 
-    return send(
+    return sendWorkspaceEmail(
         {
             to: params.to,
             subject: '✅ Email de prueba — configuración correcta',
@@ -410,6 +487,7 @@ export interface AthleteInviteEmailParams {
     businessName?: string | null
     accessUrl: string
     tempPassword?: string | null
+    /** Solo para la marca del email: sale siempre por el correo de NexTrain */
     coachId?: string
     brand?: EmailBrand | null
 }
@@ -447,10 +525,11 @@ export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { sub
     }
 }
 
+/** Lleva un enlace de acceso o una contraseña: sale siempre por el correo de NexTrain. */
 export async function sendAthleteInviteEmail(params: AthleteInviteEmailParams): Promise<EmailResult> {
     const brand = await loadEmailBrand(params.coachId)
     const { subject, html } = buildAthleteInviteEmail({ ...params, brand })
-    return send({ to: params.to, subject, html }, params.coachId)
+    return sendAccessEmail({ to: params.to, subject, html })
 }
 
 /** Email de invitación al equipo de un espacio. */
@@ -460,6 +539,7 @@ export interface TeamInviteEmailParams {
     spaceName: string
     roleLabel: string
     accessUrl: string
+    /** Solo para la marca del email: sale siempre por el correo de NexTrain */
     coachId?: string
     brand?: EmailBrand | null
 }
@@ -481,8 +561,9 @@ export function buildTeamInviteEmail(params: TeamInviteEmailParams): { subject: 
     }
 }
 
+/** Lleva un enlace de acceso: sale siempre por el correo de NexTrain. */
 export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promise<EmailResult> {
     const brand = await loadEmailBrand(params.coachId)
     const { subject, html } = buildTeamInviteEmail({ ...params, brand })
-    return send({ to: params.to, subject, html }, params.coachId)
+    return sendAccessEmail({ to: params.to, subject, html })
 }

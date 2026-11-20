@@ -133,7 +133,7 @@ export default async function CoachDashboardPage() {
                             <div className="space-y-0.5">
                                 <p className="text-sm font-semibold">Configura tu email de envío</p>
                                 <p className="max-w-xl text-[13px] text-muted-foreground">
-                                    Las revisiones e invitaciones se envían desde la cuenta general de la app.
+                                    Las revisiones se envían desde la cuenta general de la app.
                                     Conecta tu propia cuenta para que salgan con tu nombre y dirección.
                                 </p>
                             </div>
