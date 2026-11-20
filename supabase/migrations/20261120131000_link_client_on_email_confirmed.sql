@@ -69,6 +69,11 @@ begin
                when c.invite_status in ('pending', 'sent') then 'accepted'
                else c.invite_status
            end,
+           -- Como hacía handle_new_auth_user antes de esta migración
+           onboarding_status = case
+               when c.onboarding_status = 'pending' then 'accepted'
+               else c.onboarding_status
+           end,
            onboarding_updated_at = now(),
            updated_at = now()
      where lower(btrim(c.email)) = v_email
