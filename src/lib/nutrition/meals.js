@@ -29,9 +29,14 @@ export function buildPastedNutritionEntries(entries, { date, dayType, targetMeal
   }))
 }
 
-export function buildMealSlotsForDate(defaultMeals, customSlots) {
+/**
+ * Comidas del día: las de siempre más las extra del atleta (nutrition_meal_slots).
+ * Con `dateKey` (YYYY-MM-DD) una comida quitada después de ese día sigue saliendo en él;
+ * sin fecha solo cuentan las que no se han quitado.
+ */
+export function buildMealSlotsForDate(defaultMeals, customSlots, dateKey) {
   const customMeals = customSlots
-    .filter((slot) => !slot.deleted_from)
+    .filter((slot) => isMealSlotActiveOn(slot, dateKey))
     .map((slot) => ({
       id: slot.id,
       type: 'other',
@@ -41,4 +46,23 @@ export function buildMealSlotsForDate(defaultMeals, customSlots) {
     }))
 
   return [...defaultMeals, ...customMeals].sort((a, b) => Number(a.order) - Number(b.order))
+}
+
+/** Comida extra vigente en el día: desde effective_from y hasta el día antes de deleted_from. */
+export function isMealSlotActiveOn(slot, dateKey) {
+  if (!slot) return false
+  if (!dateKey) return !slot.deleted_from
+  if (slot.effective_from && slot.effective_from > dateKey) return false
+  return !slot.deleted_from || slot.deleted_from > dateKey
+}
+
+/** Nombre de comida ya usado en el día (sin distinguir mayúsculas ni espacios). */
+export function hasMealNamed(meals, name) {
+  const wanted = normalizeMealName(name)
+  if (!wanted) return false
+  return (meals ?? []).some((meal) => normalizeMealName(meal?.label) === wanted)
+}
+
+function normalizeMealName(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es')
 }

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { TrainingColumn, TrainingExercise, TrainingCell, ExerciseSet } from '@/types/training';
+import { COACH_NOTES_KEY, isAthleteNotesColumn } from '@/lib/training/exercise-notes';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Lightbulb, Loader2, Plus, RotateCcw, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -95,7 +96,8 @@ export function MobileExerciseCards({
     const weekToCheck = column?.scope === 'exercise' ? 0 : weekNumber;
     const cell = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekToCheck);
     if (cell?.value) return cell.value;
-    if (column?.scope === 'week' && weekNumber > 1) {
+    // La nota del atleta es de esa semana: no se arrastra la de la semana anterior
+    if (column?.scope === 'week' && weekNumber > 1 && !isAthleteNotesColumn(column)) {
       const prev = cells.find(c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === weekNumber - 1);
       if (prev?.value) return prev.value;
     }
@@ -106,7 +108,7 @@ export function MobileExerciseCards({
         case 'reps': return exercise.reps || '';
         case 'rir': return exercise.rir?.toString() || '';
         case 'rest': return exercise.restSeconds?.toString() || '';
-        case 'notes': return exercise.notes || '';
+        case COACH_NOTES_KEY: return exercise.notes || '';
       }
     }
     return '';
@@ -118,7 +120,9 @@ export function MobileExerciseCards({
     .map(key => coachColumns.find(c => c.key === key))
     .filter(Boolean) as TrainingColumn[];
   const textColumns = coachColumns.filter(c => !PRESCRIPTION_KEYS.includes(c.key ?? ''));
-  const notesColumn = columns.find(c => c.key === 'notes' && c.editable);
+  // Casilla del atleta: columna «Notas» ('notes' o la antigua 'c10'). La nota del coach
+  // llega aparte (columna virtual) y sale en «Indicaciones del coach».
+  const notesColumn = columns.find(c => isAthleteNotesColumn(c));
 
   const getExerciseSets = useCallback((exerciseId: string): ExerciseSet[] => {
     return sets
@@ -488,6 +492,7 @@ export function MobileExerciseCards({
                   <label className="block space-y-1.5">
                     <span className="text-xs font-medium text-muted-foreground">{notesColumn.label}</span>
                     <textarea
+                      key={`notes-${exercise.id}-${weekNumber}`}
                       defaultValue={getCellValue(exercise.id, notesColumn.id)}
                       placeholder="¿Cómo te ha ido? Sensaciones, molestias…"
                       className="min-h-[64px] w-full rounded-xl border border-transparent bg-muted/60 px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"

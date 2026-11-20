@@ -199,10 +199,14 @@ export async function getNutritionMealSlotsForDate(date: Date): Promise<Nutritio
     return (data ?? []) as NutritionMealSlot[]
 }
 
-export async function createNutritionMealSlot(label: string, orderIndex: number, effectiveFrom: Date): Promise<NutritionMealSlot | null> {
+export type CreateMealSlotResult =
+    | { slot: NutritionMealSlot; error?: undefined }
+    | { slot: null; error: 'duplicate' | 'failed' }
+
+export async function createNutritionMealSlot(label: string, orderIndex: number, effectiveFrom: Date): Promise<CreateMealSlotResult> {
     const supabase = createClient()
     const clientId = await getCurrentClientId()
-    if (!clientId) return null
+    if (!clientId) return { slot: null, error: 'failed' }
 
     const { data, error } = await supabase
         .from('nutrition_meal_slots')
@@ -216,10 +220,12 @@ export async function createNutritionMealSlot(label: string, orderIndex: number,
         .single()
 
     if (error) {
+        // 23505: ya hay una comida extra vigente con ese nombre (índice único)
+        if (error.code === '23505') return { slot: null, error: 'duplicate' }
         console.error('createNutritionMealSlot error:', error)
-        return null
+        return { slot: null, error: 'failed' }
     }
-    return data as NutritionMealSlot
+    return { slot: data as NutritionMealSlot }
 }
 
 export async function deleteNutritionMealSlot(slotId: string, deletedFrom: Date): Promise<boolean> {

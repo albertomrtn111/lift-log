@@ -63,6 +63,7 @@ import {
     buildMealSlotsForDate,
     buildPastedNutritionEntries,
     doesEntryBelongToMeal,
+    hasMealNamed,
 } from '@/lib/nutrition/meals'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
 import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
@@ -115,7 +116,7 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
         // Al pasar rápido de un día a otro, una respuesta tardía no pinta el día anterior
         if (request !== loadRequest.current) return
         setEntries(list)
-        const persistentMeals = buildMealSlotsForDate(DEFAULT_MEALS, slots).filter((meal: MealSlot) => meal.type === 'other')
+        const persistentMeals = buildMealSlotsForDate(DEFAULT_MEALS, slots, format(date, 'yyyy-MM-dd')).filter((meal: MealSlot) => meal.type === 'other')
 
         // Mantener visibles comidas custom legacy si tienen entradas en el día.
         const seenCustom = new Map<string, MealSlot>()
@@ -205,13 +206,19 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
     }
 
     const handleAddCustomMeal = () => {
-        const name = newMealName.trim()
+        const name = newMealName.trim().replace(/\s+/g, ' ')
         if (!name) return
+        if (hasMealNamed(allMeals, name)) {
+            toast.error('Ya tienes una comida con ese nombre')
+            return
+        }
         const newOrder = Math.max(...allMeals.map(m => m.order), 3) + 1
         ;(async () => {
-            const slot = await createNutritionMealSlot(name, newOrder, date)
+            const { slot, error } = await createNutritionMealSlot(name, newOrder, date)
             if (!slot) {
-                toast.error('No se pudo guardar la comida extra')
+                toast.error(error === 'duplicate'
+                    ? 'Ya tienes una comida con ese nombre'
+                    : 'No se pudo guardar la comida extra')
                 return
             }
             setExtraMeals(prev => [...prev, {
@@ -435,6 +442,8 @@ export function MacrosTracker({ macroPlan, date }: MacrosTrackerProps) {
                         <Input
                             autoFocus
                             placeholder="Nombre (p. ej. Pre-entreno)"
+                            maxLength={60}
+                            aria-label="Nombre de la comida extra"
                             value={newMealName}
                             onChange={e => setNewMealName(e.target.value)}
                             onKeyDown={e => {

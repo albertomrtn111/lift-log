@@ -7,6 +7,7 @@ import { roundToDecimals } from '@/lib/format/number'
 import { hasRenderableCardioBlocks, resolveCardioPlanForDisplay } from '@/lib/cardio/structure'
 import { buildSkipSet, isDaySkipped, mondayOfDate, programDayDate, programWeekOfDate } from '@/lib/training/strength-week-skips'
 import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
+import { athleteNoteCells, isClientEditable, logFieldForColumnKey, mapRoutineColumns, nextExerciseLog } from '@/lib/training/exercise-notes'
 import { todayKeyIn } from '@/lib/time-zone'
 import { getCoachTimeZone } from '@/data/workspace-time-zone'
 
@@ -552,26 +553,14 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
     }
 
     if (exerciseIds.length > 0) {
-        const user = await supabase.auth.getUser();
-        const authUserId = user.data.user?.id;
-
-        if (authUserId) {
-            // Get real client ID
-            const { data: client } = await supabase
-                .from('clients')
-                .select('id')
-                .eq('user_id', authUserId)
-                .single();
-
-            if (client) {
-                const { data: logsData } = await supabase
-                    .from('training_exercise_logs')
-                    .select('id, exercise_id, week_index, sets, notes')
-                    .eq('client_id', client.id) // Correct ID
-                    .in('exercise_id', exerciseIds)
-                logs = logsData || []
-            }
-        }
+        // clientId ya es el del atleta conectado (page.tsx); la RLS solo deja leer los suyos.
+        const { data: logsData, error: logsError } = await supabase
+            .from('training_exercise_logs')
+            .select('id, exercise_id, week_index, sets, notes')
+            .eq('client_id', clientId)
+            .in('exercise_id', exerciseIds)
+        if (logsError) console.error('[getActiveClientProgram] Logs Error:', logsError)
+        logs = logsData || []
     }
 
     // Map logs to "virtual" cells for frontend compatibility
@@ -617,41 +606,12 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
                 value: set1.rir.toString()
             });
         }
-        // Map Notes (c10) - stored in log.notes column
-        if (colMap['c10'] && log.notes) {
-            cells.push({
-                id: `log-${log.id}-c10`,
-                exercise_id: log.exercise_id,
-                column_id: colMap['c10'],
-                week_index: log.week_index,
-                value: log.notes
-            });
-        }
     });
+    // Nota del atleta de cada semana (log.notes), en su columna «Notas» ('notes' o 'c10')
+    cells.push(...athleteNoteCells(columns || [], logs))
 
-    // Map columns and ensure 'c1' (Exercise Name) exists
-    const mappedColumns = (columns || []).map((c: any) => ({
-        id: c.id,
-        key: c.key,
-        label: c.label,
-        type: c.data_type, // Map data_type -> type
-        scope: c.scope,
-        editable: c.editable_by === 'client', // Map editable_by -> editable
-        order: c.order_index,
-    }))
-
-    // Prepend 'c1' if not present, to ensure ExerciseTable renders the name
-    if (!mappedColumns.find((c: any) => c.id === 'c1')) {
-        mappedColumns.unshift({
-            id: 'c1',
-            key: 'c1',
-            label: 'Ejercicio',
-            type: 'text',
-            scope: 'exercise',
-            editable: false,
-            order: 0,
-        })
-    }
+    // 'notes' (editable_by 'both') también es del atleta; añade 'c1' y las indicaciones del coach
+    const mappedColumns = mapRoutineColumns(columns || [])
 
     // Días que el coach quitó en una semana: la pantalla Fuerza no los muestra esa semana.
     const skipRows = await loadStrengthSkips(supabase, clientId, [program.id])
@@ -725,7 +685,8 @@ export async function saveTrainingCell(
         .from('clients')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .eq('status', 'active')
+        .maybeSingle();
 
     if (!client) return { success: false, error: 'Client not found' }
     const clientId = client.id;
@@ -733,20 +694,16 @@ export async function saveTrainingCell(
     // 1. Get Column Key to know what field to update
     const { data: col } = await supabase
         .from('training_columns')
-        .select('key')
+        .select('key, editable_by')
         .eq('id', columnId)
-        .single();
+        .maybeSingle();
 
     if (!col || !col.key) return { success: false, error: 'Invalid column' }
+    if (!isClientEditable(col.editable_by)) return { success: false, error: 'Column not editable by the athlete' }
 
-    // Map column key to field
-    // c7=weight, c8=reps, c9=rir, c10=notes
-    let field = '';
-    if (col.key === 'c7') field = 'weight';
-    else if (col.key === 'c8') field = 'reps';
-    else if (col.key === 'c9') field = 'rir';
-    else if (col.key === 'c10') field = 'notes';
-    else return { success: false, error: 'Not a loggable column' }
+    // c7=peso, c8=reps, c9=RIR (serie 1, programas antiguos); 'notes' o c10 = nota del atleta
+    const field = logFieldForColumnKey(col.key)
+    if (!field) return { success: false, error: 'Not a loggable column' }
 
     // 2. Fetch Context (Program, Day...)
     // We need program_id, coach_id, day_id
@@ -771,45 +728,38 @@ export async function saveTrainingCell(
     const coachId = exercise.training_days?.training_programs?.coach_id;
 
     // 3. Fetch Existing Log
-    const { data: existingLog } = await supabase
+    const { data: existingLog, error: existingError } = await supabase
         .from('training_exercise_logs')
-        .select('*')
+        .select('id, sets, notes')
         .eq('client_id', clientId)
         .eq('exercise_id', exerciseId)
         .eq('week_index', weekNumber)
-        .single();
+        .maybeSingle();
 
-    let sets = existingLog?.sets || [];
-    if (!Array.isArray(sets)) sets = [];
-    if (sets.length === 0) sets.push({ set: 1 }); // Init set 1
-
-    let notes = existingLog?.notes || '';
-
-    // 4. Update Value
-    if (field === 'notes') {
-        notes = value;
-    } else {
-        // Update Set 1
-        // Parse value if possible (weight/rir are numbers)
-        // c8 (reps) is text column but JSON expects... number? 
-        // User example says "reps": 8. 
-        // If users type "10", we parse. If "3x10", we store string?
-        // JSONB stores whatever.
-        let val: any = value;
-        if (field === 'weight' || field === 'rir') {
-            const parsed = parseFloat(value);
-            if (!isNaN(parsed)) val = parsed;
-        }
-        // For reps, if it looks like number, store as number
-        if (field === 'reps') {
-            const parsed = parseFloat(value);
-            // If strictly digits allow parsing, else string
-            if (!isNaN(parsed) && /^\d+$/.test(value)) val = parsed;
-        }
-
-        sets[0][field] = val;
-        sets[0].set = 1; // Ensure set number
+    if (existingError) {
+        console.error('Load Log Error:', existingError);
+        return { success: false, error: existingError.message }
     }
+
+    // 4. Update Value (la nota no crea una serie vacía)
+    const next = nextExerciseLog(existingLog, field, value)
+
+    // Sin nota ni valores no se guarda una fila vacía (contaría como resultado del atleta)
+    if (next.empty) {
+        if (!existingLog) return { success: true }
+        const { error: deleteError } = await supabase
+            .from('training_exercise_logs')
+            .delete()
+            .eq('id', existingLog.id)
+            .eq('client_id', clientId)
+        if (deleteError) {
+            console.error('Delete Log Error:', deleteError);
+            return { success: false, error: deleteError.message }
+        }
+        return { success: true }
+    }
+
+    if (!programId || !dayId || !coachId) return { success: false, error: 'Program not found' }
 
     // 5. Upsert
     const payload = {
@@ -819,16 +769,15 @@ export async function saveTrainingCell(
         program_id: programId,
         day_id: dayId,
         coach_id: coachId,
-        sets,
-        notes,
+        sets: next.sets,
+        notes: next.notes,
         updated_at: new Date().toISOString()
     }
 
-    // Check if we need insert or update
     // Using upsert on unique constraint (client, exercise, week)
     const { error } = await supabase
         .from('training_exercise_logs')
-        .upsert(payload, { onConflict: 'client_id, exercise_id, week_index' })
+        .upsert(payload, { onConflict: 'client_id,exercise_id,week_index' })
 
     if (error) {
         console.error('Save Log Error:', error);
