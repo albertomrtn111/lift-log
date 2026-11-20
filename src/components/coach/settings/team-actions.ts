@@ -341,9 +341,18 @@ export async function removeMemberAction(userId: string): Promise<ActionResult> 
             .eq('user_id', userId)
         if (error) throw error
 
+        // Sus atletas asignados se guardan en el registro para devolvérselos si vuelve
+        // (al aceptar una invitación nueva); mientras tanto no los ve.
         const { data: clients } = await admin.from('clients').select('id').eq('coach_id', actor.coachId)
         const clientIds = (clients ?? []).map(client => client.id as string)
+        let assignedClientIds: string[] = []
         if (clientIds.length > 0) {
+            const { data: assigned } = await admin
+                .from('client_professionals')
+                .select('client_id')
+                .eq('user_id', userId)
+                .in('client_id', clientIds)
+            assignedClientIds = (assigned ?? []).map(row => row.client_id as string)
             await admin.from('client_professionals').delete().eq('user_id', userId).in('client_id', clientIds)
         }
         await logEvent({
@@ -351,7 +360,7 @@ export async function removeMemberAction(userId: string): Promise<ActionResult> 
             actorUserId: actor.userId,
             action: 'removed',
             targetUserId: userId,
-            details: { role: targetRole },
+            details: { role: targetRole, client_ids: assignedClientIds },
         })
         return { success: true }
     } catch (error) {
