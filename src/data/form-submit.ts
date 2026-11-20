@@ -185,7 +185,10 @@ export async function submitFormAction(
                     if (reviewResetError) {
                         console.error('[submitFormAction] Could not reset AI review fields:', reviewResetError)
                     } else {
-                        analysis = generateCheckinAnalysis(checkinId, review.id)
+                        analysis = generateCheckinAnalysis(checkinId, review.id, {
+                            coachId: adminCheckin.coach_id,
+                            clientId: adminCheckin.client_id,
+                        })
                     }
                 }
             }
