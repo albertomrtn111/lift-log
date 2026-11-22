@@ -1,4 +1,4 @@
--- La agenda se sincroniza cada 30 minutos, no cada 5 (NXT: logs de Supabase).
+-- La agenda se sincroniza cada 30 minutos, no cada 5 (NXT-168: logs de Supabase).
 --
 -- Cada pasada son varias consultas y cada consulta deja logs, que cuentan en la cuota del plan.
 -- En punto, la ventana completa (una vez por hora, como antes); a y media, hoy y mañana.
