@@ -161,6 +161,12 @@ export interface StudioAttendance {
     origin: string
 }
 
+/** Una serie registrada de quien no está como «Vino»: se guarda aparte y vuelve al marcarlo (NXT-150). */
+export interface StudioKeptSet {
+    item_id: string
+    client_id: string
+}
+
 export interface StudioItemPerson {
     item_id: string
     client_id: string
@@ -220,6 +226,8 @@ export interface StudioGridData {
     activeInjuries: number
     attendance: StudioAttendance[]
     people: StudioItemPerson[]
+    /** Series registradas guardadas de quien no está como «Vino». */
+    keptSets: StudioKeptSet[]
     /** Bloques usados en el espacio en las últimas cuatro semanas. */
     recentBlocks: string[]
     /** Medios de la sala y, en la cuadrícula de un cliente, los suyos. */
@@ -512,7 +520,7 @@ async function buildGrid(
 
     const groupSessionIds = sessions.filter(session => session.group_id).map(session => session.id)
     const groupItemIds = (items ?? []).filter(item => groupSessionIds.includes(item.session_id)).map(item => item.id)
-    const [{ data: attendance }, { data: people }, { data: feedback }, { data: equations }] = await Promise.all([
+    const [{ data: attendance }, { data: people }, { data: feedback }, { data: equations }, { data: keptSets }] = await Promise.all([
         groupSessionIds.length > 0
             ? supabase.from('studio_session_attendance').select('session_id, client_id, status, origin').in('session_id', groupSessionIds)
             : Promise.resolve({ data: [] }),
@@ -524,6 +532,10 @@ async function buildGrid(
             : Promise.resolve({ data: [] }),
         // Son pocas y de todos: se piden enteras.
         supabase.from('exercise_vbt_equations').select('catalog_exercise_id, a, b, c, velocity_type, source'),
+        // Solo lo registrado a mano: lo heredado de lo general se rehace solo al volver.
+        groupItemIds.length > 0
+            ? supabase.from('studio_session_sets_hidden').select('item_id, client_id').eq('is_detailed', true).in('item_id', groupItemIds)
+            : Promise.resolve({ data: [] }),
     ])
 
     const imageConsent = consent?.accepted === true
@@ -586,6 +598,7 @@ async function buildGrid(
         activeInjuries: activeInjuries ?? 0,
         attendance: (attendance ?? []) as StudioAttendance[],
         people: (people ?? []) as StudioItemPerson[],
+        keptSets: (keptSets ?? []) as StudioKeptSet[],
         recentBlocks: (recentBlocks ?? []) as string[],
     }
 }

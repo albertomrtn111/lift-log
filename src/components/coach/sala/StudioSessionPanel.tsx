@@ -44,6 +44,7 @@ import { clipItemFields, routineItemFields, routinesForClient } from '@/lib/stud
 import { blockItems, blockOptions, sessionText } from '@/lib/studio/session-text-rules'
 import type { StudioClip } from '@/lib/studio/clipboard'
 import { cellSummary, formatShortDate } from '@/lib/studio/grid-rules'
+import { attendanceNotice, keptSetsByPerson, keptSetsLabel } from '@/lib/studio/group-rules'
 import {
     addItemAction,
     addItemsAction,
@@ -59,6 +60,7 @@ import {
     saveSessionAsTemplateAction,
     setAttendanceAction,
     setSectionParentAction,
+    undoLastAction,
     updateSessionAction,
     type StudioTemplateOption,
 } from '@/lib/studio/session-actions'
@@ -292,6 +294,28 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
             router.refresh()
             if (!result.success) return void toast.error(result.error)
             after?.()
+        })
+    }
+
+    const keptSets = useMemo(() => keptSetsByPerson(data.keptSets, data.items, session.id), [data.keptSets, data.items, session.id])
+
+    /** Quitar «Vino» no borra nada: sus series se guardan, y el aviso permite deshacerlo al momento. */
+    function markAttendance(clientId: string, name: string, from: string, to: 'unmarked' | 'attended' | 'absent') {
+        const notice = attendanceNotice(name, from, to, data.items.some(item => item.session_id === session.id && item.is_done))
+        run(() => setAttendanceAction(session.id, clientId, to), () => {
+            if (!notice) return
+            toast(notice, {
+                action: {
+                    label: 'Deshacer',
+                    onClick: () => startTransition(async () => {
+                        const result = await undoLastAction(data.client.id)
+                        router.refresh()
+                        if (!result.success) return void toast.error(result.error)
+                        if (result.data.status === 'blocked') toast.error('Alguien lo ha cambiado después: no se deshace para no pisar su trabajo.')
+                        else if (result.data.status === 'nothing') toast('No hay nada que deshacer')
+                    }),
+                },
+            })
         })
     }
 
@@ -646,10 +670,14 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                     {data.group && (
                         <section className="space-y-2" aria-labelledby="sesion-asistencia">
                             <h3 id="sesion-asistencia" className="text-sm font-semibold">Asistencia</h3>
-                            {data.attendance.filter(entry => entry.session_id === session.id).map(entry => (
+                            {data.attendance.filter(entry => entry.session_id === session.id).map(entry => {
+                                const name = data.group?.members.find(member => member.id === entry.client_id)?.name ?? 'Persona'
+                                const kept = entry.status === 'attended' ? '' : keptSetsLabel(keptSets[entry.client_id])
+                                return (
                                 <div key={entry.client_id} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 p-1.5 pl-3 text-sm">
-                                    <span className="min-w-0 truncate">
-                                        {data.group?.members.find(member => member.id === entry.client_id)?.name ?? 'Persona'}
+                                    <span className="min-w-0">
+                                        <span className="block truncate">{name}</span>
+                                        {kept && <span className="block text-xs text-muted-foreground">{kept}</span>}
                                     </span>
                                     <div className="grid shrink-0 grid-cols-2 gap-1" role="group" aria-label="Asistencia">
                                         {([['attended', 'Vino'], ['absent', 'No vino']] as const).map(([status, label]) => (
@@ -658,7 +686,7 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                                                 type="button"
                                                 disabled={isPending}
                                                 aria-pressed={entry.status === status}
-                                                onClick={() => run(() => setAttendanceAction(session.id, entry.client_id, entry.status === status ? 'unmarked' : status))}
+                                                onClick={() => markAttendance(entry.client_id, name, entry.status, entry.status === status ? 'unmarked' : status)}
                                                 className={cn(
                                                     'h-9 rounded-md border px-3 text-xs font-medium',
                                                     entry.status === status
@@ -671,7 +699,8 @@ export function StudioSessionPanel({ data, session, clip, onClose, onOpenItem, o
                                         ))}
                                     </div>
                                 </div>
-                            ))}
+                                )
+                            })}
                         </section>
                     )}
 
