@@ -1335,7 +1335,7 @@ export async function processStravaWebhookEvent(event: StravaWebhookEvent): Prom
         .select('status')
         .eq('id', integration.client_id)
         .maybeSingle()
-    if (owner?.status !== 'active') return
+    if (owner?.status !== 'active') return ignoreWebhookEvent(event, 'inactive_athlete')
 
     const { imported, activity } = await importStravaActivityForIntegration(integration, event.object_id)
     await supabase
