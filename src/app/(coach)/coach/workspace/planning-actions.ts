@@ -13,6 +13,7 @@ import { dateSchema } from '@/lib/ai/planning-block';
 import { sendPlanUpdatedNotification } from '@/lib/notifications/client';
 import { buildSkipSet, isDaySkipped, mondayOfDate, programWeekOfDate, skipKey } from '@/lib/training/strength-week-skips';
 import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data';
+import { cardioHasRecords } from '@/lib/safe-delete';
 
 type TrainingDayRow = {
     id: string;
@@ -949,10 +950,47 @@ export async function getActiveProgram(clientId: string) {
 // DELETE CARDIO SESSION
 // ----------------------------------------------------------------------
 
-export async function deleteCardioSession(sessionId: string) {
+const CARDIO_RECORD_FIELDS = 'id, client_id, scheduled_date, name, is_completed, performed_date, actual_distance_km, actual_duration_min, actual_avg_pace, avg_heart_rate, max_heart_rate, rpe, feedback_notes, strava_activity_id';
+
+/** Lo que el atleta ha registrado en una sesión de cardio, para el aviso de «Eliminar» (NXT-149). */
+export async function getCardioRemovalInfo(sessionId: string): Promise<
+    { success: true; session: Parameters<typeof cardioHasRecords>[0] } | { success: false; error: string }
+> {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from('cardio_sessions').select(CARDIO_RECORD_FIELDS).eq('id', sessionId).maybeSingle();
+    if (error || !data) return { success: false, error: 'No se ha encontrado la sesión.' };
+    return { success: true, session: data };
+}
+
+/**
+ * Eliminar una sesión de cardio (NXT-149). Si el atleta aún no la ha hecho se borra
+ * como antes. Si ya tiene datos suyos (hecha, km, RPE, comentario, Strava) va a la
+ * papelera: la base guarda la sesión entera y la borra en la misma transacción; se
+ * recupera con restoreCardioSession.
+ */
+export async function deleteCardioSession(sessionId: string): Promise<
+    { success: true; mode: 'delete' } | { success: true; mode: 'trash'; trashId: string } | { success: false; error: string }
+> {
     const supabase = await createClient();
 
     try {
+        const { data: session, error: readError } = await supabase
+            .from('cardio_sessions')
+            .select(CARDIO_RECORD_FIELDS)
+            .eq('id', sessionId)
+            .maybeSingle();
+        if (readError) throw new Error(readError.message);
+        if (!session) return { success: false, error: 'No se ha encontrado la sesión.' };
+
+        const trash = async () => {
+            const { data: trashId, error } = await supabase.rpc('nexttrain_trash_cardio_session', { p_session_id: sessionId });
+            if (error || !trashId) throw new Error(error?.message ?? 'No se ha podido eliminar la sesión.');
+            notifyPlanningChanged(session.client_id, session.scheduled_date);
+            return { success: true as const, mode: 'trash' as const, trashId: String(trashId) };
+        };
+
+        if (cardioHasRecords(session)) return await trash();
+
         const { data: deleted, error } = await supabase
             .from('cardio_sessions')
             .delete()
@@ -960,16 +998,32 @@ export async function deleteCardioSession(sessionId: string) {
             .select('client_id, scheduled_date');
 
         if (error) {
+            // Si entretanto el atleta la ha registrado, la base no deja borrarla: a la papelera.
+            if (/papelera/i.test(error.message)) return await trash();
             console.error('Error deleting cardio session:', error);
             throw new Error(error.message);
         }
+        if (!deleted || deleted.length === 0) return { success: false, error: 'No se ha podido eliminar la sesión.' };
 
-        for (const row of deleted ?? []) notifyPlanningChanged(row.client_id, row.scheduled_date);
-        return { success: true };
+        for (const row of deleted) notifyPlanningChanged(row.client_id, row.scheduled_date);
+        return { success: true, mode: 'delete' };
 
     } catch (error: any) {
         return { success: false, error: error.message };
     }
+}
+
+/** Deshace el borrado de una sesión de cardio que fue a la papelera (NXT-149). */
+export async function restoreCardioSession(trashId: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('nexttrain_restore_deleted_record', { p_trash_id: trashId });
+    if (error) return { success: false, error: error.message };
+    const restored = data as { record_id?: string } | null;
+    if (restored?.record_id) {
+        const { data: session } = await supabase.from('cardio_sessions').select('client_id, scheduled_date').eq('id', restored.record_id).maybeSingle();
+        if (session) notifyPlanningChanged(session.client_id, session.scheduled_date);
+    }
+    return { success: true };
 }
 
 // ----------------------------------------------------------------------

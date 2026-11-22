@@ -9,13 +9,14 @@ import { toast as sonnerToast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { getWeeklySchedule, deleteCardioSession, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession, duplicateStrengthSession, duplicateCardioSession } from '@/app/(coach)/coach/workspace/planning-actions'
+import { getWeeklySchedule, updateCardioSession, moveSession, deleteStrengthSession, materializeVirtualSession, duplicateStrengthSession, duplicateCardioSession } from '@/app/(coach)/coach/workspace/planning-actions'
 import { restoreStrengthDayWeekAction, skipStrengthDayWeekAction, type StrengthSkipInput } from '@/app/(coach)/coach/workspace/strength-skip-actions'
 import { UnifiedCalendarItem, PlanningSnapshot, PlanningDayContext } from '@/types/planning'
 import { CardioStructure } from '@/types/templates'
 import { useToast } from '@/hooks/use-toast'
 import { PlanningAddSessionDialog } from './PlanningAddSessionDialog'
 import { CardioSessionForm } from './CardioSessionForm'
+import { CardioRemovalDialog } from './CardioRemovalDialog'
 import { PlanningAIWeeklyDialog } from './plan/PlanningAIWeeklyDialog'
 import { PlanningAIBlockDialog } from './plan/PlanningAIBlockDialog'
 import {
@@ -319,6 +320,8 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
         fetchSchedule()
     }, [clientId, currentDate, viewMode])
 
+    const [removingCardioId, setRemovingCardioId] = useState<string | null>(null)
+
     const fetchSchedule = async () => {
         const requestId = ++fetchRequestId.current
         setLoading(true)
@@ -463,21 +466,10 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
         }
     }
 
-    const handleDeleteCardio = async (e: React.MouseEvent, sessionId: string) => {
+    // NXT-149: el aviso dice lo que registró el atleta y, si está hecha, va a la papelera.
+    const handleDeleteCardio = (e: React.MouseEvent, sessionId: string) => {
         e.stopPropagation()
-        if (confirm('¿Estás seguro de que quieres eliminar esta sesión?')) {
-            try {
-                const res = await deleteCardioSession(sessionId)
-                if (res.success) {
-                    toast({ title: "Sesión eliminada", description: "La sesión se ha eliminado correctamente." })
-                    fetchSchedule()
-                } else {
-                    toast({ title: "Error", description: res.error || "No se pudo eliminar", variant: "destructive" })
-                }
-            } catch (error) {
-                toast({ title: "Error", description: "Ocurrió un error inesperado", variant: "destructive" })
-            }
-        }
+        setRemovingCardioId(sessionId)
     }
 
     const handleDeleteStrength = async (e: React.MouseEvent, sessionId: string) => {
@@ -659,6 +651,11 @@ export function PlanningTab({ clientId, coachId, onEditProgram, onOpenSeason }: 
             onDragCancel={handleDragCancel}
         >
             <div className="flex h-full flex-col space-y-4 p-0 sm:p-4">
+                <CardioRemovalDialog
+                    sessionId={removingCardioId}
+                    onClose={() => setRemovingCardioId(null)}
+                    onChanged={() => { void fetchSchedule() }}
+                />
                 {/* Controles: periodo + navegación en una fila; vista e IA en otra */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">

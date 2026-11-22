@@ -115,6 +115,8 @@ export interface TrainingProgram {
     effective_from: string
     effective_to: string | null
     created_at: string
+    /** NXT-149: oculto del historial porque tiene series del atleta (se puede recuperar). */
+    hidden_at?: string | null
 }
 
 export type ClientEventType = 'race' | 'test' | 'camp' | 'other'
