@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { parsePrivateKey } from '@/lib/storage/media-refs'
-import { canAccessPrivateMedia } from '@/lib/storage/media-access'
+import { canAccessPrivateMedia, canChangeCheckinPhotos } from '@/lib/storage/media-access'
 import { deleteObject, getObject, presignGet, privateBucket, privateDeliveryMode } from '@/lib/storage/r2'
 
 export const dynamic = 'force-dynamic'
@@ -84,6 +84,13 @@ export async function DELETE(_request: Request, { params }: Params) {
     if ('response' in auth) return auth.response
     // Solo las fotos de check-in se pueden borrar desde la app
     if (auth.parsed.area !== 'checkin-media') return new NextResponse(null, { status: 405 })
+    // El atleta no quita fotos de una revisión que su coach ya ha cerrado
+    const { parsed } = auth
+    if (!parsed.checkinId) return new NextResponse(null, { status: 404 })
+    const supabase = await createClient()
+    if (!(await canChangeCheckinPhotos(supabase, parsed.coachId, parsed.clientId, parsed.checkinId))) {
+        return new NextResponse(null, { status: 409 })
+    }
 
     try {
         await deleteObject(auth.bucket, auth.key)

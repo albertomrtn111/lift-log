@@ -7,7 +7,8 @@ import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
 import type { CheckinWithReview } from '@/data/workspace'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
-import { reviewFormInitialValues } from '@/lib/reviews/checkin-response'
+import { hasAthleteResponse, reviewFormInitialValues } from '@/lib/reviews/checkin-response'
+import { canAthleteChangeCheckin, getCheckinSubmissionState } from '@/lib/reviews/checkin-submission-rules'
 
 export type ClientReviewUiStatus = 'pending' | 'submitted' | 'feedback'
 
@@ -15,6 +16,7 @@ export interface ClientReviewItem {
     checkinId: string
     status: ClientReviewUiStatus
     checkinStatus: 'pending' | 'reviewed' | 'archived'
+    /** Puede cambiar sus respuestas: el coach aún no ha cerrado la revisión */
     canEdit: boolean
     photoCount: number
     submittedAt: string | null
@@ -230,7 +232,11 @@ export async function getClientReviewsAction(): Promise<{ success: boolean; revi
             checkinId: row.id,
             status: getUiStatus(row.status, review.feedback),
             checkinStatus: row.status,
-            canEdit: row.status !== 'archived' || hasResponseEvidence(row),
+            canEdit: canAthleteChangeCheckin(getCheckinSubmissionState({
+                checkinStatus: row.status,
+                reviewStatus: review.status,
+                answered: hasAthleteResponse(row),
+            })),
             photoCount,
             submittedAt: row.status === 'pending' ? null : row.submitted_at,
             createdAt: row.created_at,
