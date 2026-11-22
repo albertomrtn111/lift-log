@@ -15,7 +15,7 @@ import {
     studioKey,
     withExtension,
 } from '@/lib/storage/media-refs'
-import { canAccessChatMedia, canAccessCheckinMedia, canAccessStudioMedia } from '@/lib/storage/media-access'
+import { canAccessChatMedia, canAccessCheckinMedia, canAccessStudioMedia, canChangeCheckinPhotos } from '@/lib/storage/media-access'
 import { deleteObject, privateBucket, publicBucket, putObject } from '@/lib/storage/r2'
 import { toWebp } from '@/lib/storage/webp'
 import { audioToM4a } from '@/lib/storage/audio'
@@ -140,6 +140,9 @@ export async function POST(request: Request) {
             if (!isUuid(checkinId)) return fail(400, 'Faltan datos de la subida.')
             if (!(await canAccessCheckinMedia(supabase, user.id, coachId, clientId))) {
                 return fail(403, 'No puedes subir fotos a este check-in.')
+            }
+            if (!(await canChangeCheckinPhotos(supabase, coachId, clientId, checkinId))) {
+                return fail(409, 'Esta revisión ya la ha cerrado tu coach: no se pueden añadir fotos.')
             }
             const ext = mime === 'image/webp' ? 'webp' : (fileName.split('.').pop() || 'jpg')
             const name = `${Date.now()}_${randomSuffix()}.${ext}`
