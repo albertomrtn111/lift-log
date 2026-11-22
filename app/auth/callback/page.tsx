@@ -15,11 +15,15 @@ import { safeRedirectPath } from '@/lib/auth/auth-errors'
  * Supabase invite links return tokens in the URL #hash fragment,
  * which is only accessible client-side. This page handles:
  *
- * 1. ?code=...          → PKCE flow (exchangeCodeForSession) — signup
- * 2. #access_token=...  → Implicit flow (setSession) — invites and password reset
+ * 1. ?code=...          → PKCE flow (exchangeCodeForSession) — enlaces antiguos
+ * 2. #access_token=...  → Implicit flow (setSession) — invitaciones, recuperar
+ *                          contraseña y registro del coach con la plantilla por defecto
  * 3. #error=...         → Show error UI
  *
  * After establishing a session, redirects to ?next= (default: /)
+ *
+ * Los correos de Supabase con las plantillas de supabase/templates/ van a
+ * /auth/confirm (token_hash + verifyOtp), no aquí.
  */
 
 function LoadingUI() {
@@ -151,6 +155,7 @@ function AuthCallbackInner() {
                 >
                     <p>{error}</p>
                     <p className="text-sm">Pide uno nuevo con tu email. Si te invitó tu entrenador, también puedes pedirle que te reenvíe la invitación.</p>
+                    <p className="text-sm">¿Acabas de crear tu cuenta de entrenador? Inicia sesión: si aún falta confirmar tu email, allí podrás pedir otro enlace.</p>
                 </AuthStatus>
             </AuthShell>
         )

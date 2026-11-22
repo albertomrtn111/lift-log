@@ -88,7 +88,7 @@ function SetPasswordInner() {
                     </>
                 }
             >
-                <p>Ha caducado, ya se usó o se abrió en otro navegador. Pide uno nuevo con tu email y ábrelo en este dispositivo.</p>
+                <p>Ha caducado o ya se usó. Pide uno nuevo con tu email: el último que te enviemos es el que vale.</p>
             </AuthStatus>
         )
     }

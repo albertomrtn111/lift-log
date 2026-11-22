@@ -4,12 +4,14 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, MailCheck } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, createEmailLinkClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AuthHeading, AuthShell, AuthStatus, SignupSteps } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, AuthInput, PasswordInput, PasswordStrength } from '@/components/auth/AuthFields'
 import { findTier, isCycle, priceOf } from '@/components/auth/plans'
+import { ResendConfirmation, rememberConfirmationSent } from '@/components/auth/ResendConfirmation'
 import { authErrorMessage, classifyAuthError } from '@/lib/auth/auth-errors'
+import { signupRedirectUrl } from '@/lib/auth/email-links'
 
 function SignupDetailsInner() {
     const router = useRouter()
@@ -47,13 +49,16 @@ function SignupDetailsInner() {
         setLoading(true)
 
         try {
-            const supabase = createClient()
+            // Cliente de enlaces por email (flujo implícito, como recuperar la
+            // contraseña): el enlace de confirmación funciona aunque se abra en
+            // otro dispositivo o en el navegador de Gmail.
+            const supabase = createEmailLinkClient()
             const target = email.trim()
             const { data, error } = await supabase.auth.signUp({
                 email: target,
                 password,
                 options: {
-                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                    emailRedirectTo: signupRedirectUrl(window.location.origin),
                     data: {
                         full_name: fullName.trim(),
                         subscription_tier: tier.id,
@@ -73,10 +78,15 @@ function SignupDetailsInner() {
                 return
             }
             if (data.session) {
-                router.push('/')
-                router.refresh()
+                // Sin confirmación por email: la sesión se guarda en el cliente normal (cookies)
+                await createClient().auth.setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                })
+                window.location.assign('/')
                 return
             }
+            rememberConfirmationSent(target)
             setSentTo(target)
         } catch (err) {
             setError({ kind: 'unknown', message: authErrorMessage(err) })
@@ -92,16 +102,19 @@ function SignupDetailsInner() {
                 tone="success"
                 title="Confirma tu email"
                 actions={
-                    <Button asChild size="lg" className="h-11 rounded-xl text-[15px] font-semibold">
-                        <Link href="/login">Ir a iniciar sesión</Link>
-                    </Button>
+                    <>
+                        <ResendConfirmation email={sentTo} />
+                        <Button asChild variant="ghost" className="h-10 rounded-xl">
+                            <Link href={`/login?email=${encodeURIComponent(sentTo)}`}>Ir a iniciar sesión</Link>
+                        </Button>
+                    </>
                 }
             >
                 <p>
                     Te hemos enviado un enlace a <span className="font-semibold text-foreground">{sentTo}</span>. Ábrelo para activar tu cuenta con el plan{' '}
                     <span className="font-semibold text-foreground">{tier.name}</span>.
                 </p>
-                <p className="text-sm">¿No llega? Mira en spam o promociones; puede tardar un par de minutos.</p>
+                <p className="text-sm">Puedes abrirlo en el móvil o en el ordenador, donde te venga mejor. ¿No llega? Mira en spam o promociones; puede tardar un par de minutos.</p>
             </AuthStatus>
         )
     }
