@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import type { Message, MessageAttachment } from '@/types/messages'
 import { useClientAppContext } from '@/contexts/ClientAppContext'
 import { createClient } from '@/lib/supabase/client'
-import { mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
+import { findEchoedOptimisticId, mergeUniqueMessages, reconcileOptimisticMessage } from '@/lib/messages'
 import { uploadChatAttachment } from '@/lib/chat-media'
 import { prepareChatFile } from '@/lib/chat-image'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
@@ -40,12 +40,25 @@ type ScrollIntent =
     | { kind: 'preserve'; previousHeight: number; previousTop: number }
 
 const NEAR_BOTTOM_PX = 140
+/** Sin respuesta en este tiempo, el mensaje se marca «no enviado» (se puede reintentar) */
+const SEND_TIMEOUT_MS = 20_000
 
 const SUGGESTIONS = [
     'Tengo una duda con el entreno de hoy',
     '¿Puedo cambiar alguna comida?',
     'Hoy me noto bastante cansado',
 ]
+
+/** Quita los temporales («temp-…») que ya han llegado al servidor como `persisted`. */
+function withoutEchoedTemps(messages: Message[], persisted: Message[]) {
+    let rest = messages
+    for (const message of persisted) {
+        if (message.sender_role !== 'client') continue
+        const tempId = findEchoedOptimisticId(rest, message)
+        if (tempId) rest = rest.filter(item => item.id !== tempId)
+    }
+    return rest
+}
 
 export function ClientChat() {
     const { client } = useClientAppContext()
@@ -55,7 +68,6 @@ export function ClientChat() {
     const [loading, setLoading] = useState(true)
     const [loadingOlder, setLoadingOlder] = useState(false)
     const [hasMore, setHasMore] = useState(false)
-    const [sending, setSending] = useState(false)
     const [uploading, setUploading] = useState<string | null>(null)
     const [uploadProgress, setUploadProgress] = useState<number | null>(null)
     const [loadError, setLoadError] = useState<string | null>(null)
@@ -71,7 +83,10 @@ export function ClientChat() {
     const scrollIntent = useRef<ScrollIntent | null>(null)
     const nearBottom = useRef(true)
     const pendingPayloads = useRef(new Map<string, PendingPayload>())
+    /** Intento en curso de cada mensaje: una respuesta tardía de uno viejo no lo marca como fallido */
+    const sendAttempts = useRef(new Map<string, number>())
     const knownIds = useRef(new Set<string>())
+    const messagesRef = useRef<Message[]>([])
 
     const recorder = useVoiceRecorder({ onError: (message) => toast.error(message) })
 
@@ -113,7 +128,22 @@ export function ClientChat() {
 
     useEffect(() => {
         knownIds.current = new Set(messages.map(message => message.id))
+        messagesRef.current = messages
     }, [messages])
+
+    /** Mensaje propio que llegó por otro camino (tiempo real o resync): su temporal ya no está pendiente. */
+    const adoptEchoed = useCallback((persisted: Message) => {
+        const tempId = findEchoedOptimisticId(messagesRef.current, persisted)
+        if (!tempId) return
+        pendingPayloads.current.delete(tempId)
+        sendAttempts.current.delete(tempId)
+        setFailedIds(prev => {
+            if (!prev.has(tempId)) return prev
+            const next = new Set(prev)
+            next.delete(tempId)
+            return next
+        })
+    }, [])
 
     // Aplica el desplazamiento pedido justo después de pintar los mensajes
     useLayoutEffect(() => {
@@ -183,15 +213,19 @@ export function ClientChat() {
         const result = await getClientChatMessagesAction()
         if (!result.success || !result.messages) return
         const latest = result.messages
+        // Los que llegaron aunque la respuesta se perdiera dejan de estar «no enviados»
+        latest.forEach(message => {
+            if (message.sender_role === 'client' && !knownIds.current.has(message.id)) adoptEchoed(message)
+        })
         const hasNew = latest.some(message => !knownIds.current.has(message.id))
         const overlaps = latest.some(message => knownIds.current.has(message.id))
         if (hasNew && nearBottom.current) scrollIntent.current = { kind: 'bottom', smooth: true }
         if (!overlaps) setHasMore(Boolean(result.hasMore))
         setMessages(prev => overlaps
-            ? mergeUniqueMessages([...prev, ...latest])
+            ? mergeUniqueMessages([...withoutEchoedTemps(prev, latest), ...latest])
             // Hueco mayor que una página: se sustituye conservando los pendientes de envío
-            : mergeUniqueMessages([...latest, ...prev.filter(message => message.id.startsWith('temp-'))]))
-    }, [])
+            : mergeUniqueMessages([...latest, ...withoutEchoedTemps(prev, latest).filter(message => message.id.startsWith('temp-'))]))
+    }, [adoptEchoed])
 
     useResyncOnReturn(resync, !loading && !!chatSession)
 
@@ -212,12 +246,13 @@ export function ClientChat() {
                 if (incoming.coach_id !== coachId) return
 
                 if (knownIds.current.has(incoming.id)) return
+                if (incoming.sender_role === 'client') adoptEchoed(incoming)
                 if (nearBottom.current || incoming.sender_role === 'client') {
                     scrollIntent.current = { kind: 'bottom', smooth: true }
                 } else {
                     setNewWhileAway(count => count + 1)
                 }
-                setMessages(prev => mergeUniqueMessages([...prev, incoming]))
+                setMessages(prev => mergeUniqueMessages([...withoutEchoedTemps(prev, [incoming]), incoming]))
                 if (incoming.sender_role === 'coach') {
                     markClientCoachMessageReadAction(incoming.id)
                 }
@@ -235,7 +270,7 @@ export function ClientChat() {
             .subscribe(resyncOnResubscribe(resync))
 
         return () => { supabase.removeChannel(channel) }
-    }, [coachId, clientId, resync])
+    }, [coachId, clientId, resync, adoptEchoed])
 
     const dispatchMessage = useCallback(async (payload: PendingPayload, reuseId?: string) => {
         if (!coachId || !clientId || !userId) return
@@ -273,19 +308,43 @@ export function ClientChat() {
             setMessages(prev => [...prev, optimistic])
         }
 
-        setSending(true)
-        const result = await sendClientChatMessageAction(content, attachment)
-        setSending(false)
-
-        if (result.success && result.message) {
-            pendingPayloads.current.delete(optimisticId)
-            if (result.context) setChatSession(result.context)
-            setMessages(prev => reconcileOptimisticMessage(prev, optimisticId, result.message!))
-        } else {
+        // No bloquea el envío de otros mensajes: cada uno lleva su estado
+        const attempt = (sendAttempts.current.get(optimisticId) ?? 0) + 1
+        sendAttempts.current.set(optimisticId, attempt)
+        let failedShown = false
+        const markFailed = (message: string) => {
+            if (failedShown || sendAttempts.current.get(optimisticId) !== attempt) return
+            if (!pendingPayloads.current.has(optimisticId)) return
+            failedShown = true
             // Se queda en la conversación marcado como no enviado para reintentarlo
             setFailedIds(prev => new Set(prev).add(optimisticId))
-            toast.error(result.error ?? 'No se pudo enviar el mensaje.')
+            toast.error(message)
         }
+
+        const offlineMessage = 'Sin conexión. El mensaje se ha quedado sin enviar: tócalo para reintentarlo cuando vuelva la cobertura.'
+        const timer = setTimeout(() => markFailed(offlineMessage), SEND_TIMEOUT_MS)
+        // No se espera: el composer queda libre. Si la respuesta llega tarde
+        // (cobertura mala), se aplica igualmente.
+        sendClientChatMessageAction(content, attachment).then(result => {
+            if (result.success && result.message) {
+                const delivered = pendingPayloads.current.delete(optimisticId)
+                sendAttempts.current.delete(optimisticId)
+                if (result.context) setChatSession(result.context)
+                if (delivered) {
+                    setFailedIds(prev => {
+                        if (!prev.has(optimisticId)) return prev
+                        const next = new Set(prev)
+                        next.delete(optimisticId)
+                        return next
+                    })
+                }
+                setMessages(prev => reconcileOptimisticMessage(prev, optimisticId, result.message!))
+            } else {
+                markFailed(result.error ?? 'No se pudo enviar el mensaje.')
+            }
+        }, () => {
+            markFailed(offlineMessage)
+        }).finally(() => clearTimeout(timer))
     }, [coachId, clientId, userId])
 
     const handleRetry = (messageId: string) => {
@@ -295,7 +354,7 @@ export function ClientChat() {
 
     const handleSend = async () => {
         const content = input.trim()
-        if (!content || sending) return
+        if (!content) return
         setInput('')
         composerRef.current?.resetHeight()
         await dispatchMessage({ content })
@@ -313,6 +372,9 @@ export function ClientChat() {
                 return
             }
             await dispatchMessage({ content: caption, attachment })
+        } catch (error) {
+            console.error('[client-chat] upload failed', error)
+            toast.error('No se pudo subir el archivo. Revisa la conexión e inténtalo de nuevo.')
         } finally {
             setUploading(null)
             setUploadProgress(null)
@@ -327,7 +389,15 @@ export function ClientChat() {
         }
         // Las fotos se reducen y pasan a JPEG antes de subirlas (HEIC incluidas)
         setUploading(file.name)
-        const prepared = await prepareChatFile(file)
+        let prepared: Awaited<ReturnType<typeof prepareChatFile>>
+        try {
+            prepared = await prepareChatFile(file)
+        } catch (error) {
+            console.error('[client-chat] could not prepare file', error)
+            setUploading(null)
+            toast.error('No se pudo preparar el archivo. Inténtalo de nuevo.')
+            return
+        }
         await uploadAndSend(file.name, prepared.file, prepared.fileName, prepared.mime, undefined, caption)
     }
 
@@ -511,7 +581,7 @@ export function ClientChat() {
                 recordingSeconds={recorder.elapsedSeconds}
                 uploading={uploading}
                 uploadProgress={uploadProgress}
-                sending={sending}
+                sending={false}
             />
         </ChatShell>
     )

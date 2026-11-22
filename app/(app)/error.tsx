@@ -22,7 +22,7 @@ export default function AthleteError({ error, reset }: { error: Error & { digest
                 <p className="nt-eyebrow text-muted-foreground">No se ha podido cargar</p>
                 <h1 className="mt-3 text-[1.75rem] leading-tight">Algo ha fallado al traer tus datos.</h1>
                 <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-                    Suele ser la cobertura. Lo que registraste está a salvo: vuelve a intentarlo en unos segundos.
+                    Suele ser la cobertura: vuelve a intentarlo en unos segundos. Las series que apuntaste sin conexión se quedan en este móvil y se guardan cuando vuelvas a Fuerza con cobertura.
                 </p>
                 <Button onClick={reset} className="mt-6">
                     <RotateCw className="h-4 w-4" />
