@@ -46,11 +46,14 @@ function nowInTimezone(timezone: string) {
     return dateTimeInTimezone(new Date(), timezone)
 }
 
+const MAX_LOOKBACK_MINUTES = 60
+
 function getRequestReminderTargets(request: NextRequest, timezone: string): ReminderTarget[] {
     const params = new URL(request.url).searchParams
+    // El worker pasa cuánto mirar hacia atrás (va cada media hora, con margen); a mano, la variable o 5.
     const lookbackMinutes = Math.min(
-        30,
-        Math.max(1, Number(process.env.SUPPLEMENT_REMINDER_LOOKBACK_MINUTES || 5))
+        MAX_LOOKBACK_MINUTES,
+        Math.max(1, Number(params.get('lookback') || process.env.SUPPLEMENT_REMINDER_LOOKBACK_MINUTES || 5) || 5)
     )
 
     return getReminderTargets({
@@ -96,38 +99,27 @@ async function handleReminderRun(request: NextRequest) {
 
         const supabase = createAdminClient()
 
+        // Una sola consulta: suplementos activos de atletas activos, con la zona horaria de cada uno.
+        // Los atletas dados de baja no reciben recordatorios aunque sus suplementos sigan activos.
         const { data: supplements, error } = await supabase
             .from('client_supplements')
-            .select('id, client_id, coach_id, supplement_name, dose_amount, dose_unit, dose_schedule, start_date, end_date')
+            .select('id, client_id, coach_id, supplement_name, dose_amount, dose_unit, dose_schedule, start_date, end_date, clients!inner(status, client_notification_preferences(timezone))')
             .eq('is_active', true)
+            .eq('clients.status', 'active')
 
         if (error) throw error
 
-        // Los atletas dados de baja no reciben recordatorios aunque sus suplementos sigan activos.
-        const supplementRows = (supplements || []) as SupplementReminderRow[]
-        const clientIds = Array.from(new Set(supplementRows.map((row) => row.client_id)))
-        const activeClientIds = new Set<string>()
-        if (clientIds.length > 0) {
-            const { data: activeClients, error: clientsError } = await supabase
-                .from('clients')
-                .select('id')
-                .in('id', clientIds)
-                .eq('status', 'active')
-
-            if (clientsError) throw clientsError
-            for (const client of activeClients || []) activeClientIds.add(client.id)
-        }
+        const supplementRows = (supplements || []) as Array<SupplementReminderRow & { clients?: unknown }>
+        const activeClientIds = new Set(supplementRows.map((row) => row.client_id))
 
         // Cada atleta recibe sus tomas en su hora local (la del móvil); sin ella, la del servidor.
         const timezoneByClient = new Map<string, string>()
-        if (activeClientIds.size > 0) {
-            const { data: tzRows } = await supabase
-                .from('client_notification_preferences')
-                .select('client_id, timezone')
-                .in('client_id', [...activeClientIds])
-            for (const row of tzRows || []) {
-                if (isValidTimezone(row.timezone as string | null)) timezoneByClient.set(row.client_id as string, row.timezone as string)
-            }
+        for (const row of supplementRows) {
+            const client = (Array.isArray(row.clients) ? row.clients[0] : row.clients) as
+                { client_notification_preferences?: { timezone?: string | null } | Array<{ timezone?: string | null }> | null } | undefined
+            const prefs = client?.client_notification_preferences
+            const tz = (Array.isArray(prefs) ? prefs[0] : prefs)?.timezone ?? null
+            if (tz && isValidTimezone(tz)) timezoneByClient.set(row.client_id, tz)
         }
         const params = new URL(request.url).searchParams
         const manualRun = Boolean(params.get('date') && params.get('time'))

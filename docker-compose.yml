@@ -55,7 +55,7 @@ services:
       - .env
     environment:
       NEXTTRAIN_INTERNAL_APP_URL: http://nexttrain_app:3000
-      SUPPLEMENT_REMINDER_INTERVAL_MS: 60000
+      SUPPLEMENT_REMINDER_EVERY_MINUTES: 30
     command: ["node", "scripts/supplement-reminder-worker.mjs"]
     depends_on:
       - nexttrain_app

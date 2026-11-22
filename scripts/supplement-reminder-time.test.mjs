@@ -44,3 +44,15 @@ test('getReminderTargets accepts an explicit date and time for diagnostics', () 
     [{ date: '2026-05-14', time: '22:00' }]
   )
 })
+
+test('cada pasada de media hora cubre las tomas de esa media hora (con margen)', () => {
+  const targets = getReminderTargets({
+    now: new Date('2026-11-22T09:30:10.000Z'),
+    timezone: 'Europe/Madrid',
+    lookbackMinutes: 35,
+  })
+  const times = targets.map((t) => t.time)
+  assert.equal(times.at(-1), '10:30')
+  assert.equal(times[0], '09:56')
+  for (const time of ['10:01', '10:15', '10:29', '10:30']) assert.ok(times.includes(time), time)
+})
