@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { TrainingColumn, TrainingExercise, TrainingCell, ExerciseSet } from '@/types/training';
 import { COACH_NOTES_KEY, isAthleteNotesColumn } from '@/lib/training/exercise-notes';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, Lightbulb, Loader2, Plus, RotateCcw, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
+import { Check, ChevronDown, CloudOff, Lightbulb, Loader2, Plus, RotateCcw, SlidersHorizontal, Trash2, Zap } from 'lucide-react';
+import { hasPendingSets, pendingFieldClass } from './PendingSaveBanner';
 import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { MUSCLE_GROUP_LABELS } from '@/lib/training/muscle-groups';
@@ -282,6 +283,7 @@ export function MobileExerciseCards({
         const exerciseSets = getExerciseSets(exercise.id);
         const hasSets = exerciseSets.length > 0;
         const hasData = isExerciseLogged(exercise.id);
+        const hasPending = hasPendingSets(exerciseSets) || Boolean(notesColumn && cells.some(c => c.pending && c.exerciseId === exercise.id && c.columnId === notesColumn.id && c.weekNumber === weekNumber));
         const muscle = exercise.muscleGroup && exercise.muscleGroup !== 'otros' ? MUSCLE_GROUP_LABELS[exercise.muscleGroup] : null;
         const prescription = prescriptionColumns
           .map(col => ({ col, value: getCellValue(exercise.id, col.id) }))
@@ -318,10 +320,10 @@ export function MobileExerciseCards({
               <span
                 className={cn(
                   'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums',
-                  hasData ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
+                  hasPending ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : hasData ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
                 )}
               >
-                {hasData ? <Check className="h-4 w-4" strokeWidth={3} /> : index + 1}
+                {hasPending ? <CloudOff className="h-4 w-4" /> : hasData ? <Check className="h-4 w-4" strokeWidth={3} /> : index + 1}
               </span>
 
               <div className="min-w-0 flex-1">
@@ -340,7 +342,11 @@ export function MobileExerciseCards({
                   </div>
                 )}
 
-                {loggedSummary && (
+                {hasPending ? (
+                  <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+                    Sin guardar todavía{loggedSummary ? `: ${loggedSummary}` : ''}
+                  </p>
+                ) : loggedSummary && (
                   <p className="mt-2 text-xs font-medium text-success">Registrado: {loggedSummary}</p>
                 )}
               </div>
@@ -414,7 +420,7 @@ export function MobileExerciseCards({
                           defaultValue={toInputDecimal(s.weightKg)}
                           placeholder="—"
                           aria-label={`Peso serie ${s.setIndex + 1}`}
-                          className={fieldClass}
+                          className={cn(fieldClass, pendingFieldClass(s, 'weightKg'))}
                           onBlur={(e) => {
                             const v = parseDecimal(e.target.value);
                             if (v !== s.weightKg) onSetUpdate(s.id, { weightKg: v });
@@ -427,7 +433,7 @@ export function MobileExerciseCards({
                           defaultValue={s.reps ?? ''}
                           placeholder="—"
                           aria-label={`Repeticiones serie ${s.setIndex + 1}`}
-                          className={fieldClass}
+                          className={cn(fieldClass, pendingFieldClass(s, 'reps'))}
                           onBlur={(e) => {
                             const v = parseInteger(e.target.value);
                             if (v !== s.reps) onSetUpdate(s.id, { reps: v });
@@ -440,7 +446,7 @@ export function MobileExerciseCards({
                           defaultValue={s.rir ?? ''}
                           placeholder="—"
                           aria-label={`RIR serie ${s.setIndex + 1}`}
-                          className={fieldClass}
+                          className={cn(fieldClass, pendingFieldClass(s, 'rir'))}
                           onBlur={(e) => {
                             const v = parseInteger(e.target.value);
                             if (v !== s.rir) onSetUpdate(s.id, { rir: v });
@@ -490,7 +496,12 @@ export function MobileExerciseCards({
                 {/* Notas del atleta */}
                 {notesColumn && (
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">{notesColumn.label}</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {notesColumn.label}
+                      {cells.some(c => c.pending && c.exerciseId === exercise.id && c.columnId === notesColumn.id && c.weekNumber === weekNumber) && (
+                        <span className="ml-1.5 text-amber-600 dark:text-amber-400">· sin guardar todavía</span>
+                      )}
+                    </span>
                     <textarea
                       key={`notes-${exercise.id}-${weekNumber}`}
                       defaultValue={getCellValue(exercise.id, notesColumn.id)}
