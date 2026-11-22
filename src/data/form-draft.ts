@@ -36,10 +36,11 @@ export async function saveFormDraftAction(
 
     const { data: client } = await admin
         .from('clients')
-        .select('auth_user_id, user_id')
+        .select('auth_user_id, user_id, status')
         .eq('id', checkin.client_id)
         .maybeSingle()
     if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) return { success: false }
+    if (client.status !== 'active') return { success: false }
 
     const savedAt = new Date().toISOString()
     const { error } = await admin

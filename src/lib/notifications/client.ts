@@ -283,6 +283,8 @@ export function reviewCreatedKey(checkinId: string) {
 
 /** El atleta no ha desactivado «Revisiones por email». */
 export async function canEmailReviews(clientId: string): Promise<boolean> {
+    // El atleta dado de baja no recibe emails de revisiones
+    if (!(await isClientActive(clientId))) return false
     const delivery = await getClientDeliverySettings(clientId)
     return delivery.reviews_email_enabled
 }
