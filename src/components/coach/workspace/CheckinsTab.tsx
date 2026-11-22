@@ -22,7 +22,8 @@ import {
     CheckCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { deleteCheckinAction, regenerateReviewAIAction } from './actions'
+import { regenerateReviewAIAction } from './actions'
+import { CheckinRemovalDialog, DeletedCheckinsList } from './CheckinRemoval'
 import { CheckinPhotosViewer } from './CheckinPhotosViewer'
 import { GalleryTab } from './GalleryTab'
 import { MeasurementsTab } from './MeasurementsTab'
@@ -101,6 +102,25 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
         setReviewDialogCheckinId(checkinId)
     }
 
+    // NXT-149: «Eliminar» avisa de lo que tiene y, si hay datos, va a la papelera.
+    const [removingCheckinId, setRemovingCheckinId] = useState<string | null>(null)
+    const [trashKey, setTrashKey] = useState(0)
+    const afterRemoval = () => {
+        setTrashKey(key => key + 1)
+        onRefresh()
+    }
+    const removal = (
+        <>
+            <CheckinRemovalDialog
+                checkinId={removingCheckinId}
+                coachId={coachId}
+                onClose={() => setRemovingCheckinId(null)}
+                onRemoved={afterRemoval}
+            />
+            <DeletedCheckinsList clientId={clientId} coachId={coachId} refreshKey={trashKey} onRestored={afterRemoval} />
+        </>
+    )
+
     const sectionSwitcher = (
         <ClientTabSwitcher
             className="sm:max-w-md"
@@ -142,6 +162,7 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                         El cliente aún no ha enviado ninguna revisión
                     </p>
                 </Card>
+                {removal}
             </div>
         )
     }
@@ -223,12 +244,13 @@ export function CheckinsTab({ coachId, clientId, checkins, onRefresh, metricDefi
                             onClick={() => setSelectedCheckin(checkin)}
                             coachId={coachId}
                             clientId={clientId}
-                            onRefresh={onRefresh}
                             onOpenReviewDialog={handleOpenReviewDialog}
+                            onRequestDelete={setRemovingCheckinId}
                         />
                     ))}
                 </div>
             </Card>
+            {removal}
             <ReviewApprovalDialog
                 open={!!reviewDialogCheckin}
                 onOpenChange={(open) => !open && setReviewDialogCheckinId(null)}
@@ -248,27 +270,20 @@ function CheckinRow({
     onClick,
     coachId,
     clientId,
-    onRefresh,
-    onOpenReviewDialog
+    onOpenReviewDialog,
+    onRequestDelete,
 }: {
     checkin: CheckinWithReview
     isSelected: boolean
     onClick: () => void
     coachId: string
     clientId: string
-    onRefresh: () => void
     onOpenReviewDialog: (checkinId: string) => void
+    onRequestDelete: (checkinId: string) => void
 }) {
-    const [isPending, startTransition] = useTransition()
-
-
     const handleDelete = (e: React.MouseEvent) => {
         e.stopPropagation()
-        if (!confirm('¿Eliminar esta revisión? Esta acción no se puede deshacer.')) return
-        startTransition(async () => {
-            await deleteCheckinAction(checkin.id, coachId)
-            onRefresh()
-        })
+        onRequestDelete(checkin.id)
     }
 
     const formatDate = (dateStr: string) => {
@@ -351,7 +366,7 @@ function CheckinRow({
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
                     onClick={handleDelete}
-                    disabled={isPending}
+                    aria-label="Eliminar esta revisión"
                 >
                     <Trash2 className="h-4 w-4" />
                 </Button>

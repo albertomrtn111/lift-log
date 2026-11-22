@@ -10,8 +10,11 @@ import {
     updateMetricDefinition,
     toggleMetricActive,
     deleteMetricDefinition,
+    getMetricRemovalInfo,
+    restoreArchivedMetric,
     reorderMetricDefinitions,
 } from '@/data/metric-definitions'
+import { metricRemovalCopy } from '@/lib/safe-delete'
 import { ClientTabSwitcher } from '@/components/ui/client-tab-switcher'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,6 +44,11 @@ import {
     BarChart2,
     ArrowUp,
     ArrowDown,
+    Archive,
+    ChevronDown,
+    ChevronUp,
+    Loader2,
+    Undo2,
 } from 'lucide-react'
 
 // Configuramos los tabs
@@ -59,9 +67,42 @@ export function MetricsPageClient({ initialMetrics }: { initialMetrics: MetricDe
     const [modalOpen, setModalOpen] = useState(false)
     const [editingMetric, setEditingMetric] = useState<MetricDefinition | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<MetricDefinition | null>(null)
+    // NXT-149: el aviso dice cuántos valores tiene; con valores se archiva en vez de borrar.
+    const [removalCopy, setRemovalCopy] = useState<ReturnType<typeof metricRemovalCopy> | null>(null)
+    const [removalError, setRemovalError] = useState<string | null>(null)
+    const [showArchived, setShowArchived] = useState(false)
 
-    // Agrupamos métricas
-    const filteredMetrics = initialMetrics.filter((m) => m.category === activeTab)
+    // Agrupamos métricas. Las archivadas van aparte.
+    const liveMetrics = initialMetrics.filter((m) => !m.archived_at)
+    const archivedMetrics = initialMetrics.filter((m) => !!m.archived_at && m.category === activeTab)
+    const filteredMetrics = liveMetrics.filter((m) => m.category === activeTab)
+
+    const openRemoval = async (metric: MetricDefinition) => {
+        setDeleteTarget(metric)
+        setRemovalCopy(null)
+        setRemovalError(null)
+        const info = await getMetricRemovalInfo(metric.id)
+        if (info.success) setRemovalCopy(metricRemovalCopy(metric.name, info.usage))
+        else setRemovalError(info.error)
+    }
+
+    const closeRemoval = () => {
+        setDeleteTarget(null)
+        setRemovalCopy(null)
+        setRemovalError(null)
+    }
+
+    const handleRestore = (metric: MetricDefinition) => {
+        startTransition(async () => {
+            const result = await restoreArchivedMetric(metric.id)
+            if (result.success) {
+                toast({ title: 'Métrica recuperada', description: 'Vuelve a estar activa y a pedirse en las revisiones.' })
+                router.refresh()
+            } else {
+                toast({ title: 'No se ha podido recuperar', description: result.error, variant: 'destructive' })
+            }
+        })
+    }
 
     const handleCreateClick = () => {
         setEditingMetric(null)
@@ -111,11 +152,14 @@ export function MetricsPageClient({ initialMetrics }: { initialMetrics: MetricDe
         startTransition(async () => {
             const result = await deleteMetricDefinition(deleteTarget.id)
             if (result.success) {
-                toast({ title: 'Métrica eliminada' })
+                toast(result.mode === 'archive'
+                    ? { title: 'Métrica archivada', description: 'Su historial se conserva. La tienes en «Archivadas».' }
+                    : { title: 'Métrica eliminada' })
+                router.refresh()
+                closeRemoval()
             } else {
                 toast({ title: 'Error', description: result.error, variant: 'destructive' })
             }
-            setDeleteTarget(null)
         })
     }
 
@@ -163,14 +207,53 @@ export function MetricsPageClient({ initialMetrics }: { initialMetrics: MetricDe
             </div>
 
             <MetricsTable
-                metrics={initialMetrics.filter((m) => m.category === activeTab)}
+                metrics={filteredMetrics}
                 isPending={isPending}
                 onEdit={handleEditClick}
                 onToggleActive={handleToggleActive}
-                onDelete={setDeleteTarget}
+                onDelete={(metric) => { void openRemoval(metric) }}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
             />
+
+            {archivedMetrics.length > 0 && (
+                <div className="mt-4">
+                    <button
+                        type="button"
+                        onClick={() => setShowArchived(v => !v)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                        aria-expanded={showArchived}
+                    >
+                        <Archive className="h-3.5 w-3.5" />
+                        Archivadas ({archivedMetrics.length})
+                        {showArchived ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </button>
+                    {showArchived && (
+                        <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-2xl border border-dashed border-border/70">
+                            {archivedMetrics.map((m) => (
+                                <li key={m.id} className="flex items-center gap-2 py-2.5 pl-3.5 pr-2">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-muted-foreground">{m.name}</p>
+                                        <p className="truncate text-xs text-muted-foreground">
+                                            {m.unit ? `${m.unit} · ` : ''}No se pide en las revisiones; su historial se conserva
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-9 shrink-0 gap-1.5 rounded-full"
+                                        disabled={isPending}
+                                        onClick={() => handleRestore(m)}
+                                    >
+                                        <Undo2 className="h-4 w-4" />
+                                        Recuperar
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
 
             {/* Modal */}
             <MetricFormModal
@@ -182,21 +265,25 @@ export function MetricsPageClient({ initialMetrics }: { initialMetrics: MetricDe
             />
 
             {/* Delete Confirmation */}
-            <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+            <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && !isPending && closeRemoval()}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Eliminar Métrica</AlertDialogTitle>
+                        <AlertDialogTitle>{removalCopy?.title ?? 'Eliminar métrica'}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            ¿Estás seguro de que quieres eliminar la métrica &quot;{deleteTarget?.name}&quot;? Esta acción no se puede deshacer.
+                            {removalError ?? removalCopy?.description ?? 'Comprobando si la métrica tiene valores…'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
-                            onClick={confirmDelete}
-                            className="bg-destructive hover:bg-destructive/90"
+                            onClick={(event) => { event.preventDefault(); confirmDelete() }}
+                            className={removalCopy?.mode === 'archive'
+                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}
+                            disabled={isPending || !removalCopy}
                         >
-                            Eliminar
+                            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {removalCopy?.confirm ?? 'Eliminar'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

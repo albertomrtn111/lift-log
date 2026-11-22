@@ -14,4 +14,6 @@ export interface MetricDefinition {
     is_active: boolean
     sort_order: number
     created_at: string
+    /** NXT-149: archivada en vez de borrada porque tiene valores en revisiones. */
+    archived_at?: string | null
 }

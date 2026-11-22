@@ -19,6 +19,7 @@ import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 import { catalogGroupToMuscleGroup } from '@/lib/training/exercise-catalog'
 import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 import { loadStrengthResults } from '@/lib/training/strength-results-data'
+import { checkinHasRecords, describeCheckinRecords, normalizeCheckinRecords } from '@/lib/safe-delete'
 import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================
@@ -998,24 +999,17 @@ export async function deleteExerciseAction(
         }
     }
 
-    // Eliminar primero las celdas asociadas para evitar huérfanos
-    await supabase
-        .from('training_cells')
-        .delete()
-        .eq('exercise_id', exerciseId)
-
-    // Eliminar también los sets si los hay
-    await supabase
-        .from('training_exercise_sets')
-        .delete()
-        .eq('exercise_id', exerciseId)
-
-    const { error } = await supabase
+    // Un solo borrado (NXT-149): las celdas, las series y los registros caen en cascada
+    // en la misma operación. Antes se borraban las series primero, sin mirar errores,
+    // y si luego fallaba el ejercicio las series ya se habían perdido.
+    const { data: deleted, error } = await supabase
         .from('training_exercises')
         .delete()
         .eq('id', exerciseId)
+        .select('id')
 
     if (error) return { success: false, error: error.message }
+    if (!deleted || deleted.length === 0) return { success: false, error: 'No se ha podido eliminar el ejercicio.' }
 
     revalidatePath('/coach/clients')
     return { success: true }
@@ -1237,17 +1231,114 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 // CHECKIN DELETE ACTION
 // ============================================================================
 
-export async function deleteCheckinAction(checkinId: string, coachId: string) {
-    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
-
-    const { error } = await supabase
+async function findCoachCheckin(supabase: SupabaseClient, checkinId: string, coachId: string) {
+    const { data, error } = await supabase
         .from('checkins')
-        .delete()
+        .select('id, client_id')
         .eq('id', checkinId)
-        .eq('coach_id', validatedCoachId) // seguridad: solo el coach dueño puede borrar
+        .eq('coach_id', coachId) // seguridad: solo revisiones de este espacio
+        .maybeSingle()
+    if (error || !data) return null
+    return data as { id: string; client_id: string }
+}
 
+/** Lo que tiene una revisión (respuestas, medidas, fotos, peso, revisión) para el aviso de NXT-149. */
+export async function getCheckinRemovalInfoAction(checkinId: string, coachId: string): Promise<
+    { success: true; records: ReturnType<typeof normalizeCheckinRecords> } | { success: false; error: string }
+> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const checkin = await findCoachCheckin(supabase, checkinId, validatedCoachId)
+    if (!checkin) return { success: false, error: 'No se ha encontrado la revisión.' }
+    const { data, error } = await supabase.rpc('nexttrain_checkin_records', { p_checkin_id: checkinId })
+    if (error || !data) return { success: false, error: 'No se ha podido comprobar qué tiene la revisión. No se ha borrado nada.' }
+    return { success: true, records: normalizeCheckinRecords(data) }
+}
+
+/**
+ * «Eliminar esta revisión» (NXT-149). Vacía (sin respuestas, fotos ni revisión) se
+ * borra como antes. Con datos va a la papelera: la base guarda la revisión entera
+ * (respuestas, fotos y revisión del coach) y la borra en la misma transacción; se
+ * recupera con restoreDeletedRecordAction.
+ */
+export async function deleteCheckinAction(checkinId: string, coachId: string): Promise<
+    { success: true; mode: 'delete' } | { success: true; mode: 'trash'; trashId: string } | { success: false; error: string }
+> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const checkin = await findCoachCheckin(supabase, checkinId, validatedCoachId)
+    if (!checkin) return { success: false, error: 'No se ha encontrado la revisión.' }
+
+    const { data: rawRecords, error: recordsError } = await supabase.rpc('nexttrain_checkin_records', { p_checkin_id: checkinId })
+    if (recordsError || !rawRecords) {
+        return { success: false, error: 'No se ha podido comprobar qué tiene la revisión. No se ha borrado nada.' }
+    }
+
+    const trash = async () => {
+        const { data: trashId, error } = await supabase.rpc('nexttrain_trash_checkin', { p_checkin_id: checkinId })
+        if (error || !trashId) return { success: false as const, error: error?.message ?? 'No se ha podido eliminar la revisión.' }
+        return { success: true as const, mode: 'trash' as const, trashId: String(trashId) }
+    }
+
+    let result: Awaited<ReturnType<typeof deleteCheckinAction>>
+    if (checkinHasRecords(normalizeCheckinRecords(rawRecords))) {
+        result = await trash()
+    } else {
+        const { data: deleted, error } = await supabase
+            .from('checkins')
+            .delete()
+            .eq('id', checkinId)
+            .eq('coach_id', validatedCoachId)
+            .select('id')
+        if (error) {
+            // Si entretanto el atleta ha respondido, la base no deja borrarla: a la papelera.
+            result = /papelera/i.test(error.message) ? await trash() : { success: false, error: error.message }
+        } else if (!deleted || deleted.length === 0) {
+            result = { success: false, error: 'No se ha podido eliminar la revisión.' }
+        } else {
+            result = { success: true, mode: 'delete' }
+        }
+    }
+
+    if (result.success) {
+        revalidatePath('/coach/clients')
+        revalidatePath('/coach/members')
+    }
+    return result
+}
+
+/** Revisiones de un atleta que están en la papelera (NXT-149). */
+export async function listDeletedCheckinsAction(clientId: string, coachId: string): Promise<{
+    success: boolean
+    items: { id: string; deletedAt: string; submittedAt: string | null; periodEnd: string | null; summary: string }[]
+    error?: string
+}> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const { data, error } = await supabase
+        .from('deleted_records')
+        .select('id, deleted_at, summary, submitted_at:payload->checkin->>submitted_at, period_end:payload->checkin->>period_end')
+        .eq('coach_id', validatedCoachId)
+        .eq('client_id', clientId)
+        .eq('record_type', 'checkin')
+        .is('restored_at', null)
+        .order('deleted_at', { ascending: false })
+        .limit(20)
+    if (error) return { success: false, items: [], error: error.message }
+    return {
+        success: true,
+        items: (data ?? []).map((row: any) => ({
+            id: row.id,
+            deletedAt: row.deleted_at,
+            submittedAt: row.submitted_at ?? null,
+            periodEnd: row.period_end ?? null,
+            summary: describeCheckinRecords(normalizeCheckinRecords(row.summary)),
+        })),
+    }
+}
+
+/** Recupera de la papelera una revisión o una sesión de cardio (NXT-149). */
+export async function restoreDeletedRecordAction(trashId: string, coachId: string): Promise<{ success: boolean; error?: string }> {
+    const { supabase } = await requireActiveCoachId(coachId)
+    const { error } = await supabase.rpc('nexttrain_restore_deleted_record', { p_trash_id: trashId })
     if (error) return { success: false, error: error.message }
-
     revalidatePath('/coach/clients')
     revalidatePath('/coach/members')
     return { success: true }

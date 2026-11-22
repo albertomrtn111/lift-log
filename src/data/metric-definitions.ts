@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import type { MetricDefinition } from '@/types/metrics'
+import { decideMetricRemoval, normalizeMetricUsage } from '@/lib/safe-delete'
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -119,20 +120,75 @@ export async function toggleMetricActive(id: string): Promise<{ success: boolean
     return { success: true }
 }
 
-export async function deleteMetricDefinition(id: string): Promise<{ success: boolean; error?: string }> {
+/** Valores de la métrica en las revisiones de todos los atletas, para el aviso de NXT-149. */
+export async function getMetricRemovalInfo(id: string): Promise<
+    { success: true; usage: ReturnType<typeof normalizeMetricUsage> } | { success: false; error: string }
+> {
+    const { supabase } = await requireActiveCoachId()
+    const { data, error } = await supabase.rpc('nexttrain_metric_usage', { p_metric_id: id })
+    if (error || !data) return { success: false, error: 'No se ha podido comprobar si la métrica tiene valores. No se ha borrado nada.' }
+    return { success: true, usage: normalizeMetricUsage(data) }
+}
+
+/**
+ * «Eliminar» una métrica (NXT-149). Si tiene valores en alguna revisión, se archiva:
+ * deja de pedirse (is_active = false) y su historial conserva el nombre y la unidad.
+ * Sin valores, se borra como antes.
+ */
+export async function deleteMetricDefinition(id: string): Promise<
+    { success: true; mode: 'archive' | 'delete' } | { success: false; error: string }
+> {
     const { supabase, coachId } = await requireActiveCoachId()
 
-    const { error } = await supabase
+    const archive = async () => {
+        const { data, error } = await supabase
+            .from('metric_definitions')
+            .update({ archived_at: new Date().toISOString(), is_active: false })
+            .eq('id', id)
+            .eq('coach_id', coachId)
+            .select('id')
+        if (error || !data || data.length === 0) {
+            return { success: false as const, error: error?.message ?? 'No se ha podido archivar la métrica.' }
+        }
+        revalidatePath('/coach/metrics')
+        return { success: true as const, mode: 'archive' as const }
+    }
+
+    const info = await getMetricRemovalInfo(id)
+    if (!info.success) return info
+    if (decideMetricRemoval(info.usage) === 'archive') return archive()
+
+    const { data, error } = await supabase
         .from('metric_definitions')
         .delete()
         .eq('id', id)
         .eq('coach_id', coachId)
+        .select('id')
 
     if (error) {
+        // Si entretanto alguien ha guardado un valor, la base no deja borrarla: se archiva.
+        if (/valores/i.test(error.message)) return archive()
         console.error('[deleteMetricDefinition] Error:', error)
         return { success: false, error: error.message }
     }
+    if (!data || data.length === 0) return { success: false, error: 'No se ha podido eliminar la métrica.' }
 
+    revalidatePath('/coach/metrics')
+    return { success: true, mode: 'delete' }
+}
+
+/** Saca una métrica de «Archivadas» y vuelve a pedirse en las revisiones (NXT-149). */
+export async function restoreArchivedMetric(id: string): Promise<{ success: boolean; error?: string }> {
+    const { supabase, coachId } = await requireActiveCoachId()
+    const { data, error } = await supabase
+        .from('metric_definitions')
+        .update({ archived_at: null, is_active: true })
+        .eq('id', id)
+        .eq('coach_id', coachId)
+        .select('id')
+    if (error || !data || data.length === 0) {
+        return { success: false, error: error?.message ?? 'No se ha podido recuperar la métrica.' }
+    }
     revalidatePath('/coach/metrics')
     return { success: true }
 }
