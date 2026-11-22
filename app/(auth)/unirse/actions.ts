@@ -33,6 +33,8 @@ export async function acceptInvitationAction(invitationId: string): Promise<Join
     // El límite de miembros del plan lo aplica la base: la invitación sigue pendiente
     if (error) return { success: false, error: memberLimitErrorMessage(error, 'join') ?? 'No se pudo completar la invitación' }
 
+    await restoreAssignments(admin, invitation.coach_id as string, user.id)
+
     // Al unirse entra directamente en el espacio nuevo.
     await admin.from('profiles').update({ last_coach_id: invitation.coach_id }).eq('id', user.id)
 
@@ -50,4 +52,27 @@ export async function acceptInvitationAction(invitationId: string): Promise<Join
     })
 
     return { success: true, redirectTo: invitation.needs_password ? '/set-password' : '/coach/dashboard' }
+}
+
+/** Si ya estuvo en el equipo y le quitaron, vuelve a llevar los atletas que tenía asignados. */
+async function restoreAssignments(admin: ReturnType<typeof createAdminClient>, coachId: string, userId: string) {
+    const { data: removal } = await admin
+        .from('coach_member_events')
+        .select('details')
+        .eq('coach_id', coachId)
+        .eq('target_user_id', userId)
+        .eq('action', 'removed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    const saved = (removal?.details as { client_ids?: unknown } | null)?.client_ids
+    const clientIds = Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : []
+    if (clientIds.length === 0) return
+
+    // Solo los que siguen siendo de este espacio
+    const { data: clients } = await admin.from('clients').select('id').eq('coach_id', coachId).in('id', clientIds)
+    const rows = (clients ?? []).map(client => ({ client_id: client.id as string, user_id: userId, created_by: userId }))
+    if (rows.length === 0) return
+    const { error } = await admin.from('client_professionals').upsert(rows, { onConflict: 'client_id,user_id', ignoreDuplicates: true })
+    if (error) console.error('[unirse] No se pudieron devolver los atletas asignados', error.message)
 }
