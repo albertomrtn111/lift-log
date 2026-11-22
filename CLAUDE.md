@@ -14,6 +14,13 @@ Lee `docs/despliegue.md` antes de desplegar nada. Resumen:
 
 No hay staging: el `.env.local` apunta a la base de datos de producción. Lee `docs/entorno-de-pruebas.md`.
 
+## Logs de Supabase
+
+Supabase cuenta en la cuota los logs que se guardan y los que se leen (plan gratis).
+
+- **Leer logs:** solo para investigar un fallo concreto, con ventana corta y filtrando por `source`. Nunca en bucle ni «por si acaso».
+- **Tareas automáticas:** cada consulta deja un log. Nada se ejecuta cada minuto: los recordatorios de suplementos van a en punto y a y media, y la agenda cada 30 minutos.
+
 ## Fotos y archivos
 
 Las fotos están en Cloudflare R2, no en Supabase Storage. No vuelvas a subir archivos a Supabase Storage. Detalles en `docs/almacenamiento-r2.md`.
