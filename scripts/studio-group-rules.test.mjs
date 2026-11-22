@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+    attendanceNotice,
     changedPeople,
     groupCellLine,
     itemForPerson,
+    keptSetsByPerson,
+    keptSetsLabel,
     peopleLines,
     personFields,
     personForm,
@@ -77,4 +80,26 @@ test('primero mis grupos y sin los archivados', () => {
         { name: 'C', is_active: false, professional_ids: ['yo'] },
     ]
     assert.deepEqual(sortGroups(groups, 'yo').map(group => group.name), ['B', 'A'])
+})
+
+test('las series guardadas se cuentan por persona y solo en esa clase', () => {
+    const items = [{ id: 'i', session_id: 's' }, { id: 'j', session_id: 's' }, { id: 'k', session_id: 'otra' }]
+    const kept = [
+        { item_id: 'i', client_id: 'a' }, { item_id: 'i', client_id: 'a' }, { item_id: 'j', client_id: 'a' },
+        { item_id: 'j', client_id: 'b' }, { item_id: 'k', client_id: 'a' },
+    ]
+    assert.deepEqual(keptSetsByPerson(kept, items, 's'), { a: 3, b: 1 })
+    assert.deepEqual(keptSetsByPerson(undefined, items, 's'), {})
+    assert.equal(keptSetsLabel(0), '')
+    assert.equal(keptSetsLabel(undefined), '')
+    assert.equal(keptSetsLabel(1), '1 serie guardada: vuelve al marcar «Vino»')
+    assert.equal(keptSetsLabel(3), '3 series guardadas: vuelven al marcar «Vino»')
+})
+
+test('al quitar «Vino» se avisa de que las series se guardan', () => {
+    assert.equal(attendanceNotice('Ana', 'attended', 'unmarked', true), 'Ana deja de contar en esta clase. Sus series se guardan y vuelven si marcas «Vino».')
+    assert.equal(attendanceNotice('Ana', 'attended', 'absent', true), 'Ana deja de contar en esta clase. Sus series se guardan y vuelven si marcas «Vino».')
+    assert.equal(attendanceNotice('Ana', 'attended', 'absent', false), '')
+    assert.equal(attendanceNotice('Ana', 'unmarked', 'attended', true), '')
+    assert.equal(attendanceNotice('Ana', 'absent', 'unmarked', true), '')
 })
