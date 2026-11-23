@@ -11,6 +11,7 @@ import 'server-only'
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages, fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 import { sendPushToClient, sendPushToCoach } from '@/lib/push'
 import { claimDelivery } from '@/lib/notifications/delivery-log'
 import { programWeekRange } from '@/lib/training/strength-week-skips'
@@ -122,20 +123,28 @@ export async function releaseHeldPushes(now: Date = new Date()): Promise<{ relea
 /** A las 20:00 de cada atleta con Strava: push si tiene actividades sin RPE. */
 export async function sendStravaFeedbackReminders(now: Date = new Date(), force = false): Promise<{ checked: number; sent: number }> {
     const admin = createAdminClient()
-    const { data: integrations, error } = await admin
-        .from('athlete_integrations')
-        .select('client_id')
-        .eq('provider', 'strava')
-        .eq('status', 'connected')
+    const { data: integrations, error } = await fetchAllPages((from, to) =>
+        admin
+            .from('athlete_integrations')
+            .select('client_id')
+            .eq('provider', 'strava')
+            .eq('status', 'connected')
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
     if (error) throw new Error(`Integraciones de Strava: ${error.message}`)
 
     const clientIds = [...new Set((integrations ?? []).map(row => row.client_id as string))]
     if (clientIds.length === 0) return { checked: 0, sent: 0 }
 
-    const { data: tzRows } = await admin
-        .from('client_notification_preferences')
-        .select('client_id, timezone')
-        .in('client_id', clientIds)
+    const { data: tzRows } = await fetchAllPagesIn(clientIds, (ids, from, to) =>
+        admin
+            .from('client_notification_preferences')
+            .select('client_id, timezone')
+            .in('client_id', ids)
+            .order('client_id', { ascending: true })
+            .range(from, to)
+    )
     const tzByClient = new Map((tzRows ?? []).map(row => [row.client_id as string, row.timezone as string | null]))
 
     let sent = 0
@@ -277,10 +286,14 @@ async function loadAthletePlan(clientId: string, from: string, to: string) {
 
 async function loadAthleteSchedulePrefs(filter: 'workout' | 'week'): Promise<AthleteSchedulePrefs[]> {
     const admin = createAdminClient()
-    const { data, error } = await admin
-        .from('client_notification_preferences')
-        .select('client_id, timezone, workout_reminder_enabled, workout_reminder_time, week_summary_enabled, client:clients!inner(status, is_sample)')
-        .eq(filter === 'workout' ? 'workout_reminder_enabled' : 'week_summary_enabled', true)
+    const { data, error } = await fetchAllPages((from, to) =>
+        admin
+            .from('client_notification_preferences')
+            .select('client_id, timezone, workout_reminder_enabled, workout_reminder_time, week_summary_enabled, client:clients!inner(status, is_sample)')
+            .eq(filter === 'workout' ? 'workout_reminder_enabled' : 'week_summary_enabled', true)
+            .order('client_id', { ascending: true })
+            .range(from, to)
+    )
     if (error) throw new Error(`Preferencias de atletas: ${error.message}`)
     return ((data ?? []) as any[])
         .filter(row => row.client?.status === 'active' && !row.client?.is_sample)

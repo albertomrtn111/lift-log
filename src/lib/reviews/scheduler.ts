@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages } from '@/lib/supabase/fetch-all-pages'
 import { getFormUrl } from '@/lib/app-url'
 import { decideReviewCreatedEmail, sendReviewCreatedNotification } from '@/lib/notifications/client'
 import { notifyCoach } from '@/lib/notifications/coach'
@@ -108,16 +109,21 @@ export async function dispatchDueReviews(): Promise<DispatchSummary> {
     const tz = schedulerTimezone()
     const today = todayInTimezone(tz)
 
-    const { data, error } = await admin
-        .from('client_review_schedules')
-        .select(`
-            id, client_id, coach_id, review_template_id, frequency_days,
-            next_due_date, last_sent_at,
-            review_template:review_templates ( id, name, review_type, form_template_id, is_active ),
-            client:clients ( id, email, full_name, status, auth_user_id )
-        `)
-        .eq('is_active', true)
-        .lte('next_due_date', today)
+    // Por páginas: con más de 1.000 revisiones vencidas el resto esperaría a otro día (NXT-153).
+    const { data, error } = await fetchAllPages((from, to) =>
+        admin
+            .from('client_review_schedules')
+            .select(`
+                id, client_id, coach_id, review_template_id, frequency_days,
+                next_due_date, last_sent_at,
+                review_template:review_templates ( id, name, review_type, form_template_id, is_active ),
+                client:clients ( id, email, full_name, status, auth_user_id )
+            `)
+            .eq('is_active', true)
+            .lte('next_due_date', today)
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
 
     if (error) {
         throw new Error(`Error consultando schedules: ${error.message}`)

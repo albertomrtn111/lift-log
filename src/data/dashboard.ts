@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Client, ClientWithMeta } from '@/types/coach'
 import { getCheckinResponseDate, hasAthleteResponse } from '@/lib/reviews/checkin-response'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 
 export interface DashboardKPIs {
     pendingToday: number
@@ -175,8 +176,6 @@ interface MetricRecord {
     client_id: string
     metric_date: string
     weight_kg: number | null
-    steps: number | null
-    sleep_h: number | null
 }
 
 interface ProgramRecord {
@@ -214,6 +213,15 @@ const ATTENTION_PRIORITY: Record<AttentionReasonCode, number> = {
     no_active_program: 3,
     no_recent_checkin: 2,
     stale_weight: 1,
+}
+
+/** Las lecturas por trozos de atletas llegan ordenadas por trozo: se reordenan juntas. */
+function sortBySubmittedAtDesc<T extends { submitted_at: string | null }>(
+    result: { data: T[] | null; error: any }
+): { data: T[] | null; error: any } {
+    if (!result.data) return result
+    const time = (row: T) => (row.submitted_at ? new Date(row.submitted_at).getTime() : 0)
+    return { ...result, data: [...result.data].sort((a, b) => time(b) - time(a)) }
 }
 
 function toDateKey(date: Date): string {
@@ -636,15 +644,19 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
         schedulesResult,
         avatarsByClient,
     ] = await Promise.all([
-        supabase
-            .from('checkins')
-            .select('id, client_id, review_schedule_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
-            .eq('coach_id', coachId)
-            .eq('type', 'checkin')
-            .neq('status', 'pending')
-            .not('submitted_at', 'is', null)
-            .in('client_id', clientIds)
-            .order('submitted_at', { ascending: false }),
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('checkins')
+                .select('id, client_id, review_schedule_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
+                .eq('coach_id', coachId)
+                .eq('type', 'checkin')
+                .neq('status', 'pending')
+                .not('submitted_at', 'is', null)
+                .in('client_id', ids)
+                .order('submitted_at', { ascending: false })
+                .order('id', { ascending: true })
+                .range(from, to)
+        ).then(sortBySubmittedAtDesc),
         supabase
             .from('checkins')
             .select('id, client_id, review_schedule_id, submitted_at, status, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, created_at')
@@ -653,11 +665,17 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
             .in('client_id', clientIds)
             .order('created_at', { ascending: false })
             .limit(20),
-        supabase
-            .from('client_metrics')
-            .select('client_id, metric_date, weight_kg, steps, sleep_h')
-            .in('client_id', clientIds)
-            .order('metric_date', { ascending: false }),
+        // Solo hace falta la última fecha con peso de cada atleta («Peso sin actualizar»).
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('client_metrics')
+                .select('client_id, metric_date, weight_kg')
+                .in('client_id', ids)
+                .not('weight_kg', 'is', null)
+                .order('metric_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(from, to)
+        ),
         supabase
             .from('training_programs')
             .select('id, client_id, name, effective_from, created_at')
@@ -706,10 +724,14 @@ export async function getCoachDashboardData(coachId: string, userId: string): Pr
     const checkinIds = Array.from(new Set([...candidateCheckins, ...sentReviews].map((checkin) => checkin.id)))
 
     const reviewsResult = checkinIds.length > 0
-        ? await supabase
-            .from('reviews')
-            .select('id, checkin_id, status, ai_status, ai_summary, created_at')
-            .in('checkin_id', checkinIds)
+        ? await fetchAllPagesIn(checkinIds, (ids, from, to) =>
+            supabase
+                .from('reviews')
+                .select('id, checkin_id, status, ai_status, ai_summary, created_at')
+                .in('checkin_id', ids)
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
         : { data: [], error: null }
 
     if (checkinsResult.error) console.error('Error fetching dashboard checkins:', checkinsResult.error)

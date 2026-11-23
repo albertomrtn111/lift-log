@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages } from '@/lib/supabase/fetch-all-pages'
 import { sendSupplementReminderNotification } from '@/lib/notifications/client'
 import { dateTimeInTimezone, getReminderTargets } from '@/lib/supplements/reminder-time'
 import { isValidTimezone } from '@/lib/notifications/quiet-hours'
@@ -101,11 +102,16 @@ async function handleReminderRun(request: NextRequest) {
 
         // Una sola consulta: suplementos activos de atletas activos, con la zona horaria de cada uno.
         // Los atletas dados de baja no reciben recordatorios aunque sus suplementos sigan activos.
-        const { data: supplements, error } = await supabase
-            .from('client_supplements')
-            .select('id, client_id, coach_id, supplement_name, dose_amount, dose_unit, dose_schedule, start_date, end_date, clients!inner(status, client_notification_preferences(timezone))')
-            .eq('is_active', true)
-            .eq('clients.status', 'active')
+        // Por páginas: Supabase corta en 1.000 filas y los que quedaran fuera no recibirían nada (NXT-153).
+        const { data: supplements, error } = await fetchAllPages((from, to) =>
+            supabase
+                .from('client_supplements')
+                .select('id, client_id, coach_id, supplement_name, dose_amount, dose_unit, dose_schedule, start_date, end_date, clients!inner(status, client_notification_preferences(timezone))')
+                .eq('is_active', true)
+                .eq('clients.status', 'active')
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
 
         if (error) throw error
 

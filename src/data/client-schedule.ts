@@ -10,6 +10,7 @@ import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
 import { athleteNoteCells, isClientEditable, logFieldForColumnKey, mapRoutineColumns, nextExerciseLog } from '@/lib/training/exercise-notes'
 import { todayKeyIn } from '@/lib/time-zone'
 import { getCoachTimeZone } from '@/data/workspace-time-zone'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 
 // ------------------------------------------------------------------
 // Types
@@ -544,21 +545,31 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
     // Fetch exercise sets (new per-set tracking)
     let exerciseSets: any[] = []
     if (exerciseIds.length > 0) {
-        const { data: setsData } = await supabase
-            .from('training_exercise_sets')
-            .select('*')
-            .in('exercise_id', exerciseIds)
-            .order('set_index', { ascending: true })
-        exerciseSets = setsData || []
+        // Por páginas: en programas largos pasan de 1.000 series (NXT-153).
+        const { data: setsData, error: setsError } = await fetchAllPagesIn(exerciseIds, (ids, from, to) =>
+            supabase
+                .from('training_exercise_sets')
+                .select('*')
+                .in('exercise_id', ids)
+                .order('set_index', { ascending: true })
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
+        if (setsError) console.error('[getActiveClientProgram] Sets Error:', setsError)
+        exerciseSets = (setsData || []).sort((a: any, b: any) => (a.set_index ?? 0) - (b.set_index ?? 0))
     }
 
     if (exerciseIds.length > 0) {
         // clientId ya es el del atleta conectado (page.tsx); la RLS solo deja leer los suyos.
-        const { data: logsData, error: logsError } = await supabase
-            .from('training_exercise_logs')
-            .select('id, exercise_id, week_index, sets, notes')
-            .eq('client_id', clientId)
-            .in('exercise_id', exerciseIds)
+        const { data: logsData, error: logsError } = await fetchAllPagesIn(exerciseIds, (ids, from, to) =>
+            supabase
+                .from('training_exercise_logs')
+                .select('id, exercise_id, week_index, sets, notes')
+                .eq('client_id', clientId)
+                .in('exercise_id', ids)
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
         if (logsError) console.error('[getActiveClientProgram] Logs Error:', logsError)
         logs = logsData || []
     }
