@@ -55,6 +55,9 @@ test('los enlaces de acceso solo se generan donde se envían por el correo de Ne
         ['src/lib/onboarding/athlete-invite.ts', /sendAthleteInviteEmail/],
         // invitación de equipo (sendTeamInviteEmail)
         ['src/lib/team/send-invitation.ts', /sendTeamInviteEmail/],
+        // Página de la invitación (NXT-145): solo con el enlace firmado que
+        // llegó en uno de esos dos emails
+        ['app/auth/invitacion/[token]/actions.ts', /readInviteToken\(token, secret\)/],
     ])
     const offenders = []
     for (const file of [...sourceFiles(join(root, 'src')), ...sourceFiles(join(root, 'app'))]) {

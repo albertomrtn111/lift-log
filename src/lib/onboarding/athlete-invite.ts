@@ -5,6 +5,7 @@ import { getAppUrl } from '@/lib/app-url'
 import { sendAthleteInviteEmail } from '@/lib/email/mailer'
 import { accessLinkPlan, canLinkInvitedClient, isAlreadyRegisteredMessage } from './account-access-rules.js'
 import { findAuthAccountByEmail, replaceWithThrowawayPassword } from './auth-account'
+import { buildInvitePageUrl } from './invite-link'
 
 /** Pantalla a la que llega el atleta tras abrir el enlace: bienvenida y contraseña */
 export const ATHLETE_LANDING_PATH = '/bienvenida'
@@ -17,6 +18,9 @@ export interface AccessLink {
     userId: string | null
     /** La cuenta ya tenía el email confirmado (enlace mágico) */
     accountConfirmed: boolean
+    /** Para validar el enlace con verifyOtp en la página de la invitación */
+    tokenHash: string | null
+    verifyType: 'invite' | 'email'
 }
 
 /**
@@ -49,6 +53,8 @@ export async function buildAccessLink(
                 accountCreated: true,
                 userId: invite.data.user?.id ?? existing?.id ?? null,
                 accountConfirmed: false,
+                tokenHash: invite.data.properties.hashed_token ?? null,
+                verifyType: 'invite',
             }
         }
         // Solo sigue si la cuenta está confirmada (se confirmó entre medias)
@@ -64,6 +70,8 @@ export async function buildAccessLink(
         accountCreated: false,
         userId: magic.data.user?.id ?? existing?.id ?? null,
         accountConfirmed: true,
+        tokenHash: magic.data.properties.hashed_token ?? null,
+        verifyType: 'email',
     }
 }
 
@@ -78,7 +86,7 @@ export async function buildAthleteAccessLink(email: string, fullName?: string | 
  * contraseña (canLinkInvitedClient). Si no se enlaza aquí, lo hace la base al
  * confirmar el email o linkPendingClientForUser al entrar.
  */
-async function linkInvitedClient(
+export async function linkInvitedClient(
     client: { id: string; auth_user_id: string | null; user_id: string | null; status: string | null; is_sample: boolean | null; signed_up_at: string | null },
     access: AccessLink,
 ) {
@@ -157,9 +165,13 @@ export async function sendAthleteInvite(params: {
         if (params.tempPassword) {
             accessUrl = `${getAppUrl()}/login`
         } else {
+            // Crea la cuenta y enlaza la ficha ya, para que el coach pueda
+            // preparar el plan. El email no lleva este enlace de Supabase (de un
+            // solo uso, caduca en una hora): lleva la página propia, válida 7
+            // días, que genera uno nuevo al pulsar el botón (NXT-145).
             const access = await buildAthleteAccessLink(client.email, client.full_name)
-            accessUrl = access.url
             await linkInvitedClient(client, access)
+            accessUrl = buildInvitePageUrl('athlete', client.id)
         }
     } catch (linkError) {
         const message = linkError instanceof Error ? linkError.message : String(linkError)
