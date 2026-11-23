@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAthleteAvatarUrls } from '@/lib/athlete-avatars-data'
+import { fetchAllPages, fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 import { attachPaymentNotes } from '@/lib/billing/payment-notes'
 import { loadPaymentNotes } from '@/data/payment-notes'
 import type { Client } from '@/types/coach'
@@ -210,12 +211,16 @@ export interface ClientSelectorOption {
 export async function getClientsForSelector(coachId: string): Promise<ClientSelectorOption[]> {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('clients')
-        .select('id, full_name, email, status, auth_user_id, user_id, next_checkin_date, is_sample')
-        .eq('coach_id', coachId)
-        .order('status', { ascending: true })
-        .order('full_name', { ascending: true })
+    const { data, error } = await fetchAllPages((from, to) =>
+        supabase
+            .from('clients')
+            .select('id, full_name, email, status, auth_user_id, user_id, next_checkin_date, is_sample')
+            .eq('coach_id', coachId)
+            .order('status', { ascending: true })
+            .order('full_name', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
 
     if (error || !data) return []
 
@@ -224,23 +229,32 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
 
     // Get latest checkin per client to check pending review
     const [{ data: checkins }, avatarsByClient, { data: schedules }] = await Promise.all([
-        supabase
-            .from('checkins')
-            .select('id, client_id')
-            .in('client_id', clientIds)
-            .eq('type', 'checkin')
-            .not('submitted_at', 'is', null)
-            .order('submitted_at', { ascending: false }),
+        // Cada atleta cae entero en un trozo, así que el primero de cada uno es su último.
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('checkins')
+                .select('id, client_id')
+                .in('client_id', ids)
+                .eq('type', 'checkin')
+                .not('submitted_at', 'is', null)
+                .order('submitted_at', { ascending: false })
+                .order('id', { ascending: true })
+                .range(from, to)
+        ),
         getAthleteAvatarUrls(data),
         // Próxima revisión efectiva: la del calendario de revisiones (modelo nuevo);
         // el campo antiguo next_checkin_date solo cuenta si el atleta no tiene ninguno.
-        supabase
-            .from('client_review_schedules')
-            .select('client_id, next_due_date')
-            .in('client_id', clientIds)
-            .eq('is_active', true)
-            .not('next_due_date', 'is', null)
-            .order('next_due_date', { ascending: true }),
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('client_review_schedules')
+                .select('client_id, next_due_date')
+                .in('client_id', ids)
+                .eq('is_active', true)
+                .not('next_due_date', 'is', null)
+                .order('next_due_date', { ascending: true })
+                .order('id', { ascending: true })
+                .range(from, to)
+        ),
     ])
 
     const earliestDueByClient = new Map<string, string>()
@@ -258,10 +272,14 @@ export async function getClientsForSelector(coachId: string): Promise<ClientSele
     const latestCheckinIds = Array.from(latestCheckinByClient.values())
     let reviewMap = new Map<string, string>()
     if (latestCheckinIds.length > 0) {
-        const { data: reviews } = await supabase
-            .from('reviews')
-            .select('checkin_id, status')
-            .in('checkin_id', latestCheckinIds)
+        const { data: reviews } = await fetchAllPagesIn(latestCheckinIds, (ids, from, to) =>
+            supabase
+                .from('reviews')
+                .select('checkin_id, status')
+                .in('checkin_id', ids)
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
 
         for (const r of (reviews || [])) {
             reviewMap.set(r.checkin_id, r.status)

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { ExerciseSet } from '@/types/training'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 
 // ─── Reads ──────────────────────────────────────────────────────────
 
@@ -29,15 +30,22 @@ export async function getAllSetsForProgram(
 
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('training_exercise_sets')
-        .select('*')
-        .in('exercise_id', exerciseIds)
-        .order('set_index', { ascending: true })
+    // Por páginas: en programas largos pasan de 1.000 series (NXT-153).
+    const { data, error } = await fetchAllPagesIn(exerciseIds, (ids, from, to) =>
+        supabase
+            .from('training_exercise_sets')
+            .select('*')
+            .in('exercise_id', ids)
+            .order('set_index', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
 
     // Lanza en vez de devolver []: quien recarga no debe vaciar la pantalla por un fallo
     if (error) throw new Error(error.message)
-    return (data || []).map(mapRow)
+    return (data || [])
+        .sort((a: any, b: any) => (a.set_index ?? 0) - (b.set_index ?? 0))
+        .map(mapRow)
 }
 
 // ─── Base Block: Generate / Apply ───────────────────────────────────

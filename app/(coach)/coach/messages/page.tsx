@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getClientsForSelector } from '@/data/workspace'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 import type { Message } from '@/types/messages'
 import { MessagesPageClient } from '@/components/coach/messages/MessagesPageClient'
 import type { CoachConversation } from '@/components/coach/messages/MessagesPageClient'
@@ -49,33 +50,47 @@ async function getCoachConversations(
 
     if (clientIds.length === 0) return []
 
-    const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('coach_id', coachId)
-        .in('client_id', clientIds)
-        .order('created_at', { ascending: false })
-        .limit(1000)
+    // Antes se descargaban los últimos 1.000 mensajes de todos los atletas y se buscaba ahí
+    // el último de cada uno (NXT-153). Ahora la base devuelve un mensaje por atleta y los
+    // no leídos se cuentan aparte, sin tope.
+    const [latestResult, unreadResult] = await Promise.all([
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('clients')
+                .select('id, messages(*)')
+                .in('id', ids)
+                .eq('messages.coach_id', coachId)
+                .order('created_at', { referencedTable: 'messages', ascending: false })
+                .limit(1, { referencedTable: 'messages' })
+                .order('id', { ascending: true })
+                .range(from, to)
+        ),
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            supabase
+                .from('messages')
+                .select('id, client_id')
+                .eq('coach_id', coachId)
+                .in('client_id', ids)
+                .eq('sender_role', 'client')
+                .eq('message_type', 'chat')
+                .is('read_at', null)
+                .order('id', { ascending: true })
+                .range(from, to)
+        ),
+    ])
 
-    const messages = (data ?? []) as Message[]
+    if (latestResult.error) console.error('Error fetching latest messages:', latestResult.error)
+    if (unreadResult.error) console.error('Error fetching unread messages:', unreadResult.error)
+
     const latestByClient = new Map<string, Message>()
+    for (const row of (latestResult.data ?? []) as { id: string; messages: Message[] | null }[]) {
+        const latest = row.messages?.[0]
+        if (latest) latestByClient.set(row.id, latest)
+    }
+
     const unreadByClient = new Map<string, number>()
-
-    for (const message of messages) {
-        if (!latestByClient.has(message.client_id)) {
-            latestByClient.set(message.client_id, message)
-        }
-
-        if (
-            message.sender_role === 'client' &&
-            message.message_type === 'chat' &&
-            !message.read_at
-        ) {
-            unreadByClient.set(
-                message.client_id,
-                (unreadByClient.get(message.client_id) ?? 0) + 1
-            )
-        }
+    for (const row of (unreadResult.data ?? []) as { client_id: string }[]) {
+        unreadByClient.set(row.client_id, (unreadByClient.get(row.client_id) ?? 0) + 1)
     }
 
     const conversations = clients.map(client => ({

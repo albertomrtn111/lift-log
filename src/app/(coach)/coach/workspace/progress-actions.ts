@@ -6,6 +6,7 @@ import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { analyzeCardioSessionExecution } from '@/lib/cardio/analysis'
 import { buildHrHistogramFromStreamSet } from '@/lib/strava/hr-histogram'
 import { buildDietProgressData } from '@/lib/nutrition/progress'
+import { fetchAllPages } from '@/lib/supabase/fetch-all-pages'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -335,31 +336,36 @@ export async function getDietProgressData(
             { data: macroPlans, error: macroPlansError },
             { data: dayTargets, error: dayTargetsError },
         ] = await Promise.all([
-            supabase
-                .from('nutrition_log_entries')
-                .select(`
-                    id,
-                    log_date,
-                    meal_type,
-                    meal_label,
-                    meal_order,
-                    item_name,
-                    quantity_g,
-                    servings,
-                    kcal,
-                    protein_g,
-                    carbs_g,
-                    fat_g,
-                    day_type,
-                    notes,
-                    created_at
-                `)
-                .eq('client_id', clientId)
-                .gte('log_date', dateFrom)
-                .lte('log_date', dateTo)
-                .order('log_date', { ascending: true })
-                .order('meal_order', { ascending: true })
-                .order('created_at', { ascending: true }),
+            // Por páginas: un atleta constante pasa de 1.000 registros en 3 meses (NXT-153).
+            fetchAllPages((from, to) =>
+                supabase
+                    .from('nutrition_log_entries')
+                    .select(`
+                        id,
+                        log_date,
+                        meal_type,
+                        meal_label,
+                        meal_order,
+                        item_name,
+                        quantity_g,
+                        servings,
+                        kcal,
+                        protein_g,
+                        carbs_g,
+                        fat_g,
+                        day_type,
+                        notes,
+                        created_at
+                    `)
+                    .eq('client_id', clientId)
+                    .gte('log_date', dateFrom)
+                    .lte('log_date', dateTo)
+                    .order('log_date', { ascending: true })
+                    .order('meal_order', { ascending: true })
+                    .order('created_at', { ascending: true })
+                    .order('id', { ascending: true })
+                    .range(from, to)
+            ),
             supabase
                 .from('nutrition_day_settings')
                 .select('log_date, day_type')

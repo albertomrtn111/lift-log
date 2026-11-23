@@ -8,6 +8,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages, fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 import { getFormUrl } from '@/lib/app-url'
 import { schedulerTimezone, todayInTimezone } from '@/lib/reviews/scheduler'
 import { canEmailReviews, reviewCreatedKey, sendReviewReminderNotification } from '@/lib/notifications/client'
@@ -62,12 +63,16 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
     const oldest = new Date(now.getTime() - MAX_REMINDER_AGE_DAYS * 86_400_000).toISOString()
     const summary: ReminderSummary = { candidates: 0, sent: 0, skipped: 0, errors: 0 }
 
-    const { data: pendingData, error: pendingError } = await admin
-        .from('checkins')
-        .select('id, client_id, coach_id, created_at, review_schedule_id, review_template_id')
-        .eq('type', 'checkin')
-        .eq('status', 'pending')
-        .gte('created_at', oldest)
+    const { data: pendingData, error: pendingError } = await fetchAllPages((from, to) =>
+        admin
+            .from('checkins')
+            .select('id, client_id, coach_id, created_at, review_schedule_id, review_template_id')
+            .eq('type', 'checkin')
+            .eq('status', 'pending')
+            .gte('created_at', oldest)
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
     if (pendingError) throw new Error(`Revisiones pendientes: ${pendingError.message}`)
 
     const pending = (pendingData ?? []) as PendingCheckinRow[]
@@ -79,13 +84,15 @@ export async function sendPendingReviewReminders(now: Date = new Date()): Promis
     const keys = pending.flatMap(row => [reviewReminderKey(row.id, 1), reviewReminderKey(row.id, 2), reviewCreatedKey(row.id)])
 
     const [clientsRes, schedulesRes, templatesRes, sentRes] = await Promise.all([
-        admin.from('clients').select('id, status, email, full_name, is_sample').in('id', clientIds),
-        scheduleIds.length
-            ? admin.from('client_review_schedules').select('id, next_due_date, is_active').in('id', scheduleIds)
-            : Promise.resolve({ data: [], error: null }),
-        templateIds.length
-            ? admin.from('review_templates').select('id, name').in('id', templateIds)
-            : Promise.resolve({ data: [], error: null }),
+        fetchAllPagesIn(clientIds, (ids, from, to) =>
+            admin.from('clients').select('id, status, email, full_name, is_sample').in('id', ids).order('id').range(from, to)
+        ),
+        fetchAllPagesIn(scheduleIds, (ids, from, to) =>
+            admin.from('client_review_schedules').select('id, next_due_date, is_active').in('id', ids).order('id').range(from, to)
+        ),
+        fetchAllPagesIn(templateIds, (ids, from, to) =>
+            admin.from('review_templates').select('id, name').in('id', ids).order('id').range(from, to)
+        ),
         selectDeliveriesByKey(admin, keys),
     ])
     if (clientsRes.error) throw new Error(`Clientes: ${clientsRes.error.message}`)

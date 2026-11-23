@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllPages } from '@/lib/supabase/fetch-all-pages'
 import { schedulerTimezone } from '@/lib/reviews/scheduler'
 import { getCoachNotificationPreferences, notifyCoach } from '@/lib/notifications/coach'
 import { sendCoachDailyDigest, sendCoachWeeklyDigest } from '@/lib/notifications/coach-digest'
@@ -129,9 +130,13 @@ async function handle(request: NextRequest) {
     const force = new URL(request.url).searchParams.get('force') === '1'
     const admin = createAdminClient()
 
-    const { data: coaches, error: coachesError } = await admin
-        .from('coaches')
-        .select('id, timezone')
+    const { data: coaches, error: coachesError } = await fetchAllPages((from, to) =>
+        admin
+            .from('coaches')
+            .select('id, timezone')
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
 
     if (coachesError) {
         return NextResponse.json({ ok: false, error: coachesError.message }, { status: 500 })

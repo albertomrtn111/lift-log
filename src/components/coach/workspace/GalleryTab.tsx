@@ -8,6 +8,7 @@ import { CheckinWithReview } from '@/data/workspace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { fetchAllPages } from '@/lib/supabase/fetch-all-pages'
 import {
     Camera,
     Loader2,
@@ -181,12 +182,16 @@ export function GalleryTab({
     }, [checkins, supabase])
 
     const fetchWeights = useCallback(async () => {
-        const { data, error: fetchErr } = await supabase
-            .from('client_metrics')
-            .select('metric_date, weight_kg')
-            .eq('client_id', clientId)
-            .not('weight_kg', 'is', null)
-            .order('metric_date', { ascending: true })
+        const { data, error: fetchErr } = await fetchAllPages((from, to) =>
+            supabase
+                .from('client_metrics')
+                .select('metric_date, weight_kg')
+                .eq('client_id', clientId)
+                .not('weight_kg', 'is', null)
+                .order('metric_date', { ascending: true })
+                .order('id', { ascending: true })
+                .range(from, to)
+        )
 
         if (fetchErr) {
             // No bloquea la galería: solo se pierde la métrica de peso
