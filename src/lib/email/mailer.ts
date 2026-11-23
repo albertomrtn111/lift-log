@@ -517,7 +517,9 @@ export function buildAthleteInviteEmail(params: AthleteInviteEmailParams): { sub
           📱 <strong>Ábrelo en el móvil donde vas a usar la app.</strong>
           Así la sesión quedará iniciada donde vas a entrenar.
         </p>
-        <p style="font-size:13px;color:#6b7280;">Si el enlace ha caducado, pide a ${coach} que te reenvíe la invitación.</p>`
+        <p style="font-size:13px;color:#6b7280;">${params.tempPassword
+            ? `Si no puedes entrar, pide a ${coach} que te reenvíe la invitación.`
+            : `El enlace vale 7 días. Si ha caducado, pide a ${coach} que te reenvíe la invitación.`}</p>`
 
     return {
         subject: `${params.coachName.trim()} te ha invitado a entrenar en NexTrain`,
