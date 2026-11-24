@@ -8,6 +8,7 @@ import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
 import { outputSchemas, withOutputSchemas } from './output-schemas.ts'
 import { registerPrompts } from './prompts.ts'
+import { registerProfileTools } from './profile.ts'
 import { registerScheduleTools } from './schedule.ts'
 import { registerSeasonTools } from './season.ts'
 import { registerStrengthSkipTools } from './strength-skips.ts'
@@ -38,6 +39,7 @@ const helpers: ToolHelpers = {
 function server() {
   const instance = withOutputSchemas(new McpServer({ name: 'nexttrain-test', version: '0.0.0' }))
   registerClientTools(instance, db, helpers)
+  registerProfileTools(instance, db, helpers)
   registerScheduleTools(instance, db, helpers)
   registerHistoryTools(instance, db, helpers)
   registerNutritionTools(instance, db, helpers)

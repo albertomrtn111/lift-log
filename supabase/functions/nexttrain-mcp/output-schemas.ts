@@ -38,9 +38,14 @@ export const outputSchemas: Record<string, z.ZodType> = {
   who_am_i: z.looseObject({ trainer_access: records }),
   list_clients: z.looseObject({ coach_id: z.string(), today: day, clients: records, ...page }),
   get_client_overview: z.looseObject({
-    client: record.nullable(), today: day, attention_flags: z.array(z.string()), latest_checkin: record.nullable(),
+    client: record.nullable(), profile: maybe(record), today: day, attention_flags: z.array(z.string()), latest_checkin: record.nullable(),
     recent_trend: record, recent_checkins: records, current_goal: record.nullable(),
     cardio_window: records, upcoming_events: records, training_programs: records, professionals: records,
+  }),
+  get_athlete_profile: z.looseObject({
+    client_id: z.string(), today: day, contact: record, personal: record, account: record, objectives: z.array(z.string()),
+    coach_notes: text, preferences: z.unknown(), thresholds: record.nullable(), ai_profile: record.nullable(),
+    onboarding_form: record.nullable(), missing: z.array(z.string()),
   }),
   get_athlete_goal: z.looseObject({ client_id: z.string(), current_goal: record.nullable() }),
   set_athlete_goal: z.looseObject({ saved: z.boolean(), current_goal: record }),
