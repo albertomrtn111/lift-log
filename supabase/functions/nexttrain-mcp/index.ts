@@ -8,6 +8,8 @@ import { registerHistoryTools } from './history.ts'
 import { registerNutritionTools } from './nutrition.ts'
 import { registerCardioTools } from './cardio.ts'
 import { registerClientTools } from './clients.ts'
+import { loadAthleteProfile, profileSummary, registerProfileTools } from './profile.ts'
+import { registerCoachProfileTools } from './coach-profile.ts'
 import { loadCatalogView, registerLibraryTools, rolePermissions } from './library.ts'
 import { registerStudioTools } from './studio.ts'
 import { registerStudioReportTools } from './studio-reports.ts'
@@ -81,12 +83,14 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.25.0',
+    version: '0.26.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
     instructions: [
       'NexTrain: herramientas del entrenador para leer y cambiar todo lo de sus atletas. Empieza con list_clients para obtener el client_id.',
+      'Cómo trabaja el entrenador (metodología, reglas maestras, criterios de revisión y tono): get_coach_profile. Léelo antes de planificar, revisar o escribir al atleta y respétalo.',
+      'Ficha del atleta (edad, sexo, altura, peso de referencia, notas, umbrales y zonas de FC, ritmo y potencia, perfil IA y cuestionario de alta): get_athlete_profile.',
       'Objetivos nutricionales (calorías, macros, proteína, hidratos, grasas, distintos en días de entreno y descanso): leer con get_current_nutrition; cambiarlos con create_macro_plan (nuevo bloque con fecha de inicio) o update_macro_plan (editar el plan vigente por plan_id).',
       'Dieta con comidas y alimentos: get_diet_plan, preview_diet_plan, create_diet_plan, update_diet_plan.',
       'Fuerza: create_strength_program, update_strength_program, update_strength_program_days. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
@@ -120,6 +124,8 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   )
 
   registerClientTools(server, supabase, helpers)
+  registerProfileTools(server, supabase, helpers)
+  registerCoachProfileTools(server, supabase, helpers)
   registerLibraryTools(server, supabase, helpers)
   registerStudioTools(server, supabase, helpers)
   registerStudioReportTools(server, supabase, helpers)
@@ -128,7 +134,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
     'get_client_overview',
     {
       title: 'Ver estado de un cliente',
-      description: 'Resume evolución, adherencia, bienestar, molestias, objetivo actual, próximos eventos y planificación de un cliente.',
+      description: 'Resume ficha básica (edad, sexo, altura, notas), evolución, adherencia, bienestar, molestias, objetivo actual, próximos eventos y planificación de un cliente.',
       inputSchema: z.object({
         client_id: z.string().uuid(),
         coach_id: optionalCoachId,
@@ -141,7 +147,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
       fallbackError: 'No se ha podido cargar el cliente.',
     }, async ({ coachId, client, today }) => {
 
-      const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult, professionalsResult] = await Promise.all([
+      const [checkinsResult, cardioResult, eventsResult, programsResult, goalResult, professionalsResult, profile] = await Promise.all([
         supabase
           .from('checkins')
           .select('id, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, status')
@@ -182,6 +188,8 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
           .maybeSingle(),
         // Dato de apoyo: si falla, el resumen del cliente sigue saliendo.
         supabase.rpc('client_professionals_list', { p_client_id: client_id }),
+        // Igual que los profesionales: si la ficha falla, el resumen sigue saliendo sin ella.
+        loadAthleteProfile(supabase, coachId, client_id, today).then(profileSummary).catch(() => null),
       ])
 
       const failed = [checkinsResult, cardioResult, eventsResult, programsResult, goalResult].find((item) => item.error)
@@ -208,6 +216,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
 
       return {
         client,
+        profile,
         today,
         attention_flags: attentionFlags,
         latest_checkin: latest,
