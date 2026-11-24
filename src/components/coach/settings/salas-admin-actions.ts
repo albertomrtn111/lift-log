@@ -18,6 +18,7 @@ type ActionResult<T = undefined> = { success: true; data?: T } | { success: fals
 
 const STUDIO_PLAN = 'studio'
 const STUDIO_CLIENT_LIMIT = 250
+const STUDIO_MODE_FEATURE = 'studio_mode'
 const NOT_ALLOWED = 'Solo el equipo de NexTrain puede dar de alta salas.'
 
 async function getPlatformAdminId(): Promise<string | null> {
@@ -33,13 +34,15 @@ export async function getSalasAction(): Promise<ActionResult<SalaSummary[]>> {
     if (!(await getPlatformAdminId())) return { success: false, error: NOT_ALLOWED }
 
     const admin = createAdminClient()
-    const { data: subscriptions, error } = await admin
-        .from('coach_subscriptions')
+    // Modo Sala no va en ningún plan: es una excepción por espacio (NXT-152).
+    const { data: overrides, error } = await admin
+        .from('coach_feature_overrides')
         .select('coach_id')
-        .eq('plan', STUDIO_PLAN)
+        .eq('feature', STUDIO_MODE_FEATURE)
+        .eq('enabled', true)
     if (error) return { success: false, error: 'No se pudo cargar la lista.' }
 
-    const ids = (subscriptions ?? []).map(row => row.coach_id as string)
+    const ids = (overrides ?? []).map(row => row.coach_id as string)
     if (ids.length === 0) return { success: true, data: [] }
 
     const [{ data: spaces }, { data: owners }, { data: invitations }] = await Promise.all([
@@ -67,7 +70,7 @@ export async function getSalasAction(): Promise<ActionResult<SalaSummary[]>> {
 }
 
 /**
- * Crea el espacio de una sala con el plan Studio de cortesía e invita a su propietario.
+ * Crea el espacio de una sala con el plan Studio de cortesía y el Modo Sala encendido, e invita a su propietario.
  * El espacio queda creado aunque falle el email: se puede reenviar desde la lista.
  */
 export async function createSalaAction(input: { name: string; ownerEmail: string }): Promise<ActionResult> {
@@ -101,6 +104,14 @@ export async function createSalaAction(input: { name: string; ownerEmail: string
             { onConflict: 'coach_id' }
         )
     if (planError) return { success: false, error: 'La sala se ha creado, pero no se pudo activar su plan.' }
+
+    const { error: studioError } = await admin
+        .from('coach_feature_overrides')
+        .upsert(
+            { coach_id: space.id, feature: STUDIO_MODE_FEATURE, enabled: true, reason: 'Sala dada de alta por NexTrain' },
+            { onConflict: 'coach_id,feature' }
+        )
+    if (studioError) return { success: false, error: 'La sala se ha creado, pero no se pudo activar el Modo Sala.' }
 
     const { data: invitation, error: invitationError } = await admin
         .from('coach_invitations')

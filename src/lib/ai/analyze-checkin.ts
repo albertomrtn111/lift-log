@@ -5,6 +5,7 @@ import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { formatAthleteProfileContext } from '@/lib/ai/athlete-profile-context'
 import { resolvePayloadLines } from '@/lib/ai/checkin-payload-lines'
 import { reviewInScope, reviewMatchesCheckin } from '@/lib/reviews/review-access-rules'
+import { AI_NOT_IN_PLAN_MESSAGE, coachHasAI } from '@/lib/ai/access'
 
 const AICheckinAnalysisSchema = z.object({
     overall_summary: z.string().min(1),
@@ -497,6 +498,15 @@ export async function generateCheckinAnalysis(
     scope: CheckinAnalysisScope
 ): Promise<GenerateCheckinAnalysisResult> {
     const supabase = createAdminClient()
+
+    // Sin IA en el plan no se llama a Gemini (NXT-152). Quien llama ya ha dejado la revisión
+    // «pendiente de IA»: se vuelve a dejar sin análisis para que no se quede esperando.
+    if (!await coachHasAI(scope.coachId)) {
+        await supabase.from('reviews').update({ ai_status: null })
+            .eq('id', reviewId).eq('checkin_id', checkinId).eq('coach_id', scope.coachId)
+            .eq('ai_status', 'pending')
+        return { success: false, error: AI_NOT_IN_PLAN_MESSAGE }
+    }
 
     const { data: review, error: reviewError } = await supabase
         .from('reviews')

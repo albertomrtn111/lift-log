@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCoachIdForUser } from '@/lib/auth/get-user-role'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 import { callGemini } from '@/lib/ai/gemini'
+import { AI_NOT_IN_PLAN_MESSAGE, coachHasAI } from '@/lib/ai/access'
 import { AthleteAIProfileOutputSchema } from '@/lib/ai/generate-athlete-profile'
 import type { AthleteAIProfileOutput } from '@/lib/ai/generate-athlete-profile'
 import type { FormField } from '@/types/forms'
@@ -123,6 +124,7 @@ export async function importOnboardingToAthleteProfile(
 
     const coachId = await getCoachIdForUser(user.id)
     if (!coachId) return { success: false, error: 'Sin acceso de coach' }
+    if (!await coachHasAI(coachId)) return { success: false, error: AI_NOT_IN_PLAN_MESSAGE }
 
     // 1. Find the latest reviewed onboarding checkin for this client
     const admin = createAdminClient()
