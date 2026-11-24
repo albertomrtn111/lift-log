@@ -47,6 +47,7 @@ export const outputSchemas: Record<string, z.ZodType> = {
     coach_notes: text, preferences: z.unknown(), thresholds: record.nullable(), ai_profile: record.nullable(),
     onboarding_form: record.nullable(), missing: z.array(z.string()),
   }),
+  get_coach_profile: z.looseObject({ coach_id: z.string(), profile: record.nullable(), note: text }),
   get_athlete_goal: z.looseObject({ client_id: z.string(), current_goal: record.nullable() }),
   set_athlete_goal: z.looseObject({ saved: z.boolean(), current_goal: record }),
   list_client_schedule: z.looseObject({

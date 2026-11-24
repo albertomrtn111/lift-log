@@ -18,6 +18,7 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `list_clients`: lista clientes y señales de seguimiento, paginado con `offset`, `has_more` y `next_offset`.
 - `get_client_overview`: resume la ficha básica (`profile`), check-ins, tendencias, alertas, eventos, programas y profesionales asignados.
 - `get_athlete_profile`: ficha completa del atleta: contacto, datos base, umbrales con zonas, perfil IA y cuestionario de alta.
+- `get_coach_profile`: cómo trabaja el entrenador del espacio: metodología, reglas maestras, criterios de revisión y tono.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
 - `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
@@ -475,7 +476,7 @@ El coach puede quitar un día de fuerza solo en una semana del programa (por eje
 
 En la app: el coach los quita y restaura desde Planificación (menú del día, «Quitar solo esta semana») y los ve tachados en el cuadrante de Progreso. El atleta no los ve esa semana en Fuerza, Plan ni en los avisos de «Hoy toca» y del resumen semanal, y la adherencia de fuerza de Analítica no los cuenta como series prescritas.
 
-## Ficha del atleta (MCP 0.26.0)
+## Ficha del atleta y perfil del coach (MCP 0.26.0)
 
 `get_athlete_profile` junta lo que el coach ve en la ficha del atleta:
 
@@ -492,4 +493,15 @@ En la app: el coach los quita y restaura desde Planificación (menú del día, �
 
 Quedan fuera a propósito las lesiones y notas relevantes de Modo Sala (`client_injuries`, `client_notes_relevant`) y los datos de pago. Todo se lee con la sesión del coach, así que se aplican los mismos permisos (RLS) que en la web.
 
-Pruebas: `supabase/functions/nexttrain-mcp/profile.test.ts`. No requiere migraciones.
+### Perfil del coach
+
+`get_coach_profile` devuelve el «Perfil IA del coach» del espacio (`coach_ai_profiles`), el mismo que usa NextIA dentro de la app:
+
+- Lo generado y aprobado: `summary`, `methodology`, `master_rules` y `communication_style`. Si una columna está vacía se usa el valor de `generated_profile_json`.
+- `answers`: las respuestas del coach agrupadas como en el cuestionario (perfil, entrenamiento, nutrición, revisiones, comunicación y notas), sin los campos vacíos.
+- `note` avisa si no hay perfil o si aún no está aprobado.
+- No se lee ni se devuelve el prompt de sistema generado.
+
+Las instrucciones del servidor piden leerlo antes de planificar, revisar o escribir al atleta. Los prompts `revision_semanal`, `preparar_bloque_siguiente` y `planificar_temporada` empiezan por `get_coach_profile` y `get_athlete_profile`. Lo pueden leer todos los miembros del espacio (RLS `is_coach_member`).
+
+Pruebas: `supabase/functions/nexttrain-mcp/profile.test.ts` y `coach-profile.test.ts`. No requiere migraciones.

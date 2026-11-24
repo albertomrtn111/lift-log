@@ -9,6 +9,7 @@ import { registerNutritionTools } from './nutrition.ts'
 import { registerCardioTools } from './cardio.ts'
 import { registerClientTools } from './clients.ts'
 import { loadAthleteProfile, profileSummary, registerProfileTools } from './profile.ts'
+import { registerCoachProfileTools } from './coach-profile.ts'
 import { loadCatalogView, registerLibraryTools, rolePermissions } from './library.ts'
 import { registerStudioTools } from './studio.ts'
 import { registerStudioReportTools } from './studio-reports.ts'
@@ -88,6 +89,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
     instructions: [
       'NexTrain: herramientas del entrenador para leer y cambiar todo lo de sus atletas. Empieza con list_clients para obtener el client_id.',
+      'Cómo trabaja el entrenador (metodología, reglas maestras, criterios de revisión y tono): get_coach_profile. Léelo antes de planificar, revisar o escribir al atleta y respétalo.',
       'Ficha del atleta (edad, sexo, altura, peso de referencia, notas, umbrales y zonas de FC, ritmo y potencia, perfil IA y cuestionario de alta): get_athlete_profile.',
       'Objetivos nutricionales (calorías, macros, proteína, hidratos, grasas, distintos en días de entreno y descanso): leer con get_current_nutrition; cambiarlos con create_macro_plan (nuevo bloque con fecha de inicio) o update_macro_plan (editar el plan vigente por plan_id).',
       'Dieta con comidas y alimentos: get_diet_plan, preview_diet_plan, create_diet_plan, update_diet_plan.',
@@ -123,6 +125,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
 
   registerClientTools(server, supabase, helpers)
   registerProfileTools(server, supabase, helpers)
+  registerCoachProfileTools(server, supabase, helpers)
   registerLibraryTools(server, supabase, helpers)
   registerStudioTools(server, supabase, helpers)
   registerStudioReportTools(server, supabase, helpers)
