@@ -24,7 +24,7 @@ const SIZE: Record<Layout, { w: number; h: number }> = {
 
 export function BrandPanel({ title, text, focus = 'coach' }: { title?: React.ReactNode; text?: string; focus?: Focus }) {
     return (
-        <aside className="hidden p-3 lg:flex lg:w-[48%] xl:w-[52%]" aria-hidden>
+        <aside className="sticky top-0 hidden h-dvh shrink-0 p-3 lg:flex lg:w-[48%] xl:w-[52%]" aria-hidden>
             <div className="nt-stage flex w-full flex-col rounded-[28px] px-10 pb-7 pt-10 xl:px-12 xl:pt-12 [@media(max-height:780px)]:pt-8">
                 <div className="shrink-0">
                     <p className="nt-eyebrow nt-eyebrow-line text-white/50">
