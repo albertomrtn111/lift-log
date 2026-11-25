@@ -632,6 +632,7 @@ function MobileProfile({ profile, aiEnabled, latestKey }: { profile: ProfileSnap
                 type="button"
                 onClick={() => setOpen(value => !value)}
                 aria-expanded={open}
+                aria-label={open ? 'Ocultar tu perfil' : `Ver tu perfil (${percent} %)`}
                 className="flex w-full items-center gap-3 rounded-2xl border bg-card px-3.5 py-2.5 text-left"
             >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
