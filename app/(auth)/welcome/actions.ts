@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { getCoachActor } from '@/lib/auth/get-coach-actor'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canManageTeam } from '@/lib/team/team-rules.js'
@@ -183,6 +182,7 @@ export async function finishSetupAction(form: Record<string, unknown>): Promise<
         aiSummary = typeof data?.generated_profile_summary === 'string' ? data.generated_profile_summary : null
     }
 
-    revalidatePath('/coach', 'layout')
+    // Sin revalidatePath: refrescaría /welcome, que ya redirige al panel, y el coach se
+    // saltaría la pantalla final. «Ir a mi panel» entra con una carga completa.
     return { success: true, aiEnabled, aiReady: ai.success, aiSummary }
 }

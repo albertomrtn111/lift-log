@@ -746,7 +746,7 @@ function DoneScreen({ firstName, profile, result, aiEnabled, doneHref }: {
     ]
 
     return (
-        <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 lg:px-10 lg:py-16">
+        <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 pb-32 pt-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-16 lg:px-10 lg:py-16">
             <div className="nt-rise min-w-0 max-w-xl">
                 <span className="nt-pop-in flex h-14 w-14 items-center justify-center rounded-2xl bg-success/10 text-success ring-1 ring-success/15">
                     <Check className="h-7 w-7" strokeWidth={3} />
@@ -777,12 +777,14 @@ function DoneScreen({ firstName, profile, result, aiEnabled, doneHref }: {
                     ))}
                 </ol>
 
-                <Button asChild size="lg" className="group mt-9 h-12 w-full rounded-xl text-base font-semibold sm:w-auto sm:px-8">
-                    <a href={doneHref}>
-                        Ir a mi panel
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                    </a>
-                </Button>
+                <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-5 pb-[max(0.75rem,var(--safe-area-bottom))] pt-3 sm:px-8 lg:static lg:mt-9 lg:border-0 lg:bg-transparent lg:p-0">
+                    <Button asChild size="lg" className="group h-12 w-full rounded-xl text-base font-semibold lg:w-auto lg:px-8">
+                        <a href={doneHref}>
+                            Ir a mi panel
+                            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </a>
+                    </Button>
+                </div>
             </div>
 
             <div className="nt-rise min-w-0" style={{ animationDelay: '120ms' }}>
