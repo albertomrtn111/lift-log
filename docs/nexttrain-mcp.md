@@ -16,13 +16,15 @@ La app explica cómo conectarla en **Ajustes › Asistente de IA** (`/coach/sett
 - `list_workspace_library`: ejercicios de la biblioteca del espacio, con nombre corto, bloque y valores por defecto.
 - `add_to_library`: añade un ejercicio del catálogo común a la biblioteca del espacio.
 - `list_clients`: lista clientes y señales de seguimiento, paginado con `offset`, `has_more` y `next_offset`.
-- `get_client_overview`: resume check-ins, tendencias, alertas, eventos, programas y profesionales asignados.
+- `get_client_overview`: resume la ficha básica (`profile`), check-ins, tendencias, alertas, eventos, programas y profesionales asignados.
+- `get_athlete_profile`: ficha completa del atleta: contacto, datos base, umbrales con zonas, perfil IA y cuestionario de alta.
+- `get_coach_profile`: cómo trabaja el entrenador del espacio: metodología, reglas maestras, criterios de revisión y tono.
 - `get_athlete_goal`: consulta el objetivo actual, su plazo y los días restantes.
 - `set_athlete_goal`: crea o actualiza el objetivo actual con categoría y periodo.
 - `list_client_schedule`: consulta fuerza, cardio y eventos en un rango de fechas. La fuerza sale en su fecha programada real, con estado de completada y marca de reprogramada.
 - `get_body_history`: pesajes diarios, media semanal calculada, medias declaradas y medidas corporales de check-ins.
 - `get_strength_results`: series confirmadas y valores editados sin confirmar, cargas, repeticiones, RIR/RPE, notas, identificadores comparables y sesiones completadas. Por defecto agrupa las series por sesión y ejercicio (`format: "flat"` mantiene una fila por serie).
-- `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión.
+- `get_checkins`: formularios enviados completos, etiquetas de preguntas y respuesta de la revisión. `type` filtra por check-in periódico (`checkin`) o cuestionario de alta (`onboarding`).
 - `get_cardio_results`: ejecución detallada, frecuencia cardiaca, RPE, desnivel, vueltas y actividades de Strava no enlazadas. Cada actividad trae `discipline` (`running`, `bicicleta`, `natacion` o `hibrido`); en bicicleta la intensidad es `speed_kmh` y `pace` es `null`.
 - `get_current_nutrition`: macros vigentes, configuración de entreno/descanso como objeto y dieta completa con comidas, opciones, alimentos, cantidades, alternativas, totales y desviaciones.
 - `get_diet_plan`: detalle completo de una dieta por ID, también archivada o borrador; devuelve `updated_at` para editar.
@@ -473,3 +475,33 @@ El coach puede quitar un día de fuerza solo en una semana del programa (por eje
 - Las dos herramientas avisan al atleta como cualquier cambio de entrenamiento (`notification_outbox`, tipo `training`).
 
 En la app: el coach los quita y restaura desde Planificación (menú del día, «Quitar solo esta semana») y los ve tachados en el cuadrante de Progreso. El atleta no los ve esa semana en Fuerza, Plan ni en los avisos de «Hoy toca» y del resumen semanal, y la adherencia de fuerza de Analítica no los cuenta como series prescritas.
+
+## Ficha del atleta y perfil del coach (MCP 0.26.0)
+
+`get_athlete_profile` junta lo que el coach ve en la ficha del atleta:
+
+- `contact`: nombre, email y teléfono (`clients`).
+- `personal`: sexo, fecha de nacimiento, edad calculada en el día del espacio, altura, peso de referencia, VO2max y `endurance_enabled` (con `false`, el atleta es solo de fuerza). Los datos base (`athlete_baseline`) mandan sobre la ficha general (`clients.birthday`, `sex`, `height_cm`).
+- `account`: estado, alta, baja, invitación, cada cuánto hace check-in y el próximo.
+- `objectives`, `coach_notes` y `preferences` de `clients`.
+- `thresholds`: umbrales de `athlete_thresholds` con las zonas efectivas de FC (carrera y bici), ritmo y potencia. Se calculan con `src/lib/training/zones.ts`, así que salen igual que en la web y respetan las zonas editadas a mano (`source: custom`).
+- `ai_profile`: el perfil IA aprobado (resumen, objetivos, salud y restricciones, entrenamiento, nutrición y reglas de trabajo) y el cuestionario que rellena el coach (`coach_questionnaire`). No se devuelve el prompt de sistema generado.
+- `onboarding_form`: el último cuestionario de alta enviado, con la etiqueta de cada pregunta, las medidas (`metric_<id>`) con su nombre y unidad, y cuántas fotos se subieron (sin las fotos).
+- `missing`: qué datos faltan, para que el asistente no los invente.
+
+`get_client_overview` añade `profile`, un resumen corto (edad, sexo, altura, peso de referencia, VO2max, si es solo fuerza, objetivos, notas, resumen IA y qué falta). Si la ficha no se puede leer, el resumen sale igual con `profile: null`.
+
+Quedan fuera a propósito las lesiones y notas relevantes de Modo Sala (`client_injuries`, `client_notes_relevant`) y los datos de pago. Todo se lee con la sesión del coach, así que se aplican los mismos permisos (RLS) que en la web.
+
+### Perfil del coach
+
+`get_coach_profile` devuelve el «Perfil IA del coach» del espacio (`coach_ai_profiles`), el mismo que usa NextIA dentro de la app:
+
+- Lo generado y aprobado: `summary`, `methodology`, `master_rules` y `communication_style`. Si una columna está vacía se usa el valor de `generated_profile_json`.
+- `answers`: las respuestas del coach agrupadas como en el cuestionario (perfil, entrenamiento, nutrición, revisiones, comunicación y notas), sin los campos vacíos.
+- `note` avisa si no hay perfil o si aún no está aprobado.
+- No se lee ni se devuelve el prompt de sistema generado.
+
+Las instrucciones del servidor piden leerlo antes de planificar, revisar o escribir al atleta. Los prompts `revision_semanal`, `preparar_bloque_siguiente` y `planificar_temporada` empiezan por `get_coach_profile` y `get_athlete_profile`. Lo pueden leer todos los miembros del espacio (RLS `is_coach_member`).
+
+Pruebas: `supabase/functions/nexttrain-mcp/profile.test.ts` y `coach-profile.test.ts`. No requiere migraciones.
