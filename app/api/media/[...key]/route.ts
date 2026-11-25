@@ -16,9 +16,9 @@ export const runtime = 'nodejs'
 /** Tipos que el navegador puede mostrar sin riesgo; el resto se descarga. */
 const INLINE_TYPES = /^(image\/(jpeg|png|webp|gif|avif)|audio\/[\w.+-]+|video\/(mp4|webm|quicktime)|application\/pdf)$/i
 
-type Params = { params: { key: string[] } }
+type Params = { params: Promise<{ key: string[] }> }
 
-async function authorize(params: Params['params']) {
+async function authorize(params: Awaited<Params['params']>) {
     const key = params.key.map(decodeURIComponent).join('/')
     const parsed = parsePrivateKey(key)
     if (!parsed) return { response: new NextResponse(null, { status: 404 }) }
@@ -36,7 +36,8 @@ async function authorize(params: Params['params']) {
     return { key, bucket, parsed }
 }
 
-export async function GET(request: Request, { params }: Params) {
+export async function GET(request: Request, props: Params) {
+    const params = await props.params;
     const auth = await authorize(params)
     if ('response' in auth) return auth.response
     const { key, bucket, parsed } = auth
@@ -79,7 +80,8 @@ export async function GET(request: Request, { params }: Params) {
     }
 }
 
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(_request: Request, props: Params) {
+    const params = await props.params;
     const auth = await authorize(params)
     if ('response' in auth) return auth.response
     // Solo las fotos de check-in se pueden borrar desde la app

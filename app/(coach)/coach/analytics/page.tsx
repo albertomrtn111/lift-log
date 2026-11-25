@@ -7,14 +7,15 @@ import { ensureBoards, loadWidgets } from '@/lib/analytics/boards'
 import { loadStart, resolveRange } from '@/lib/analytics/engine'
 
 interface PageProps {
-    searchParams: Record<string, string | string[] | undefined>
+    searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
 function param(value: string | string[] | undefined) {
     return Array.isArray(value) ? value[0] : value ?? null
 }
 
-export default async function AnalyticsPage({ searchParams }: PageProps) {
+export default async function AnalyticsPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null

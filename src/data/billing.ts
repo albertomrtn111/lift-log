@@ -126,7 +126,8 @@ export async function generateMonthlyRecords(coachId: string, year: number, mont
         return { success: false, error: insertErr.message }
     }
 
-    revalidatePath('/coach/billing')
+    // Sin revalidatePath: se llama al dibujar Facturación, que ya es dinámica, y Next 15
+    // no permite revalidar durante el render (NXT-141).
     return { success: true, generatedCount: recordsToInsert.length }
 }
 

@@ -344,7 +344,7 @@ function StepIndicator({ current }: { current: WizardStep }) {
 interface UploadStepProps {
     fileName: string
     fileError: string | null
-    fileInputRef: React.RefObject<HTMLInputElement>
+    fileInputRef: React.RefObject<HTMLInputElement | null>
     onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
     onDrop: (e: React.DragEvent<HTMLDivElement>) => void
     onDragOver: (e: React.DragEvent<HTMLDivElement>) => void
