@@ -26,13 +26,15 @@ interface AuthShellProps {
     panelText?: string
     /** «athlete»: el panel enseña solo el móvil del atleta (bienvenida del atleta) */
     panelFocus?: 'coach' | 'athlete'
+    /** Columna del formulario algo más ancha (formulario guiado del coach) */
+    roomy?: boolean
 }
 
 /**
  * Estructura común de las pantallas de acceso: formulario a la izquierda y
  * panel de marca a la derecha en escritorio; solo el formulario en móvil.
  */
-export function AuthShell({ children, topRight, wide, panelTitle, panelText, panelFocus }: AuthShellProps) {
+export function AuthShell({ children, topRight, wide, panelTitle, panelText, panelFocus, roomy }: AuthShellProps) {
     return (
         // .auth-shell: el sistema visual de la app (src/styles/nt-premium.css) también aquí
         <div className="auth-shell flex min-h-dvh bg-background">
@@ -44,7 +46,7 @@ export function AuthShell({ children, topRight, wide, panelTitle, panelText, pan
                 </header>
 
                 <main className={cn('flex flex-1 justify-center py-8 sm:py-12', wide ? 'items-start' : 'items-center')}>
-                    <div className={cn('w-full', wide ? 'max-w-6xl' : 'max-w-[400px]')}>{children}</div>
+                    <div className={cn('w-full', wide ? 'max-w-6xl' : roomy ? 'max-w-[540px]' : 'max-w-[400px]')}>{children}</div>
                 </main>
 
                 <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 py-2 text-xs text-muted-foreground">

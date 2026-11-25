@@ -38,12 +38,13 @@ export default async function CoachLayout({
             })
             studioEnabled = hasStudio === true
             const workspace = await getCoachWorkspaceInfo(coachId)
-            if (workspace?.onboarding_state.welcome_pending) {
+            const pathname = (await headers()).get('x-pathname') ?? ''
+            const role = (await getMyWorkspaces()).find(item => item.coach_id === coachId)?.role
+            // Formulario guiado del espacio nuevo: solo el propietario y los administradores (NXT-163)
+            if (workspace?.onboarding_state.welcome_pending && canManageTeam(role ?? '')) {
                 redirect('/welcome')
             }
             // Sala nueva: el propietario y los administradores pasan por el onboarding.
-            const pathname = (await headers()).get('x-pathname') ?? ''
-            const role = (await getMyWorkspaces()).find(item => item.coach_id === coachId)?.role
             if (
                 workspace?.onboarding_state.studio_pending
                 && canManageTeam(role ?? '')
