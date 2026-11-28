@@ -12,6 +12,8 @@ export interface CoachOnboardingState {
     /** Falta contestar "Tu espacio está listo" */
     welcome_pending?: boolean
     welcome_completed_at?: string
+    /** Paso del formulario guiado en el que retomar (src/lib/onboarding/coach-setup.js) */
+    setup_step?: string
     /** Sala nueva: falta el onboarding de sala */
     studio_pending?: boolean
     studio_completed_at?: string
