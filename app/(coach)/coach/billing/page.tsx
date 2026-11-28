@@ -4,11 +4,12 @@ import BillingPageClient from '@/components/coach/billing/BillingPageClient'
 
 export const dynamic = 'force-dynamic'
 
-export default async function BillingPage({
-    searchParams
-}: {
-    searchParams: { year?: string; month?: string; view?: string }
-}) {
+export default async function BillingPage(
+    props: {
+        searchParams: Promise<{ year?: string; month?: string; view?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
     const { coachId } = await requireActiveCoachId()
     const { timeZone } = await getCoachBillingSettings(coachId)
     const today = todayKeyIn(timeZone)

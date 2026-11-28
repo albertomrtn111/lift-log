@@ -5,10 +5,14 @@ import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = { title: 'Informe de sesión', robots: { index: false, follow: false } }
 
-export default async function ReportPage({ params, searchParams }: {
-    params: Promise<{ code: string }>
-    searchParams: Promise<{ formato?: string }>
-}) {
+export default async function ReportPage(
+    props: {
+        params: Promise<{ code: string }>
+        searchParams: Promise<{ formato?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
+    const params = await props.params;
     const [{ code }, { formato }] = await Promise.all([params, searchParams])
     const supabase = await createClient()
     const { data } = /^[0-9a-f]{40,}$/.test(code)

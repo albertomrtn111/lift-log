@@ -49,7 +49,7 @@ export function DayNavigator({ date, onChange, className }: { date: Date; onChan
                         locale={es}
                         weekStartsOn={1}
                         disabled={(day) => day > new Date()}
-                        initialFocus
+                        autoFocus
                     />
                 </PopoverContent>
             </Popover>

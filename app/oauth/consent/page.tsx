@@ -20,11 +20,12 @@ function ErrorCard({ title, message }: { title: string; message: string }) {
     )
 }
 
-export default async function OAuthConsentPage({
-    searchParams,
-}: {
-    searchParams: { authorization_id?: string; aviso?: string }
-}) {
+export default async function OAuthConsentPage(
+    props: {
+        searchParams: Promise<{ authorization_id?: string; aviso?: string }>
+    }
+) {
+    const searchParams = await props.searchParams;
     const authorizationId = searchParams.authorization_id?.trim()
     if (!authorizationId) {
         return <ErrorCard title="Solicitud incompleta" message="Falta el identificador de autorización. Vuelve a iniciar la conexión desde tu asistente." />
