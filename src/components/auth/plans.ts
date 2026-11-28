@@ -27,8 +27,8 @@ export const TIERS: Tier[] = [
         features: [
             'Entrenamiento y nutrición',
             'Check-ins semanales',
-            'IA básica',
             'App para tus atletas y plantillas',
+            'Conecta Claude o ChatGPT a tus atletas',
             'Soporte estándar',
         ],
     },
@@ -42,10 +42,10 @@ export const TIERS: Tier[] = [
         athletes: 75,
         features: [
             'Todo lo de Starter',
-            'IA completa en revisiones y check-ins',
-            'IA para nutrición y plantillas',
-            'Automatizaciones y métricas avanzadas',
-            'Branding mejorado e integraciones prioritarias',
+            'IA en revisiones y check-ins',
+            'IA para programas, nutrición y plantillas',
+            'Asistente de IA dentro de la app',
+            'Análisis del progreso con IA',
         ],
         highlight: true,
     },
@@ -61,8 +61,8 @@ export const TIERS: Tier[] = [
             'Todo lo de Pro',
             'Varios coaches en la misma cuenta',
             'Gestión de permisos',
+            'Tu marca: logo y colores en la app',
             'Soporte prioritario',
-            'Onboarding guiado y reporting avanzado',
         ],
     },
 ]
@@ -86,16 +86,20 @@ export function priceOf(tier: Tier, cycle: Cycle) {
     return cycle === 'monthly' ? tier.monthly : tier.yearly
 }
 
-/** Tabla comparativa: true = incluido, false = no, texto = valor concreto */
+/**
+ * Tabla comparativa: true = incluido, false = no, texto = valor concreto.
+ * Tiene que cuadrar con plan_features (IA = 'ai', marca = 'branding', equipo = 'team') y con
+ * la web comercial (nextrain-web, lib.ts). Modo Sala no va en ningún plan (NXT-152).
+ */
 export const COMPARISON: Array<{ label: string; values: Record<TierId, boolean | string> }> = [
     { label: 'Atletas activos', values: { starter: '20', pro: '75', studio: '250' } },
     { label: 'Entrenamiento y nutrición', values: { starter: true, pro: true, studio: true } },
     { label: 'Check-ins semanales', values: { starter: true, pro: true, studio: true } },
     { label: 'App para tus atletas', values: { starter: true, pro: true, studio: true } },
-    { label: 'Inteligencia artificial', values: { starter: 'Básica', pro: 'Completa', studio: 'Completa' } },
-    { label: 'Automatizaciones y métricas', values: { starter: false, pro: true, studio: true } },
-    { label: 'Branding mejorado', values: { starter: false, pro: true, studio: true } },
+    { label: 'Automatizaciones y métricas', values: { starter: true, pro: true, studio: true } },
+    { label: 'Conecta Claude o ChatGPT', values: { starter: true, pro: true, studio: true } },
+    { label: 'IA dentro de la app', values: { starter: false, pro: true, studio: true } },
+    { label: 'Tu marca: logo y colores', values: { starter: false, pro: false, studio: true } },
     { label: 'Varios coaches y permisos', values: { starter: false, pro: false, studio: true } },
-    { label: 'Onboarding guiado', values: { starter: false, pro: false, studio: true } },
     { label: 'Soporte', values: { starter: 'Estándar', pro: 'Estándar', studio: 'Prioritario' } },
 ]

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { callGemini } from '@/lib/ai/gemini'
-import { requireAICoach } from '@/lib/ai/access'
+import { AINotInPlanError, requireAICoach } from '@/lib/ai/access'
 import { getCoachAIProfileContext } from '@/lib/ai/coach-profile-context'
 
 const RequestSchema = z.object({
@@ -368,8 +368,13 @@ function parseAndValidate(rawText: string, expectedType: 'onboarding' | 'checkin
 
 export async function POST(req: NextRequest) {
     try {
-        const auth = await requireAICoach().catch(() => null)
-        if (!auth) return NextResponse.json({ error: 'Inicia sesión con una cuenta de entrenador.' }, { status: 401 })
+        let auth: Awaited<ReturnType<typeof requireAICoach>>
+        try {
+            auth = await requireAICoach()
+        } catch (error) {
+            if (error instanceof AINotInPlanError) return NextResponse.json({ error: error.message }, { status: 403 })
+            return NextResponse.json({ error: 'Inicia sesión con una cuenta de entrenador.' }, { status: 401 })
+        }
         const { supabase, coachId } = auth
         const coachContext = await getCoachAIProfileContext(coachId)
 

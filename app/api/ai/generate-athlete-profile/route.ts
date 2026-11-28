@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireAIClient } from '@/lib/ai/access'
+import { AINotInPlanError, requireAIClient } from '@/lib/ai/access'
 import {
     getAthleteAIProfile,
     markAthleteProfileOnboardingComplete,
@@ -25,7 +25,10 @@ export async function POST(request: NextRequest) {
     let coachId: string
     try {
         ;({ coachId } = await requireAIClient(clientId))
-    } catch {
+    } catch (error) {
+        if (error instanceof AINotInPlanError) {
+            return NextResponse.json({ success: false, error: error.message }, { status: 403 })
+        }
         return NextResponse.json({ success: false, error: 'Sin acceso a este atleta.' }, { status: 403 })
     }
 

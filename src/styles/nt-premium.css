@@ -422,3 +422,24 @@ html.dark:has(:is(.coach-shell, .app-mobile-shell, .auth-shell)) .nt-tabs:not(.w
         transparent 1px 7px
     );
 }
+
+/* Primer día del coach: la frase nueva de su perfil se ilumina un momento */
+@keyframes nt-highlight {
+    0% { background-color: hsl(var(--primary) / 0.16); box-shadow: 0 0 0 6px hsl(var(--primary) / 0.16); }
+    100% { background-color: transparent; box-shadow: 0 0 0 6px transparent; }
+}
+.nt-highlight { animation: nt-highlight 1.8s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+    .nt-highlight { animation: none; }
+}
+
+/* Mientras la IA lee su perfil: un brillo que recorre la ficha */
+.nt-reading { position: relative; }
+.nt-reading::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent 30%, hsl(var(--primary) / 0.10) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: nt-reading 2.4s ease-in-out infinite;
+}
+@keyframes nt-reading { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { .nt-reading::after { animation: none; } }

@@ -1,5 +1,5 @@
 -- Prueba de planes y excepciones con un espacio temporal.
--- Requiere 20261105140000_plan_features.sql.
+-- Requiere 20261105140000_plan_features.sql y 20261124100000_planes_ia_y_sala.sql.
 -- La transacción termina con ROLLBACK explícito: no deja datos de prueba.
 begin;
 do $tests$
@@ -10,16 +10,18 @@ begin
   if public.coach_has_feature(v_space, 'studio_mode') then raise exception 'starter no tiene sala'; end if;
   if public.coach_feature_limit(v_space, 'max_active_clients') <> 20 then raise exception 'límite de starter mal'; end if;
   if public.coach_has_feature(v_space, 'no_existe') then raise exception 'función desconocida'; end if;
+  if public.coach_has_feature(v_space, 'ai') then raise exception 'starter no tiene IA en la app'; end if;
 
   insert into public.coach_subscriptions (coach_id, status, plan) values (v_space, 'comped', 'studio');
-  if not public.coach_has_feature(v_space, 'studio_mode') then raise exception 'studio tiene sala'; end if;
+  if public.coach_has_feature(v_space, 'studio_mode') then raise exception 'ningún plan trae sala'; end if;
+  if not public.coach_has_feature(v_space, 'ai') then raise exception 'studio tiene IA'; end if;
   if public.coach_feature_limit(v_space, 'max_members') is not null then raise exception 'studio sin límite de miembros'; end if;
 
-  insert into public.coach_feature_overrides (coach_id, feature, enabled, reason) values (v_space, 'studio_mode', false, 'prueba');
-  if public.coach_has_feature(v_space, 'studio_mode') then raise exception 'manda la excepción'; end if;
+  insert into public.coach_feature_overrides (coach_id, feature, enabled, reason) values (v_space, 'studio_mode', true, 'prueba');
+  if not public.coach_has_feature(v_space, 'studio_mode') then raise exception 'manda la excepción'; end if;
 
   update public.coach_feature_overrides set expires_at = now() - interval '1 day' where coach_id = v_space;
-  if not public.coach_has_feature(v_space, 'studio_mode') then raise exception 'una excepción caducada no cuenta'; end if;
+  if public.coach_has_feature(v_space, 'studio_mode') then raise exception 'una excepción caducada no cuenta'; end if;
 
   insert into public.coach_feature_overrides (coach_id, feature, enabled, limit_value) values (v_space, 'max_members', true, 5);
   if public.coach_feature_limit(v_space, 'max_members') <> 5 then raise exception 'límite de la excepción mal'; end if;
