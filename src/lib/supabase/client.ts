@@ -28,12 +28,15 @@ export function createClient() {
 }
 
 /**
- * Cliente solo para pedir enlaces por email (recuperar contraseña).
+ * Cliente solo para pedir enlaces por email: recuperar la contraseña, registro
+ * del coach y reenvío de la confirmación.
  *
  * El cliente normal usa PKCE: el enlace solo funciona en el navegador que lo
  * pidió, y falla si se pide desde la app instalada y se abre desde Gmail.
  * Con el flujo implícito el enlace trae la sesión en el #hash (como las
  * invitaciones) y /auth/callback la recoge en cualquier navegador.
+ * Con las plantillas de supabase/templates/ el enlace va a /auth/confirm
+ * (token_hash + verifyOtp), que tampoco depende del navegador.
  */
 export function createEmailLinkClient() {
     const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv()

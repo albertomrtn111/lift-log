@@ -5,12 +5,13 @@ import { CardioSessionBuilder } from '@/components/coach/templates/CardioSession
 import { CoachPageHeader } from '@/components/coach/CoachPageHeader'
 
 interface TemplateEditorPageProps {
-    params: {
+    params: Promise<{
         templateId: string
-    }
+    }>
 }
 
-export default async function TemplateEditorPage({ params }: TemplateEditorPageProps) {
+export default async function TemplateEditorPage(props: TemplateEditorPageProps) {
+    const params = await props.params;
     const template = await getTemplateById(params.templateId)
 
     if (!template) {

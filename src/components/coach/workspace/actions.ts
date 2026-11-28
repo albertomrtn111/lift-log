@@ -13,11 +13,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isSampleClient } from '@/lib/onboarding/sample-athlete'
 import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
+import { assertCoachHasAI } from '@/lib/ai/access'
+import { pickEditableReviewFields, reviewMatchesCheckin } from '@/lib/reviews/review-access-rules'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 import { catalogGroupToMuscleGroup } from '@/lib/training/exercise-catalog'
 import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
 import { loadStrengthResults } from '@/lib/training/strength-results-data'
+import { checkinHasRecords, describeCheckinRecords, normalizeCheckinRecords } from '@/lib/safe-delete'
 import type { StrengthStructure } from '@/types/templates'
 
 // ============================================================================
@@ -56,6 +59,10 @@ export async function updateClientBasicsAction(
 // REVIEW ACTIONS
 // ============================================================================
 
+// Una revisión sin submitted_at no la respondió el atleta (pendiente o caducada):
+// no hay formulario que analizar, aprobar ni contestar.
+const UNANSWERED_CHECKIN_ERROR = 'El atleta no ha respondido esta revisión, así que no se puede cerrar ni revisar.'
+
 export async function createReviewAction(
     coachId: string,
     clientId: string,
@@ -74,7 +81,7 @@ export async function createReviewAction(
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
-            .select('id')
+            .select('id, submitted_at')
             .eq('id', checkinId)
             .eq('coach_id', validatedCoachId)
             .eq('client_id', clientId)
@@ -82,6 +89,10 @@ export async function createReviewAction(
 
         if (checkinError || !checkin) {
             return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
+        }
+
+        if (!checkin.submitted_at) {
+            return { success: false, error: UNANSWERED_CHECKIN_ERROR }
         }
 
         const review = await ensureReviewForCheckin(validatedCoachId, clientId, checkinId, userId)
@@ -102,7 +113,7 @@ export async function createReviewAction(
                 })
                 .eq('id', review.id)
 
-            void generateCheckinAnalysis(checkinId, review.id)
+            void generateCheckinAnalysis(checkinId, review.id, { coachId: validatedCoachId, clientId })
         }
 
         revalidatePath('/coach/clients')
@@ -113,16 +124,62 @@ export async function createReviewAction(
     }
 }
 
+/**
+ * El atleta es de este espacio y quien llama puede verlo. Se lee con su sesión (RLS),
+ * igual que las pantallas, así que respeta los atletas asignados de cada profesional.
+ */
+async function canSeeClient(supabase: SupabaseClient, coachId: string, clientId: string) {
+    const { data, error } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('id', clientId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+
+    return !error && Boolean(data)
+}
+
 export async function regenerateReviewAIAction(
     coachId: string,
     checkinId: string,
     reviewId: string
 ) {
     try {
-        const { coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+        const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+        await assertCoachHasAI(validatedCoachId)
+
+        // La revisión es de este espacio y de ese check-in (leída con la sesión del coach).
+        const { data: review } = await supabase
+            .from('reviews')
+            .select('id, coach_id, client_id, checkin_id')
+            .eq('id', reviewId)
+            .eq('checkin_id', checkinId)
+            .eq('coach_id', validatedCoachId)
+            .maybeSingle()
+
+        if (!review) {
+            return { success: false, error: 'No se encontró la revisión.' }
+        }
+
+        if (!(await canSeeClient(supabase, validatedCoachId, review.client_id))) {
+            return { success: false, error: 'No tienes acceso a este atleta.' }
+        }
+
+        // Y el check-in es de ese mismo atleta.
+        const { data: checkin } = await supabase
+            .from('checkins')
+            .select('id, coach_id, client_id')
+            .eq('id', checkinId)
+            .eq('coach_id', validatedCoachId)
+            .eq('client_id', review.client_id)
+            .maybeSingle()
+
+        if (!reviewMatchesCheckin(review, checkin)) {
+            return { success: false, error: 'No se encontró la revisión.' }
+        }
 
         const admin = createAdminClient()
-        const { error: resetError } = await admin
+        const { data: resetReview, error: resetError } = await admin
             .from('reviews')
             .update({
                 ai_status: 'pending',
@@ -131,15 +188,21 @@ export async function regenerateReviewAIAction(
                 ai_generated_at: null,
                 analysis: null,
             })
-            .eq('id', reviewId)
+            .eq('id', review.id)
             .eq('checkin_id', checkinId)
             .eq('coach_id', validatedCoachId)
+            .eq('client_id', review.client_id)
+            .select('id')
+            .maybeSingle()
 
-        if (resetError) {
-            return { success: false, error: resetError.message }
+        if (resetError || !resetReview) {
+            return { success: false, error: resetError?.message || 'No se encontró la revisión.' }
         }
 
-        const result = await generateCheckinAnalysis(checkinId, reviewId)
+        const result = await generateCheckinAnalysis(checkinId, review.id, {
+            coachId: validatedCoachId,
+            clientId: review.client_id,
+        })
         if (!result.success) {
             return { success: false, error: result.error || 'No se pudo regenerar el análisis IA' }
         }
@@ -161,13 +224,38 @@ export async function updateReviewAction(
         proposal?: Record<string, unknown>
     }
 ) {
-    const { coachId } = await requireActiveCoachId()
+    // Solo los campos que edita la pantalla; el resto (espacio, atleta, estado…) se ignora.
+    const editable = pickEditableReviewFields(updates)
+    if (Object.keys(editable).length === 0) {
+        return { success: false, error: 'No hay cambios que guardar.' }
+    }
+
+    let supabase: SupabaseClient, coachId: string
+    try {
+        ;({ supabase, coachId } = await requireActiveCoachId())
+    } catch {
+        return { success: false, error: 'No autenticado' }
+    }
+
+    // La revisión es de este espacio y de un atleta que quien llama puede ver.
+    const { data: current } = await supabase
+        .from('reviews')
+        .select('id, client_id')
+        .eq('id', reviewId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+
+    if (!current || !(await canSeeClient(supabase, coachId, current.client_id))) {
+        return { success: false, error: 'No tienes permiso para actualizar esta revisión' }
+    }
+
     const admin = createAdminClient()
     const { data: review, error } = await admin
         .from('reviews')
-        .update(updates)
-        .eq('id', reviewId)
+        .update(editable)
+        .eq('id', current.id)
         .eq('coach_id', coachId)
+        .eq('client_id', current.client_id)
         .select('id')
         .maybeSingle()
 
@@ -440,7 +528,19 @@ export async function approveReviewAction(reviewId: string) {
 }
 
 export async function revertReviewToDraftAction(reviewId: string) {
-    const { coachId } = await requireActiveCoachId()
+    const { supabase, coachId } = await requireActiveCoachId()
+
+    const { data: current } = await supabase
+        .from('reviews')
+        .select('id, client_id')
+        .eq('id', reviewId)
+        .eq('coach_id', coachId)
+        .maybeSingle()
+
+    if (!current || !(await canSeeClient(supabase, coachId, current.client_id))) {
+        return { success: false, error: 'No tienes permiso para revertir esta revisión' }
+    }
+
     const admin = createAdminClient()
     const { data: review, error } = await admin
         .from('reviews')
@@ -448,8 +548,9 @@ export async function revertReviewToDraftAction(reviewId: string) {
             status: 'draft',
             approved_by: null,
         })
-        .eq('id', reviewId)
+        .eq('id', current.id)
         .eq('coach_id', coachId)
+        .eq('client_id', current.client_id)
         .select('id')
         .maybeSingle()
 
@@ -901,24 +1002,17 @@ export async function deleteExerciseAction(
         }
     }
 
-    // Eliminar primero las celdas asociadas para evitar huérfanos
-    await supabase
-        .from('training_cells')
-        .delete()
-        .eq('exercise_id', exerciseId)
-
-    // Eliminar también los sets si los hay
-    await supabase
-        .from('training_exercise_sets')
-        .delete()
-        .eq('exercise_id', exerciseId)
-
-    const { error } = await supabase
+    // Un solo borrado (NXT-149): las celdas, las series y los registros caen en cascada
+    // en la misma operación. Antes se borraban las series primero, sin mirar errores,
+    // y si luego fallaba el ejercicio las series ya se habían perdido.
+    const { data: deleted, error } = await supabase
         .from('training_exercises')
         .delete()
         .eq('id', exerciseId)
+        .select('id')
 
     if (error) return { success: false, error: error.message }
+    if (!deleted || deleted.length === 0) return { success: false, error: 'No se ha podido eliminar el ejercicio.' }
 
     revalidatePath('/coach/clients')
     return { success: true }
@@ -1040,10 +1134,15 @@ export async function reorderExercisesAction(dayId: string, orderedExerciseIds: 
  */
 export async function forceAdvanceCheckinAction(clientId: string) {
     let validatedCoachId: string
+    let sessionClient: SupabaseClient
     try {
-        ;({ coachId: validatedCoachId } = await requireActiveCoachId())
+        ;({ supabase: sessionClient, coachId: validatedCoachId } = await requireActiveCoachId())
     } catch {
         return { success: false, error: 'No autenticado' }
+    }
+
+    if (!(await canSeeClient(sessionClient, validatedCoachId, clientId))) {
+        return { success: false, error: 'Cliente no encontrado' }
     }
 
     const supabase = createAdminClient()
@@ -1135,17 +1234,114 @@ export async function forceAdvanceCheckinAction(clientId: string) {
 // CHECKIN DELETE ACTION
 // ============================================================================
 
-export async function deleteCheckinAction(checkinId: string, coachId: string) {
-    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
-
-    const { error } = await supabase
+async function findCoachCheckin(supabase: SupabaseClient, checkinId: string, coachId: string) {
+    const { data, error } = await supabase
         .from('checkins')
-        .delete()
+        .select('id, client_id')
         .eq('id', checkinId)
-        .eq('coach_id', validatedCoachId) // seguridad: solo el coach dueño puede borrar
+        .eq('coach_id', coachId) // seguridad: solo revisiones de este espacio
+        .maybeSingle()
+    if (error || !data) return null
+    return data as { id: string; client_id: string }
+}
 
+/** Lo que tiene una revisión (respuestas, medidas, fotos, peso, revisión) para el aviso de NXT-149. */
+export async function getCheckinRemovalInfoAction(checkinId: string, coachId: string): Promise<
+    { success: true; records: ReturnType<typeof normalizeCheckinRecords> } | { success: false; error: string }
+> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const checkin = await findCoachCheckin(supabase, checkinId, validatedCoachId)
+    if (!checkin) return { success: false, error: 'No se ha encontrado la revisión.' }
+    const { data, error } = await supabase.rpc('nexttrain_checkin_records', { p_checkin_id: checkinId })
+    if (error || !data) return { success: false, error: 'No se ha podido comprobar qué tiene la revisión. No se ha borrado nada.' }
+    return { success: true, records: normalizeCheckinRecords(data) }
+}
+
+/**
+ * «Eliminar esta revisión» (NXT-149). Vacía (sin respuestas, fotos ni revisión) se
+ * borra como antes. Con datos va a la papelera: la base guarda la revisión entera
+ * (respuestas, fotos y revisión del coach) y la borra en la misma transacción; se
+ * recupera con restoreDeletedRecordAction.
+ */
+export async function deleteCheckinAction(checkinId: string, coachId: string): Promise<
+    { success: true; mode: 'delete' } | { success: true; mode: 'trash'; trashId: string } | { success: false; error: string }
+> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const checkin = await findCoachCheckin(supabase, checkinId, validatedCoachId)
+    if (!checkin) return { success: false, error: 'No se ha encontrado la revisión.' }
+
+    const { data: rawRecords, error: recordsError } = await supabase.rpc('nexttrain_checkin_records', { p_checkin_id: checkinId })
+    if (recordsError || !rawRecords) {
+        return { success: false, error: 'No se ha podido comprobar qué tiene la revisión. No se ha borrado nada.' }
+    }
+
+    const trash = async () => {
+        const { data: trashId, error } = await supabase.rpc('nexttrain_trash_checkin', { p_checkin_id: checkinId })
+        if (error || !trashId) return { success: false as const, error: error?.message ?? 'No se ha podido eliminar la revisión.' }
+        return { success: true as const, mode: 'trash' as const, trashId: String(trashId) }
+    }
+
+    let result: Awaited<ReturnType<typeof deleteCheckinAction>>
+    if (checkinHasRecords(normalizeCheckinRecords(rawRecords))) {
+        result = await trash()
+    } else {
+        const { data: deleted, error } = await supabase
+            .from('checkins')
+            .delete()
+            .eq('id', checkinId)
+            .eq('coach_id', validatedCoachId)
+            .select('id')
+        if (error) {
+            // Si entretanto el atleta ha respondido, la base no deja borrarla: a la papelera.
+            result = /papelera/i.test(error.message) ? await trash() : { success: false, error: error.message }
+        } else if (!deleted || deleted.length === 0) {
+            result = { success: false, error: 'No se ha podido eliminar la revisión.' }
+        } else {
+            result = { success: true, mode: 'delete' }
+        }
+    }
+
+    if (result.success) {
+        revalidatePath('/coach/clients')
+        revalidatePath('/coach/members')
+    }
+    return result
+}
+
+/** Revisiones de un atleta que están en la papelera (NXT-149). */
+export async function listDeletedCheckinsAction(clientId: string, coachId: string): Promise<{
+    success: boolean
+    items: { id: string; deletedAt: string; submittedAt: string | null; periodEnd: string | null; summary: string }[]
+    error?: string
+}> {
+    const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+    const { data, error } = await supabase
+        .from('deleted_records')
+        .select('id, deleted_at, summary, submitted_at:payload->checkin->>submitted_at, period_end:payload->checkin->>period_end')
+        .eq('coach_id', validatedCoachId)
+        .eq('client_id', clientId)
+        .eq('record_type', 'checkin')
+        .is('restored_at', null)
+        .order('deleted_at', { ascending: false })
+        .limit(20)
+    if (error) return { success: false, items: [], error: error.message }
+    return {
+        success: true,
+        items: (data ?? []).map((row: any) => ({
+            id: row.id,
+            deletedAt: row.deleted_at,
+            submittedAt: row.submitted_at ?? null,
+            periodEnd: row.period_end ?? null,
+            summary: describeCheckinRecords(normalizeCheckinRecords(row.summary)),
+        })),
+    }
+}
+
+/** Recupera de la papelera una revisión o una sesión de cardio (NXT-149). */
+export async function restoreDeletedRecordAction(trashId: string, coachId: string): Promise<{ success: boolean; error?: string }> {
+    const { supabase } = await requireActiveCoachId(coachId)
+    const { error } = await supabase.rpc('nexttrain_restore_deleted_record', { p_trash_id: trashId })
     if (error) return { success: false, error: error.message }
-
     revalidatePath('/coach/clients')
     revalidatePath('/coach/members')
     return { success: true }
@@ -1189,6 +1385,9 @@ export async function completeReviewAction(input: {
         if (!user) return { success: false, error: 'No autenticado' }
 
         const { coachId: validatedCoachId } = await requireActiveCoachId(input.coachId)
+        if (!(await canSeeClient(supabase, validatedCoachId, input.clientId))) {
+            return { success: false, error: 'No tienes acceso a este atleta.' }
+        }
         const admin = createAdminClient()
         // Atleta de ejemplo: se aprueba de verdad, pero nunca sale ningún aviso
         const isSample = await isSampleClient(input.clientId)
@@ -1204,7 +1403,7 @@ export async function completeReviewAction(input: {
 
         const { data: checkin, error: checkinError } = await admin
             .from('checkins')
-            .select('id, coach_id, client_id')
+            .select('id, coach_id, client_id, submitted_at')
             .eq('id', input.checkinId)
             .eq('coach_id', validatedCoachId)
             .eq('client_id', input.clientId)
@@ -1214,13 +1413,20 @@ export async function completeReviewAction(input: {
             return { success: false, error: checkinError?.message || 'No se encontró la revisión de este atleta.' }
         }
 
+        if (!checkin.submitted_at) {
+            return { success: false, error: UNANSWERED_CHECKIN_ERROR }
+        }
+
         const review = await ensureReviewForCheckin(validatedCoachId, input.clientId, input.checkinId, user.id)
         if (!review) {
             return { success: false, error: 'No se pudo cargar o crear la revisión.' }
         }
 
         if (review.ai_status === 'pending' && !review.ai_summary && !review.analysis) {
-            void generateCheckinAnalysis(input.checkinId, review.id)
+            void generateCheckinAnalysis(input.checkinId, review.id, {
+                coachId: validatedCoachId,
+                clientId: input.clientId,
+            })
         }
 
         const isAlreadyApproved = review.status === 'approved'

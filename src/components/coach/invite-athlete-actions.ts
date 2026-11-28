@@ -71,6 +71,16 @@ export async function inviteAthleteAction(input: InviteAthleteInput): Promise<{
             .maybeSingle()
         if (!template) return { success: false, error: 'La revisión elegida no existe.' }
     }
+    if (input.onboardingTemplateId) {
+        const { data: template } = await admin
+            .from('form_templates')
+            .select('id')
+            .eq('id', input.onboardingTemplateId)
+            .eq('coach_id', coachId)
+            .eq('type', 'onboarding')
+            .maybeSingle()
+        if (!template) return { success: false, error: 'El formulario de onboarding elegido no existe.' }
+    }
 
     const startDate = input.startDate || todayInTimezone()
     const created = await createClientAction({

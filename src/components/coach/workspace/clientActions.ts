@@ -4,6 +4,7 @@ import { getDefaultTrainingColumns } from '@/lib/training/defaultColumns'
 import { COACH_AREA_ROLES } from '@/lib/auth/team-roles'
 import { findRemovedDayConflicts } from '@/lib/training/strength-structure-plan'
 import { loadStrengthResults, type StrengthResultConflict } from '@/lib/training/strength-results-data'
+import { decideProgramRemoval, normalizeProgramRecords } from '@/lib/safe-delete'
 
 /**
  * @deprecated Use TrainingProgramWizard Step 1 for program creation.
@@ -139,45 +140,92 @@ export async function createTrainingProgramClient(data: {
     }
 }
 
-export async function deleteTrainingProgramClient(programId: string) {
-    const supabase = createClient()
+type ProgramRecords = ReturnType<typeof normalizeProgramRecords>
 
-    // 1. Verify program status is 'archived'
-    const { data: program, error: findError } = await supabase
+/**
+ * Lo que el atleta ha registrado en un programa (NXT-149), para el aviso de «Eliminar».
+ * Lo cuenta la base (nexttrain_strength_records) con el mismo criterio que NXT-124.
+ */
+export async function getProgramRemovalInfo(programId: string): Promise<
+    { success: true; name: string; status: string; records: ProgramRecords } | { success: false; error: string }
+> {
+    const supabase = createClient()
+    const { data: program, error } = await supabase
         .from('training_programs')
-        .select('status')
+        .select('id, name, status')
         .eq('id', programId)
         .single()
+    if (error || !program) return { success: false, error: 'Programa no encontrado.' }
 
-    if (findError || !program) {
-        return { success: false, error: 'Programa no encontrado.' }
+    const { data: records, error: recordsError } = await supabase.rpc('nexttrain_strength_records', { p_program_id: programId })
+    if (recordsError || !records) {
+        return { success: false, error: 'No se ha podido comprobar qué ha registrado el atleta. No se ha borrado nada.' }
     }
+    return { success: true, name: program.name, status: program.status, records: normalizeProgramRecords(records) }
+}
 
-    if (program.status !== 'archived') {
+/**
+ * «Eliminar» de un programa archivado (NXT-149). Si el atleta registró algo, el
+ * programa se oculta del historial (se puede recuperar) en vez de borrarse. Si no,
+ * se borra de una vez: días, ejercicios y columnas caen en cascada en la misma
+ * operación, sin pasos sueltos que puedan quedar a medias.
+ */
+export async function deleteTrainingProgramClient(programId: string): Promise<
+    { success: true; mode: 'hide' | 'delete' } | { success: false; error: string }
+> {
+    const supabase = createClient()
+
+    const info = await getProgramRemovalInfo(programId)
+    if (!info.success) return info
+    if (info.status !== 'archived') {
         return { success: false, error: 'Solo se pueden eliminar programas archivados.' }
     }
 
-    // 2. Delete dependencies manually (Safe Delete)
-    // training_cells
-    await supabase.from('training_cells').delete().eq('program_id', programId)
-    // training_exercises
-    await supabase.from('training_exercises').delete().eq('program_id', programId)
-    // training_days
-    await supabase.from('training_days').delete().eq('program_id', programId)
-    // training_columns
-    await supabase.from('training_columns').delete().eq('program_id', programId)
+    const hide = async () => {
+        const { data, error } = await supabase
+            .from('training_programs')
+            .update({ hidden_at: new Date().toISOString() })
+            .eq('id', programId)
+            .select('id')
+        if (error || !data || data.length === 0) {
+            return { success: false as const, error: error?.message ?? 'No se ha podido ocultar el programa.' }
+        }
+        return { success: true as const, mode: 'hide' as const }
+    }
 
-    // 3. Delete Program
-    const { error: deleteError } = await supabase
+    if (decideProgramRemoval(info.records) === 'hide') return hide()
+
+    const { data: deleted, error: deleteError } = await supabase
         .from('training_programs')
         .delete()
         .eq('id', programId)
+        .eq('status', 'archived')
+        .select('id')
 
     if (deleteError) {
+        // La base no deja borrarlo si entretanto el atleta ha registrado algo: se oculta.
+        if (/series registradas/i.test(deleteError.message)) return hide()
         console.error('[deleteTrainingProgramClient] Error deleting program:', deleteError)
         return { success: false, error: deleteError.message }
     }
+    if (!deleted || deleted.length === 0) {
+        return { success: false, error: 'No se ha podido eliminar el programa.' }
+    }
 
+    return { success: true, mode: 'delete' }
+}
+
+/** Vuelve a mostrar en el historial un programa ocultado (NXT-149). */
+export async function restoreHiddenProgramClient(programId: string): Promise<{ success: boolean; error?: string }> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+        .from('training_programs')
+        .update({ hidden_at: null })
+        .eq('id', programId)
+        .select('id')
+    if (error || !data || data.length === 0) {
+        return { success: false, error: error?.message ?? 'No se ha podido recuperar el programa.' }
+    }
     return { success: true }
 }
 

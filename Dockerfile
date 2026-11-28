@@ -31,6 +31,9 @@ ENV PORT=3000
 # ffmpeg convierte los audios del chat a M4A (AAC) para que se oigan en cualquier móvil
 RUN apk add --no-cache ffmpeg
 COPY --from=builder /app/package.json ./package.json
+# `next start` lee next.config.mjs al arrancar: sin él usa la configuración por
+# defecto (por ejemplo, el optimizador de imágenes encendido).
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules

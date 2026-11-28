@@ -15,6 +15,7 @@ import {
     normalizeEmail,
     seatsLeft,
 } from '@/lib/team/team-rules'
+import { memberLimitMessage } from '@/lib/subscription/plan-limits'
 
 export interface TeamMember {
     userId: string
@@ -77,6 +78,7 @@ async function logEvent(event: {
     if (error) console.error('[team] No se pudo registrar el evento', error.message)
 }
 
+/** Plazas libres (null = sin límite) y el límite del plan, contando invitaciones pendientes. */
 async function countSeats(coachId: string, supabase: SupabaseClient) {
     const admin = createAdminClient()
     const [{ data: limit }, { count: active }, { data: pending }] = await Promise.all([
@@ -86,7 +88,8 @@ async function countSeats(coachId: string, supabase: SupabaseClient) {
         admin.from('coach_invitations').select('status, expires_at').eq('coach_id', coachId).eq('status', 'pending'),
     ])
     const open = (pending ?? []).filter(row => invitationState(row) === 'pending').length
-    return seatsLeft(limit as number | null, active ?? 0, open)
+    const planLimit = typeof limit === 'number' ? limit : null
+    return { left: seatsLeft(planLimit, active ?? 0, open), limit: planLimit }
 }
 
 export async function getTeamAction(): Promise<{ success: boolean; team?: TeamData; error?: string }> {
@@ -150,7 +153,7 @@ export async function getTeamAction(): Promise<{ success: boolean; team?: TeamDa
             team: {
                 enabled: Boolean(enabled),
                 canManage,
-                seats: await countSeats(actor.coachId, actor.supabase),
+                seats: (await countSeats(actor.coachId, actor.supabase)).left,
                 members,
                 invitations,
             },
@@ -167,8 +170,9 @@ export async function inviteMemberAction(input: { email: string; role: string })
         if (!isValidEmail(email)) return { success: false, error: 'Escribe un email válido' }
         if (!INVITABLE_ROLES.includes(input.role)) return { success: false, error: 'Ese rol no se puede invitar' }
 
+        // La base vuelve a aplicar el límite al aceptar la invitación
         const seats = await countSeats(actor.coachId, actor.supabase)
-        if (seats === 0) return { success: false, error: 'Tu plan no admite más miembros' }
+        if (seats.left === 0) return { success: false, error: memberLimitMessage(seats.limit, 'invite') }
 
         const admin = createAdminClient()
         const { data: profile } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
@@ -341,9 +345,18 @@ export async function removeMemberAction(userId: string): Promise<ActionResult> 
             .eq('user_id', userId)
         if (error) throw error
 
+        // Sus atletas asignados se guardan en el registro para devolvérselos si vuelve
+        // (al aceptar una invitación nueva); mientras tanto no los ve.
         const { data: clients } = await admin.from('clients').select('id').eq('coach_id', actor.coachId)
         const clientIds = (clients ?? []).map(client => client.id as string)
+        let assignedClientIds: string[] = []
         if (clientIds.length > 0) {
+            const { data: assigned } = await admin
+                .from('client_professionals')
+                .select('client_id')
+                .eq('user_id', userId)
+                .in('client_id', clientIds)
+            assignedClientIds = (assigned ?? []).map(row => row.client_id as string)
             await admin.from('client_professionals').delete().eq('user_id', userId).in('client_id', clientIds)
         }
         await logEvent({
@@ -351,7 +364,7 @@ export async function removeMemberAction(userId: string): Promise<ActionResult> 
             actorUserId: actor.userId,
             action: 'removed',
             targetUserId: userId,
-            details: { role: targetRole },
+            details: { role: targetRole, client_ids: assignedClientIds },
         })
         return { success: true }
     } catch (error) {

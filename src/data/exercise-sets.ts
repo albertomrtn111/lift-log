@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { ExerciseSet } from '@/types/training'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 
 // ─── Reads ──────────────────────────────────────────────────────────
 
@@ -29,15 +30,22 @@ export async function getAllSetsForProgram(
 
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('training_exercise_sets')
-        .select('*')
-        .in('exercise_id', exerciseIds)
-        .order('set_index', { ascending: true })
+    // Por páginas: en programas largos pasan de 1.000 series (NXT-153).
+    const { data, error } = await fetchAllPagesIn(exerciseIds, (ids, from, to) =>
+        supabase
+            .from('training_exercise_sets')
+            .select('*')
+            .in('exercise_id', ids)
+            .order('set_index', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+    )
 
     // Lanza en vez de devolver []: quien recarga no debe vaciar la pantalla por un fallo
     if (error) throw new Error(error.message)
-    return (data || []).map(mapRow)
+    return (data || [])
+        .sort((a: any, b: any) => (a.set_index ?? 0) - (b.set_index ?? 0))
+        .map(mapRow)
 }
 
 // ─── Base Block: Generate / Apply ───────────────────────────────────
@@ -207,27 +215,48 @@ export async function revertSetToBase(
 }
 
 /**
- * Add one more set using base values
+ * Add one more set using base values.
+ *
+ * Con `setIndex` (la cola sin conexión del atleta, NXT-146) se puede repetir sin
+ * duplicar: si esa serie ya existe se devuelve tal cual en vez de crear otra.
  */
 export async function addSetFromBase(
     exerciseId: string,
     weekIndex: number,
     baseWeight: number | null,
     baseReps: number | null,
-    baseRir: number | null
+    baseRir: number | null,
+    setIndex?: number
 ): Promise<{ success: boolean; set?: ExerciseSet; error?: string }> {
     const supabase = await createClient()
 
-    // Get max set_index
-    const { data: existing } = await supabase
-        .from('training_exercise_sets')
-        .select('set_index')
-        .eq('exercise_id', exerciseId)
-        .eq('week_index', weekIndex)
-        .order('set_index', { ascending: false })
-        .limit(1)
+    let newIndex: number
+    if (typeof setIndex === 'number' && Number.isInteger(setIndex) && setIndex >= 0) {
+        const { data: already, error: alreadyError } = await supabase
+            .from('training_exercise_sets')
+            .select('*')
+            .eq('exercise_id', exerciseId)
+            .eq('week_index', weekIndex)
+            .eq('set_index', setIndex)
+            .limit(1)
+        if (alreadyError) {
+            console.error('[addSetFromBase] Error:', alreadyError.message)
+            return { success: false, error: alreadyError.message }
+        }
+        if (already && already.length > 0) return { success: true, set: mapRow(already[0]) }
+        newIndex = setIndex
+    } else {
+        // Get max set_index
+        const { data: existing } = await supabase
+            .from('training_exercise_sets')
+            .select('set_index')
+            .eq('exercise_id', exerciseId)
+            .eq('week_index', weekIndex)
+            .order('set_index', { ascending: false })
+            .limit(1)
 
-    const newIndex = (existing?.[0]?.set_index ?? -1) + 1
+        newIndex = (existing?.[0]?.set_index ?? -1) + 1
+    }
 
     const { data, error } = await supabase
         .from('training_exercise_sets')

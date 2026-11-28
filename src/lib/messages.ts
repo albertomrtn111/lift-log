@@ -28,3 +28,24 @@ export function reconcileOptimisticMessage(
         persistedMessage,
     ])
 }
+
+/** Margen para reconocer como propio un mensaje que llega del servidor (relojes distintos) */
+const ECHO_WINDOW_MS = 15 * 60 * 1000
+
+/**
+ * Mensaje del atleta que llegó al servidor aunque la respuesta se perdiera
+ * (cobertura mala): devuelve el id temporal («temp-…») que lo representa en
+ * pantalla, para cambiarlo por el real en vez de dejarlo como «no enviado».
+ */
+export function findEchoedOptimisticId(messages: Message[], persisted: Message): string | null {
+    if (persisted.id.startsWith('temp-')) return null
+    const persistedAt = new Date(persisted.created_at).getTime()
+    const match = messages.find(message =>
+        message.id.startsWith('temp-')
+        && message.sender_role === persisted.sender_role
+        && (message.content ?? '') === (persisted.content ?? '')
+        && (message.attachment_url ?? null) === (persisted.attachment_url ?? null)
+        && Math.abs(new Date(message.created_at).getTime() - persistedAt) < ECHO_WINDOW_MS
+    )
+    return match?.id ?? null
+}

@@ -34,7 +34,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true, ignored: true })
         }
 
-        await processStravaWebhookEvent(event)
+        // Los avisos que no se aplican (de otra suscripción, o que Strava no
+        // confirma) se responden con 200 sin cambiar nada.
+        const outcome = await processStravaWebhookEvent(event)
+        if (!outcome.handled) {
+            return NextResponse.json({ ok: true, ignored: true })
+        }
         return NextResponse.json({ ok: true, accepted: true })
     } catch (error) {
         console.error('[strava/webhook:POST]', error)

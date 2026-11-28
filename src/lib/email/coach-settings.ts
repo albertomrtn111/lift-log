@@ -8,6 +8,7 @@
 
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isVerifiedSmtpSettings } from '@/lib/email/smtp-rules'
 
 // ---------------------------------------------------------------------------
 // Cifrado
@@ -70,32 +71,49 @@ export interface CoachEmailSettingsPublic {
     from_email: string | null
     has_password: boolean
     last_verified_at: string | null
+    /** Verificado después del último cambio: solo entonces se usa para enviar */
+    verified: boolean
 }
 
+/** Se guarda solo lo que ya se ha verificado contra el servidor. */
 export interface SaveCoachEmailSettingsInput {
     smtp_host: string
     smtp_port: number
     smtp_user: string
-    /** Si viene vacío y ya había una guardada, se conserva la existente */
-    smtp_pass?: string
+    smtp_pass: string
     from_name?: string | null
     from_email?: string | null
+    /** Momento de la verificación; se guarda también como último cambio */
+    verified_at: string
+}
+
+/** Lo guardado, para decidir si hace falta volver a pedir la contraseña. */
+export interface CoachSmtpForEdit {
+    host: string
+    port: number
+    user: string
+    /** null si no se puede descifrar */
+    pass: string | null
 }
 
 // ---------------------------------------------------------------------------
 // Acceso a datos (service role)
 // ---------------------------------------------------------------------------
 
-/** Config descifrada para enviar emails. null si el coach no tiene SMTP propio. */
+/**
+ * Config descifrada para enviar emails. null si el coach no tiene SMTP propio
+ * o si no se ha verificado después del último cambio.
+ */
 export async function getCoachSmtpConfig(coachId: string): Promise<CoachSmtpConfig | null> {
     const admin = createAdminClient()
     const { data, error } = await admin
         .from('coach_email_settings')
-        .select('smtp_host, smtp_port, smtp_user, smtp_pass_encrypted, from_name, from_email')
+        .select('smtp_host, smtp_port, smtp_user, smtp_pass_encrypted, from_name, from_email, last_verified_at, updated_at')
         .eq('coach_id', coachId)
         .maybeSingle()
 
     if (error || !data) return null
+    if (!isVerifiedSmtpSettings(data)) return null
 
     try {
         return {
@@ -117,7 +135,7 @@ export async function getCoachEmailSettingsPublic(coachId: string): Promise<Coac
     const admin = createAdminClient()
     const { data } = await admin
         .from('coach_email_settings')
-        .select('smtp_host, smtp_port, smtp_user, from_name, from_email, last_verified_at, smtp_pass_encrypted')
+        .select('smtp_host, smtp_port, smtp_user, from_name, from_email, last_verified_at, updated_at, smtp_pass_encrypted')
         .eq('coach_id', coachId)
         .maybeSingle()
 
@@ -131,6 +149,7 @@ export async function getCoachEmailSettingsPublic(coachId: string): Promise<Coac
             from_email: null,
             has_password: false,
             last_verified_at: null,
+            verified: false,
         }
     }
 
@@ -143,7 +162,27 @@ export async function getCoachEmailSettingsPublic(coachId: string): Promise<Coac
         from_email: data.from_email,
         has_password: Boolean(data.smtp_pass_encrypted),
         last_verified_at: data.last_verified_at,
+        verified: isVerifiedSmtpSettings(data),
     }
+}
+
+/** Lo guardado (con la contraseña descifrada) para reutilizarla con el mismo servidor. */
+export async function getCoachSmtpForEdit(coachId: string): Promise<CoachSmtpForEdit | null> {
+    const admin = createAdminClient()
+    const { data } = await admin
+        .from('coach_email_settings')
+        .select('smtp_host, smtp_port, smtp_user, smtp_pass_encrypted')
+        .eq('coach_id', coachId)
+        .maybeSingle()
+    if (!data) return null
+
+    let pass: string | null = null
+    try {
+        pass = data.smtp_pass_encrypted ? decryptSecret(data.smtp_pass_encrypted) : null
+    } catch {
+        console.error('[coach-settings] No se pudo descifrar la contraseña SMTP guardada del coach', coachId)
+    }
+    return { host: data.smtp_host, port: data.smtp_port, user: data.smtp_user, pass }
 }
 
 export async function saveCoachEmailSettings(
@@ -151,23 +190,8 @@ export async function saveCoachEmailSettings(
     input: SaveCoachEmailSettingsInput
 ): Promise<{ ok: boolean; error?: string }> {
     const admin = createAdminClient()
-
-    let passEncrypted: string | null = null
-    if (input.smtp_pass && input.smtp_pass.trim().length > 0) {
-        passEncrypted = encryptSecret(input.smtp_pass.trim())
-    } else {
-        // conservar la contraseña existente
-        const { data: existing } = await admin
-            .from('coach_email_settings')
-            .select('smtp_pass_encrypted')
-            .eq('coach_id', coachId)
-            .maybeSingle()
-        passEncrypted = existing?.smtp_pass_encrypted ?? null
-    }
-
-    if (!passEncrypted) {
-        return { ok: false, error: 'La contraseña SMTP es obligatoria la primera vez' }
-    }
+    const pass = input.smtp_pass.trim()
+    if (!pass) return { ok: false, error: 'Falta la contraseña' }
 
     const { error } = await admin.from('coach_email_settings').upsert(
         {
@@ -175,15 +199,19 @@ export async function saveCoachEmailSettings(
             smtp_host: input.smtp_host.trim(),
             smtp_port: input.smtp_port,
             smtp_user: input.smtp_user.trim(),
-            smtp_pass_encrypted: passEncrypted,
+            smtp_pass_encrypted: encryptSecret(pass),
             from_name: input.from_name?.trim() || null,
             from_email: input.from_email?.trim() || null,
-            updated_at: new Date().toISOString(),
+            updated_at: input.verified_at,
+            last_verified_at: input.verified_at,
         },
         { onConflict: 'coach_id' }
     )
 
-    if (error) return { ok: false, error: error.message }
+    if (error) {
+        console.error('[coach-settings] No se pudo guardar el SMTP del coach', coachId, error.message)
+        return { ok: false, error: 'No se pudo guardar' }
+    }
     return { ok: true }
 }
 
@@ -198,6 +226,9 @@ export async function markCoachEmailVerified(coachId: string): Promise<void> {
 export async function deleteCoachEmailSettings(coachId: string): Promise<{ ok: boolean; error?: string }> {
     const admin = createAdminClient()
     const { error } = await admin.from('coach_email_settings').delete().eq('coach_id', coachId)
-    if (error) return { ok: false, error: error.message }
+    if (error) {
+        console.error('[coach-settings] No se pudo borrar el SMTP del coach', coachId, error.message)
+        return { ok: false, error: 'No se pudo eliminar' }
+    }
     return { ok: true }
 }

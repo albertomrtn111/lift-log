@@ -45,7 +45,7 @@ export async function getAthleteJourneys(coachId: string): Promise<AthleteJourne
     return clients
         .map(client => {
             // Flujo nuevo: la cuenta cuenta como creada cuando el atleta pone su contraseña
-            // (signed_up_at lo rellena el trigger de vinculación nada más invitar)
+            // (signed_up_at se rellena al enlazar la ficha, nada más invitar)
             const onboarding = ((client.preferences ?? {}) as { onboarding?: { guided?: boolean; password_set_at?: string } }).onboarding
             const guided = Boolean(onboarding?.guided)
             return {

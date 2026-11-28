@@ -1,15 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { linkPendingClientForUser } from '@/lib/onboarding/link-client-account'
 import { DynamicForm } from '@/components/forms/DynamicForm'
 import { Card } from '@/components/ui/card'
-import { AlertCircle, Lock } from 'lucide-react'
+import { AlertCircle, ClipboardCheck, Lock } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { FormField } from '@/types/forms'
 import type { MetricDefinition, MetricCategory } from '@/types/metrics'
 import type { ReviewTemplate } from '@/data/review-templates'
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
 import { reviewFormInitialValues } from '@/lib/reviews/checkin-response'
+import { canAthleteChangeCheckin, checkinBlockedCopy } from '@/lib/reviews/checkin-submission-rules'
+import { loadCheckinSubmissionState } from '@/lib/reviews/checkin-submission-state'
 
 interface PageProps {
     params: Promise<{ checkinId: string }>
@@ -37,6 +41,7 @@ export default async function FormPage({ params }: PageProps) {
             review_template_id,
             review_schedule_id,
             submitted_at,
+            created_at,
             period_start,
             period_end,
             raw_payload,
@@ -80,11 +85,15 @@ export default async function FormPage({ params }: PageProps) {
     await linkPendingClientForUser(user)
     const { data: client } = await admin
         .from('clients')
-        .select('auth_user_id, user_id')
+        .select('auth_user_id, user_id, status')
         .eq('id', checkin.client_id)
         .single()
 
-    if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) {
+    const isOwner = !!client && (client.auth_user_id === user.id || client.user_id === user.id)
+    // Atleta dado de baja: ve el aviso de que se ha quedado sin licencia
+    if (isOwner && client.status !== 'active') redirect('/no-access')
+
+    if (!isOwner) {
         return <ErrorCard
             icon={<Lock className="h-8 w-8 text-destructive" />}
             title="Acceso denegado"
@@ -103,6 +112,22 @@ export default async function FormPage({ params }: PageProps) {
     const linkedCheckin = await ensureCheckinReviewTemplateLink(admin, checkin)
     const reviewTemplate = (checkin.review_template as unknown as ReviewTemplate | null)
         ?? (linkedCheckin.linked_review_template as unknown as ReviewTemplate | null)
+
+    // Revisión cerrada por el coach (o caducada): se explica en vez de abrir el formulario
+    const submissionState = await loadCheckinSubmissionState(admin, checkin)
+    if (!submissionState || !canAthleteChangeCheckin(submissionState)) {
+        const copy = checkinBlockedCopy(submissionState ?? 'closed')!
+        const isOnboardingForm = checkin.type === 'onboarding'
+        return <ErrorCard
+            icon={<ClipboardCheck className="h-8 w-8 text-primary" />}
+            tone="neutral"
+            title={copy.title}
+            message={copy.message}
+            action={isOnboardingForm
+                ? { href: '/planning', label: 'Ir a la app' }
+                : { href: `/summary?tab=revisiones&checkin=${checkin.id}`, label: 'Ver mis revisiones' }}
+        />
+    }
 
     // 5. Cargar TODAS las métricas activas del coach
     const { data: allMetricsData } = await admin
@@ -196,15 +221,26 @@ export default async function FormPage({ params }: PageProps) {
     )
 }
 
-function ErrorCard({ icon, title, message }: { icon: React.ReactNode; title: string; message: string }) {
+function ErrorCard({ icon, title, message, tone = 'error', action }: {
+    icon: React.ReactNode
+    title: string
+    message: string
+    tone?: 'error' | 'neutral'
+    action?: { href: string; label: string }
+}) {
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
-            <Card className="max-w-md p-8 text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
+            <Card className="w-full max-w-md p-8 text-center space-y-4">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${tone === 'error' ? 'bg-destructive/10' : 'bg-primary/10'}`}>
                     {icon}
                 </div>
                 <h2 className="text-xl font-semibold">{title}</h2>
                 <p className="text-muted-foreground text-sm">{message}</p>
+                {action && (
+                    <Button asChild variant="outline" className="w-full min-h-11">
+                        <Link href={action.href}>{action.label}</Link>
+                    </Button>
+                )}
             </Card>
         </div>
     )

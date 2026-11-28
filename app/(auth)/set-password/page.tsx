@@ -54,7 +54,10 @@ function SetPasswordInner() {
                 setError(authErrorMessage(error))
                 return
             }
-            if (!isReset) await markAthleteSignedUpAction().catch(() => undefined)
+            // También al recuperar la contraseña: si el atleta entra por «Pedir un
+            // enlace nuevo», ya tiene contraseña y la bienvenida no debe volver a
+            // pedírsela (NXT-145). Si no es atleta, no hace nada.
+            await markAthleteSignedUpAction().catch(() => undefined)
             setSuccess(true)
             setTimeout(() => {
                 router.push('/')
@@ -88,7 +91,7 @@ function SetPasswordInner() {
                     </>
                 }
             >
-                <p>Ha caducado, ya se usó o se abrió en otro navegador. Pide uno nuevo con tu email y ábrelo en este dispositivo.</p>
+                <p>Ha caducado o ya se usó. Pide uno nuevo con tu email: el último que te enviemos es el que vale.</p>
             </AuthStatus>
         )
     }

@@ -10,6 +10,38 @@ function today() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date())
 }
 
+const PATIENT_BATCH = 100
+
+const PAGE_SIZE = 1000
+
+/** Supabase corta cada respuesta en 1.000 filas: se pide por páginas. La consulta va ordenada por id. */
+async function loadAll(page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: any }>): Promise<Row[]> {
+  const rows: Row[] = []
+  for (let from = 0; from < 200 * PAGE_SIZE; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1)
+    // Sin la lista completa no se puede saber qué citas han desaparecido: mejor fallar.
+    if (error) throw new Error('No se han podido leer las citas guardadas.')
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < PAGE_SIZE) return rows
+  }
+  throw new Error('Demasiadas citas guardadas en la ventana.')
+}
+
+async function loadPatients(db: any, coachId: string, externalIds: string[]): Promise<Row[]> {
+  const rows: Row[] = []
+  for (let i = 0; i < externalIds.length; i += PATIENT_BATCH) {
+    const { data, error } = await db.from('external_patients')
+      .select('id, external_id, client_id')
+      .eq('coach_id', coachId)
+      .eq('provider', 'fisiotrack')
+      .in('external_id', externalIds.slice(i, i + PATIENT_BATCH))
+    // Sin pacientes las citas se guardarían sin atleta: mejor fallar y reintentar.
+    if (error) throw new Error('No se han podido leer los pacientes.')
+    rows.push(...(data ?? []))
+  }
+  return rows
+}
+
 async function syncConnection(db: any, connection: Row, kind: 'quick' | 'full') {
   const { data: token } = await db.rpc('agenda_connection_token', { p_connection_id: connection.id })
   if (!token) throw new TokenRejected()
@@ -64,12 +96,14 @@ async function syncConnection(db: any, connection: Row, kind: 'quick' | 'full') 
     )
   }
 
-  const [{ data: patientRows }, { data: serviceRows }, { data: staffRows }] = await Promise.all([
-    db.from('external_patients').select('id, external_id, client_id').eq('coach_id', coachId).eq('provider', 'fisiotrack'),
+  // Solo los pacientes de estas citas, en tandas de 100: leer todos los del centro se
+  // quedaba en 1.000 filas y las citas del resto se guardaban sin paciente (NXT-153).
+  const [patientRows, { data: serviceRows }, { data: staffRows }] = await Promise.all([
+    loadPatients(db, coachId, [...patients.keys()]),
     db.from('agenda_services').select('id, external_id').eq('coach_id', coachId).eq('provider', 'fisiotrack'),
     db.from('external_staff_map').select('external_id, user_id').eq('coach_id', coachId).eq('provider', 'fisiotrack'),
   ])
-  const patientByExternal = new Map((patientRows ?? []).map((row: Row) => [row.external_id, row]))
+  const patientByExternal = new Map(patientRows.map((row: Row) => [row.external_id, row]))
   const serviceByExternal = new Map((serviceRows ?? []).map((row: Row) => [row.external_id, row.id]))
   const staffByExternal = new Map((staffRows ?? []).map((row: Row) => [row.external_id, row.user_id]))
 
@@ -101,7 +135,9 @@ async function syncConnection(db: any, connection: Row, kind: 'quick' | 'full') 
   }
 
   const incomplete = kind === 'full' && isIncomplete(appointments.length, connection.typical_window_count)
-  const { data: stored } = await db.from('agenda_appointments')
+  // Por páginas: la ventana completa ya ronda las 1.000 citas y las que quedaran fuera no se
+  // quitarían nunca al desaparecer de la agenda (NXT-153).
+  const stored = await loadAll((rangeFrom, rangeTo) => db.from('agenda_appointments')
     .select('external_id')
     .eq('coach_id', coachId)
     .eq('provider', 'fisiotrack')
@@ -110,17 +146,19 @@ async function syncConnection(db: any, connection: Row, kind: 'quick' | 'full') 
     // Los filtros son días de la clínica: el límite queda antes de medianoche allí, para no dar por
     // borrada una cita de madrugada del día siguiente, que no se ha pedido.
     .lte('starts_at', `${to}T21:59:59+00:00`)
+    .order('id', { ascending: true })
+    .range(rangeFrom, rangeTo))
   const gone = vanished(
-    (stored ?? []).map((row: Row) => row.external_id),
+    stored.map((row: Row) => row.external_id),
     appointments.map((item) => item.externalId),
     incomplete || appointments.length === 0,
   )
-  if (gone.length > 0) {
+  for (let i = 0; i < gone.length; i += PATIENT_BATCH) {
     await db.from('agenda_appointments')
       .update({ deleted_at: new Date().toISOString() })
       .eq('coach_id', coachId)
       .eq('provider', 'fisiotrack')
-      .in('external_id', gone)
+      .in('external_id', gone.slice(i, i + PATIENT_BATCH))
   }
 
   await db.from('external_connections').update({

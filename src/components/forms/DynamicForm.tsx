@@ -96,6 +96,8 @@ export function DynamicForm({
     const [submitError, setSubmitError] = useState<string | null>(null)
     const [isOnboarding, setIsOnboarding] = useState(false)
     const [photoCount, setPhotoCount] = useState(0)
+    // Mientras suben las fotos no se envía: la revisión llegaría sin ellas
+    const [photosUploading, setPhotosUploading] = useState(false)
     const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     const firstRender = useRef(true)
 
@@ -187,6 +189,7 @@ export function DynamicForm({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (photosUploading) return
         if (!validate()) return
 
         setSubmitting(true)
@@ -379,6 +382,7 @@ export function DynamicForm({
                         required={photoConfig?.required ?? false}
                         error={errors.__photos}
                         onCountChange={setPhotoCount}
+                        onUploadingChange={setPhotosUploading}
                     />
                 )
             })()}
@@ -389,13 +393,15 @@ export function DynamicForm({
                 </div>
             )}
 
-            <Button type="submit" className="w-full" size="lg" disabled={submitting}>
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {submissionMode === 'update'
-                    ? 'Guardar cambios'
-                    : templateType === 'checkin'
-                        ? 'Enviar revisión'
-                        : 'Enviar respuestas'}
+            <Button type="submit" className="w-full" size="lg" disabled={submitting || photosUploading}>
+                {(submitting || photosUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {photosUploading
+                    ? 'Subiendo fotos…'
+                    : submissionMode === 'update'
+                        ? 'Guardar cambios'
+                        : templateType === 'checkin'
+                            ? 'Enviar revisión'
+                            : 'Enviar respuestas'}
             </Button>
         </form>
     )

@@ -42,7 +42,9 @@ import {
     getReviewAIStatus,
 } from './CheckinAIAnalysisSheet'
 import { parseLocalDate, toLocalDateStr } from '@/lib/date-utils'
+import { currentProgramWeek } from '@/lib/training/strength-week-skips'
 import { getWorkspaceExpiryAlerts, type ExpiryAlert } from '@/lib/workspace-expiry-alerts'
+import { getCheckinAnswerState } from '@/lib/reviews/coach-checkin-state'
 
 type MetricPoint = {
     metric_date?: string
@@ -195,8 +197,8 @@ function getProgramSnapshot(activeProgram: TrainingProgram | null): ProgramSnaps
 
     const totalWeeks = Math.max(activeProgram.total_weeks || 0, 1)
     const startDate = parseLocalDate(activeProgram.effective_from)
-    const elapsedDays = Math.max(0, diffInDays(new Date(), startDate))
-    const currentWeek = Math.min(totalWeeks, Math.max(1, Math.floor(elapsedDays / 7) + 1))
+    // Misma semana que ve el atleta en Fuerza: de lunes a domingo desde la de inicio.
+    const currentWeek = currentProgramWeek(activeProgram.effective_from, toLocalDateStr(new Date()), totalWeeks)
     const progressPct = Math.min(100, Math.round((currentWeek / totalWeeks) * 100))
 
     let phaseLabel = 'Inicio'
@@ -724,7 +726,8 @@ export function ResumenTab({
 }
 
 function canOpenReviewFlow(checkin: CheckinWithReview | null) {
-    if (!checkin || checkin.status === 'pending') return false
+    // Solo se cierra una revisión que el atleta respondió.
+    if (!checkin || checkin.status === 'pending' || getCheckinAnswerState(checkin) !== 'answered') return false
 
     return (
         !checkin.review ||

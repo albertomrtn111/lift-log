@@ -21,9 +21,10 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { History, ChevronDown, ChevronUp, Trash2, Loader2, Settings2, Play, Copy, Dumbbell, MoreHorizontal } from 'lucide-react'
+import { History, ChevronDown, ChevronUp, Trash2, Loader2, Settings2, Play, Copy, Dumbbell, MoreHorizontal, EyeOff, Undo2 } from 'lucide-react'
 import { TrainingProgram } from '@/data/workspace'
-import { deleteTrainingProgramClient } from '../clientActions'
+import { deleteTrainingProgramClient, getProgramRemovalInfo, restoreHiddenProgramClient } from '../clientActions'
+import { programRemovalCopy } from '@/lib/safe-delete'
 import { activateTrainingProgramAction } from '../actions'
 import { TrainingProgramWizard } from './TrainingProgramWizard'
 import { useQueryClient } from '@tanstack/react-query'
@@ -52,6 +53,11 @@ export function TrainingProgramsHistory({
     const [activatingId, setActivatingId] = useState<string | null>(null)
     const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    // Aviso de «Eliminar» con lo que ha registrado el atleta (NXT-149).
+    const [removalCopy, setRemovalCopy] = useState<ReturnType<typeof programRemovalCopy> | null>(null)
+    const [removalError, setRemovalError] = useState<string | null>(null)
+    const [showHidden, setShowHidden] = useState(false)
+    const [restoringId, setRestoringId] = useState<string | null>(null)
     const [isActivating, setIsActivating] = useState(false)
     const [isDuplicating, setIsDuplicating] = useState(false)
     const [wizardConfig, setWizardConfig] = useState<{ isOpen: boolean, programId: string | null, step: number }>({
@@ -62,8 +68,40 @@ export function TrainingProgramsHistory({
     const queryClient = useQueryClient()
     const { toast } = useToast()
 
-    // Show all non-active programs (archived, draft, completed)
-    const historyPrograms = programs.filter(p => p.status !== 'active')
+    // Show all non-active programs (archived, draft, completed). Los ocultos van aparte.
+    const historyPrograms = programs.filter(p => p.status !== 'active' && !p.hidden_at)
+    const hiddenPrograms = programs.filter(p => p.status !== 'active' && !!p.hidden_at)
+
+    const openRemoval = async (programId: string) => {
+        setDeletingId(programId)
+        setRemovalCopy(null)
+        setRemovalError(null)
+        const info = await getProgramRemovalInfo(programId)
+        if (info.success) setRemovalCopy(programRemovalCopy(info.name, info.records))
+        else setRemovalError(info.error)
+    }
+
+    const closeRemoval = () => {
+        setDeletingId(null)
+        setRemovalCopy(null)
+        setRemovalError(null)
+    }
+
+    const handleRestore = async (programId: string) => {
+        setRestoringId(programId)
+        try {
+            const result = await restoreHiddenProgramClient(programId)
+            if (result.success) {
+                queryClient.invalidateQueries({ queryKey: ["trainingPrograms", clientId] })
+                toast({ title: 'Programa recuperado', description: 'Vuelve a estar en el historial.' })
+                onRefresh()
+            } else {
+                toast({ title: 'No se ha podido recuperar', description: result.error, variant: 'destructive' })
+            }
+        } finally {
+            setRestoringId(null)
+        }
+    }
 
     const handleActivate = async () => {
         if (!activatingId) return
@@ -134,11 +172,11 @@ export function TrainingProgramsHistory({
             const result = await deleteTrainingProgramClient(deletingId)
             if (result.success) {
                 queryClient.invalidateQueries({ queryKey: ["trainingPrograms", clientId] })
-                toast({
-                    title: 'Eliminado',
-                })
+                toast(result.mode === 'hide'
+                    ? { title: 'Programa ocultado', description: 'Las series del atleta se conservan. Lo tienes en «Ocultos».' }
+                    : { title: 'Programa eliminado' })
                 onRefresh()
-                setDeletingId(null)
+                closeRemoval()
             } else {
                 toast({
                     title: 'Error al eliminar',
@@ -227,7 +265,7 @@ export function TrainingProgramsHistory({
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem
-                                                    onClick={() => setDeletingId(program.id)}
+                                                    onClick={() => { void openRemoval(program.id) }}
                                                     className="text-destructive focus:text-destructive"
                                                 >
                                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -240,31 +278,74 @@ export function TrainingProgramsHistory({
                             })}
                         </ul>
                     )}
+
+                    {hiddenPrograms.length > 0 && (
+                        <div className="mt-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowHidden(v => !v)}
+                                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                aria-expanded={showHidden}
+                            >
+                                <EyeOff className="h-3.5 w-3.5" />
+                                Ocultos ({hiddenPrograms.length})
+                                {showHidden ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                            {showHidden && (
+                                <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-xl border border-dashed border-border/70">
+                                    {hiddenPrograms.map(program => (
+                                        <li key={program.id} className="flex items-center gap-2 py-2.5 pl-3.5 pr-1.5">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="line-clamp-2 text-sm font-medium leading-snug text-muted-foreground">{program.name}</p>
+                                                <p className="mt-0.5 text-xs text-muted-foreground">{program.total_weeks} sem · con series del atleta</p>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-9 shrink-0 gap-1.5 rounded-full"
+                                                disabled={restoringId === program.id}
+                                                onClick={() => handleRestore(program.id)}
+                                            >
+                                                {restoringId === program.id
+                                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                    : <Undo2 className="h-4 w-4" />}
+                                                Recuperar
+                                            </Button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
-            <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+            <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && !isDeleting && closeRemoval()}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>¿Eliminar programa?</AlertDialogTitle>
+                        <AlertDialogTitle>{removalCopy?.title ?? 'Eliminar programa'}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Esta acción eliminará el programa, sus días, columnas y todos los datos asociados de forma permanente.
+                            {removalError
+                                ?? removalCopy?.description
+                                ?? 'Comprobando lo que ha registrado el atleta…'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
-                            onClick={handleDelete}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            disabled={isDeleting}
+                            onClick={(event) => { event.preventDefault(); void handleDelete() }}
+                            className={removalCopy?.mode === 'hide'
+                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}
+                            disabled={isDeleting || !removalCopy}
                         >
                             {isDeleting ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Eliminando...
+                                    {removalCopy?.mode === 'hide' ? 'Ocultando…' : 'Eliminando…'}
                                 </>
                             ) : (
-                                'Eliminar'
+                                removalCopy?.confirm ?? 'Eliminar'
                             )}
                         </AlertDialogAction>
                     </AlertDialogFooter>

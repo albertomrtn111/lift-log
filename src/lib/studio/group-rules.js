@@ -104,3 +104,36 @@ export function sortGroups(groups, userId) {
         .filter(group => group.is_active)
         .sort((a, b) => Number(mine(b)) - Number(mine(a)) || a.name.localeCompare(b.name, 'es'))
 }
+
+/**
+ * Series registradas que se guardan, por persona, en una clase: las de quien no está como «Vino».
+ * No cuentan en informes ni progreso, y vuelven tal cual al marcar «Vino» (NXT-150).
+ * @param {{ item_id: string, client_id: string }[] | undefined} kept
+ * @param {{ id: string, session_id: string }[]} items
+ * @param {string} sessionId
+ * @returns {Record<string, number>}
+ */
+export function keptSetsByPerson(kept, items, sessionId) {
+    const inSession = new Set(items.filter(item => item.session_id === sessionId).map(item => item.id))
+    /** @type {Record<string, number>} */
+    const counts = {}
+    for (const row of kept ?? []) {
+        if (!inSession.has(row.item_id)) continue
+        counts[row.client_id] = (counts[row.client_id] ?? 0) + 1
+    }
+    return counts
+}
+
+/** Línea bajo el nombre en la lista de asistencia. */
+export function keptSetsLabel(count) {
+    if (!count) return ''
+    return count === 1
+        ? '1 serie guardada: vuelve al marcar «Vino»'
+        : `${count} series guardadas: vuelven al marcar «Vino»`
+}
+
+/** Aviso al quitar «Vino» a alguien en una clase con ejercicios hechos; vacío si no hace falta. */
+export function attendanceNotice(name, from, to, hasDoneItems) {
+    if (from !== 'attended' || to === 'attended' || !hasDoneItems) return ''
+    return `${name} deja de contar en esta clase. Sus series se guardan y vuelven si marcas «Vino».`
+}

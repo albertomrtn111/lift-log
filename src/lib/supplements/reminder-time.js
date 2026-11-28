@@ -49,7 +49,7 @@ export function getReminderTargets({
     return []
   }
 
-  const safeLookbackMinutes = Math.min(30, Math.max(1, Number(lookbackMinutes) || 5))
+  const safeLookbackMinutes = Math.min(60, Math.max(1, Number(lookbackMinutes) || 5))
   const seen = new Set()
   const targets = []
 

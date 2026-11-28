@@ -331,12 +331,16 @@ export function registerHistoryTools(server: Server, db: Db, helpers: ToolHelper
 
   server.registerTool('get_checkins', {
     title: 'Check-ins y formularios completos',
-    description: 'Devuelve respuestas originales del formulario, etiquetas de sus campos y revisión del entrenador. Usa checkin_id para una revisión concreta.',
-    inputSchema: z.object({ client_id: clientIdSchema, coach_id: coachIdSchema, checkin_id: z.string().uuid().optional(), limit: z.number().int().min(1).max(10).default(3), offset: z.number().int().min(0).max(500).default(0) }),
+    description: 'Devuelve respuestas originales del formulario, etiquetas de sus campos y revisión del entrenador. Usa checkin_id para una revisión concreta y type=onboarding para el cuestionario de alta.',
+    inputSchema: z.object({
+      client_id: clientIdSchema, coach_id: coachIdSchema, checkin_id: z.string().uuid().optional(),
+      type: z.enum(['all', 'checkin', 'onboarding']).default('all').describe('checkin: solo check-ins periódicos; onboarding: solo el cuestionario de alta; all (por defecto): ambos.'),
+      limit: z.number().int().min(1).max(10).default(3), offset: z.number().int().min(0).max(500).default(0) }),
     annotations,
-  }, async ({ client_id, coach_id, checkin_id, limit, offset }: any) => scoped('get_checkins', client_id, coach_id, async (coachId) => {
+  }, async ({ client_id, coach_id, checkin_id, type = 'all', limit, offset }: any) => scoped('get_checkins', client_id, coach_id, async (coachId) => {
     let query = db.from('checkins').select('id, type, status, created_at, submitted_at, period_start, period_end, weight_kg, weight_avg_kg, steps_avg, training_adherence_pct, nutrition_adherence_pct, sleep_avg_h, energy, hunger, stress, performance, injuries, notes, raw_payload, form_template_id, review_template_id')
       .eq('coach_id', coachId).eq('client_id', client_id).not('submitted_at', 'is', null)
+    if (type !== 'all') query = query.eq('type', type)
     if (checkin_id) query = query.eq('id', checkin_id)
     else query = query.order('submitted_at', { ascending: false }).range(offset, offset + limit)
     const checkins = rows(await query, 'los check-ins')

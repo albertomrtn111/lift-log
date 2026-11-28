@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { AuthDivider, AuthHeading, AuthShell } from '@/components/auth/AuthShell'
 import { AuthAlert, AuthField, AuthInput, PasswordInput } from '@/components/auth/AuthFields'
+import { ResendConfirmation } from '@/components/auth/ResendConfirmation'
 import { authErrorMessage, classifyAuthError, safeRedirectPath } from '@/lib/auth/auth-errors'
 
 // Si el login vuelve a abrirse con sesión a los pocos segundos de continuar,
@@ -195,7 +196,14 @@ function LoginForm() {
                 />
             </AuthField>
 
-            {error && (
+            {error?.kind === 'email_not_confirmed' ? (
+                <div className="space-y-3">
+                    <AuthAlert tone="warning" title="Falta confirmar tu email">
+                        Te enviamos un enlace al crear la cuenta. Si no lo encuentras (mira en spam o promociones) o ha caducado, pide otro.
+                    </AuthAlert>
+                    <ResendConfirmation email={email} />
+                </div>
+            ) : error && (
                 <AuthAlert tone="error">
                     {error.message}
                     {error.kind === 'invalid_credentials' && (

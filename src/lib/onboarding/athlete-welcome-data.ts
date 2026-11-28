@@ -104,7 +104,7 @@ export async function getAthleteWelcomeData(userId: string): Promise<AthleteWelc
         fullName: (client.full_name as string | null)?.trim() || null,
         avatarUrl,
         coachName,
-        // signed_up_at no sirve: el trigger de vinculación lo rellena al crear la cuenta
+        // signed_up_at no sirve: se rellena al enlazar la ficha, al crear la cuenta
         needsPassword: !state.password_set_at,
         state,
         hasPushSubscription,

@@ -52,6 +52,8 @@ export interface TrainingCell {
   columnId: string;
   weekNumber: number;
   value: any; // Allow objects or strings
+  /** Escrita sin conexión: aún no la ha confirmado el servidor (NXT-146) */
+  pending?: boolean;
 }
 
 export interface ExerciseSet {
@@ -65,6 +67,8 @@ export interface ExerciseSet {
   completed: boolean;
   isOverride: boolean;
   notes: string | null;
+  /** Campos aún sin confirmar por el servidor (cola sin conexión, NXT-146) */
+  pendingFields?: Array<'weightKg' | 'reps' | 'rir'>;
 }
 
 export interface TrainingProgramFull {

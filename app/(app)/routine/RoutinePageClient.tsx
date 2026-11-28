@@ -10,11 +10,14 @@ import { TrainingCell, TrainingProgram, TrainingDay, TrainingColumn, TrainingExe
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { CalendarX2, Dumbbell } from 'lucide-react'
-import { saveTrainingCell, autoMarkStrengthDayComplete } from '@/data/client-schedule'
-import { generateOrApplySets, updateSingleSet, revertSetToBase, addSetFromBase, deleteExerciseSet, getAllSetsForProgram } from '@/data/exercise-sets'
+import { autoMarkStrengthDayComplete } from '@/data/client-schedule'
+import { programDayDate } from '@/lib/training/strength-week-skips'
+import { isAthleteNotesColumn } from '@/lib/training/exercise-notes'
+import { tempSetId } from '@/lib/training/strength-save-queue'
 import { ClientEmptyState } from '@/components/ui/client-empty-state'
+import { PendingSaveBanner } from '@/components/routine/PendingSaveBanner'
 import { useAthleteLiveRefresh } from '@/hooks/useAthleteLiveRefresh'
-import { toast } from 'sonner'
+import { useStrengthSaveQueue, type StrengthMarkDay } from '@/hooks/useStrengthSaveQueue'
 
 interface RoutinePageClientProps {
     clientId: string
@@ -43,45 +46,52 @@ export default function RoutinePageClient({
 }: RoutinePageClientProps) {
     const [selectedWeek, setSelectedWeek] = useState(initialWeek)
     const [selectedDayId, setSelectedDayId] = useState(initialDayId || days[0]?.id || '')
-    const [cells, setCells] = useState<TrainingCell[]>(initialCells)
-    const [sets, setSets] = useState<ExerciseSet[]>(initialSets)
     const markedDays = useRef<Set<string>>(new Set())
     const router = useRouter()
 
-    // Cada edición de series suma uno: una recarga que empezó antes no pisa lo
-    // que el atleta acaba de escribir (se descarta y vale lo de pantalla).
-    const setEdits = useRef(0)
+    /** El servidor confirmó algo que cuenta como entrenar: el día se da por hecho. */
+    const markDayComplete = useCallback(async (markDay: StrengthMarkDay) => {
+        const markKey = `${markDay.dayId}-${markDay.week}-${markDay.sessionDate || 'today'}`
+        if (markedDays.current.has(markKey)) return
+        markedDays.current.add(markKey)
+        try {
+            const result = await autoMarkStrengthDayComplete(clientId, markDay.programId, markDay.dayId, markDay.sessionDate)
+            if (!result.success) {
+                console.error('[RoutinePageClient] Could not mark strength day complete:', result.error)
+            }
+            router.refresh()
+        } catch (error) {
+            // Sin conexión: se vuelve a intentar con el próximo guardado
+            markedDays.current.delete(markKey)
+            console.error('[RoutinePageClient] Could not mark strength day complete:', error)
+        }
+    }, [clientId, router])
+
+    // Series y casillas: lo del servidor con lo pendiente (sin conexión) encima
+    const saveQueue = useStrengthSaveQueue({ clientId, initialSets, initialCells, onSaved: markDayComplete })
+    const { sets, cells, enqueue, flush, refreshSets } = saveQueue
 
     const exerciseIdsKey = exercises.map(e => e.id).join(',')
 
-    /** Relee las series de la BD: lo guardado manda sobre lo que haya en pantalla. */
-    const refreshSets = useCallback(async () => {
-        const ids = exerciseIdsKey ? exerciseIdsKey.split(',') : []
-        if (ids.length === 0) return
-        const editsAtStart = setEdits.current
-        try {
-            const fresh = await getAllSetsForProgram(ids)
-            if (setEdits.current === editsAtStart) setSets(fresh)
-        } catch (error) {
-            console.error('[RoutinePageClient] Could not reload sets:', error)
-        }
-    }, [exerciseIdsKey])
+    /** Relee las series de la BD; lo pendiente de guardar sigue encima. */
+    const reloadSets = useCallback(async () => {
+        await refreshSets(exerciseIdsKey ? exerciseIdsKey.split(',') : [])
+    }, [exerciseIdsKey, refreshSets])
 
     // Al volver con atrás/adelante Next reutiliza la página que tenía en memoria,
     // con las series de entonces: se releen al entrar (y si el coach cambia los
     // ejercicios) para no perder lo apuntado.
-    useEffect(() => { void refreshSets() }, [refreshSets])
+    useEffect(() => { void reloadSets() }, [reloadSets])
 
-    // Vuelta a la app o cambios del coach: estructura del programa y series
+    // Vuelta a la app, vuelta de la red o cambios del coach: primero se envía lo
+    // pendiente y después se relee. Sin red no se pide la página al servidor (si
+    // falla, Next recarga la página entera).
     useAthleteLiveRefresh(() => {
-        router.refresh()
-        void refreshSets()
+        void flush().finally(() => {
+            if (typeof navigator === 'undefined' || navigator.onLine !== false) router.refresh()
+            void reloadSets()
+        })
     }, ['training'])
-
-    const reportSaveError = useCallback(() => {
-        toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
-        void refreshSets()
-    }, [refreshSets])
 
     // Días que el coach quitó en la semana elegida: esa semana no aparecen.
     const skippedThisWeek = new Set(
@@ -105,62 +115,29 @@ export default function RoutinePageClient({
 
         const selectedDay = days.find(day => day.id === selectedDayId)
         const defaultWeekday = selectedDay?.defaultWeekday ?? selectedDay?.default_weekday
-        if (!defaultWeekday) return undefined
-
-        const programStart = new Date(`${program.effectiveFrom}T12:00:00`)
-        const weekStart = new Date(programStart)
-        weekStart.setDate(weekStart.getDate() + ((selectedWeek - 1) * 7))
-        const mondayOffset = (weekStart.getDay() + 6) % 7
-        weekStart.setDate(weekStart.getDate() - mondayOffset)
-
-        const sessionDate = new Date(weekStart)
-        sessionDate.setDate(weekStart.getDate() + defaultWeekday - 1)
-        const y = sessionDate.getFullYear()
-        const m = String(sessionDate.getMonth() + 1).padStart(2, '0')
-        const d = String(sessionDate.getDate()).padStart(2, '0')
-        return `${y}-${m}-${d}`
+        // Misma cuenta que el servidor, con fechas sin hora.
+        return programDayDate(program.effectiveFrom, selectedWeek, defaultWeekday) ?? undefined
     }, [days, initialDayId, initialSessionDate, initialWeek, program.effectiveFrom, selectedDayId, selectedWeek])
 
-    const markCurrentDayComplete = useCallback(async () => {
-        if (!selectedDayId) return
+    /** Día que se dará por hecho cuando el servidor confirme el cambio */
+    const currentMarkDay = useCallback((): StrengthMarkDay | undefined => {
+        if (!selectedDayId) return undefined
+        return { programId: program.id, dayId: selectedDayId, week: selectedWeek, sessionDate: getSessionDate() }
+    }, [getSessionDate, program.id, selectedDayId, selectedWeek])
 
-        const sessionDate = getSessionDate()
-        const markKey = `${selectedDayId}-${selectedWeek}-${sessionDate || 'today'}`
-        if (markedDays.current.has(markKey)) return
+    // Cada cambio se ve al momento y entra en la cola: si no hay cobertura se
+    // queda pendiente y se envía solo al volver la red (useStrengthSaveQueue).
 
-        markedDays.current.add(markKey)
-        const result = await autoMarkStrengthDayComplete(clientId, program.id, selectedDayId, sessionDate)
-        if (!result.success) {
-            console.error('[RoutinePageClient] Could not mark strength day complete:', result.error)
-        }
-        router.refresh()
-    }, [clientId, getSessionDate, program.id, router, selectedDayId, selectedWeek])
-
-    // ─── Cell handlers (legacy) ─────────────────────────────────
-    const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string) => {
-        const existing = cells.find(
-            c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
-        )
-
-        setCells(prev => {
-            const idx = prev.findIndex(
-                c => c.exerciseId === exerciseId && c.columnId === columnId && c.weekNumber === selectedWeek
-            )
-            if (idx >= 0) {
-                const updated = [...prev]
-                updated[idx] = { ...updated[idx], value }
-                return updated
-            }
-            return [...prev, { id: `temp-${exerciseId}-${columnId}-${selectedWeek}`, exerciseId, columnId, weekNumber: selectedWeek, value }]
+    // ─── Cell handlers (legacy y notas) ─────────────────────────
+    const handleCellChange = useCallback(async (exerciseId: string, columnId: string, value: string): Promise<boolean> => {
+        // Una nota no es haber entrenado: no da el día por hecho
+        const column = columns.find(c => c.id === columnId)
+        enqueue({
+            kind: 'cell', exerciseId, columnId, week: selectedWeek, value,
+            markDay: isAthleteNotesColumn(column) ? undefined : currentMarkDay(),
         })
-
-        const result = await saveTrainingCell(exerciseId, columnId, selectedWeek, value, existing?.id?.startsWith('temp-') ? undefined : existing?.id)
-        if (result.success) {
-            await markCurrentDayComplete()
-        } else {
-            toast.error('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.')
-        }
-    }, [selectedWeek, cells, markCurrentDayComplete])
+        return true
+    }, [columns, currentMarkDay, enqueue, selectedWeek])
 
     // ─── Base Block: Generate / Apply ───────────────────────────
     const handleGenerateSets = useCallback(async (
@@ -170,45 +147,24 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
-        setEdits.current += 1
-        const result = await generateOrApplySets(exerciseId, selectedWeek, baseSeries, baseWeight, baseReps, baseRir)
-        if (result.success && result.sets) {
-            setSets(prev => [
-                ...prev.filter(s => !(s.exerciseId === exerciseId && s.weekNumber === selectedWeek)),
-                ...result.sets!
-            ])
-            await markCurrentDayComplete()
-        } else {
-            reportSaveError()
-        }
-        return result
-    }, [selectedWeek, markCurrentDayComplete, reportSaveError])
+        enqueue({
+            kind: 'generate', exerciseId, week: selectedWeek, series: baseSeries,
+            weightKg: baseWeight, reps: baseReps, rir: baseRir, markDay: currentMarkDay(),
+        })
+        return { success: true }
+    }, [currentMarkDay, enqueue, selectedWeek])
 
     // ─── Single set update (marks override) ─────────────────────
     const handleSetUpdate = useCallback(async (
         setId: string,
         payload: { weightKg?: number | null; reps?: number | null; rir?: number | null }
     ) => {
-        setEdits.current += 1
-        // Optimistic
-        setSets(prev => prev.map(s => {
-            if (s.id !== setId) return s
-            return {
-                ...s,
-                ...(payload.weightKg !== undefined ? { weightKg: payload.weightKg } : {}),
-                ...(payload.reps !== undefined ? { reps: payload.reps } : {}),
-                ...(payload.rir !== undefined ? { rir: payload.rir } : {}),
-                isOverride: true,
-            }
-        }))
-
-        const result = await updateSingleSet(setId, payload)
-        if (result.success) {
-            await markCurrentDayComplete()
-        } else {
-            reportSaveError()
-        }
-    }, [markCurrentDayComplete, reportSaveError])
+        const target = sets.find(s => s.id === setId)
+        enqueue({
+            kind: 'set', setId, exerciseId: target?.exerciseId, week: target?.weekNumber,
+            values: payload, override: true, markDay: currentMarkDay(),
+        })
+    }, [currentMarkDay, enqueue, sets])
 
     // ─── Revert override ────────────────────────────────────────
     const handleRevertSet = useCallback(async (
@@ -217,16 +173,12 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
-        setEdits.current += 1
-        // Optimistic
-        setSets(prev => prev.map(s => {
-            if (s.id !== setId) return s
-            return { ...s, weightKg: baseWeight, reps: baseReps, rir: baseRir, isOverride: false }
-        }))
-
-        const result = await revertSetToBase(setId, baseWeight, baseReps, baseRir)
-        if (!result.success) reportSaveError()
-    }, [reportSaveError])
+        const target = sets.find(s => s.id === setId)
+        enqueue({
+            kind: 'set', setId, exerciseId: target?.exerciseId, week: target?.weekNumber,
+            values: { weightKg: baseWeight, reps: baseReps, rir: baseRir }, override: false,
+        })
+    }, [enqueue, sets])
 
     // ─── Add one more set from base ─────────────────────────────
     const handleAddSet = useCallback(async (
@@ -235,24 +187,21 @@ export default function RoutinePageClient({
         baseReps: number | null,
         baseRir: number | null
     ) => {
-        setEdits.current += 1
-        const result = await addSetFromBase(exerciseId, selectedWeek, baseWeight, baseReps, baseRir)
-        if (result.success && result.set) {
-            setSets(prev => [...prev, result.set!])
-            await markCurrentDayComplete()
-        } else {
-            reportSaveError()
-        }
-        return result
-    }, [selectedWeek, markCurrentDayComplete, reportSaveError])
+        // Número fijo: si el envío se repite, el servidor no crea otra serie
+        const mine = sets.filter(s => s.exerciseId === exerciseId && s.weekNumber === selectedWeek)
+        const setIndex = mine.reduce((max, s) => Math.max(max, s.setIndex), -1) + 1
+        enqueue({
+            kind: 'add', exerciseId, week: selectedWeek, setIndex,
+            tempId: tempSetId(exerciseId, selectedWeek, setIndex),
+            weightKg: baseWeight, reps: baseReps, rir: baseRir, markDay: currentMarkDay(),
+        })
+        return { success: true }
+    }, [currentMarkDay, enqueue, selectedWeek, sets])
 
     // ─── Delete set ─────────────────────────────────────────────
     const handleDeleteSet = useCallback(async (setId: string) => {
-        setEdits.current += 1
-        setSets(prev => prev.filter(s => s.id !== setId))
-        const result = await deleteExerciseSet(setId)
-        if (!result.success) reportSaveError()
-    }, [reportSaveError])
+        enqueue({ kind: 'delete', setId })
+    }, [enqueue])
 
     const sharedProps = {
         exercises: dayExercises,
@@ -300,7 +249,14 @@ export default function RoutinePageClient({
                 )}
             </div>
 
-            <div className="pb-6 pt-4">
+            {/* Con el aviso flotante, hueco abajo para que no tape la última serie */}
+            <div className={saveQueue.pendingCount > 0 ? 'pb-28 pt-4 md:pb-6' : 'pb-6 pt-4'}>
+                <PendingSaveBanner
+                    status={saveQueue.status}
+                    pendingCount={saveQueue.pendingCount}
+                    onRetry={() => { void flush() }}
+                    className="md:mx-4 md:mb-3"
+                />
                 {weekDays.length === 0 ? (
                     <ClientEmptyState
                         icon={CalendarX2}

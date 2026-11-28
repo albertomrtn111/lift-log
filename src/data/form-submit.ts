@@ -7,6 +7,8 @@ import { generateCheckinAnalysis, type GenerateCheckinAnalysisResult } from '@/l
 import { ensureCheckinReviewTemplateLink } from '@/lib/reviews/checkin-template-linking'
 import { notifyCoachCheckinSubmitted, notifyCoachOnboardingCompleted } from '@/lib/notifications/coach'
 import { markReviewNotificationsRead } from '@/lib/notifications/client'
+import { canAthleteChangeCheckin, checkinBlockedCopy } from '@/lib/reviews/checkin-submission-rules'
+import { loadCheckinSubmissionState } from '@/lib/reviews/checkin-submission-state'
 
 /** Lo que esperamos al borrador de IA antes de avisar al coach sin él. */
 const AI_DRAFT_WAIT_MS = 90_000
@@ -33,6 +35,8 @@ interface SubmitFormResult {
     success: boolean
     error?: string
     isOnboarding?: boolean
+    /** El check-in ya no admite cambios (cerrado por el coach o caducado) */
+    closed?: boolean
 }
 
 export async function submitFormAction(
@@ -49,7 +53,7 @@ export async function submitFormAction(
     // 2. Verify the checkin exists and load its type
     const { data: checkin, error: checkinErr } = await admin
         .from('checkins')
-        .select('id, coach_id, client_id, type, status, form_template_id, review_template_id, review_schedule_id, period_start, period_end')
+        .select('id, coach_id, client_id, type, status, submitted_at, created_at, form_template_id, review_template_id, review_schedule_id, period_start, period_end')
         .eq('id', checkinId)
         .single()
 
@@ -60,16 +64,29 @@ export async function submitFormAction(
     // 3. Verify ownership: the client's auth_user_id must match the current user
     const { data: client } = await admin
         .from('clients')
-        .select('id, auth_user_id, user_id')
+        .select('id, auth_user_id, user_id, status')
         .eq('id', checkin.client_id)
         .single()
 
     if (!client || (client.auth_user_id !== user.id && client.user_id !== user.id)) {
         return { success: false, error: 'No tienes permiso para enviar este formulario' }
     }
+    if (client.status !== 'active') {
+        return { success: false, error: 'Te has quedado sin licencia: habla con tu entrenador para volver a enviar revisiones.' }
+    }
 
     // 4. Validate server-side photo requirements from the review template.
     const linkedCheckin = await ensureCheckinReviewTemplateLink(admin, checkin)
+
+    // Revisión cerrada por el coach (o caducada): no se cambia nada.
+    const submissionState = await loadCheckinSubmissionState(admin, checkin)
+    if (!submissionState || !canAthleteChangeCheckin(submissionState)) {
+        return {
+            success: false,
+            closed: true,
+            error: checkinBlockedCopy(submissionState ?? 'closed')?.message,
+        }
+    }
 
     if (linkedCheckin.review_template_id) {
         const { data: reviewTemplate, error: reviewTemplateErr } = await admin
@@ -111,7 +128,8 @@ export async function submitFormAction(
 
     // 6. Update checkin with submitted data
     const now = new Date().toISOString()
-    const { error: updateErr } = await admin
+    // Solo si sigue abierto: si el coach lo cierra mientras tanto, no se pisa.
+    const { data: updatedCheckin, error: updateErr } = await admin
         .from('checkins')
         .update({
             raw_payload: payload,
@@ -119,10 +137,16 @@ export async function submitFormAction(
             status: 'reviewed',
         })
         .eq('id', checkinId)
+        .in('status', ['pending', 'reviewed'])
+        .select('id')
+        .maybeSingle()
 
     if (updateErr) {
         console.error('[submitFormAction] Checkin update error:', updateErr)
         return { success: false, error: updateErr.message }
+    }
+    if (!updatedCheckin) {
+        return { success: false, closed: true, error: checkinBlockedCopy('closed')?.message }
     }
 
     // 7. If this is an onboarding form, update the client's onboarding status
@@ -169,11 +193,11 @@ export async function submitFormAction(
                 if (!review) {
                     console.error('[submitFormAction] Could not create or load review for AI analysis')
                 } else {
-                    const { error: reviewResetError } = await admin
+                    // Solo una revisión abierta (borrador): nunca se reabre una aprobada.
+                    // Se rehace el análisis de IA con las respuestas nuevas.
+                    const { data: resetReview, error: reviewResetError } = await admin
                         .from('reviews')
                         .update({
-                            status: 'draft',
-                            approved_by: null,
                             ai_status: 'pending',
                             ai_summary: null,
                             ai_error: null,
@@ -181,11 +205,19 @@ export async function submitFormAction(
                             analysis: null,
                         })
                         .eq('id', review.id)
+                        .eq('status', 'draft')
+                        .select('id')
+                        .maybeSingle()
 
                     if (reviewResetError) {
                         console.error('[submitFormAction] Could not reset AI review fields:', reviewResetError)
+                    } else if (!resetReview) {
+                        console.error('[submitFormAction] Review is not a draft; AI analysis skipped:', review.id)
                     } else {
-                        analysis = generateCheckinAnalysis(checkinId, review.id)
+                        analysis = generateCheckinAnalysis(checkinId, review.id, {
+                            coachId: adminCheckin.coach_id,
+                            clientId: adminCheckin.client_id,
+                        })
                     }
                 }
             }

@@ -56,6 +56,7 @@ import { ProgramOverview, type ProgramDetail } from './plan/ProgramOverview'
 import { getAITrainingWizardConfig } from '@/lib/training/ai-training-flow'
 import { FirstPlanChooser } from '@/components/coach/onboarding/FirstPlanChooser'
 import { usePlanStartIntent, type PlanStartIntent } from '@/components/coach/onboarding/plan-start'
+import { fetchAllPagesIn } from '@/lib/supabase/fetch-all-pages'
 
 function getDerivedProgramWeek(effectiveFrom: string | null | undefined, totalWeeks: number) {
     if (!effectiveFrom || totalWeeks <= 1) return 1
@@ -317,10 +318,15 @@ function EntrenoSubtab({
             // Lo que el atleta ha registrado: se carga después para no retrasar la vista
             const exerciseIds = exs.map((exercise: any) => exercise.id)
             if (exerciseIds.length > 0) {
-                supabase
-                    .from('training_exercise_sets')
-                    .select('exercise_id, week_index, set_index, weight_kg, reps, completed')
-                    .in('exercise_id', exerciseIds)
+                // Por páginas: en programas largos pasan de 1.000 series (NXT-153).
+                fetchAllPagesIn(exerciseIds, (ids: string[], from: number, to: number) =>
+                    supabase
+                        .from('training_exercise_sets')
+                        .select('exercise_id, week_index, set_index, weight_kg, reps, completed')
+                        .in('exercise_id', ids)
+                        .order('id', { ascending: true })
+                        .range(from, to)
+                )
                     .then(({ data: loggedSets }) => {
                         if (!loggedSets?.length) return
                         setProgramSummaryDetail(current => current === detail

@@ -2,6 +2,7 @@
 
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
 import { callGemini } from '@/lib/ai/gemini'
+import { assertCoachHasAI } from '@/lib/ai/access'
 import { buildCoachAssistantContext } from '@/lib/ai/coach-assistant-context'
 
 export type CoachAssistantMessage = {
@@ -74,6 +75,7 @@ export async function sendCoachAssistantMessageAction(content: string): Promise<
 }> {
     try {
         const { supabase, coachId } = await requireActiveCoachId()
+        await assertCoachHasAI(coachId)
 
         const question = content.trim()
         if (!question || question.length > 4000) {

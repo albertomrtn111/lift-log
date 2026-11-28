@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
+    // La app no usa next/image. Con el optimizador apagado, /_next/image responde
+    // 404 sin descargar ni procesar ninguna imagen (cierra sus avisos de seguridad).
+    images: {
+        unoptimized: true,
+    },
     experimental: {
         // Las páginas dinámicas no se reutilizan de la caché del navegador al
         // navegar (por defecto 30 s): volver a una pantalla muestra datos al día.

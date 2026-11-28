@@ -2,10 +2,16 @@ import 'server-only'
 
 import { sendTeamInviteEmail } from '@/lib/email/mailer'
 import { buildAccessLink } from '@/lib/onboarding/athlete-invite'
+import { buildInvitePageUrl } from '@/lib/onboarding/invite-link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ROLE_LABELS } from '@/lib/team/team-rules'
 
 const JOIN_PATH = '/unirse'
+
+/** Pantalla a la que llega quien abre la invitación de equipo */
+export function teamJoinPath(invitationId: string): string {
+    return `${JOIN_PATH}?invitacion=${invitationId}`
+}
 
 /** Envía el email de una invitación. Lanza un error si no se ha podido enviar. */
 export async function sendInvitation(params: {
@@ -18,7 +24,10 @@ export async function sendInvitation(params: {
     inviterName?: string
 }) {
     const admin = createAdminClient()
-    const { url, accountCreated } = await buildAccessLink(params.email, `${JOIN_PATH}?invitacion=${params.invitationId}`)
+    // Crea la cuenta si no existe; el email lleva la página propia, válida 7
+    // días, que genera el enlace de acceso al pulsar el botón (NXT-145)
+    const { accountCreated } = await buildAccessLink(params.email, teamJoinPath(params.invitationId))
+    const url = buildInvitePageUrl('team', params.invitationId)
     const [{ data: space }, { data: inviter }] = await Promise.all([
         admin.from('coaches').select('name').eq('id', params.coachId).maybeSingle(),
         admin.from('profiles').select('full_name').eq('id', params.inviterId).maybeSingle(),

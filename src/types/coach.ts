@@ -35,6 +35,7 @@ export interface Client {
     created_at: string
     payment_amount?: number | null
     payment_day?: number | null
+    /** Nota de cobro: viene de client_payment_notes (solo equipo del coach), no de clients */
     payment_notes?: string | null
     /** Atleta de ejemplo (Lucía): no se cobra ni recibe nada */
     is_sample?: boolean

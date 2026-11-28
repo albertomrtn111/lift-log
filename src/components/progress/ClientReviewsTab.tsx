@@ -246,6 +246,11 @@ function ClientReviewDetail({
                         Si guardas cambios, la revisión se enviará de nuevo a tu coach para que la revise.
                     </p>
                 )}
+                {!review.canEdit && (
+                    <p className="text-xs text-muted-foreground">
+                        Tu coach ya ha cerrado esta revisión, así que no se pueden cambiar las respuestas.
+                    </p>
+                )}
             </div>
 
             {metricItems.length > 0 && (
@@ -318,7 +323,7 @@ export function ClientReviewsTab({ initialCheckinId }: ClientReviewsTabProps) {
     const openReview = useCallback(async (checkinId: string) => {
         const selected = reviews.find(review => review.checkinId === checkinId)
         setActiveCheckinId(checkinId)
-        setEditing(selected?.status === 'pending')
+        setEditing(selected?.status === 'pending' && selected.canEdit)
         setSheetOpen(true)
         setFormLoading(true)
         setFormError(null)

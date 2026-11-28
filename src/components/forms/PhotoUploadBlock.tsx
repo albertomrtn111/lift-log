@@ -33,6 +33,8 @@ interface PhotoUploadBlockProps {
     required?: boolean
     error?: string
     onCountChange?: (count: number) => void
+    /** Avisa mientras sube fotos: el formulario no deja enviar hasta que acaben */
+    onUploadingChange?: (uploading: boolean) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,7 @@ export function PhotoUploadBlock({
     required = false,
     error: externalError,
     onCountChange,
+    onUploadingChange,
 }: PhotoUploadBlockProps) {
     const supabase = createClient()
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -84,6 +87,13 @@ export function PhotoUploadBlock({
     useEffect(() => {
         onCountChange?.(photos.length)
     }, [onCountChange, photos.length])
+
+    useEffect(() => {
+        onUploadingChange?.(uploading)
+    }, [onUploadingChange, uploading])
+
+    // Si se cierra a media subida, el formulario no se queda bloqueado
+    useEffect(() => () => onUploadingChange?.(false), [onUploadingChange])
 
     /** Borra el archivo de R2 (vía la app, que comprueba permisos) o de Supabase */
     const removeStoredFile = useCallback(async (bucket: string, path: string) => {
@@ -172,6 +182,10 @@ export function PhotoUploadBlock({
 
             // Refresh list
             await fetchPhotos()
+        } catch (err) {
+            console.error('[PhotoUploadBlock] Upload failed:', err)
+            setError('No se han podido subir las fotos. Revisa la conexión e inténtalo de nuevo.')
+            await fetchPhotos().catch(() => undefined)
         } finally {
             setUploading(false)
             // Reset file input
