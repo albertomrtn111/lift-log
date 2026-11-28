@@ -36,6 +36,7 @@ import {
   toUtcDate,
   writeAnnotations,
 } from './shared.ts'
+import { SUPERSET_FIELD_DESCRIPTION, SUPERSET_TOOL_NOTE } from './strength-blocks.ts'
 
 const optionalCoachId = z.string().uuid().optional().describe(
   'Solo hace falta si el entrenador pertenece a más de un espacio de trabajo.',
@@ -61,6 +62,7 @@ const strengthExerciseSchema = z.object({
   rir: z.number().min(0).max(10).optional(),
   rest_seconds: z.number().int().min(0).max(1800).optional(),
   notes: z.string().trim().max(800).optional(),
+  superset: z.string().trim().min(1).max(40).optional().describe(SUPERSET_FIELD_DESCRIPTION),
 })
 
 const strengthDaySchema = z.object({
@@ -83,7 +85,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
   const server = withOutputSchemas(new McpServer({
     name: 'nexttrain',
     title: 'NexTrain',
-    version: '0.26.0',
+    version: '0.27.0',
     websiteUrl: 'https://nexttrain.ascenttech.cloud',
   }, {
     // Los clientes que cargan herramientas bajo demanda buscan por palabras: aquí van las del día a día del coach.
@@ -93,7 +95,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
       'Ficha del atleta (edad, sexo, altura, peso de referencia, notas, umbrales y zonas de FC, ritmo y potencia, perfil IA y cuestionario de alta): get_athlete_profile.',
       'Objetivos nutricionales (calorías, macros, proteína, hidratos, grasas, distintos en días de entreno y descanso): leer con get_current_nutrition; cambiarlos con create_macro_plan (nuevo bloque con fecha de inicio) o update_macro_plan (editar el plan vigente por plan_id).',
       'Dieta con comidas y alimentos: get_diet_plan, preview_diet_plan, create_diet_plan, update_diet_plan.',
-      'Fuerza: create_strength_program, update_strength_program, update_strength_program_days. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
+      'Fuerza: create_strength_program, update_strength_program, update_strength_program_days; para superseries, biseries, triseries o series gigantes, la misma etiqueta en el campo superset de 2 a 4 ejercicios seguidos. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
     ].join('\n'),
   }))
   // Todas las herramientas registran quién las usó (cuenta y asistente) con el mismo ayudante.
@@ -371,7 +373,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
     'create_strength_program',
     {
       title: 'Crear programa de fuerza',
-      description: 'Crea un programa de fuerza completo con días y ejercicios de la biblioteca (consulta list_exercise_catalog). Si algún ejercicio no está en la biblioteca no se crea nada y el error lo indica. Por seguridad se crea en borrador salvo que status sea active. active archiva el programa activo anterior del cliente y no admite fecha de inicio futura.',
+      description: 'Crea un programa de fuerza completo con días y ejercicios de la biblioteca (consulta list_exercise_catalog). Si algún ejercicio no está en la biblioteca no se crea nada y el error lo indica. Por seguridad se crea en borrador salvo que status sea active. active archiva el programa activo anterior del cliente y no admite fecha de inicio futura. ' + SUPERSET_TOOL_NOTE,
       inputSchema: z.object({
         client_id: z.string().uuid(),
         name: z.string().trim().min(1).max(160),

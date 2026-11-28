@@ -528,7 +528,7 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
     if (dayIds.length > 0) {
         const { data: exercisesData, error: exercisesError } = await supabase
             .from('training_exercises')
-            .select('id, day_id, exercise_name, order_index, sets, reps, rir, rest_seconds, notes') // Correct columns
+            .select('id, day_id, exercise_name, order_index, sets, reps, rir, rest_seconds, notes, superset_key')
             .in('day_id', dayIds)
             .order('order_index', { ascending: true }) // Correct order column
 
@@ -653,6 +653,7 @@ export async function getActiveClientProgram(clientId: string, programId?: strin
             rir: e.rir,
             restSeconds: e.rest_seconds, // Map rest_seconds -> restSeconds
             notes: e.notes,
+            supersetKey: e.superset_key ?? null,
         })),
         cells: cells.map((c: any) => ({
             id: c.id,

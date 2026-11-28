@@ -1,6 +1,9 @@
+// «Bloque» es la letra del ejercicio en su día (A, B, C1, C2…): las superseries
+// comparten letra. Una fila por serie, sin intercalar, para analizarlo fácil.
 const HEADER = [
   'Programa',
   'Día',
+  'Bloque',
   'Ejercicio',
   'Semana',
   'Serie',
@@ -48,6 +51,7 @@ export function buildTrainingProgressCsv(data) {
         rows.push([
           programName,
           day.name,
+          exercise.blockLabel ?? '',
           exercise.name,
           '',
           '',
@@ -69,6 +73,7 @@ export function buildTrainingProgressCsv(data) {
           rows.push([
             programName,
             day.name,
+            exercise.blockLabel ?? '',
             exercise.name,
             week,
             Number(set.setIndex ?? 0) + 1,

@@ -24,6 +24,7 @@ test('buildTrainingProgressCsv exports strength set progression rows', () => {
             id: 'exercise-1',
             name: 'Press banca',
             order: 1,
+            blockLabel: 'C1',
             prescribedSets: 3,
             prescribedReps: '8',
             prescribedRir: 2,
@@ -43,9 +44,9 @@ test('buildTrainingProgressCsv exports strength set progression rows', () => {
 
   assert.equal(
     csv,
-    '\uFEFFPrograma;Día;Ejercicio;Semana;Serie;Peso (kg);Reps;RIR;Completada;Notas;Series prescritas;Reps prescritas;RIR prescrito\n' +
-      'Bloque Fuerza;Torso;Press banca;1;1;80;8;2;Sí;Solido;3;8;2\n' +
-      'Bloque Fuerza;Torso;Press banca;2;1;82,5;8;1;Sí;;3;8;2'
+    '\uFEFFPrograma;Día;Bloque;Ejercicio;Semana;Serie;Peso (kg);Reps;RIR;Completada;Notas;Series prescritas;Reps prescritas;RIR prescrito\n' +
+      'Bloque Fuerza;Torso;C1;Press banca;1;1;80;8;2;Sí;Solido;3;8;2\n' +
+      'Bloque Fuerza;Torso;C1;Press banca;2;1;82,5;8;1;Sí;;3;8;2'
   )
 })
 
@@ -80,6 +81,6 @@ test('buildTrainingProgressCsv includes empty planned exercises when no sets exi
     ],
   })
 
-  assert.equal(csv.split('\n')[1], 'Bloque Fuerza;Pierna;Sentadilla;;;;;;;Sin registros;4;6-8;1')
+  assert.equal(csv.split('\n')[1], 'Bloque Fuerza;Pierna;;Sentadilla;;;;;;;Sin registros;4;6-8;1')
 })
 

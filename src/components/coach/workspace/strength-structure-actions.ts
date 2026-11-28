@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
 import { planStrengthStructure } from '@/lib/training/strength-structure-plan'
+import { planNormalizeOrder } from '@/lib/training/supersets'
 import { loadStrengthResults, type StrengthResultConflict } from '@/lib/training/strength-results-data'
 import type { StrengthStructure } from '@/types/templates'
 
@@ -36,6 +37,9 @@ function exerciseFields(source: Record<string, any>) {
         rir: toNumberOrNull(source.rir),
         rest_seconds: source.rest_seconds ?? 60,
         notes: source.notes || null,
+        // Superseries (NXT-121): la clave viaja con el ejercicio de la plantilla. Si la propuesta no
+        // dice nada (la IA aún no propone superseries), el ejercicio que sigue conserva la suya.
+        ...(source.superset_key !== undefined ? { superset_key: source.superset_key ?? null } : {}),
     }
 }
 
@@ -163,6 +167,25 @@ export async function applyStrengthStructureAction(input: {
         if (plan.deleteDayIds.length > 0) {
             const { error } = await supabase.from('training_days').delete().in('id', plan.deleteDayIds)
             if (error) return { success: false, error: `No se pudieron quitar días: ${error.message}` }
+        }
+
+        // 5. Superseries: un ejercicio conservado al final o separado de su bloque deja de estarlo.
+        const { data: finalExercises } = await supabase
+            .from('training_exercises')
+            .select('id, day_id, order_index, superset_key, rest_seconds, created_at')
+            .eq('program_id', programId)
+        const exercisesByDay = new Map<string, any[]>()
+        for (const exercise of finalExercises ?? []) {
+            const list = exercisesByDay.get(exercise.day_id) ?? []
+            list.push(exercise)
+            exercisesByDay.set(exercise.day_id, list)
+        }
+        const supersetFixes = [...exercisesByDay.values()].flatMap(list => planNormalizeOrder(
+            list.sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))),
+        ).updates)
+        if (supersetFixes.length > 0) {
+            await Promise.all(supersetFixes.map(({ id, ...fields }) =>
+                supabase.from('training_exercises').update({ ...fields, updated_at: now }).eq('id', id)))
         }
 
         const { data: finalDays, error: finalDaysError } = await supabase

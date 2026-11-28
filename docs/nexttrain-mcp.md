@@ -505,3 +505,14 @@ Quedan fuera a propósito las lesiones y notas relevantes de Modo Sala (`client_
 Las instrucciones del servidor piden leerlo antes de planificar, revisar o escribir al atleta. Los prompts `revision_semanal`, `preparar_bloque_siguiente` y `planificar_temporada` empiezan por `get_coach_profile` y `get_athlete_profile`. Lo pueden leer todos los miembros del espacio (RLS `is_coach_member`).
 
 Pruebas: `supabase/functions/nexttrain-mcp/profile.test.ts` y `coach-profile.test.ts`. No requiere migraciones.
+
+## Superseries en los programas de fuerza (MCP 0.27.0)
+
+Migración `20261118082738_strength_supersets`. Los ejercicios seguidos de un mismo día con la misma `superset_key` forman un bloque de 2 a 4 (superserie, triserie o serie gigante). Las reglas viven en `src/lib/training/supersets.js` y las usan igual la web y el MCP (`strength-blocks.ts`).
+
+- **Escribir:** `create_strength_program` y `update_strength_program_days` aceptan `superset` en cada ejercicio, una etiqueta cualquiera (por ejemplo `"C"`). En `update_strength_program_days`, omitirlo conserva la que tenía (`superset_key` en `get_program_history`) y `null` lo saca del bloque.
+- **Descanso:** dentro del bloque, `rest_seconds` de cada ejercicio es el paso al siguiente (0 = sin descanso) y el del último, el descanso tras la ronda. Las rondas son el mayor número de series del bloque.
+- **Comprobación en SQL** (`nexttrain_check_strength_supersets`, al final de las dos funciones): un ejercicio que se queda solo con su clave pierde la clave; un bloque partido o de más de 4 se rechaza con su mensaje y no se guarda nada.
+- **Leer:** `get_program_history` con `program_id` devuelve en cada ejercicio `block` (A, B, C1, C2…) y `superset` (`kind`, `label`, `rounds`, `position`, `size`, `with`, `rest_meaning`) o `null`. `list_client_schedule` también. Los resultados (`get_strength_results` y el detalle del programa) llevan `block` y `superset_with`.
+- **Orden de los resultados:** dentro de una fecha los ejercicios salen en el orden del programa (antes salían por id).
+- Las series del atleta no cambian: siguen siendo por ejercicio. Modo Sala no usa esto.

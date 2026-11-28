@@ -17,7 +17,9 @@ import {
     Dumbbell,
     MoreHorizontal,
     GripVertical,
-    Copy
+    Copy,
+    Link2,
+    Unlink,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -32,6 +34,17 @@ import { ExerciseCatalogPicker } from '@/components/training/ExerciseCatalogPick
 import { useExerciseCatalog } from '@/hooks/use-exercise-catalog'
 import { catalogGroupToMuscleGroup, type CatalogExercise } from '@/lib/training/exercise-catalog'
 import { resolveStrengthStructure } from '@/lib/training/strength-catalog'
+import {
+    MAX_SUPERSET_SIZE,
+    applySupersetUpdates,
+    buildExerciseBlocks,
+    describeSupersetFlow,
+    planLink,
+    planNormalizeOrder,
+    planRemoveFromBlock,
+    planUnlinkBlock,
+    supersetKindLabel,
+} from '@/lib/training/supersets'
 
 interface StrengthTemplateEditorProps {
     template: TrainingTemplate
@@ -411,9 +424,34 @@ function DayEditor({ day, onUpdate, onDelete, catalog, catalogLoading, catalogEr
     }
 
     const deleteExercise = (id: string) => {
-        const newExercises = exercises.filter((ex) => ex.id !== id)
-        onUpdate({ ...day, exercises: newExercises })
+        const remaining = exercises.filter((ex) => ex.id !== id)
+        // Un bloque que se queda con uno se deshace.
+        const newExercises = applySupersetUpdates(remaining, planNormalizeOrder(remaining).updates)
+        onUpdate({ ...day, exercises: newExercises.map((ex, index) => ({ ...ex, order: index + 1 })) })
     }
+
+    // Superseries: mismas reglas que el editor de programas (src/lib/training/supersets.js).
+    const setDayExercises = (next: TemplateExercise[]) => {
+        onUpdate({ ...day, exercises: next.map((ex, index) => ({ ...ex, order: index + 1 })) })
+    }
+    const linkWithNext = (upperId: string, lowerId: string) => {
+        const plan = planLink(exercises, upperId, lowerId)
+        if ('error' in plan) return
+        setDayExercises(applySupersetUpdates(exercises, plan.updates))
+    }
+    const separateBlock = (memberId: string) => {
+        setDayExercises(applySupersetUpdates(exercises, planUnlinkBlock(exercises, memberId).updates))
+    }
+    const removeFromBlock = (memberId: string) => {
+        const plan = planRemoveFromBlock(exercises, memberId)
+        let next = applySupersetUpdates(exercises, plan.updates)
+        if (plan.order) {
+            const byId = new Map(next.map((ex) => [ex.id, ex]))
+            next = plan.order.map((id) => byId.get(id)!).filter(Boolean)
+        }
+        setDayExercises(next)
+    }
+    const blocks = buildExerciseBlocks(exercises)
 
     return (
         <div className="space-y-6">
@@ -447,89 +485,144 @@ function DayEditor({ day, onUpdate, onDelete, catalog, catalogLoading, catalogEr
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {exercises.map((ex: any, idx: number) => (
-                            <tr key={ex.id} className="group hover:bg-muted/20 transition-colors">
-                                <td className="p-2">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-muted-foreground w-6 text-center">{idx + 1}</span>
-                                        <ExerciseCatalogPicker
-                                            exercises={catalog}
-                                            value={ex.catalog_exercise_id}
-                                            legacyName={ex.exercise_name}
-                                            loading={catalogLoading}
-                                            error={catalogError}
-                                            onSelect={selected => {
-                                                onUpdate({
-                                                    ...day,
-                                                    exercises: exercises.map(item => item.id === ex.id
-                                                        ? {
-                                                            ...item,
-                                                            catalog_exercise_id: selected.id,
-                                                            exercise_name: selected.name,
-                                                            muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
-                                                        }
-                                                        : item),
-                                                })
-                                            }}
+                        {blocks.map((block, blockIndex) => {
+                            const nextBlock = blocks[blockIndex + 1]
+                            const canLinkNext = Boolean(nextBlock) && block.members.length + (nextBlock?.members.length ?? 0) <= MAX_SUPERSET_SIZE
+                            const renderRow = (ex: any, label: string, superset: boolean, linkNextId: string | null) => (
+                                <tr key={ex.id} className={cn('group hover:bg-muted/20 transition-colors', superset && 'bg-primary/[0.04]')}>
+                                    <td className="p-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn('flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold tabular-nums', superset ? 'bg-primary/15 text-primary' : 'text-muted-foreground')}>{label}</span>
+                                            <ExerciseCatalogPicker
+                                                exercises={catalog}
+                                                value={ex.catalog_exercise_id}
+                                                legacyName={ex.exercise_name}
+                                                loading={catalogLoading}
+                                                error={catalogError}
+                                                onSelect={selected => {
+                                                    onUpdate({
+                                                        ...day,
+                                                        exercises: exercises.map(item => item.id === ex.id
+                                                            ? {
+                                                                ...item,
+                                                                catalog_exercise_id: selected.id,
+                                                                exercise_name: selected.name,
+                                                                muscle_group: catalogGroupToMuscleGroup(selected.primary_group),
+                                                            }
+                                                            : item),
+                                                    })
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="pl-8 pt-2">
+                                            <span className="text-xs text-muted-foreground">
+                                                {MUSCLE_GROUP_LABELS[normalizeMuscleGroup(ex.muscle_group)]}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            type="number"
+                                            value={ex.sets}
+                                            onChange={(e) => updateExercise(ex.id, 'sets', parseInt(e.target.value))}
+                                            className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
                                         />
-                                    </div>
-                                    <div className="pl-8 pt-2">
-                                        <span className="text-xs text-muted-foreground">
-                                            {MUSCLE_GROUP_LABELS[normalizeMuscleGroup(ex.muscle_group)]}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td className="p-2">
-                                    <Input
-                                        type="number"
-                                        value={ex.sets}
-                                        onChange={(e) => updateExercise(ex.id, 'sets', parseInt(e.target.value))}
-                                        className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
-                                    />
-                                </td>
-                                <td className="p-2">
-                                    <Input
-                                        value={ex.reps}
-                                        onChange={(e) => updateExercise(ex.id, 'reps', e.target.value)}
-                                        className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
-                                    />
-                                </td>
-                                <td className="p-2">
-                                    <Input
-                                        value={ex.rir || ''}
-                                        onChange={(e) => updateExercise(ex.id, 'rir', e.target.value)}
-                                        className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
-                                        placeholder="-"
-                                    />
-                                </td>
-                                <td className="p-2">
-                                    <Input
-                                        type="number"
-                                        value={ex.rest_seconds}
-                                        onChange={(e) => updateExercise(ex.id, 'rest_seconds', parseInt(e.target.value))}
-                                        className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
-                                    />
-                                </td>
-                                <td className="p-2">
-                                    <Input
-                                        value={ex.notes || ''}
-                                        onChange={(e) => updateExercise(ex.id, 'notes', e.target.value)}
-                                        className="h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
-                                        placeholder="-"
-                                    />
-                                </td>
-                                <td className="p-2 text-center">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                        onClick={() => deleteExercise(ex.id)}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            value={ex.reps}
+                                            onChange={(e) => updateExercise(ex.id, 'reps', e.target.value)}
+                                            className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                        />
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            value={ex.rir || ''}
+                                            onChange={(e) => updateExercise(ex.id, 'rir', e.target.value)}
+                                            className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                            placeholder="-"
+                                        />
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            type="number"
+                                            value={ex.rest_seconds}
+                                            onChange={(e) => updateExercise(ex.id, 'rest_seconds', parseInt(e.target.value))}
+                                            className="h-8 text-center bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                        />
+                                    </td>
+                                    <td className="p-2">
+                                        <Input
+                                            value={ex.notes || ''}
+                                            onChange={(e) => updateExercise(ex.id, 'notes', e.target.value)}
+                                            className="h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:bg-muted/50"
+                                            placeholder="-"
+                                        />
+                                    </td>
+                                    <td className="p-2 text-center">
+                                        <div className="flex items-center justify-end gap-0.5">
+                                            {superset ? (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                    title="Sacar de la superserie"
+                                                    aria-label={`Sacar ${label} de la superserie`}
+                                                    onClick={() => removeFromBlock(ex.id)}
+                                                >
+                                                    <Unlink className="h-4 w-4" />
+                                                </Button>
+                                            ) : linkNextId ? (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                                    title="Enlazar con el siguiente como superserie"
+                                                    aria-label={`Enlazar ${label} con el siguiente como superserie`}
+                                                    onClick={() => linkWithNext(ex.id, linkNextId)}
+                                                >
+                                                    <Link2 className="h-4 w-4" />
+                                                </Button>
+                                            ) : null}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity [@media(hover:none)]:opacity-100"
+                                                onClick={() => deleteExercise(ex.id)}
+                                                aria-label="Eliminar ejercicio"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )
+                            if (!block.isSuperset) {
+                                const ex = block.members[0].exercise
+                                return renderRow(ex, block.letter, false, canLinkNext ? nextBlock!.members[0].exercise.id : null)
+                            }
+                            return (
+                                <React.Fragment key={block.key}>
+                                    <tr className="bg-primary/[0.06]">
+                                        <td colSpan={7} className="px-3 py-2">
+                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                <span className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-primary">
+                                                    {supersetKindLabel(block.members.length)} {block.letter}
+                                                </span>
+                                                <span className="min-w-0 flex-1 text-xs text-foreground/80">
+                                                    {block.rounds} {block.rounds === 1 ? 'ronda' : 'rondas'} · {describeSupersetFlow(block)} · el descanso de los primeros es el paso al siguiente
+                                                </span>
+                                                <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-full" onClick={() => separateBlock(block.members[0].exercise.id)}>
+                                                    <Unlink className="h-3.5 w-3.5" />
+                                                    Separar
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {block.members.map((member) => renderRow(member.exercise, member.label, true, null))}
+                                </React.Fragment>
+                            )
+                        })}
                     </tbody>
                 </table>
                 </div>

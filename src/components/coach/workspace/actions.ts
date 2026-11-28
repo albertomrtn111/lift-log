@@ -813,7 +813,7 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
 
     const { data: exercises, error: exercisesError } = await supabase
         .from('training_exercises')
-        .select('id, day_id, exercise_name, catalog_exercise_id, order_index, muscle_group, sets, reps, rir, rest_seconds, notes, created_at')
+        .select('id, day_id, exercise_name, catalog_exercise_id, order_index, muscle_group, sets, reps, rir, rest_seconds, notes, superset_key, created_at')
         .eq('program_id', programId)
         .eq('coach_id', coachId)
         .order('order_index', { ascending: true })
@@ -844,6 +844,7 @@ export async function copyTrainingProgramToTemplateAction(programId: string, cli
                 rir: exercise.rir != null ? String(exercise.rir) : '',
                 rest_seconds: exercise.rest_seconds ?? 0,
                 notes: exercise.notes ?? null,
+                superset_key: exercise.superset_key ?? null,
             })),
         })),
     }

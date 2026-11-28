@@ -8,6 +8,7 @@ import {
     analyzeTrainingProgress,
     type TrainingProgressAIAnalysis,
 } from '@/lib/ai/analyze-training-progress'
+import { supersetInfoById } from '@/lib/training/supersets'
 
 // ============================================================================
 // Types
@@ -41,6 +42,10 @@ export interface ProgressExercise {
     prescribedSets: number | null
     prescribedReps: string | null
     prescribedRir: number | null
+    /** Letra en el día: A, B, C1, C2… */
+    blockLabel?: string
+    /** Nombres de los otros ejercicios de su superserie (vacío si va suelto) */
+    supersetWith?: string[]
     /** Sets grouped by week_index */
     setsByWeek: Record<number, ProgressExerciseSet[]>
 }
@@ -213,7 +218,7 @@ export async function getTrainingProgressData(
         const dayIds = (daysRaw || []).map((d: any) => d.id)
         const { data: exercisesRaw, error: exErr } = await supabase
             .from('training_exercises')
-            .select('id, day_id, exercise_name, order_index, sets, reps, rir')
+            .select('id, day_id, exercise_name, order_index, sets, reps, rir, superset_key')
             .in('day_id', dayIds.length > 0 ? dayIds : ['__none__'])
             .order('order_index', { ascending: true })
 
@@ -279,6 +284,21 @@ export async function getTrainingProgressData(
                 prescribedRir: e.rir != null ? Number(e.rir) : null,
                 setsByWeek: setsMap.get(e.id) || {},
             })
+        }
+        // Superseries: letra y compañeros de bloque (src/lib/training/supersets.js).
+        const rawByDay = new Map<string, any[]>()
+        for (const e of (exercisesRaw || [])) {
+            const list = rawByDay.get(e.day_id) || []
+            list.push(e)
+            rawByDay.set(e.day_id, list)
+        }
+        for (const [dayId, list] of rawByDay) {
+            const info = supersetInfoById(list)
+            for (const exercise of exercisesByDay.get(dayId) || []) {
+                const entry = info.get(exercise.id)
+                exercise.blockLabel = entry?.label
+                exercise.supersetWith = entry?.isSuperset ? entry.with : []
+            }
         }
 
         const days: ProgressDay[] = (daysRaw || []).map((d: any) => ({

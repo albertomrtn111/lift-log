@@ -128,3 +128,28 @@ Deno.test('update_strength_program_days shows the SQL reasons for rejecting an e
   const internal = fixture(() => ({ data: null, error: { code: '23503', message: 'foreign key violation' } }))
   assert.equal((await internal.run('update_strength_program_days', input)).error, 'No se han podido editar los días del programa. No se guardó ningún cambio.')
 })
+
+Deno.test('update_strength_program_days sends superset labels, keeps omitted ones and clears with null', async () => {
+  const { run, parse, calls } = fixture((_name, args) => ({ data: {
+    id: args.p_program_id, client_id: client, name: 'Bloque', status: 'active', updated_at: '2026-10-16T08:00:00+00:00',
+    day_count: 1, exercise_count: 3, removed_day_count: 0, removed_exercise_count: 0, removed_scheduled_sessions: 0, catalog_enforced: true,
+  }, error: null }))
+  const days = [{ id: dayId, name: 'Torso', weekday: 2, exercises: [
+    { id: exerciseId, rest_seconds: 0, superset: 'C' },
+    { name: 'Extensión de tríceps con cuerda', sets: 3, rest_seconds: 90, superset: 'C' },
+    { name: 'Elevación lateral con mancuernas', superset: null },
+  ] }]
+  await run('update_strength_program_days', { client_id: client, program_id: program, expected_updated_at: version, days })
+  const sent = JSON.parse(JSON.stringify(calls[0].args.p_payload.days[0].exercises))
+  assert.deepEqual(sent.map((exercise: any) => exercise.superset), ['C', 'C', null])
+  // Una etiqueta vacía o demasiado larga no llega a SQL.
+  const base = { client_id: client, program_id: program, expected_updated_at: version }
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [{ name: 'Torso', weekday: 2, exercises: [{ name: 'X', superset: '' }] }] }))
+  assert.throws(() => parse('update_strength_program_days', { ...base, days: [{ name: 'Torso', weekday: 2, exercises: [{ name: 'X', superset: 'x'.repeat(41) }] }] }))
+})
+
+Deno.test('update_strength_program_days shows why a superset was rejected', async () => {
+  const input = { client_id: client, program_id: program, expected_updated_at: version, days: [{ name: 'Torso', weekday: 2, exercises: [{ name: 'Curl', superset: 'C' }] }] }
+  const split = fixture(() => ({ data: null, error: { code: 'P0001', message: 'Los ejercicios de una superserie tienen que ir seguidos en el día: Curl, Extensión.' } }))
+  assert.match((await split.run('update_strength_program_days', input)).error, /tienen que ir seguidos/)
+})
