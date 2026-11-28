@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireActiveCoachId } from '@/lib/auth/require-coach'
+import { assertCoachHasAI } from '@/lib/ai/access'
 import { loadStrengthSkips } from '@/lib/training/strength-week-skips-data'
 import {
     analyzeTrainingProgress,
@@ -305,6 +306,7 @@ export async function analyzeTrainingProgressAction(
 ): Promise<AnalyzeTrainingProgressResponse> {
     try {
         const { supabase, coachId } = await requireActiveCoachId(input.coachId)
+        await assertCoachHasAI(coachId)
 
         const { data: programRow, error: programError } = await supabase
             .from('training_programs')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
-import { requireAICoach } from '@/lib/ai/access'
+import { AINotInPlanError, requireAICoach } from '@/lib/ai/access'
 
 const RequestSchema = z.object({
     checkinId: z.string().uuid(),
@@ -12,7 +12,10 @@ export async function POST(request: NextRequest) {
     let supabase, coachId: string
     try {
         ;({ supabase, coachId } = await requireAICoach())
-    } catch {
+    } catch (error) {
+        if (error instanceof AINotInPlanError) {
+            return NextResponse.json({ success: false, error: error.message }, { status: 403 })
+        }
         return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 })
     }
 

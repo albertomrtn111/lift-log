@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAICoach } from '@/lib/ai/access'
+import { AINotInPlanError, requireAICoach } from '@/lib/ai/access'
 import {
     getCoachAIProfile,
     markOnboardingComplete,
@@ -12,7 +12,10 @@ export async function POST(request: NextRequest) {
     let coachId: string
     try {
         ;({ coachId } = await requireAICoach())
-    } catch {
+    } catch (error) {
+        if (error instanceof AINotInPlanError) {
+            return NextResponse.json({ success: false, error: error.message }, { status: 403 })
+        }
         return NextResponse.json({ success: false, error: 'Sin acceso de coach' }, { status: 403 })
     }
 

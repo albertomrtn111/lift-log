@@ -28,6 +28,7 @@ export default async function CoachLayout({
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     let studioEnabled = false
+    let aiEnabled = false
     let environment = spaceEnvironment({ studio: false, online: true, saved: null })
     if (user) {
         const coachId = await getCoachIdForUser(user.id)
@@ -37,6 +38,9 @@ export default async function CoachLayout({
                 p_feature: 'studio_mode',
             })
             studioEnabled = hasStudio === true
+            // El asistente de la app usa la IA del plan (desde Pro, NXT-152).
+            const { data: hasAI } = await supabase.rpc('coach_has_feature', { p_coach_id: coachId, p_feature: 'ai' })
+            aiEnabled = hasAI === true
             const workspace = await getCoachWorkspaceInfo(coachId)
             const pathname = (await headers()).get('x-pathname') ?? ''
             const role = (await getMyWorkspaces()).find(item => item.coach_id === coachId)?.role
@@ -82,7 +86,7 @@ export default async function CoachLayout({
                         <main className="coach-mobile-main min-w-0 flex-1 overflow-x-hidden pt-[var(--safe-area-top)] max-lg:[&>*>header.sticky]:top-[var(--safe-area-top)] lg:pl-64 lg:pt-0">
                             {children}
                         </main>
-                        <CoachAssistantWidget />
+                        {aiEnabled && <CoachAssistantWidget />}
                     </div>
                 </CoachNotificationsProvider>
             </CoachProvider>

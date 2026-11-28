@@ -13,6 +13,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isSampleClient } from '@/lib/onboarding/sample-athlete'
 import { claimAiProfileOffer, updateCoachOnboardingState } from '@/lib/onboarding/coach-workspace'
 import { generateCheckinAnalysis } from '@/lib/ai/analyze-checkin'
+import { assertCoachHasAI } from '@/lib/ai/access'
 import { pickEditableReviewFields, reviewMatchesCheckin } from '@/lib/reviews/review-access-rules'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeMuscleGroup } from '@/lib/training/muscle-groups'
@@ -145,6 +146,7 @@ export async function regenerateReviewAIAction(
 ) {
     try {
         const { supabase, coachId: validatedCoachId } = await requireActiveCoachId(coachId)
+        await assertCoachHasAI(validatedCoachId)
 
         // La revisión es de este espacio y de ese check-in (leída con la sesión del coach).
         const { data: review } = await supabase
