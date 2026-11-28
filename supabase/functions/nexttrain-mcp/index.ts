@@ -95,7 +95,7 @@ function createNextTrainServer(supabase: Db, caller: Caller) {
       'Ficha del atleta (edad, sexo, altura, peso de referencia, notas, umbrales y zonas de FC, ritmo y potencia, perfil IA y cuestionario de alta): get_athlete_profile.',
       'Objetivos nutricionales (calorías, macros, proteína, hidratos, grasas, distintos en días de entreno y descanso): leer con get_current_nutrition; cambiarlos con create_macro_plan (nuevo bloque con fecha de inicio) o update_macro_plan (editar el plan vigente por plan_id).',
       'Dieta con comidas y alimentos: get_diet_plan, preview_diet_plan, create_diet_plan, update_diet_plan.',
-      'Fuerza: create_strength_program, update_strength_program, update_strength_program_days. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
+      'Fuerza: create_strength_program, update_strength_program, update_strength_program_days; para superseries, biseries, triseries o series gigantes, la misma etiqueta en el campo superset de 2 a 4 ejercicios seguidos. Cardio: schedule_cardio_session, update_cardio_session. Temporada: create_season_plan, update_season_plan. Objetivo del atleta: set_athlete_goal.',
     ].join('\n'),
   }))
   // Todas las herramientas registran quién las usó (cuenta y asistente) con el mismo ayudante.
